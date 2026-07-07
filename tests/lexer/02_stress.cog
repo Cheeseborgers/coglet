@@ -1,0 +1,15 @@
+// this is a comment
+int add(int a, int b) {
+    return a + b; /* inline block comment */
+}
+
+float pi = 3.14159;
+char c = 'x';
+char *msg = "hello, \"world\"\n";
+
+if (a >= 10 && b != 0) {
+    x++;
+    y -= 1;
+} else {
+    z *= 2;
+}

@@ -60,6 +60,8 @@ void *arena_alloc(Arena *arena, size_t size) {
 
     void *ptr = block->data + block->used;
     block->used += size;
+    arena->allocated += size;
+
     return ptr;
 }
 
@@ -75,3 +77,48 @@ void arena_destroy(Arena *arena) {
 
     free(arena);
 }
+
+ArenaMarker arena_mark(const Arena *a)
+{
+    ArenaMarker m = {
+        .block = a->current,
+        .used = a->current->used
+    };
+    return m;
+}
+
+void arena_reset_to(Arena *a, ArenaMarker mark)
+{
+    if (!a) return;
+
+    size_t freed = 0;
+
+    ArenaBlock *b = mark.block->next;
+
+    while (b) {
+        ArenaBlock *next = b->next;
+        freed += b->used;
+        free(b);
+        b = next;
+    }
+
+    freed += mark.block->used - mark.used;
+
+    mark.block->next = NULL;
+    mark.block->used = mark.used;
+    a->current = mark.block;
+    a->allocated -= freed;
+}
+
+size_t arena_allocated(const Arena *a)
+{
+    return a ? a->allocated : 0;
+}
+
+size_t arena_remaining(const Arena *a)
+{
+    if (!a) return 0;
+
+    return a->current->capacity - a->current->used;
+}
+

@@ -13,6 +13,7 @@ typedef struct {
     Token previous;  // last token we consumed
 
     Arena *arena;
+    Arena *scratch;
 
     int had_error;
     int error_count;
@@ -22,7 +23,7 @@ typedef struct {
     int diagnostic_capacity;
 } Parser;
 
-void parser_init(Parser *p, const char *filename, const char *source, Arena *arena);
+void parser_init(Parser *p, const char *filename, const char *source, Arena *arena, Arena *scratch);
 
 // Parses the whole file into a NODE_PROGRAM.
 // Syntax errors are stored in the parser diagnostics list.

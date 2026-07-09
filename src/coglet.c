@@ -24,9 +24,10 @@ int main(int argc, char **argv)
 
     char *source = read_file(filename);
 
-    Arena *arena = arena_create(MB(2));
+    Arena *arena   = arena_create(MB(2));
+    Arena *scratch = arena_create(MB(1));
     Parser parser;
-    parser_init(&parser, filename, source, arena);
+    parser_init(&parser, filename, source, arena, scratch);
 
     Node *ast = parse_program(&parser);
 
@@ -35,7 +36,7 @@ int main(int argc, char **argv)
 
         sem.arena = arena;
 
-        semantic_check(ast,&sem);
+        semantic_check(ast, &sem);
 
 
         if (!sem.had_error)

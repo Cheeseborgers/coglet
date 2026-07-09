@@ -266,14 +266,18 @@ static int consume(Parser *p, TokenType expected)
 
 // ===================== init =====================
 
-void parser_init(Parser *p, const char *filename, const char *source, Arena *arena)
+void parser_init(Parser *p, const char *filename, const char *source, Arena *arena, Arena *scratch)
 {
     lexer_init(&p->lexer, filename, source); // lexer asserts filename
+
     p->arena = arena;
+    p->scratch = scratch;
+
     p->had_error = 0;
     p->error_count = 0;
     p->current.type = TOK_EOF;
     p->diagnostic_capacity = 100;
+
     p->diagnostics = arena_alloc(arena, sizeof(Diagnostic) * p->diagnostic_capacity);
     advance(p);
 }
@@ -568,21 +572,7 @@ static Type *parse_type(Parser *p)
     return base;
 }
 
-// ===================== declarations (Jai/Odin style) =====================
-//
-// Grammar:
-//   name : type;            typed var decl, no initializer
-//   name : type = expr;     typed var decl, with initializer
-//   name := expr;           inferred var decl (type is NULL, filled in later)
-//   name :: (params) -> type { ... }   procedure decl
-//   name :: (params) { ... }           procedure decl, implicit void return
-//
-// All of these share the prefix `IDENT`, which is indistinguishable
-// from an ordinary expression statement starting with an identifier
-// (e.g. `foo();` or `x = 5;`) until the token *after* the identifier
-// is seen. parse_decl_or_expr_statement consumes that identifier once,
-// then branches on the very next token -- no backtracking needed,
-// since every branch needed that identifier token regardless.
+// =================== variable declarations ==========================
 
 static Node *finish_typed_var_decl(Parser *p, Token name) {
 
@@ -615,49 +605,123 @@ static Node *finish_inferred_var_decl(Parser *p, Token name) {
     return ast_new_var_decl(p->arena, NULL, name.start, name.length, initializer, line);
 }
 
+// ================ end variable declarations ======================
+
+// ===================== proc/function declarations ================
+
+typedef struct PendingParam {
+    Token name;
+    struct PendingParam *next;
+} PendingParam;
+
+static void pending_param_push(Parser *p, PendingParam **head, PendingParam **tail, Token token) {
+
+    PendingParam *node = arena_alloc(p->scratch, sizeof(PendingParam));
+
+    node->name = token;
+    node->next = NULL;
+
+    if (*tail) {
+        (*tail)->next = node;
+    } else {
+        *head = node;
+    }
+
+    *tail = node;
+}
+
+static int parse_parameter_group(Parser *p, Node *func)
+{
+    ArenaMarker marker = arena_mark(p->scratch);
+
+    PendingParam *head = NULL;
+    PendingParam *tail = NULL;
+
+    int success = 0;
+
+    if (!consume(p, TOK_IDENT))
+        goto cleanup;
+
+    pending_param_push(p, &head, &tail, p->previous);
+
+    while (match(p, TOK_COMMA)) {
+
+        if (!consume(p, TOK_IDENT))
+            goto cleanup;
+
+        pending_param_push(p, &head, &tail, p->previous);
+
+        if (check(p, TOK_COLON))
+            break;
+    }
+
+    if (!consume(p, TOK_COLON))
+        goto cleanup;
+
+    Type *type = parse_type(p);
+
+    for (PendingParam *it = head; it; it = it->next) {
+        Node *param = ast_new_var_decl(
+            p->arena,
+            type,
+            it->name.start,
+            it->name.length,
+            NULL,
+            it->name.line
+        );
+
+        nodelist_push(
+            p->arena,
+            &func->as.func_decl.params,
+            param
+        );
+    }
+
+    success = 1;
+
+    cleanup:
+        arena_reset_to(p->scratch, marker);
+    return success;
+}
+
+static Type *make_void_type(Arena *arena)
+{
+    Type *type = arena_alloc(arena, sizeof(Type));
+
+    *type = (Type){
+        .kind = TYPE_VOID,
+        .element = NULL,
+        .array_size = -1,
+        .struct_name = NULL,
+        .struct_name_length = 0
+    };
+
+    return type;
+}
+
 static Node *parse_proc_decl_rest(Parser *p, Token name, int line) {
 
-    consume(p, TOK_LPAREN);   // known present from check() in parse_decl_after_name
+    consume(p, TOK_LPAREN); // known present from check() in parse_decl_after_name
 
     Node *func = ast_new_func_decl(p->arena, name.start, name.length, NULL, line);
 
     if (!check(p, TOK_RPAREN)) {
         do {
-            if (!consume(p, TOK_IDENT)) {
-                error_at(p, &p->current, "expected parameter name");
-                break;
+            if (!parse_parameter_group(p, func)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
             }
-            Token param_name = p->previous;
-
-            if (!consume(p, TOK_COLON)) break;
-
-            Type *param_type = parse_type(p);
-
-            Node *param = ast_new_var_decl(
-                p->arena,
-                param_type,
-                param_name.start,
-                param_name.length,
-                NULL,
-                param_name.line
-            );
-
-            nodelist_push(p->arena, &func->as.func_decl.params, param);
         } while (match(p, TOK_COMMA));
     }
 
     consume(p, TOK_RPAREN);
 
+    // Parse the return type
     Type *return_type;
     if (match(p, TOK_ARROW)) {
         return_type = parse_type(p);
     } else {
-        return_type = arena_alloc(p->arena, sizeof(Type));
-        return_type->kind               = TYPE_VOID;
-        return_type->element            = NULL;
-        return_type->array_size         = -1;
-        return_type->struct_name        = NULL;
-        return_type->struct_name_length = 0;
+        return_type = make_void_type(p->arena); // no return type/void
     }
     func->as.func_decl.return_type = return_type;
 
@@ -672,6 +736,9 @@ static Node *parse_proc_decl_rest(Parser *p, Token name, int line) {
     return func;
 }
 
+// ================== end proc/function parsing ===================
+
+// =================== struct declarations ========================
 static Node *parse_struct_decl_rest(Parser *p,Token name,int line) {
 
     consume(p, TOK_STRUCT);
@@ -689,7 +756,6 @@ static Node *parse_struct_decl_rest(Parser *p,Token name,int line) {
     return decl;
 }
 
-// FIXME: Is this unused?
 static Node *parse_struct_field(Parser *p) {
 
     consume(p, TOK_IDENT);
@@ -699,6 +765,10 @@ static Node *parse_struct_field(Parser *p) {
     consume(p, TOK_SEMICOLON);
     return ast_new_var_decl(p->arena, type, field.start, field.length, NULL, field.line);
 }
+
+// ====================== end struct declarations ======================
+
+// ====================== declaration dispatching ======================
 
 static Node *parse_decl_after_name(Parser *p, Token name) {
 
@@ -748,6 +818,8 @@ static Node *parse_decl_or_expr_statement(Parser *p) {
     // statement, no declaration possible.
     return parse_expr_statement(p);
 }
+
+// ======================= end declaration dispatching ==================
 
 // TODO: Ensure we only allow return only inside a function body,
 static Node *parse_return_statement(Parser *p) {

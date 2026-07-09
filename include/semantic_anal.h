@@ -35,8 +35,6 @@ typedef struct {
     Arena *arena;
 
     Type *type_bool;
-    //Type *type_i32;
-    //Type *type_f64;
 
     int had_error;
     int error_count;

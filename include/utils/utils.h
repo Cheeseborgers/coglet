@@ -1,5 +1,5 @@
-#ifndef COG_UTILS_H
-#define COG_UTILS_H
+#ifndef COGLET_UTILS_H
+#define COGLET_UTILS_H
 
 #include <stdlib.h>
 #include <stdio.h>

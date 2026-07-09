@@ -25,7 +25,7 @@ add_library(compiler_core STATIC
         src/diag.c
         src/semantic_anal.c
 )
-target_include_directories(compiler_core PUBLIC src)
+target_include_directories(compiler_core PUBLIC include)
 
 # --- The real compiler binary. ---
 add_executable(coglet src/coglet.c ${COMMON_SOURCES})
@@ -74,6 +74,6 @@ add_diff_tests(parser ${CMAKE_SOURCE_DIR}/tests/parser dump_ast)
 add_custom_command(
         TARGET coglet POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/test_assets
+        ${CMAKE_SOURCE_DIR}/tests/test_assets
         $<TARGET_FILE_DIR:coglet>/test_assets
 )

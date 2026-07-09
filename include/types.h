@@ -1,5 +1,5 @@
-#ifndef COG_TYPES_H
-#define COG_TYPES_H
+#ifndef COGLET_TYPES_H
+#define COGLET_TYPES_H
 
 typedef enum {
     TYPE_VOID,

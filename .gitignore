@@ -43,3 +43,4 @@ libs/local/
 *.out
 *.app
 
+/cmake-build-debug/

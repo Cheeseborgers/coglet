@@ -1,10 +1,10 @@
-#include "lexer.h"
+#include "../include/lexer.h"
 
 #include <assert.h>
 #include <string.h>
 #include <ctype.h>
 
-#include "utils/utils.h"
+#include "../include/utils/utils.h"
 
 void lexer_init(Lexer *lx, const char *filename, const char *source) {
     assert(filename); // TODO: Add better asserts

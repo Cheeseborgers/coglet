@@ -4,9 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "ast.h"
-#include "parser.h"
-#include "utils/arena.h"
+#include "../include/ast.h"
+#include "../include/parser.h"
+#include "../include/utils/arena.h"
 #include "ast/ast_print.h"
 #include "utils/utils.h"
 

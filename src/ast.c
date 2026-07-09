@@ -1,9 +1,9 @@
-#include "ast.h"
+#include "../include/ast.h"
 
 #include <stdio.h>
 #include <string.h>
 
-#include "utils/utils.h"
+#include "../include/utils/utils.h"
 
 static Node *new_node(Arena *arena, NodeType type, int line) {
     Node *node = arena_alloc(arena, sizeof(Node));

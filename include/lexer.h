@@ -1,5 +1,5 @@
-#ifndef COG_LEXER_H
-#define COG_LEXER_H
+#ifndef COGLET_LEXER_H
+#define COGLET_LEXER_H
 
 typedef enum {
     TOK_EOF = 0,
@@ -21,7 +21,7 @@ typedef enum {
     TOK_U8, TOK_U16, TOK_U32, TOK_U64,
     TOK_F32, TOK_F64,
     TOK_BOOL,
-    TOK_INT_KW, TOK_UINT_KW,   // pointer-width aliases
+    TOK_INT_KW, TOK_UINT_KW,           // pointer-width aliases
 
     // operators
     TOK_PLUS, TOK_MINUS, TOK_STAR, TOK_SLASH, TOK_PERCENT,
@@ -67,4 +67,4 @@ void lexer_init(Lexer *lx, const char *filename, const char *source);
 Token lexer_next(Lexer *lx);
 const char *token_type_name(TokenType type); // for printing/tests
 
-#endif //COG_LEXER_H
+#endif

@@ -1,4 +1,4 @@
-#include "semantic_anal.h"
+#include "../include/semantic_anal.h"
 
 #include <stdio.h>
 #include <string.h>

@@ -1,5 +1,5 @@
-#ifndef COG_PARSER_H
-#define COG_PARSER_H
+#ifndef COGLET_PARSER_H
+#define COGLET_PARSER_H
 
 #include "lexer.h"
 #include "ast.h"

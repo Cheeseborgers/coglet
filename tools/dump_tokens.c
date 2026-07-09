@@ -3,8 +3,8 @@
 // it lets us verify lexing is correct before the parser exists.
 #include <stdio.h>
 #include <stdlib.h>
-#include "lexer.h"
-#include "utils/utils.h"
+#include "../include/lexer.h"
+#include "../include/utils/utils.h"
 
 int main(int argc, char **argv) {
     if (argc != 2) {

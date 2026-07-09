@@ -1,5 +1,5 @@
-#ifndef COG_DIAGNOSTIC_H
-#define COG_DIAGNOSTIC_H
+#ifndef COGLET_DIAGNOSTIC_H
+#define COGLET_DIAGNOSTIC_H
 
 #include "lexer.h"
 

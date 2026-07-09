@@ -6,12 +6,12 @@
 #include <stdio.h>
 
 #include "parser.h"
-#include "ast.h"
-#include "diag.h"
-#include "semantic_anal.h"
+#include "../include/ast.h"
+#include "../include/diag.h"
+#include "../include/semantic_anal.h"
 
 #include "../tools/ast/ast_print.h"
-#include "utils/utils.h"
+#include "../include/utils/utils.h"
 
 int main(int argc, char **argv)
 {

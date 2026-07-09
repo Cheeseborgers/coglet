@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "types.h"
-#include "utils/utils.h"
+#include "../../include/types.h"
+#include "../../include/utils/utils.h"
 
 static const char *token_type_str(TokenType t)
 {

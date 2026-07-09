@@ -1,5 +1,5 @@
-#ifndef COG_ARENA_H
-#define COG_ARENA_H
+#ifndef COGLET_ARENA_H
+#define COGLET_ARENA_H
 
 #include <stddef.h>
 

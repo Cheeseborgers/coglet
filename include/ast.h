@@ -1,5 +1,5 @@
-#ifndef COG_AST_H
-#define COG_AST_H
+#ifndef COGLET_AST_H
+#define COGLET_AST_H
 
 #include "lexer.h"
 #include "types.h"

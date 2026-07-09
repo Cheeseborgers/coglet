@@ -1,5 +1,5 @@
-#ifndef COG_SEMANTIC_H
-#define COG_SEMANTIC_H
+#ifndef COGLET_SEMANTIC_H
+#define COGLET_SEMANTIC_H
 
 #include "ast.h"
 

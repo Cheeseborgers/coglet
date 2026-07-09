@@ -26,6 +26,7 @@ static Node *finish_typed_var_decl(Parser *p, Token name);
 static Node *finish_inferred_var_decl(Parser *p, Token name);
 static Node *parse_decl_after_name(Parser *p, Token name);
 static Node *parse_proc_decl_rest(Parser *p, Token name, int line);
+
 static Node *parse_struct_decl_rest(Parser *p, Token name, int line);
 static Node *parse_struct_field(Parser *p);
 
@@ -773,7 +774,7 @@ static Node *parse_struct_decl_rest(Parser *p,Token name,int line) {
     consume(p, TOK_STRUCT);
     consume(p, TOK_LBRACE);
 
-    Node *decl =ast_new_struct_decl(p->arena, name.start,name.length, line);
+    Node *decl = ast_new_struct_decl(p->arena, name.start,name.length, line);
 
     while (!check(p, TOK_RBRACE) && !check(p, TOK_EOF)) {
         Node *field = parse_struct_field(p);
@@ -792,7 +793,7 @@ static Node *parse_struct_field(Parser *p) {
     consume(p, TOK_COLON);
     Type *type = parse_type(p);
     consume(p, TOK_SEMICOLON);
-    return ast_new_var_decl(p->arena, type, field.start, field.length, NULL, field.line);
+    return ast_new_struct_field_decl(p->arena, type, field.start, field.length, field.line);
 }
 
 // ====================== end struct declarations ======================

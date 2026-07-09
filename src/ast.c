@@ -135,6 +135,14 @@ Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, N
     return node;
 }
 
+Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, int line) {
+    Node *node = new_node(arena, NODE_STRUCT_FIELD_DECL, line);
+    node->as.struct_field_decl.var_type = type;
+    node->as.struct_field_decl.name     = name;
+    node->as.struct_field_decl.length   = length;
+    return node;
+}
+
 Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, int line) {
     Node *node = new_node(arena, NODE_FUNC_PARAM_DECL, line);
     node->as.param_decl.var_type      = type;

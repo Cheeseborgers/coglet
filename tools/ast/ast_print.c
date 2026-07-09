@@ -220,6 +220,13 @@ static void print_node(Node *node)
             printf(")");
             break;
 
+        case NODE_STRUCT_FIELD_DECL:
+            printf("(struct_field_decl ");
+            print_type(node->as.struct_field_decl.var_type);
+            printf(" %.*s", node->as.struct_field_decl.length, node->as.struct_field_decl.name);
+            printf(")");
+            break;
+
         case NODE_RETURN:
             printf("(return");
             if (node->as.return_stmt.value) {
@@ -435,6 +442,13 @@ static void print_node_pretty(Node *node, int depth)
                 printf("init:\n");
                 print_node_pretty(node->as.param_decl.default_value, depth + 2);
             }
+            break;
+
+        case NODE_STRUCT_FIELD_DECL:
+            indent(depth);
+            printf("struct_field_decl %.*s: ", node->as.struct_field_decl.length, node->as.struct_field_decl.name);
+            print_type(node->as.struct_field_decl.var_type);
+            printf("\n");
             break;
 
         case NODE_RETURN:

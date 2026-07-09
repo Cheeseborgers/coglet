@@ -39,22 +39,22 @@ static int names_equal(const char *a, int a_len, const char *b, int b_len) {
     return a_len == b_len && memcmp(a,b,a_len) == 0;
 }
 
-static Type *find_struct_field(Type *struct_type, const char *name, int length) {
+static Type *find_struct_field(const Type *struct_type, const char *name, int length) {
 
     for(int i = 0; i < struct_type->field_count; i++) {
 
         StructField *field = &struct_type->fields[i];
-        if(names_equal(field->name,field->length,name,length)) return field->type;
+        if(names_equal(field->name, field->length, name, length)) return field->type;
     }
 
     return NULL;
 }
 
 // searches current scope only
-static Symbol *scope_find_local(Scope *scope, const char *name, int length) {
+static Symbol *scope_find_local(const Scope *scope, const char *name, int length) {
 
     for(Symbol *sym = scope->symbols; sym; sym = sym->next)
-        if(names_equal(sym->name,sym->length,name,length)) return sym;
+        if(names_equal(sym->name, sym->length, name, length)) return sym;
 
     return NULL;
 }
@@ -554,7 +554,7 @@ static Type *make_function_type(SemanticContext *ctx, Node *func) {
 
     for (int i = 0; i < type->parameter_count; i++) {
         Node *param = func->as.func_decl.params.items[i];
-        type->parameters[i] = resolve_type(ctx, param->as.var_decl.var_type, param);
+        type->parameters[i] = resolve_type(ctx, param->as.param_decl.var_type, param);
     }
 
     type->return_type = resolve_type(ctx, func->as.func_decl.return_type, func);
@@ -578,11 +578,10 @@ static void check_function(SemanticContext *ctx, Node *node) {
 
     scope_push(ctx);
 
-    for(int i = 0; i < node->as.func_decl.params.count; i++) {
 
+    for (int i = 0; i < node->as.func_decl.params.count; i++) {
         Node *param = node->as.func_decl.params.items[i];
-        Type *param_type = resolve_type(ctx, param->as.var_decl.var_type, param);
-        scope_define(ctx,param->as.var_decl.name, param->as.var_decl.length, SYMBOL_VARIABLE, param_type);
+        check_param_decl(ctx, param);   // handles duplicate-name check, default-value check, and scope_define
     }
 
     int saved_loop_depth = ctx->loop_depth;
@@ -616,9 +615,9 @@ static Type *make_struct_type(SemanticContext *ctx, Node *node) {
     for (int i = 0; i < type->field_count; i++) {
 
         Node *field = node->as.struct_decl.fields.items[i];
-        type->fields[i].name = field->as.var_decl.name;
-        type->fields[i].length = field->as.var_decl.length;
-        type->fields[i].type = resolve_type(ctx, field->as.var_decl.var_type, field);
+        type->fields[i].name   = field->as.struct_field_decl.name;
+        type->fields[i].length = field->as.struct_field_decl.length;
+        type->fields[i].type   = resolve_type(ctx, field->as.struct_field_decl.var_type, field);
     }
 
     return type;

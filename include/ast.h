@@ -147,6 +147,12 @@ struct Node {
         } param_decl;
 
         struct {
+            Type *var_type;
+            const char *name;
+            int length;
+        } struct_field_decl;
+
+        struct {
             Node *value;         // NULL for bare `return;`
         } return_stmt;
 
@@ -197,7 +203,7 @@ Node *ast_new_index(Arena *arena,Node *object, Node *index, int line);
 Node *ast_new_error(Arena *arena, Token token);
 Node *ast_new_program(Arena *arena, int line);
 Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, int line);
-Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, Node *field, int line);
+Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, int line);
 Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, int line);
 Node *ast_new_return(Arena *arena, Node *value, int line);
 Node *ast_new_while(Arena *arena, Node *cond, Node *body, int line);

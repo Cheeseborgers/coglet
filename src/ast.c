@@ -134,6 +134,16 @@ Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, N
     node->as.var_decl.initializer = initializer;
     return node;
 }
+
+Node *ast_new_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, int line) {
+    Node *node = new_node(arena, NODE_PARAM_DECL, line);
+    node->as.param_decl.var_type      = type;
+    node->as.param_decl.name          = name;
+    node->as.param_decl.length        = length;
+    node->as.param_decl.default_value = default_value;
+    return node;
+}
+
 Node *ast_new_return(Arena *arena, Node *value, int line) {
     Node *node = new_node(arena, NODE_RETURN, line);
     node->as.return_stmt.value = value;
@@ -191,6 +201,101 @@ Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int l
     return node;
 }
 
+Node *ast_clone(Arena *arena, const Node *node)
+{
+    if (!node)
+        return NULL;
+
+    Node *clone = new_node(arena, node->type, node->line);
+
+    switch (node->type)
+    {
+        case NODE_NUMBER:
+            clone->as.number = node->as.number;
+            break;
+
+        case NODE_IDENT:
+            clone->as.ident = node->as.ident;
+            break;
+
+        case NODE_STRING:
+            clone->as.string_literal = node->as.string_literal;
+            break;
+
+        case NODE_CHAR:
+            clone->as.char_literal = node->as.char_literal;
+            break;
+
+        case NODE_UNARY:
+            clone->as.unary.op = node->as.unary.op;
+            clone->as.unary.operand = ast_clone(arena, node->as.unary.operand);
+            break;
+
+        case NODE_BINARY:
+            clone->as.binary.op    = node->as.binary.op;
+            clone->as.binary.left  = ast_clone(arena, node->as.binary.left);
+            clone->as.binary.right = ast_clone(arena, node->as.binary.right);
+            break;
+
+        case NODE_ASSIGN:
+            clone->as.assign.target = ast_clone(arena, node->as.assign.target);
+            clone->as.assign.value  = ast_clone(arena, node->as.assign.value);
+            break;
+
+        case NODE_CALL:
+            clone->as.call.callee = ast_clone(arena, node->as.call.callee);
+
+            clone->as.call.arguments.items    = NULL;
+            clone->as.call.arguments.count    = 0;
+            clone->as.call.arguments.capacity = 0;
+
+            for (int i = 0; i < node->as.call.arguments.count; i++) {
+                nodelist_push(
+                    arena,
+                    &clone->as.call.arguments,
+                    ast_clone(
+                        arena,
+                        node->as.call.arguments.items[i]
+                    )
+                );
+            }
+            break;
+
+        case NODE_FIELD:
+            clone->as.field.object =
+                ast_clone(arena, node->as.field.object);
+
+            clone->as.field.name =
+                node->as.field.name;
+
+            clone->as.field.length =
+                node->as.field.length;
+            break;
+
+        case NODE_INDEX:
+            clone->as.index.object =
+                ast_clone(arena, node->as.index.object);
+
+            clone->as.index.index =
+                ast_clone(arena, node->as.index.index);
+            break;
+
+        default:
+            /*
+             * Defaults should only contain expressions.
+             * If you hit this, add support when that node becomes
+             * legal inside a default expression.
+             */
+            fprintf(stderr,
+                "ast_clone: unsupported node type %d\n",
+                node->type);
+
+            return NULL;
+    }
+
+    return clone;
+}
+
 // Simple growable array. Arena-backed, so like everything else here
 // it's never individually freed -- doubling the backing storage just
 // means the old (smaller) block becomes unreachable garbage inside
@@ -207,3 +312,4 @@ void nodelist_push(Arena *arena, NodeList *list, Node *node) {
     }
     list->items[list->count++] = node;
 }
+

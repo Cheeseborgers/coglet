@@ -614,20 +614,24 @@ typedef struct PendingParam {
     struct PendingParam *next;
 } PendingParam;
 
-static void pending_param_push(Parser *p, PendingParam **head, PendingParam **tail, Token token) {
-
-    PendingParam *node = arena_alloc(p->scratch, sizeof(PendingParam));
+static PendingParam *pending_param_push(Parser *p, PendingParam **head, PendingParam **tail, Token token)
+{
+    PendingParam *node = arena_alloc(
+        p->scratch,
+        sizeof(PendingParam)
+    );
 
     node->name = token;
     node->next = NULL;
 
-    if (*tail) {
+    if (*tail)
         (*tail)->next = node;
-    } else {
+    else
         *head = node;
-    }
 
     *tail = node;
+
+    return node;
 }
 
 static int parse_parameter_group(Parser *p, Node *func)
@@ -660,13 +664,27 @@ static int parse_parameter_group(Parser *p, Node *func)
 
     Type *type = parse_type(p);
 
+    // Optional default value shared by the whole parameter group
+    Node *default_value = NULL;
+
+    if (match(p, TOK_EQUAL)) {
+        default_value = parse_assignment(p);
+    }
+
     for (PendingParam *it = head; it; it = it->next) {
+
+        Node *initializer = NULL;
+
+        if (default_value) {
+            initializer = ast_clone(p->arena, default_value);
+        }
+
         Node *param = ast_new_var_decl(
             p->arena,
             type,
             it->name.start,
             it->name.length,
-            NULL,
+            initializer,
             it->name.line
         );
 

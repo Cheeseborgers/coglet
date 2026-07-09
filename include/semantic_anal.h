@@ -3,6 +3,12 @@
 
 #include "ast.h"
 
+// TODO: Add: an array with unspecified size is accepted with no complaint. Might be intentional (e.g. as a future "flexible array" feature),
+// but currently there's no rule either enforcing or rejecting it — worth deciding on purpose rather than by omission.
+
+// TODO: Add:  nothing checks that the return expression's type actually matches the declared -> i32. A return "wrong";
+// in that body right now would type-check "wrong"
+
 typedef enum {
     SYMBOL_VARIABLE,  // variables
     SYMBOL_FUNCTION,  // functions
@@ -27,6 +33,10 @@ typedef struct Scope {
 
 typedef struct {
     Arena *arena;
+
+    Type *type_bool;
+    //Type *type_i32;
+    //Type *type_f64;
 
     int had_error;
     int error_count;

@@ -11,6 +11,8 @@ typedef enum {
     TOK_STRING,         // "hello"
     TOK_CHAR,           // 'a'
     TOK_IDENT,          // foo
+    TOK_TRUE,
+    TOK_FALSE,
 
     // keywords
     TOK_IF, TOK_ELSE, TOK_WHILE, TOK_FOR, TOK_RETURN,

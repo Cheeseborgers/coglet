@@ -114,7 +114,7 @@ static const Keyword keywords[] = {
     {"for", TOK_FOR}, {"return", TOK_RETURN},
     {"struct", TOK_STRUCT},
     {"break", TOK_BREAK}, {"continue", TOK_CONTINUE},
-    {"void", TOK_VOID},
+    {"void", TOK_VOID},  {"true", TOK_TRUE}, {"false", TOK_FALSE},
 
     {"i8", TOK_I8}, {"i16", TOK_I16}, {"i32", TOK_I32}, {"i64", TOK_I64},
     {"u8", TOK_U8}, {"u16", TOK_U16}, {"u32", TOK_U32}, {"u64", TOK_U64},
@@ -281,11 +281,15 @@ const char *token_type_name(TokenType type) {
     switch (type) {
         case TOK_EOF:          return "EOF";
         case TOK_ERROR:        return "ERROR";
+
         case TOK_NUMBER_INT:   return "NUMBER_INT";
         case TOK_NUMBER_FLOAT: return "NUMBER_FLOAT";
         case TOK_STRING: return "STRING";
         case TOK_CHAR:   return "CHAR";
         case TOK_IDENT:  return "IDENT";
+        case TOK_TRUE:   return "TRUE";
+        case TOK_FALSE:  return "FALSE";
+
         case TOK_IF:     return "IF";
         case TOK_ELSE:   return "ELSE";
         case TOK_WHILE:  return "WHILE";

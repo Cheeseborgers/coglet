@@ -169,4 +169,3 @@ for a {                           // expect: FAIL, i32 condition
 for flag {                        // expect: pass, bool condition
     break;
 }
-

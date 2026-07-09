@@ -131,11 +131,14 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
 // ============================================================
 
 static void check_node(SemanticContext *ctx, Node *node);
+static int  declare_struct_shell(SemanticContext *ctx, Node *node);
+static void fill_struct_fields(SemanticContext *ctx, Node *node);
+static int  declare_function_signature(SemanticContext *ctx, Node *node);
+static void check_function_body(SemanticContext *ctx, Node *node);
 
 // ============================================================
 // expressions
 // ============================================================
-// TODO: add a is bool type check
 static int is_integer_kind(TypeKind k) {
 
     switch (k) {
@@ -149,6 +152,81 @@ static int is_integer_kind(TypeKind k) {
 
 static int is_float_kind(TypeKind k) { return k == TYPE_F32 || k == TYPE_F64; }
 static int is_numeric_type(Type *t)  { return t && (is_integer_kind(t->kind) || is_float_kind(t->kind)); }
+
+// TODO: integer -> float promotion rules
+static int type_width(TypeKind kind)
+{
+    switch(kind)
+    {
+        case TYPE_I8:
+        case TYPE_U8:
+            return 8;
+
+        case TYPE_I16:
+        case TYPE_U16:
+            return 16;
+
+        case TYPE_I32:
+        case TYPE_U32:
+        case TYPE_F32:
+            return 32;
+
+        case TYPE_I64:
+        case TYPE_U64:
+        case TYPE_F64:
+            return 64;
+
+        default:
+            return 0;
+    }
+}
+
+static int numeric_promotion_rank(TypeKind kind)
+{
+    switch(kind)
+    {
+        case TYPE_I8:
+        case TYPE_U8:
+            return 1;
+
+        case TYPE_I16:
+        case TYPE_U16:
+            return 2;
+
+        case TYPE_I32:
+        case TYPE_U32:
+            return 3;
+
+        case TYPE_I64:
+        case TYPE_U64:
+            return 4;
+
+        case TYPE_F32:
+            return 5;
+
+        case TYPE_F64:
+            return 6;
+
+        default:
+            return 0;
+    }
+}
+
+static Type *common_numeric_type(Type *a, Type *b)
+{
+    if (!a || !b)
+        return NULL;
+
+    int rank_a = numeric_promotion_rank(a->kind);
+    int rank_b = numeric_promotion_rank(b->kind);
+
+    if (!rank_a || !rank_b)
+        return NULL;
+
+    return rank_a >= rank_b ? a : b;
+}
+
+static int is_bool_type(Type *t) { return t && t->kind == TYPE_BOOL; }
 
 static int type_equal(Type *a, Type *b) {
 
@@ -170,9 +248,7 @@ static int type_equal(Type *a, Type *b) {
 }
 
 static int is_int_literal_zero(Node *node) {
-
-    return node && node->type == NODE_NUMBER &&
-           !node->as.number.is_float && node->as.number.value == 0;
+    return node && node->type == NODE_NUMBER && !node->as.number.is_float && node->as.number.value == 0;
 }
 
 /**
@@ -232,40 +308,64 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         case NODE_IDENT:
         {
             Symbol *sym = scope_lookup(ctx->current_scope, node->as.ident.start, node->as.ident.length);
+
             if (!sym) {
-                semantic_error_name(ctx,node, "undefined identifier", node->as.ident.start, node->as.ident.length);
+                semantic_error_name(ctx,node,
+                    "undefined identifier",
+                    node->as.ident.start,
+                    node->as.ident.length);
                 return NULL;
             }
 
             return sym->type;
         }
 
+
         case NODE_UNARY:
         {
-            Type *operand =check_expression(ctx, node->as.unary.operand);
+            Type *operand = check_expression(ctx, node->as.unary.operand);
+
             if (!operand) return NULL;
 
             switch(node->as.unary.op)
             {
                 case TOK_MINUS:
+                {
                     if(!is_numeric_type(operand)) {
-                        semantic_error(ctx,node, "unary '-' requires numeric operand");
+                        semantic_error(ctx,node,
+                            "unary '-' requires numeric operand");
                         return NULL;
                     }
 
                     return operand;
+                }
+
+
+                case TOK_BANG:
+                {
+                    if(!is_bool_type(operand)) {
+                        semantic_error(ctx,node,
+                            "unary '!' requires boolean operand");
+                        return NULL;
+                    }
+
+                    return operand;
+                }
+
 
                 default:
                     return operand;
             }
         }
 
+
         case NODE_BINARY:
         {
             Type *left  = check_expression(ctx, node->as.binary.left);
-            Type *right = check_expression(ctx,node->as.binary.right);
+            Type *right = check_expression(ctx, node->as.binary.right);
 
             if(!left || !right) return NULL;
+
 
             switch(node->as.binary.op)
             {
@@ -275,162 +375,256 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 case TOK_SLASH:
                 {
                     if(!is_numeric_type(left)) {
-                        semantic_error(ctx, node, "left operand must be numeric");
+                        semantic_error(ctx,node,
+                            "left operand must be numeric");
                         return NULL;
                     }
-
 
                     if(!is_numeric_type(right)) {
-                        semantic_error(ctx,node, "right operand must be numeric");
+                        semantic_error(ctx,node,
+                            "right operand must be numeric");
                         return NULL;
                     }
 
-                    // TODO: is this just a temporary rule?
-                    // result type follows left operand
-                    return left;
+                    Type *result = common_numeric_type(left,right);
+
+                    if(!result) {
+                        semantic_error(ctx,node,
+                            "could not determine numeric result type");
+                        return NULL;
+                    }
+
+                    return result;
                 }
 
 
+                // logical boolean operators
+                case TOK_AND_AND:
+                case TOK_OR_OR:
+                {
+                    if(left->kind != TYPE_BOOL) {
+                        semantic_error(ctx,node,
+                            "left operand must be boolean");
+                        return NULL;
+                    }
+
+                    if(right->kind != TYPE_BOOL) {
+                        semantic_error(ctx,node,
+                            "right operand must be boolean");
+                        return NULL;
+                    }
+
+                    return ctx->type_bool;
+                }
+
+
+                // equality comparisons allow same types
                 case TOK_EQUAL_EQUAL:
                 case TOK_BANG_EQUAL:
-                case TOK_LESS:
-                case TOK_GREATER:
-                case TOK_LESS_EQUAL:
-                case TOK_GREATER_EQUAL:
                 {
                     if(!type_equal(left,right)) {
                         semantic_error(ctx,node, "comparison type mismatch");
                         return NULL;
                     }
 
-                    Type *t = arena_alloc(ctx->arena, sizeof(Type));
-                    t->kind = TYPE_BOOL;
-                    t->element = NULL;
-                    t->array_size = -1;
-
-                    return t;
+                    return ctx->type_bool;
                 }
+
+
+                // ordered comparisons require numbers
+                case TOK_LESS:
+                case TOK_GREATER:
+                case TOK_LESS_EQUAL:
+                case TOK_GREATER_EQUAL:
+                {
+                    if(!is_numeric_type(left) || !is_numeric_type(right)) {
+                        semantic_error(ctx,node,
+                            "ordered comparison requires numeric operands");
+                        return NULL;
+                    }
+
+                    return ctx->type_bool;
+                }
+
 
                 default:
                     return NULL;
             }
         }
 
+
         case NODE_ASSIGN:
         {
-            Type *target =check_expression(ctx, node->as.assign.target);
-            Type *value = check_expression(ctx, node->as.assign.value);
+            Type *target = check_expression(ctx, node->as.assign.target);
+            Type *value  = check_expression(ctx, node->as.assign.value);
 
             if(!target || !value) return NULL;
 
             if(!initializer_compatible(target, value, node->as.assign.value)) {
-                semantic_error(ctx,node, "assignment type mismatch");
+                semantic_error(ctx,node,
+                    "assignment type mismatch");
                 return NULL;
             }
 
             return target;
         }
 
+
         case NODE_CALL:
         {
             Type *callee = check_expression(ctx, node->as.call.callee);
 
             int argc = node->as.call.arguments.count;
-            Type **arg_types = argc ? arena_alloc(ctx->arena, sizeof(Type*) * argc) : NULL;
+            Type **arg_types = argc ?
+                arena_alloc(ctx->arena, sizeof(Type*) * argc) :
+                NULL;
 
-            if (arg_types == NULL) return NULL;
+            if (argc && !arg_types)
+                return NULL;
+
 
             for (int i = 0; i < argc; i++) {
-                arg_types[i] = check_expression(ctx, node->as.call.arguments.items[i]);
+                arg_types[i] =
+                    check_expression(ctx,node->as.call.arguments.items[i]);
             }
 
-            if (!callee) return NULL;
+
+            if (!callee)
+                return NULL;
+
 
             if (callee->kind != TYPE_FUNCTION) {
-                semantic_error(ctx, node, "called object is not a function");
+                semantic_error(ctx,node,
+                    "called object is not a function");
                 return NULL;
             }
+
 
             if (argc != callee->parameter_count) {
-                semantic_error(ctx, node, "wrong number of arguments");
+                semantic_error(ctx,node,
+                    "wrong number of arguments");
                 return NULL;
             }
 
+
             for (int i = 0; i < argc; i++) {
-                if (arg_types[i] && !type_equal(arg_types[i], callee->parameters[i])) {
-                    semantic_error(ctx, node, "argument type mismatch");
+                if (arg_types[i] &&
+                    !type_equal(arg_types[i], callee->parameters[i])) {
+
+                    semantic_error(ctx,node,
+                        "argument type mismatch");
                 }
             }
+
 
             return callee->return_type;
         }
 
+
         case NODE_FIELD:
         {
-            Type *object = check_expression(ctx, node->as.field.object);
+            Type *object = check_expression(ctx,node->as.field.object);
 
-            if(!object) return NULL;
+            if(!object)
+                return NULL;
+
 
             if(object->kind != TYPE_STRUCT) {
-                semantic_error(ctx, node, "field access requires a struct");
+                semantic_error(ctx,node,
+                    "field access requires a struct");
                 return NULL;
             }
 
-            Type *field = find_struct_field(object,node->as.field.name, node->as.field.length);
+
+            Type *field =
+                find_struct_field(object,
+                    node->as.field.name,
+                    node->as.field.length);
+
+
             if(!field) {
-                semantic_error(ctx, node, "unknown struct field");
+                semantic_error(ctx,node,
+                    "unknown struct field");
                 return NULL;
             }
+
 
             return field;
         }
 
+
         case NODE_INDEX:
         {
-            Type *object = check_expression(ctx, node->as.index.object);
-            Type *index  = check_expression(ctx, node->as.index.index);
+            Type *object =
+                check_expression(ctx,node->as.index.object);
 
-            if(!object || !index) return NULL;
+            Type *index =
+                check_expression(ctx,node->as.index.index);
+
+
+            if(!object || !index)
+                return NULL;
+
 
             if(!is_integer_kind(index->kind)) {
-                semantic_error(ctx, node, "array index must be integer");
+                semantic_error(ctx,node,
+                    "array index must be integer");
                 return NULL;
             }
+
 
             if(object->kind != TYPE_ARRAY &&
                object->kind != TYPE_POINTER) {
-                semantic_error(ctx, node, "object is not indexable");
+
+                semantic_error(ctx,node,
+                    "object is not indexable");
                 return NULL;
             }
+
 
             return object->element;
         }
 
-        case NODE_NUMBER: {
-            Type *t = arena_alloc(ctx->arena, sizeof(Type));
-            t->kind       = node->as.number.is_float ? TYPE_F64 : TYPE_I32;
-            t->element    = NULL;
+
+        case NODE_NUMBER:
+        {
+            Type *t = arena_alloc(ctx->arena,sizeof(Type));
+
+            t->kind =
+                node->as.number.is_float ?
+                TYPE_F64 :
+                TYPE_I32;
+
+            t->element = NULL;
             t->array_size = -1;
+
             return t;
         }
 
-        case NODE_STRING: {
-            Type *elem = arena_alloc(ctx->arena, sizeof(Type));
-            elem->kind       = TYPE_U8;
-            elem->element    = NULL;
+
+        case NODE_STRING:
+        {
+            Type *elem = arena_alloc(ctx->arena,sizeof(Type));
+
+            elem->kind = TYPE_U8;
+            elem->element = NULL;
             elem->array_size = -1;
 
-            Type *t = arena_alloc(ctx->arena, sizeof(Type));
-            t->kind       = TYPE_POINTER;
-            t->element    = elem;
+
+            Type *t = arena_alloc(ctx->arena,sizeof(Type));
+
+            t->kind = TYPE_POINTER;
+            t->element = elem;
             t->array_size = -1;
 
             return t;
         }
 
-        case NODE_CHAR: {
 
-            Type *t = arena_alloc(ctx->arena, sizeof(Type));
+        case NODE_CHAR:
+        {
+            Type *t = arena_alloc(ctx->arena,sizeof(Type));
+
             t->kind = TYPE_U8;
             t->element = NULL;
             t->array_size = -1;
@@ -438,9 +632,23 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return t;
         }
 
+
+        case NODE_BOOL:
+        {
+            Type *t = arena_alloc(ctx->arena,sizeof(Type));
+
+            t->kind = TYPE_BOOL;
+            t->element = NULL;
+            t->array_size = -1;
+
+            return t;
+        }
+
+
         default:
             break;
     }
+
 
     // important fallback
     return NULL;
@@ -525,8 +733,45 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
 
 static void check_program(SemanticContext *ctx, Node *node) {
 
-    for(int i=0; i < node->as.program.statements.count; i++) {
-        check_node(ctx, node->as.program.statements.items[i]);
+    NodeList *stmts = &node->as.program.statements;
+
+    // Pass 1: register every struct name so any struct can reference any
+    // other struct -- including ones declared later in the file -- as a
+    // field type.
+    for (int i = 0; i < stmts->count; i++) {
+        if (stmts->items[i]->type == NODE_STRUCT_DECL)
+            declare_struct_shell(ctx, stmts->items[i]);
+    }
+
+    // Pass 2: now that all struct names are visible, resolve each
+    // struct's field types.
+    for (int i = 0; i < stmts->count; i++) {
+        if (stmts->items[i]->type == NODE_STRUCT_DECL)
+            fill_struct_fields(ctx, stmts->items[i]);
+    }
+
+    // Pass 3: register every function's signature, so functions can call
+    // each other regardless of declaration order, and so param/return
+    // types can reference any struct from passes 1-2.
+    for (int i = 0; i < stmts->count; i++) {
+        if (stmts->items[i]->type == NODE_FUNC_DECL)
+            declare_function_signature(ctx, stmts->items[i]);
+    }
+
+    // Pass 4: check function bodies (every signature is visible now) and
+    // any other top-level statements.
+    for (int i = 0; i < stmts->count; i++) {
+
+        Node *stmt = stmts->items[i];
+
+        if (stmt->type == NODE_STRUCT_DECL) continue;   // fully handled in passes 1-2
+
+        if (stmt->type == NODE_FUNC_DECL) {
+            check_function_body(ctx, stmt);
+            continue;
+        }
+
+        check_node(ctx, stmt);
     }
 }
 
@@ -534,7 +779,7 @@ static void check_if(SemanticContext *ctx, Node *node) {
 
     Type *cond = check_expression(ctx, node->as.if_stmt.condition);
 
-    if (cond && cond->kind != TYPE_BOOL)
+    if (!is_bool_type(cond))
         semantic_error(ctx, node->as.if_stmt.condition, "if condition must be a boolean expression");
 
     check_node(ctx, node->as.if_stmt.then_branch);
@@ -562,26 +807,26 @@ static Type *make_function_type(SemanticContext *ctx, Node *func) {
     return type;
 }
 
-static void check_function(SemanticContext *ctx, Node *node) {
+static int declare_function_signature(SemanticContext *ctx, Node *node) {
 
     if (scope_find_local(ctx->current_scope, node->as.func_decl.name, node->as.func_decl.name_length)) {
-
         semantic_error_name(ctx, node, "duplicate declaration",
             node->as.func_decl.name, node->as.func_decl.name_length);
-        return;
+        return 0;
     }
 
-    // function itself is visible in current scope
-    Type *func_type = make_function_type(ctx,node);
+    Type *func_type = make_function_type(ctx, node);
+    scope_define(ctx, node->as.func_decl.name, node->as.func_decl.name_length, SYMBOL_FUNCTION, func_type);
+    return 1;
+}
 
-    scope_define(ctx,node->as.func_decl.name, node->as.func_decl.name_length, SYMBOL_FUNCTION, func_type);
+static void check_function_body(SemanticContext *ctx, Node *node) {
 
     scope_push(ctx);
 
-
     for (int i = 0; i < node->as.func_decl.params.count; i++) {
         Node *param = node->as.func_decl.params.items[i];
-        check_param_decl(ctx, param);   // handles duplicate-name check, default-value check, and scope_define
+        check_param_decl(ctx, param);
     }
 
     int saved_loop_depth = ctx->loop_depth;
@@ -597,52 +842,94 @@ static void check_function(SemanticContext *ctx, Node *node) {
     scope_pop(ctx);
 }
 
-// ============================================================
-// node dispatcher
-// ============================================================
-static Type *make_struct_type(SemanticContext *ctx, Node *node) {
+static void check_function(SemanticContext *ctx, Node *node) {
+    declare_function_signature(ctx, node);
+    check_function_body(ctx, node);
+}
 
-    Type *type = arena_alloc(ctx->arena,sizeof(Type));
+static int declare_struct_shell(SemanticContext *ctx, Node *node) {
 
-    type->kind = TYPE_STRUCT;
+    if (scope_find_local(ctx->current_scope, node->as.struct_decl.name, node->as.struct_decl.name_length)) {
+        semantic_error_name(ctx, node, "duplicate declaration",
+            node->as.struct_decl.name, node->as.struct_decl.name_length);
+        return 0;
+    }
 
-    type->struct_name        = node->as.struct_decl.name;
-    type->struct_name_length = node->as.struct_decl.name_length;
-    type->field_count        = node->as.struct_decl.fields.count;
+    Type *type = arena_alloc(ctx->arena, sizeof(Type));
 
+    type->kind                = TYPE_STRUCT;
+    type->element             = NULL;
+    type->array_size          = -1;
+    type->struct_name         = node->as.struct_decl.name;
+    type->struct_name_length  = node->as.struct_decl.name_length;
+    type->field_count         = 0;
+    type->fields              = NULL;   // filled in by fill_struct_fields once all struct names are visible
+    type->parameters          = NULL;
+    type->parameter_count     = 0;
+    type->return_type         = NULL;
+
+    scope_define(ctx, node->as.struct_decl.name, node->as.struct_decl.name_length, SYMBOL_TYPE, type);
+
+    return 1;
+}
+
+static void fill_struct_fields(SemanticContext *ctx, Node *node) {
+
+    Symbol *sym = scope_find_local(ctx->current_scope, node->as.struct_decl.name, node->as.struct_decl.name_length);
+
+    // shell registration failed (duplicate name), nothing to fill in
+    if (!sym) return;
+
+    Type *type = sym->type;
+
+    // A duplicate struct name means declare_struct_shell already reported
+    // the error and left the *first* declaration's symbol in place. Don't
+    // let a later duplicate silently overwrite the first struct's fields.
+    if (type->fields != NULL) return;
+
+    type->field_count = node->as.struct_decl.fields.count;
     type->fields = arena_alloc(ctx->arena, sizeof(StructField) * type->field_count);
 
     for (int i = 0; i < type->field_count; i++) {
 
         Node *field = node->as.struct_decl.fields.items[i];
+
+        for (int j = 0; j < i; j++) {
+            if (names_equal(type->fields[j].name, type->fields[j].length,
+                             field->as.struct_field_decl.name, field->as.struct_field_decl.length)) {
+                semantic_error_name(ctx, field, "duplicate struct field",
+                    field->as.struct_field_decl.name, field->as.struct_field_decl.length);
+            }
+        }
+
         type->fields[i].name   = field->as.struct_field_decl.name;
         type->fields[i].length = field->as.struct_field_decl.length;
         type->fields[i].type   = resolve_type(ctx, field->as.struct_field_decl.var_type, field);
     }
-
-    return type;
 }
 
+// ============================================================
+// node dispatcher
+// ============================================================
 static void check_node(SemanticContext *ctx,Node *node) {
 
     if(!node) return;
 
     switch(node->type) {
 
-    case NODE_BLOCK:      check_block(ctx,node);      break;
-    case NODE_PROGRAM:    check_program(ctx,node);    break;
-    case NODE_VAR_DECL:   check_var_decl(ctx,node);   break;
+    case NODE_BLOCK:           check_block(ctx,node);      break;
+    case NODE_PROGRAM:         check_program(ctx,node);    break;
+    case NODE_VAR_DECL:        check_var_decl(ctx,node);   break;
     case NODE_FUNC_PARAM_DECL: check_param_decl(ctx,node); break;
-    case NODE_FUNC_DECL:  check_function(ctx,node);   break;
-    case NODE_IF:         check_if(ctx,node);         break;
+    case NODE_FUNC_DECL:       check_function(ctx,node);   break;
+    case NODE_IF:              check_if(ctx,node);         break;
 
     case NODE_EXPR_STMT: check_expression(ctx, node->as.expr_stmt.expr); break;
     case NODE_BREAK: if(ctx->loop_depth == 0) semantic_error(ctx,node,"break outside loop"); break;
 
     case NODE_STRUCT_DECL: {
-
-        Type *type = make_struct_type(ctx,node);
-        scope_define(ctx,node->as.struct_decl.name, node->as.struct_decl.name_length, SYMBOL_TYPE, type);
+        declare_struct_shell(ctx, node);
+        fill_struct_fields(ctx, node);
         break;
     }
 
@@ -650,7 +937,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
         Type *cond = check_expression(ctx, node->as.while_stmt.condition);
 
-        if (cond && cond->kind != TYPE_BOOL)
+        if (!is_bool_type(cond))
             semantic_error(ctx, node->as.while_stmt.condition, "while condition must be a boolean expression");
 
         ctx->loop_depth++;
@@ -664,7 +951,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
         Type *cond = check_expression(ctx, node->as.for_stmt.condition);
 
-        if (cond && cond->kind != TYPE_BOOL)
+        if (!is_bool_type(cond))
             semantic_error(ctx, node->as.for_stmt.condition, "for condition must be a boolean expression");
 
         check_expression(ctx, node->as.for_stmt.post);
@@ -697,6 +984,12 @@ void semantic_check(Node *program, SemanticContext *ctx) {
     ctx->had_error      = 0;
     ctx->loop_depth     = 0;
     ctx->function_depth = 0;
+
+    ctx->type_bool = arena_alloc(ctx->arena, sizeof(Type));
+    ctx->type_bool->kind = TYPE_BOOL;
+    ctx->type_bool->element = NULL;
+    ctx->type_bool->array_size = -1;
+
     ctx->current_scope = scope_new(ctx, NULL);
     check_node(ctx,  program);
 }

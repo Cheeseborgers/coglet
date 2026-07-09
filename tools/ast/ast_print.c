@@ -109,6 +109,10 @@ static void print_node(Node *node)
             printf("'%.*s'", node->as.char_literal.length, node->as.char_literal.start);
             break;
 
+        case NODE_BOOL:
+            printf("%s\n", node->as.boolean.value ? "true" : "false");
+            break;
+
         case NODE_UNARY:
             printf("(");
             printf("%s ", token_type_str(node->as.unary.op));
@@ -329,6 +333,11 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_CHAR:
             indent(depth);
             printf("'%.*s'\n", node->as.char_literal.length, node->as.char_literal.start);
+            break;
+
+        case NODE_BOOL:
+            indent(depth);
+            printf("%s\n", node->as.boolean.value ? "true" : "false");
             break;
 
         case NODE_UNARY:

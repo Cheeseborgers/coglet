@@ -1,0 +1,144 @@
+// ============================================================
+// SCOPE TESTS
+// ============================================================
+
+// shadowing local over global
+x : i32 = 1;
+{
+    x : i32 = 2;
+    x = 3;
+}
+x = 4;
+
+// nested shadowing
+a : i32 = 1;
+{
+    a : i32 = 2;
+    {
+        a : i32 = 3;
+        a = 4;
+    }
+    a = 5;
+}
+a = 6;
+
+// outer variable visible in inner scope
+outer : i32 = 10;
+{
+    outer = outer + 1;
+}
+
+// local variable disappears after scope
+{
+    scoped : i32 = 42;
+}
+
+// variable declared inside if
+flag2 : bool = true;
+if flag2 {
+    inside_if : i32 = 5;
+}
+
+// variable declared inside while
+counter := 3;
+while counter > 0 {
+    temp := counter;
+    counter--;
+}
+
+// variable declared inside for
+i := 0;
+for i < 5 : i++ {
+    local_sum := i;
+}
+
+// nested blocks
+{
+    x1 := 1;
+    {
+        x2 := 2;
+        {
+            x3 := 3;
+        }
+    }
+}
+
+// ============================================================
+// FUNCTION SCOPES
+// ============================================================
+
+scope_test :: () {
+    local := 5;
+    {
+        inner := 10;
+        local = inner;
+    }
+
+    local = 20;
+}
+
+params :: (a: i32, b: i32) {
+    sum := a + b;
+}
+
+// parameter shadowed by local
+shadow_param :: (x: i32) {
+    {
+        x : i32 = 10;
+        x++;
+    }
+}
+
+// ============================================================
+// STRUCT SCOPES
+// ============================================================
+
+Rect :: struct {
+    width : f32;
+    height : f32;
+}
+
+rect : Rect;
+rect.width = 10.0;
+rect.height = 20.0;
+
+// ============================================================
+// POINTER SCOPES
+// ============================================================
+
+ptr : i32* = 0;
+{
+    local_ptr : i32* = 0;
+}
+
+// ============================================================
+// ARRAY SCOPES
+// ============================================================
+
+numbers : i32[5];
+{
+    numbers[0] = 1;
+}
+
+// ============================================================
+// DEEP NESTING
+// ============================================================
+
+{
+    a1 := 1;
+    {
+        a2 := a1;
+        {
+            a3 := a2;
+            {
+                a4 := a3;
+                {
+                    a5 := a4;
+                }
+            }
+        }
+    }
+}
+
+boolean : bool = false;
+

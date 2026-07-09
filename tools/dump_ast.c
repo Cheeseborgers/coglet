@@ -21,9 +21,10 @@ int main(int argc, char **argv) {
     char *source = read_file(filename);
 
     Arena *arena = arena_create(1 << 16);
+    Arena *scratch = arena_create(1 << 8);
 
     Parser parser;
-    parser_init(&parser, filename, source, arena);
+    parser_init(&parser, filename, source, arena, scratch);
     Node *program = parse_program(&parser);
 
     if (parser.had_error) {
@@ -32,7 +33,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    ast_print(program);
+    ast_pretty_print(program);
 
     arena_destroy(arena);
     free(source);

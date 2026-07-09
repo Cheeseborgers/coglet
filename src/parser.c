@@ -321,6 +321,17 @@ static Node *parse_primary(Parser *p)
         return expr;
     }
 
+    if (match(p, TOK_TRUE)) {
+        Token t = p->previous;
+        return ast_new_bool(p->arena, 1, t.line);
+    }
+
+    if (match(p, TOK_FALSE)) {
+        Token t = p->previous;
+        return ast_new_bool(p->arena, 0, t.line);
+    }
+
+
     error_at(p, &p->current, "expected expression");
     return ast_new_error(p->arena, p->current);
 }

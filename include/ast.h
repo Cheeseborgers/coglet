@@ -10,6 +10,7 @@ typedef enum {
     NODE_IDENT,
     NODE_STRING,
     NODE_CHAR,
+    NODE_BOOL,
 
     NODE_UNARY,        // <op> operand, e.g. -x
     NODE_BINARY,       // left <op> right
@@ -40,7 +41,6 @@ typedef enum {
     NODE_FOR,
     NODE_BREAK,
     NODE_CONTINUE,
-
 
     NODE_ERROR
 } NodeType;
@@ -77,6 +77,10 @@ struct Node {
             const char *start;   // points past the opening quote
             int length;          // length of the content, NOT including quotes
         } char_literal;
+
+        struct {
+            int value;
+        } boolean;
 
         struct {
             TokenType op;   // currently just TOK_MINUS
@@ -191,6 +195,7 @@ Node *ast_new_number(Arena *arena, double value, int is_float, int line);
 Node *ast_new_ident(Arena *arena, const char *start, int length, int line);
 Node *ast_new_string(Arena *arena, const char *start, int length, int line);
 Node *ast_new_char(Arena *arena, const char *start, int length, int line);
+Node *ast_new_bool(Arena *arena, int value, int line);
 Node *ast_new_unary(Arena *arena, TokenType op, Node *operand, int line);
 Node *ast_new_binary(Arena *arena, TokenType op, Node *left, Node *right, int line);
 Node *ast_new_assign(Arena *arena,Node *target,Node *value,int line);
@@ -213,6 +218,7 @@ Node *ast_new_continue(Arena *arena, int line);
 Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, int line);
 Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int line);
 
+// TODO: Allow cloning of all ast node types
 Node *ast_clone(Arena *arena, const Node *node);
 
 void nodelist_push(Arena *arena, NodeList *list, Node *node);

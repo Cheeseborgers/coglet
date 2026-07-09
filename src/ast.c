@@ -135,8 +135,8 @@ Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, N
     return node;
 }
 
-Node *ast_new_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, int line) {
-    Node *node = new_node(arena, NODE_PARAM_DECL, line);
+Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, int line) {
+    Node *node = new_node(arena, NODE_FUNC_PARAM_DECL, line);
     node->as.param_decl.var_type      = type;
     node->as.param_decl.name          = name;
     node->as.param_decl.length        = length;

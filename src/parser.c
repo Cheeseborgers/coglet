@@ -609,17 +609,15 @@ static Node *finish_inferred_var_decl(Parser *p, Token name) {
 
 // ===================== proc/function declarations ================
 
-typedef struct PendingParam {
+typedef struct PendingParamName {
     Token name;
-    struct PendingParam *next;
-} PendingParam;
+    struct PendingParamName *next;
+} PendingParamName;
 
-static PendingParam *pending_param_push(Parser *p, PendingParam **head, PendingParam **tail, Token token)
+static PendingParamName *pending_param_push(Parser *p, PendingParamName **head, PendingParamName **tail, Token token)
 {
-    PendingParam *node = arena_alloc(
-        p->scratch,
-        sizeof(PendingParam)
-    );
+    PendingParamName *node =
+        arena_alloc(p->scratch, sizeof(PendingParamName));
 
     node->name = token;
     node->next = NULL;
@@ -638,8 +636,8 @@ static int parse_parameter_group(Parser *p, Node *func)
 {
     ArenaMarker marker = arena_mark(p->scratch);
 
-    PendingParam *head = NULL;
-    PendingParam *tail = NULL;
+    PendingParamName *head = NULL;
+    PendingParamName *tail = NULL;
 
     int success = 0;
 
@@ -664,27 +662,40 @@ static int parse_parameter_group(Parser *p, Node *func)
 
     Type *type = parse_type(p);
 
-    // Optional default value shared by the whole parameter group
-    Node *default_value = NULL;
+    // One default expression parsed for the whole parameter group:
+    //
+    // (x, y, z: i32 = 10)
+    //
+    // group_default_value -> NODE_NUMBER(10)
+    //
+    Node *group_default_value = NULL;
 
     if (match(p, TOK_EQUAL)) {
-        default_value = parse_assignment(p);
+        group_default_value = parse_assignment(p);
     }
 
-    for (PendingParam *it = head; it; it = it->next) {
+    for (PendingParamName *it = head; it; it = it->next) {
 
-        Node *initializer = NULL;
+        // Each parameter receives its own AST copy.
+        //
+        // x.default_value -> NODE_NUMBER(10)
+        // y.default_value -> NODE_NUMBER(10)
+        //
+        Node *param_default_value = NULL;
 
-        if (default_value) {
-            initializer = ast_clone(p->arena, default_value);
+        if (group_default_value) {
+            param_default_value = ast_clone(
+                p->arena,
+                group_default_value
+            );
         }
 
-        Node *param = ast_new_var_decl(
+        Node *param = ast_new_func_param_decl(
             p->arena,
             type,
             it->name.start,
             it->name.length,
-            initializer,
+            param_default_value,
             it->name.line
         );
 

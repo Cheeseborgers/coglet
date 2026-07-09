@@ -199,12 +199,23 @@ static void print_node(Node *node)
             break;
 
         case NODE_VAR_DECL:
-            printf("(vardecl ");
+            printf("(var_decl ");
             print_type(node->as.var_decl.var_type);
             printf(" %.*s", node->as.var_decl.length, node->as.var_decl.name);
             if (node->as.var_decl.initializer) {
                 printf(" = ");
                 print_node(node->as.var_decl.initializer);
+            }
+            printf(")");
+            break;
+
+        case NODE_FUNC_PARAM_DECL:
+            printf("(param_decl ");
+            print_type(node->as.param_decl.var_type);
+            printf(" %.*s", node->as.param_decl.length, node->as.param_decl.name);
+            if (node->as.param_decl.default_value) {
+                printf(" = ");
+                print_node(node->as.param_decl.default_value);
             }
             printf(")");
             break;
@@ -404,13 +415,25 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_VAR_DECL:
             indent(depth);
-            printf("vardecl %.*s: ", node->as.var_decl.length, node->as.var_decl.name);
+            printf("var_decl %.*s: ", node->as.var_decl.length, node->as.var_decl.name);
             print_type(node->as.var_decl.var_type);
             printf("\n");
             if (node->as.var_decl.initializer) {
                 indent(depth + 1);
                 printf("init:\n");
                 print_node_pretty(node->as.var_decl.initializer, depth + 2);
+            }
+            break;
+
+        case NODE_FUNC_PARAM_DECL:
+            indent(depth);
+            printf("param_decl %.*s: ", node->as.param_decl.length, node->as.param_decl.name);
+            print_type(node->as.param_decl.var_type);
+            printf("\n");
+            if (node->as.param_decl.default_value) {
+                indent(depth + 1);
+                printf("init:\n");
+                print_node_pretty(node->as.param_decl.default_value, depth + 2);
             }
             break;
 

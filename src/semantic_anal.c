@@ -463,7 +463,8 @@ static void check_block(SemanticContext *ctx, Node *node) {
 static void check_var_decl(SemanticContext *ctx, Node *node) {
 
     if (scope_find_local(ctx->current_scope, node->as.var_decl.name, node->as.var_decl.length)) {
-        semantic_error_name(ctx, node, "duplicate declaration", node->as.var_decl.name, node->as.var_decl.length);
+        semantic_error_name(
+            ctx, node, "duplicate variable declaration", node->as.var_decl.name, node->as.var_decl.length);
         return;
     }
 
@@ -489,6 +490,37 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
     }
 
     scope_define(ctx, node->as.var_decl.name, node->as.var_decl.length, SYMBOL_VARIABLE, type);
+}
+
+static void check_param_decl(SemanticContext *ctx, Node *node) {
+
+    if (scope_find_local(ctx->current_scope, node->as.param_decl.name, node->as.param_decl.length)) {
+        semantic_error_name(
+            ctx, node, "duplicate param declaration", node->as.param_decl.name, node->as.param_decl.length);
+        return;
+    }
+
+    Type *init_type = NULL;
+    if (node->as.param_decl.default_value)
+        init_type = check_expression(ctx, node->as.param_decl.default_value);
+
+    Type *type = node->as.param_decl.var_type;
+
+    // Step 1: resolve the declared type, independent of any default_value.
+    if (!type) {
+        type = init_type;   // ':=' inference
+    } else {
+        type = resolve_type(ctx, type, node);
+    }
+
+    // Step 2: if there's both a declared type and a default_value, check
+    // they're compatible -- runs regardless of which branch above fired,
+    if (node->as.param_decl.var_type && init_type &&
+        !initializer_compatible(type, init_type, node->as.param_decl.default_value)) {
+        semantic_error(ctx, node, "default value type does not match declared type");
+        }
+
+    scope_define(ctx, node->as.param_decl.name, node->as.param_decl.length, SYMBOL_VARIABLE, type);
 }
 
 static void check_program(SemanticContext *ctx, Node *node) {
@@ -598,11 +630,12 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
     switch(node->type) {
 
-    case NODE_BLOCK:     check_block(ctx,node);    break;
-    case NODE_PROGRAM:   check_program(ctx,node);  break;
-    case NODE_VAR_DECL:  check_var_decl(ctx,node); break;
-    case NODE_FUNC_DECL: check_function(ctx,node); break;
-    case NODE_IF:        check_if(ctx,node);       break;
+    case NODE_BLOCK:      check_block(ctx,node);      break;
+    case NODE_PROGRAM:    check_program(ctx,node);    break;
+    case NODE_VAR_DECL:   check_var_decl(ctx,node);   break;
+    case NODE_FUNC_PARAM_DECL: check_param_decl(ctx,node); break;
+    case NODE_FUNC_DECL:  check_function(ctx,node);   break;
+    case NODE_IF:         check_if(ctx,node);         break;
 
     case NODE_EXPR_STMT: check_expression(ctx, node->as.expr_stmt.expr); break;
     case NODE_BREAK: if(ctx->loop_depth == 0) semantic_error(ctx,node,"break outside loop"); break;

@@ -28,15 +28,19 @@ typedef enum {
     NODE_PROGRAM,      // the whole file: a list of statements
 
     NODE_VAR_DECL,
-    NODE_PARAM_DECL,
+
+    NODE_FUNC_DECL,
+    NODE_FUNC_PARAM_DECL,
+
+    NODE_STRUCT_DECL,
+    NODE_STRUCT_FIELD_DECL,
 
     NODE_RETURN,
     NODE_WHILE,
     NODE_FOR,
     NODE_BREAK,
     NODE_CONTINUE,
-    NODE_FUNC_DECL,
-    NODE_STRUCT_DECL,
+
 
     NODE_ERROR
 } NodeType;
@@ -162,7 +166,7 @@ struct Node {
         struct {
             const char *name;
             int name_length;
-            NodeList params;      // list of NODE_VAR_DECL (no initializer)
+            NodeList params;      // list of NODE_FUNC_PARAM_DECL
             Type *return_type;
             Node *body;           // NODE_BLOCK
         } func_decl;
@@ -170,7 +174,7 @@ struct Node {
         struct {
             const char *name;
             int name_length;
-            NodeList fields;      // list of NODE_VAR_DECL (no initializer)
+            NodeList fields;      // list of NODE_STRUCT_FIELD_DECL
         } struct_decl;
     } as;
 };
@@ -193,7 +197,8 @@ Node *ast_new_index(Arena *arena,Node *object, Node *index, int line);
 Node *ast_new_error(Arena *arena, Token token);
 Node *ast_new_program(Arena *arena, int line);
 Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, int line);
-Node *ast_new_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, int line);
+Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, Node *field, int line);
+Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, int line);
 Node *ast_new_return(Arena *arena, Node *value, int line);
 Node *ast_new_while(Arena *arena, Node *cond, Node *body, int line);
 Node *ast_new_for(Arena *arena, Node *cond, Node *post, Node *body, int line);

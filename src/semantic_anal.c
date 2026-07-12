@@ -187,6 +187,7 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node);
 static int  declare_function_signature(SemanticContext *ctx, Node *node);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
+static void check_switch_statement(SemanticContext *ctx, Node *node);
 static int declare_enum_shell(SemanticContext *ctx, Node *node);
 static void fill_enum_members(SemanticContext *ctx,Node *node);
 static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
@@ -266,6 +267,38 @@ static int is_assignable_node(Node *node)
         default:
             return 0;
     }
+}
+
+static int is_switchable_type(Type *type)
+{
+    if (!type)
+        return 0;
+
+    return is_integer_kind(type->kind) ||
+           type->kind == TYPE_BOOL ||
+           type->kind == TYPE_ENUM;
+}
+
+static int const_values_equal(ConstValue *a, ConstValue *b)
+{
+    if (!a || !b)
+        return 0;
+
+    if (a->kind != b->kind)
+        return 0;
+
+    switch (a->kind) {
+        case CONST_VALUE_INT:
+            return a->as.i == b->as.i;
+
+        case CONST_VALUE_FLOAT:
+            return a->as.f == b->as.f;
+
+        case CONST_VALUE_BOOL:
+            return a->as.b == b->as.b;
+    }
+
+    return 0;
 }
 
 static int numeric_promotion_rank(TypeKind kind)
@@ -1843,6 +1876,162 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
     ctx->current_scope->symbols = sym;
 }
 
+static void check_switch_statement(SemanticContext *ctx,Node *node) {
+    Type *switch_type =
+        check_expression(
+            ctx,
+            node->as.switch_stmt.expression
+        );
+
+    if (!switch_type)
+        return;
+
+    if (!is_switchable_type(switch_type)) {
+        semantic_error(
+            ctx,
+            node,
+            "switch expression must be integer, bool, or enum"
+        );
+
+        /*
+         * Still check case bodies for useful follow-up diagnostics.
+         */
+    }
+
+    int seen_default = 0;
+
+    typedef struct SeenCase {
+        ConstValue value;
+        Node *node;
+    } SeenCase;
+
+    int case_count = node->as.switch_stmt.cases.count;
+
+    SeenCase *seen_cases = case_count
+        ? arena_alloc(
+            ctx->arena,
+            sizeof(SeenCase) * case_count
+        )
+        : NULL;
+
+    int seen_case_count = 0;
+
+    for (int i = 0; i < case_count; i++) {
+        Node *case_node =
+            node->as.switch_stmt.cases.items[i];
+
+        if (case_node->type != NODE_SWITCH_CASE)
+            continue;
+
+        if (case_node->as.switch_case.is_default) {
+            if (seen_default) {
+                semantic_error(
+                    ctx,
+                    case_node,
+                    "duplicate default case"
+                );
+            }
+
+            seen_default = 1;
+
+            check_node(
+                ctx,
+                case_node->as.switch_case.body
+            );
+
+            continue;
+        }
+
+        Node *case_value_node = case_node->as.switch_case.value;
+
+        /*
+         * First use normal expression checking to get the semantic type.
+         *
+         * Example:
+         *     case Color.Red:
+         *
+         * check_expression gives type Color.
+         */
+        Type *case_type =
+            check_expression(
+                ctx,
+                case_value_node
+            );
+
+        /*
+         * Then require it to be compile-time known.
+         *
+         * Example:
+         *     case some_runtime_variable:
+         *
+         * should fail.
+         */
+        ConstValue case_value;
+
+        int has_const_value =
+            eval_const_expr(
+                ctx,
+                case_value_node,
+                &case_value
+            );
+
+        if (case_type &&
+            !initializer_compatible(
+                switch_type,
+                case_type,
+                case_value_node)) {
+
+            semantic_error(
+                ctx,
+                case_node,
+                "switch case type does not match switch expression type"
+            );
+        }
+
+        if (!has_const_value) {
+            /*
+             * eval_const_expr already reported the precise error.
+             */
+            check_node(
+                ctx,
+                case_node->as.switch_case.body
+            );
+
+            continue;
+        }
+
+        /*
+         * Compare duplicate cases by their evaluated value.
+         *
+         * This works for integers, bools, and enums because enum members
+         * are stored as CONST_VALUE_INT plus their enum Type*.
+         */
+        for (int j = 0; j < seen_case_count; j++) {
+            if (const_values_equal(
+                    &seen_cases[j].value,
+                    &case_value)) {
+
+                semantic_error(
+                    ctx,
+                    case_node,
+                    "duplicate switch case"
+                );
+
+                break;
+            }
+        }
+
+        seen_cases[seen_case_count].value = case_value;
+        seen_cases[seen_case_count].node  = case_node;
+        seen_case_count++;
+
+        check_node(
+            ctx,
+            case_node->as.switch_case.body
+        );
+    }
+}
+
 static void check_var_decl(SemanticContext *ctx, Node *node) {
 
     if (scope_find_local(ctx->current_scope, node->as.var_decl.name.data, node->as.var_decl.name.length)) {
@@ -2527,6 +2716,29 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
         break;
     }
+
+    case NODE_SWITCH:
+        check_switch_statement(ctx, node);
+        break;
+
+    case NODE_SWITCH_CASE:
+        /*
+         * Normally switch cases are checked by check_switch_statement().
+         * This fallback is only for malformed/manual ASTs.
+         */
+        if (!node->as.switch_case.is_default) {
+            check_expression(
+                ctx,
+                node->as.switch_case.value
+            );
+        }
+
+        check_node(
+            ctx,
+            node->as.switch_case.body
+        );
+
+        break;
 
     case NODE_FOR: {
         if (node->as.for_stmt.condition) {

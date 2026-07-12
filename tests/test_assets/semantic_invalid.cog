@@ -39,3 +39,16 @@ BadVoidPointerStruct::struct {
     field: void*;
 }
 
+// new
+BadBacking :: enum(f32) {
+    A,
+}
+
+BadValue :: enum(u8) {
+    A = 1.5,
+}
+
+DuplicateMember :: enum(u8) {
+    A,
+    A,
+}

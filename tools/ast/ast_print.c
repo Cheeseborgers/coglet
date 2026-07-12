@@ -85,6 +85,11 @@ static void print_type(Type *t)
             print_string_view(t->struct_name);
             break;
 
+        case TYPE_ENUM:
+            printf("enum ");
+            print_string_view(t->enum_name);
+            break;
+
         default:
             printf("<unknown-type>");
             break;
@@ -264,7 +269,6 @@ static void print_node(Node *node)
 
             print_string_view(node->as.var_decl.name);
 
-
             if (node->as.var_decl.initializer) {
                 printf(" = ");
                 print_node(node->as.var_decl.initializer);
@@ -297,7 +301,6 @@ static void print_node(Node *node)
 
         case NODE_STRUCT_FIELD_DECL:
             printf("(struct_field_decl ");
-
             print_type(node->as.struct_field_decl.var_type);
 
             printf(" ");
@@ -331,6 +334,36 @@ static void print_node(Node *node)
                 printf(" ");
                 print_node(node->as.field_init.value);
             }
+            printf(")");
+            break;
+
+        case NODE_ENUM_DECL:
+            printf("(enum %.*s (",
+                (int)node->as.enum_decl.name.length,
+                node->as.enum_decl.name.data);
+
+            print_type(node->as.enum_decl.backing_type);
+
+            printf(")");
+
+            for (int i = 0; i < node->as.enum_decl.members.count; i++) {
+                printf(" ");
+                print_node(node->as.enum_decl.members.items[i]);
+            }
+
+            printf(")");
+            break;
+
+        case NODE_ENUM_MEMBER:
+            printf("(member %.*s",
+                (int)node->as.enum_member.name.length,
+                node->as.enum_member.name.data);
+
+            if (node->as.enum_member.value) {
+                printf(" = ");
+                print_node(node->as.enum_member.value);
+            }
+
             printf(")");
             break;
 
@@ -645,6 +678,63 @@ static void print_node_pretty(Node *node, int depth)
                 print_node_pretty(
                     node->as.struct_init.fields.items[i],
                     depth + 1
+                );
+            }
+
+            break;
+
+        case NODE_ENUM_DECL:
+            indent(depth);
+
+            printf(
+                "enum_decl %.*s\n",
+                (int)node->as.enum_decl.name.length,
+                node->as.enum_decl.name.data
+            );
+
+            indent(depth + 1);
+            printf("Backing type\n");
+
+            indent(depth + 2);
+            print_type(node->as.enum_decl.backing_type);
+            printf("\n");
+
+            /*
+             * Use your existing type-printing helper here.
+             */
+            // TODO: FIX THIS and above
+
+            indent(depth + 1);
+            printf("Members\n");
+
+            for (int i = 0;
+                 i < node->as.enum_decl.members.count;
+                 i++) {
+
+                print_node_pretty(
+                    node->as.enum_decl.members.items[i],
+                    depth + 2
+                );
+                 }
+
+            break;
+
+        case NODE_ENUM_MEMBER:
+            indent(depth);
+
+            printf(
+                "EnumMember %.*s\n",
+                (int)node->as.enum_member.name.length,
+                node->as.enum_member.name.data
+            );
+
+            if (node->as.enum_member.value) {
+                indent(depth + 1);
+                printf("Explicit value\n");
+
+                print_node_pretty(
+                    node->as.enum_member.value,
+                    depth + 2
                 );
             }
 

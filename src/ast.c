@@ -237,6 +237,31 @@ Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, int l
     return node;
 }
 
+Node *ast_new_enum_decl(Arena *arena, const char *name, int name_length, int line) {
+    Node *node = new_node(arena, NODE_ENUM_DECL, line);
+    node->as.enum_decl.name.data   = name;
+    node->as.enum_decl.name.length = name_length;
+
+    node->as.enum_decl.backing_type  = NULL;
+    node->as.enum_decl.resolved_type = NULL;
+
+    node->as.enum_decl.members.items    = NULL;
+    node->as.enum_decl.members.count    = 0;
+    node->as.enum_decl.members.capacity = 0;
+
+    return node;
+}
+Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, int line) {
+    Node *node = new_node(arena, NODE_ENUM_MEMBER, line);
+    node->as.enum_member.name.data   = name;
+    node->as.enum_member.name.length = name_length;
+
+    node->as.enum_member.value          = NULL;
+    node->as.enum_member.resolved_value = 0;
+
+    return node;
+}
+
 Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, int line) {
     Node *node = new_node(arena, NODE_FIELD_INIT, line);
     node->as.field_init.name.data   = name;
@@ -463,9 +488,66 @@ Node *ast_clone(Arena *arena, const Node *node)
         case NODE_FIELD_INIT:
             clone->as.field_init.name.data   = node->as.field_init.name.data;
             clone->as.field_init.name.length = node->as.field_init.name.length;
+
             clone->as.field_init.value =
                 ast_clone(arena, node->as.field_init.value);
             break;
+
+            case NODE_ENUM_DECL:
+                clone->as.enum_decl.name.data =
+                    node->as.enum_decl.name.data;
+
+                clone->as.enum_decl.name.length =
+                    node->as.enum_decl.name.length;
+
+                clone->as.enum_decl.backing_type =
+                    node->as.enum_decl.backing_type;
+
+                /*
+                 * Semantic information should not be cloned.
+                 * The clone must be re-checked.
+                 */
+                clone->as.enum_decl.resolved_type = NULL;
+
+                clone->as.enum_decl.members.items = NULL;
+                clone->as.enum_decl.members.count = 0;
+                clone->as.enum_decl.members.capacity = 0;
+
+                for (int i = 0;
+                     i < node->as.enum_decl.members.count;
+                     i++) {
+
+                    nodelist_push(
+                        arena,
+                        &clone->as.enum_decl.members,
+                        ast_clone(
+                            arena,
+                            node->as.enum_decl.members.items[i]
+                        )
+                    );
+                     }
+
+                break;
+
+            case NODE_ENUM_MEMBER:
+                clone->as.enum_member.name.data =
+                    node->as.enum_member.name.data;
+
+                clone->as.enum_member.name.length =
+                    node->as.enum_member.name.length;
+
+                clone->as.enum_member.value =
+                    ast_clone(
+                        arena,
+                        node->as.enum_member.value
+                    );
+
+                /*
+                 * Semantic information.
+                 */
+                clone->as.enum_member.resolved_value = 0;
+
+                break;
 
         case NODE_RETURN:
             clone->as.return_stmt.value =

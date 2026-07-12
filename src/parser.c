@@ -32,6 +32,9 @@ static Node *parse_struct_decl_rest(Parser *p, Token name, int line);
 static Node *parse_struct_field(Parser *p);
 static Node *finish_struct_init(Parser *p, Token type_name);
 
+static Node *parse_enum_decl_rest(Parser *p, Token name, int line);
+static Node *parse_enum_member(Parser *p);
+
 static Node *parse_return_statement(Parser *p);
 static Node *parse_while_statement(Parser *p);
 static Node *parse_for_statement(Parser *p);
@@ -161,6 +164,7 @@ const char *token_debug_display_name(TokenType t)
         case TOK_RETURN:          return "'return'";
         case TOK_VOID:            return "'void'";
         case TOK_STRUCT:          return "'struct'";
+        case TOK_ENUM:            return "'enum'";
         case TOK_BREAK:           return "'break'";
         case TOK_CONTINUE:        return "'continue'";
         case TOK_BOOL:            return "'bool'";
@@ -886,14 +890,104 @@ static Node *finish_struct_init(Parser *p, Token type_name)
 
 // ====================== end struct declarations ======================
 
-// ====================== declaration dispatching ======================
+// ====================== enum declarations ===========================
+static Node *parse_enum_decl_rest(Parser *p, Token name, int line) {
+    consume(p, TOK_ENUM);
 
+    if (!consume(p, TOK_LPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Type *backing_type = parse_type(p);
+
+    if (!consume(p, TOK_RPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    if (!consume(p, TOK_LBRACE)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *decl = ast_new_enum_decl(
+        p->arena,
+        name.start,
+        name.length,
+        line
+    );
+
+    decl->as.enum_decl.backing_type = backing_type;
+
+    while (!check(p, TOK_RBRACE) &&
+           !check(p, TOK_EOF)) {
+
+        Node *member = parse_enum_member(p);
+
+        nodelist_push(
+            p->arena,
+            &decl->as.enum_decl.members,
+            member
+        );
+
+        /*
+         * Members are comma-separated. A trailing comma is allowed.
+         */
+        if (!match(p, TOK_COMMA)) {
+            if (!check(p, TOK_RBRACE)) {
+                error_at(
+                    p,
+                    &p->current,
+                    "expected ',' or '}' after enum member"
+                );
+
+                synchronize(p);
+            }
+
+            break;
+        }
+    }
+
+    consume(p, TOK_RBRACE);
+
+    return decl;
+}
+
+static Node *parse_enum_member(Parser *p)
+{
+    if (!consume(p, TOK_IDENT)) {
+        return ast_new_error(
+            p->arena,
+            p->current
+        );
+    }
+
+    Token name = p->previous;
+
+    Node *member = ast_new_enum_member(
+        p->arena,
+        name.start,
+        name.length,
+        name.line
+    );
+
+    if (match(p, TOK_EQUAL)) {
+        member->as.enum_member.value =
+            parse_expression(p);
+    }
+
+    return member;
+}
+// ====================== end enum declarations ========================
+// ====================== declaration dispatching ======================
 static Node *parse_decl_after_name(Parser *p, Token name) {
 
     int line = name.line;
 
     if (check(p, TOK_LPAREN)) return parse_proc_decl_rest(p, name, line);
     if (check(p, TOK_STRUCT)) return parse_struct_decl_rest(p, name, line);
+    if (check(p, TOK_ENUM))   return parse_enum_decl_rest(p, name, line);
 
     // anything else after '::' is a constant expression
     return finish_inferred_const_decl(p, name);

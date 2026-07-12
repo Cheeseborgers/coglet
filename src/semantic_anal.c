@@ -166,6 +166,9 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node);
 static int  declare_function_signature(SemanticContext *ctx, Node *node);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
+static int declare_enum_shell(SemanticContext *ctx, Node *node);
+static void fill_enum_members(SemanticContext *ctx,Node *node);
+static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
 
 // ============================================================
 // expressions
@@ -294,6 +297,15 @@ static int type_equal(Type *a, Type *b) {
         return names_equal(
             a->struct_name.data, a->struct_name.length,
             b->struct_name.data, b->struct_name.length);
+
+    if (a->kind == TYPE_ENUM) {
+        return names_equal(
+            a->enum_name.data,
+            a->enum_name.length,
+            b->enum_name.data,
+            b->enum_name.length
+        );
+    }
 
     if (a->kind == TYPE_FUNCTION) {
         if (a->parameter_count != b->parameter_count)
@@ -1509,40 +1521,63 @@ static void check_param_decl(SemanticContext *ctx, Node *node)
     );
 }
 
-static void check_program(SemanticContext *ctx, Node *node) {
-
+static void check_program(SemanticContext *ctx, Node *node)
+{
     NodeList *stmts = &node->as.program.statements;
 
-    // Pass 1: register every struct name so any struct can reference any
-    // other struct -- including ones declared later in the file -- as a
-    // field type.
+    /*
+     * Pass 1:
+     * Register all named types first.
+     *
+     * This lets structs, enums, and functions refer to types declared
+     * later in the file.
+     */
     for (int i = 0; i < stmts->count; i++) {
-        if (stmts->items[i]->type == NODE_STRUCT_DECL)
-            declare_struct_shell(ctx, stmts->items[i]);
-    }
-
-    // Pass 2: now that all struct names are visible, resolve each
-    // struct's field types.
-    for (int i = 0; i < stmts->count; i++) {
-        if (stmts->items[i]->type == NODE_STRUCT_DECL)
-            fill_struct_fields(ctx, stmts->items[i]);
-    }
-
-    // Pass 3: register every function's signature, so functions can call
-    // each other regardless of declaration order, and so param/return
-    // types can reference any struct from passes 1-2.
-    for (int i = 0; i < stmts->count; i++) {
-        if (stmts->items[i]->type == NODE_FUNC_DECL)
-            declare_function_signature(ctx, stmts->items[i]);
-    }
-
-    // Pass 4: check function bodies (every signature is visible now) and
-    // any other top-level statements.
-    for (int i = 0; i < stmts->count; i++) {
-
         Node *stmt = stmts->items[i];
 
-        if (stmt->type == NODE_STRUCT_DECL) continue;   // fully handled in passes 1-2
+        if (stmt->type == NODE_STRUCT_DECL)
+            declare_struct_shell(ctx, stmt);
+
+        if (stmt->type == NODE_ENUM_DECL)
+            declare_enum_shell(ctx, stmt);
+    }
+
+    /*
+     * Pass 2:
+     * Fill in type bodies now that all type names are visible.
+     */
+    for (int i = 0; i < stmts->count; i++) {
+        Node *stmt = stmts->items[i];
+
+        if (stmt->type == NODE_STRUCT_DECL)
+            fill_struct_fields(ctx, stmt);
+
+        if (stmt->type == NODE_ENUM_DECL)
+            fill_enum_members(ctx, stmt);
+    }
+
+    /*
+     * Pass 3:
+     * Register function signatures.
+     */
+    for (int i = 0; i < stmts->count; i++) {
+        Node *stmt = stmts->items[i];
+
+        if (stmt->type == NODE_FUNC_DECL)
+            declare_function_signature(ctx, stmt);
+    }
+
+    /*
+     * Pass 4:
+     * Check function bodies and other top-level statements.
+     */
+    for (int i = 0; i < stmts->count; i++) {
+        Node *stmt = stmts->items[i];
+
+        if (stmt->type == NODE_STRUCT_DECL ||
+            stmt->type == NODE_ENUM_DECL) {
+            continue;
+            }
 
         if (stmt->type == NODE_FUNC_DECL) {
             check_function_body(ctx, stmt);
@@ -1556,9 +1591,6 @@ static void check_program(SemanticContext *ctx, Node *node) {
 static void check_if(SemanticContext *ctx, Node *node) {
 
     Type *cond = check_expression(ctx, node->as.if_stmt.condition);
-
-    if (!is_bool_type(cond))
-        semantic_error(ctx, node->as.if_stmt.condition, "if condition must be a boolean expression");
 
     /*
    * A NULL type means check_expression already reported an error.
@@ -1794,6 +1826,181 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
     }
 }
 
+// ===========================================================
+// enums
+// ===========================================================
+static int declare_enum_shell(SemanticContext *ctx, Node *node) {
+    if (scope_find_local(
+            ctx->current_scope,
+            node->as.enum_decl.name.data,
+            node->as.enum_decl.name.length)) {
+
+        semantic_error_name(
+            ctx,
+            node,
+            "duplicate declaration",
+            node->as.enum_decl.name.data,
+            node->as.enum_decl.name.length
+        );
+
+        return 0;
+    }
+
+    Type *type = new_type(ctx, TYPE_ENUM);
+
+    type->enum_name =
+        node->as.enum_decl.name;
+
+    scope_define(
+        ctx,
+        node->as.enum_decl.name,
+        SYMBOL_TYPE,
+        type
+    );
+
+    node->as.enum_decl.resolved_type = type;
+
+    return 1;
+}
+
+static EnumMember *find_enum_member(
+    Type *enum_type,
+    const char *name,
+    size_t length
+) {
+    if (!enum_type ||
+        enum_type->kind != TYPE_ENUM) {
+        return NULL;
+        }
+
+    for (int i = 0;
+         i < enum_type->enum_member_count;
+         i++) {
+
+        EnumMember *member =
+            &enum_type->enum_members[i];
+
+        if (names_equal(
+                member->name.data,
+                member->name.length,
+                name,
+                length)) {
+
+            return member;
+                }
+         }
+
+    return NULL;
+}
+
+static void fill_enum_members(SemanticContext *ctx, Node *node) {
+    Type *type = node->as.enum_decl.resolved_type;
+
+    if (!type)
+        return;
+
+    Type *backing_type =
+        resolve_type(
+            ctx,
+            node->as.enum_decl.backing_type,
+            node
+        );
+
+    if (!backing_type)
+        return;
+
+    if (!is_integer_kind(backing_type->kind)) {
+        semantic_error(
+            ctx,
+            node,
+            "enum backing type must be an integer type"
+        );
+
+        return;
+    }
+
+    type->enum_backing_type = backing_type;
+
+    int count = node->as.enum_decl.members.count;
+
+    type->enum_members = count
+        ? arena_alloc(
+            ctx->arena,
+            sizeof(EnumMember) * count
+        )
+        : NULL;
+
+    type->enum_member_count = count;
+
+    long long next_value = 0;
+
+    for (int i = 0; i < count; i++) {
+        Node *member_node =
+            node->as.enum_decl.members.items[i];
+
+        StringView member_name =
+            member_node->as.enum_member.name;
+
+        int duplicate = 0;
+
+        for (int j = 0; j < i; j++) {
+            if (names_equal(
+                    type->enum_members[j].name.data,
+                    type->enum_members[j].name.length,
+                    member_name.data,
+                    member_name.length)) {
+
+                semantic_error_name(
+                    ctx,
+                    member_node,
+                    "duplicate enum member",
+                    member_name.data,
+                    member_name.length
+                );
+
+                duplicate = 1;
+                break;
+            }
+        }
+
+        long long value = next_value;
+
+        if (member_node->as.enum_member.value) {
+            ConstValue constant;
+
+            if (!eval_const_expr(
+                    ctx,
+                    member_node->as.enum_member.value,
+                    &constant)) {
+
+                /*
+                 * eval_const_expr already reported the error.
+                 * Keep recovery going with next_value.
+                 */
+                value = next_value;
+            } else if (constant.kind != CONST_VALUE_INT) {
+                semantic_error(
+                    ctx,
+                    member_node,
+                    "enum member value must be an integer constant"
+                );
+
+                value = next_value;
+            } else {
+                value = constant.as.i;
+            }
+        }
+
+        type->enum_members[i].name = member_name;
+        type->enum_members[i].value = value;
+        member_node->as.enum_member.resolved_value = value;
+
+        if (!duplicate) {
+            next_value = value + 1;
+        }
+    }
+}
+
 // ============================================================
 // node dispatcher
 // ============================================================
@@ -1817,6 +2024,12 @@ static void check_node(SemanticContext *ctx,Node *node) {
     case NODE_STRUCT_DECL: {
         declare_struct_shell(ctx, node);
         fill_struct_fields(ctx, node);
+        break;
+    }
+
+    case NODE_ENUM_DECL: {
+        declare_enum_shell(ctx, node);
+        fill_enum_members(ctx, node);
         break;
     }
 

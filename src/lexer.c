@@ -117,7 +117,7 @@ static const Keyword keywords[] = {
     {"if", TOK_IF}, {"else", TOK_ELSE}, {"while", TOK_WHILE},
     {"for", TOK_FOR}, {"return", TOK_RETURN},
     {"struct", TOK_STRUCT},
-    {"break", TOK_BREAK}, {"continue", TOK_CONTINUE},
+    {"break", TOK_BREAK}, {"continue", TOK_CONTINUE}, {"enum", TOK_ENUM},
     {"void", TOK_VOID},  {"true", TOK_TRUE}, {"false", TOK_FALSE},
 
     {"i8", TOK_I8}, {"i16", TOK_I16}, {"i32", TOK_I32}, {"i64", TOK_I64},
@@ -326,7 +326,7 @@ const char *token_type_name(TokenType type) {
         case TOK_F64: return "F64";
         case TOK_INT_KW: return "INT_KW";
         case TOK_UINT_KW: return "UINT_KW";
-
+        case TOK_ENUM: return "ENUM";
         case TOK_VOID: return "VOID";
         case TOK_STRUCT: return "STRUCT";
         case TOK_BREAK: return "BREAK";
@@ -367,6 +367,6 @@ const char *token_type_name(TokenType type) {
         case TOK_COLON: return "COLON";
         case TOK_COLON_COLON: return "COLON_COLON";
         case TOK_COLON_EQUAL: return "COLON_EQUAL";
+        default: return "UNKNOWN";
     }
-    return "UNKNOWN";
 }

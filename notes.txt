@@ -13,6 +13,26 @@ Given how much back-and-forth we've had catching regressions by eyeballing error
 
 
 
-sem anal:
-Return type checking is missing
+What I'd implement first
+
+If we break it into milestones, I'd do:
+
+Lexer
+Add the enum keyword.
+Parser
+Parse Name :: enum(u16) { ... }.
+Support optional = constant_expression for members.
+AST
+Add NODE_ENUM_DECL and NODE_ENUM_MEMBER.
+Pretty printer
+Print enum declarations.
+Semantic analysis
+Build the enum type.
+Assign member values.
+Validate backing type.
+Insert member constants.
+Expression checking
+Resolve Colour.Red.
+Allow == / !=.
+Reject arithmetic and ordered comparisons.
 

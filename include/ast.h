@@ -38,6 +38,9 @@ typedef enum {
     NODE_STRUCT_DECL,
     NODE_STRUCT_FIELD_DECL,
 
+    NODE_ENUM_DECL,
+    NODE_ENUM_MEMBER,
+
     NODE_STRUCT_INIT,      // Point{ x = 5, y = 10 }
     NODE_FIELD_INIT,       // one `x = 5` inside a struct init
 
@@ -195,6 +198,19 @@ struct Node {
         } struct_decl;
 
         struct {
+            StringView name;
+            Type *backing_type;
+            NodeList members;
+            Type *resolved_type;
+        } enum_decl;
+
+        struct {
+            StringView name;
+            Node *value;     // NULL if implicit
+            long long resolved_value;
+        } enum_member;
+
+        struct {
             Type *const_type;    // NULL for inferred (::); non-NULL for typed (: type :)
             StringView name;
             Node *value;         // required -- never NULL
@@ -232,6 +248,8 @@ Node *ast_new_continue(Arena *arena, int line);
 Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, int line);
 Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int line);
 Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, int line);
+Node *ast_new_enum_decl(Arena *arena, const char *name, int name_length, int line);
+Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, int line);
 Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, int line);
 Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, int line);
 

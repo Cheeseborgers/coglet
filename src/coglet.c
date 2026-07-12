@@ -50,6 +50,8 @@ int main(int argc, char **argv)
 
     int exit_code = 0;
 
+    //ast_pretty_print(ast);
+
     if (parser.had_error) {
         for (int i = 0;
              i < parser.diagnostic_count;

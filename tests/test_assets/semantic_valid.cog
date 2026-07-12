@@ -123,3 +123,25 @@ classify_bool::(b: bool) -> i32 {
             return 0;
     }
 }
+
+return_good_direct::() -> i32 {
+    return 1;
+}
+
+return_good_if::(b: bool) -> i32 {
+    if b {
+        return 1;
+    } else {
+        return 2;
+    }
+}
+
+return_good_switch::(c: Color) -> i32 {
+    switch c {
+        case Color.Red:
+            return 1;
+
+        default:
+            return 0;
+    }
+}

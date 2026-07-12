@@ -141,3 +141,29 @@ bad_switch_runtime_case::(x: i32, y: i32) -> i32 {
             return 0;
     }
 }
+
+return_bad_empty::() -> i32 {
+}
+
+return_bad_if::(b: bool) -> i32 {
+    if b {
+        return 1;
+    }
+}
+
+return_bad_switch_no_default::(c: Color) -> i32 {
+    switch c {
+        case Color.Red:
+            return 1;
+    }
+}
+
+return_bad_switch_case_falls_through::(c: Color) -> i32 {
+    switch c {
+        case Color.Red:
+            return 1;
+
+        default:
+            x := 1;
+    }
+}

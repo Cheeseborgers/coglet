@@ -181,6 +181,9 @@ static Type *resolve_type(
 // forward declarations
 // ============================================================
 
+static int node_definitely_returns(Node *node);
+static int block_definitely_returns(Node *node);
+static int switch_definitely_returns(Node *node);
 static void check_node(SemanticContext *ctx, Node *node);
 static int  declare_struct_shell(SemanticContext *ctx, Node *node);
 static void fill_struct_fields(SemanticContext *ctx, Node *node);
@@ -2376,19 +2379,25 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
     return 1;
 }
 
-static void check_function_body(SemanticContext *ctx, Node *node) {
-
+static void check_function_body(SemanticContext *ctx, Node *node)
+{
     Type *func_type = node->as.func_decl.resolved_type;
-    if (!func_type || func_type->kind != TYPE_FUNCTION)
+
+    if (!func_type ||
+        func_type->kind != TYPE_FUNCTION) {
         return;
+        }
 
     scope_push(ctx);
 
     for (int i = 0; i < node->as.func_decl.params.count; i++) {
-        check_param_decl(ctx, node->as.func_decl.params.items[i]);
+        check_param_decl(
+            ctx,
+            node->as.func_decl.params.items[i]
+        );
     }
 
-    int saved_loop_depth    = ctx->loop_depth;
+    int saved_loop_depth = ctx->loop_depth;
 
     Type *saved_return_type = ctx->current_return_type;
 
@@ -2397,7 +2406,25 @@ static void check_function_body(SemanticContext *ctx, Node *node) {
 
     ctx->function_depth++;
 
-    check_node(ctx,node->as.func_decl.body);
+    check_node(
+        ctx,
+        node->as.func_decl.body
+    );
+
+    /*
+     * After normal semantic checking, enforce that non-void functions
+     * cannot fall off the end.
+     */
+    if (func_type->return_type &&
+        func_type->return_type->kind != TYPE_VOID &&
+        !node_definitely_returns(node->as.func_decl.body)) {
+
+        semantic_error(
+            ctx,
+            node,
+            "non-void function may not return a value"
+        );
+        }
 
     ctx->function_depth--;
 
@@ -2663,6 +2690,133 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
         if (!duplicate) {
             next_value = value + 1;
         }
+    }
+}
+
+static int block_definitely_returns(Node *node)
+{
+    if (!node || node->type != NODE_BLOCK)
+        return 0;
+
+    /*
+     * A block definitely returns if execution cannot reach the end
+     * of the block.
+     *
+     * For now, this means one of its statements definitely returns.
+     *
+     * Example:
+     *     {
+     *         return 1;
+     *         x = 2; // unreachable later, but not checked yet
+     *     }
+     */
+    for (int i = 0; i < node->as.block.statements.count; i++) {
+        Node *stmt =
+            node->as.block.statements.items[i];
+
+        if (node_definitely_returns(stmt))
+            return 1;
+    }
+
+    return 0;
+}
+
+static int switch_definitely_returns(Node *node)
+{
+    if (!node || node->type != NODE_SWITCH)
+        return 0;
+
+    int has_default = 0;
+    int has_true = 0;
+    int has_false = 0;
+
+    if (node->as.switch_stmt.cases.count == 0)
+        return 0;
+
+    for (int i = 0; i < node->as.switch_stmt.cases.count; i++) {
+        Node *case_node =
+            node->as.switch_stmt.cases.items[i];
+
+        if (!case_node ||
+            case_node->type != NODE_SWITCH_CASE) {
+            return 0;
+            }
+
+        if (case_node->as.switch_case.is_default) {
+            has_default = 1;
+        } else {
+            Node *value =
+                case_node->as.switch_case.value;
+
+            /*
+             * Tiny first exhaustiveness improvement:
+             *
+             * A bool switch with both `case true:` and `case false:`
+             * covers all possible values even without default.
+             */
+            if (value && value->type == NODE_BOOL) {
+                if (value->as.boolean.value)
+                    has_true = 1;
+                else
+                    has_false = 1;
+            }
+        }
+
+        /*
+         * Coglet switch has no fallthrough, so every case body must
+         * definitely return for the switch as a whole to definitely return.
+         */
+        if (!node_definitely_returns(
+                case_node->as.switch_case.body)) {
+            return 0;
+                }
+    }
+
+    if (has_default)
+        return 1;
+
+    if (has_true && has_false)
+        return 1;
+
+    /*
+     * Without enum exhaustiveness checking, a switch without default
+     * does not prove that all paths return.
+     */
+    return 0;
+}
+
+static int node_definitely_returns(Node *node)
+{
+    if (!node)
+        return 0;
+
+    switch (node->type) {
+        case NODE_RETURN:
+            return 1;
+
+        case NODE_BLOCK:
+            return block_definitely_returns(node);
+
+        case NODE_IF:
+            /*
+             * An if only definitely returns if both branches exist and
+             * both definitely return.
+             */
+            if (!node->as.if_stmt.else_branch)
+                return 0;
+
+            return node_definitely_returns(
+                       node->as.if_stmt.then_branch
+                   ) &&
+                   node_definitely_returns(
+                       node->as.if_stmt.else_branch
+                   );
+
+        case NODE_SWITCH:
+            return switch_definitely_returns(node);
+
+        default:
+            return 0;
     }
 }
 

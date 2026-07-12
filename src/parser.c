@@ -937,6 +937,17 @@ static Node *parse_enum_decl_rest(Parser *p, Token name, int line) {
 
     Type *backing_type = NULL;
 
+    /*
+     * Backing type is optional:
+     *
+     *     Color :: enum {
+     *         Red,
+     *     }
+     *
+     *     Color :: enum(u16) {
+     *         Red,
+     *     }
+     */
     if (match(p, TOK_LPAREN)) {
         backing_type = parse_type(p);
 

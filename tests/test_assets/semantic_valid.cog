@@ -209,3 +209,19 @@ classify_default_color::(c: DefaultColor) -> i32 {
             return 3;
     }
 }
+
+EnumU8Max :: enum(u8) {
+    A = 254,
+    B,
+}
+
+EnumI8Range :: enum(i8) {
+    A = -128,
+    B,
+    C = 127,
+}
+
+EnumDefaultLargeEnough :: enum {
+    A = 255,
+    B,
+}

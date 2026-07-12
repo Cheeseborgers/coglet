@@ -310,6 +310,54 @@ static int is_integer_kind(TypeKind k) {
     }
 }
 
+static int integer_value_fits_type(long long value, TypeKind kind)
+{
+    switch (kind) {
+        case TYPE_I8:
+            return value >= -128LL &&
+                   value <= 127LL;
+
+        case TYPE_I16:
+            return value >= -32768LL &&
+                   value <= 32767LL;
+
+        case TYPE_I32:
+            return value >= (-2147483647LL - 1LL) &&
+                   value <= 2147483647LL;
+
+        case TYPE_I64:
+            /*
+             * value is already stored as long long, so every value
+             * represented here fits in i64.
+             */
+            return 1;
+
+        case TYPE_U8:
+            return value >= 0 &&
+                   value <= 255LL;
+
+        case TYPE_U16:
+            return value >= 0 &&
+                   value <= 65535LL;
+
+        case TYPE_U32:
+            return value >= 0 &&
+                   (unsigned long long)value <= 4294967295ULL;
+
+        case TYPE_U64:
+            /*
+             * ConstValue currently stores integers as signed long long.
+             * Therefore every non-negative value it can represent fits
+             * within u64, though values above LLONG_MAX cannot yet be
+             * represented by the constant evaluator.
+             */
+            return value >= 0;
+
+        default:
+            return 0;
+    }
+}
+
 static int is_float_kind(TypeKind k) { return k == TYPE_F32 || k == TYPE_F64; }
 static int is_numeric_type(Type *t)  { return t && (is_integer_kind(t->kind) || is_float_kind(t->kind)); }
 
@@ -2881,6 +2929,7 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
         }
 
         long long value = next_value;
+        int value_is_valid = 1;
 
         if (member_node->as.enum_member.value) {
             ConstValue constant;
@@ -2892,9 +2941,11 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
 
                 /*
                  * eval_const_expr already reported the error.
-                 * Keep recovery going with next_value.
+                 * Keep recovery going with next_value, but avoid
+                 * producing a misleading range error.
                  */
                 value = next_value;
+                value_is_valid = 0;
             } else if (constant.kind != CONST_VALUE_INT) {
                 semantic_error(
                     ctx,
@@ -2903,16 +2954,32 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
                 );
 
                 value = next_value;
+                value_is_valid = 0;
             } else {
                 value = constant.as.i;
             }
+        }
+
+        if (value_is_valid &&
+            !integer_value_fits_type(value, backing_type->kind)) {
+            semantic_error(
+                ctx,
+                member_node,
+                "enum member value does not fit in backing type"
+            );
+
+            /*
+             * Still store the value for recovery, but don't advance
+             * from an invalid out-of-range value.
+             */
+            value_is_valid = 0;
         }
 
         type->enum_members[i].name = member_name;
         type->enum_members[i].value = value;
         member_node->as.enum_member.resolved_value = value;
 
-        if (!duplicate) {
+        if (!duplicate && value_is_valid) {
             next_value = value + 1;
         }
     }

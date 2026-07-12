@@ -537,60 +537,92 @@ static Node *parse_assignment(Parser *p) { return parse_assignment_from(p, parse
 static Type *parse_type(Parser *p)
 {
     Type *base = arena_alloc(p->arena, sizeof(Type));
-    base->element            = NULL;
-    base->array_size         = -1;
-    base->struct_name.data   = NULL;
-    base->struct_name.length = 0;
+    memset(base, 0, sizeof(*base));
 
-    if (match(p, TOK_I8))       base->kind = TYPE_I8;
-    else if (match(p, TOK_I16)) base->kind = TYPE_I16;
-    else if (match(p, TOK_I32)) base->kind = TYPE_I32;
-    else if (match(p, TOK_I64) || match(p, TOK_INT_KW)) base->kind = TYPE_I64;
-    else if (match(p, TOK_U8))  base->kind = TYPE_U8;
-    else if (match(p, TOK_U16)) base->kind = TYPE_U16;
-    else if (match(p, TOK_U32)) base->kind = TYPE_U32;
-    else if (match(p, TOK_U64) || match(p, TOK_UINT_KW)) base->kind = TYPE_U64;
-    else if (match(p, TOK_F32))  base->kind = TYPE_F32;
-    else if (match(p, TOK_F64))  base->kind = TYPE_F64;
-    else if (match(p, TOK_BOOL)) base->kind = TYPE_BOOL;
-    else if (match(p, TOK_VOID)) base->kind = TYPE_VOID;
-    else if (match(p, TOK_IDENT)) {
-        base->kind               = TYPE_STRUCT;
-        base->struct_name.data   = p->previous.start;
-        base->struct_name.length = p->previous.length;
+    base->array_size = -1;
+
+    if (match(p, TOK_I8)) {
+        base->kind = TYPE_I8;
+    } else if (match(p, TOK_I16)) {
+        base->kind = TYPE_I16;
+    } else if (match(p, TOK_I32)) {
+        base->kind = TYPE_I32;
+    } else if (match(p, TOK_I64) || match(p, TOK_INT_KW)) {
+        base->kind = TYPE_I64;
+    } else if (match(p, TOK_U8)) {
+        base->kind = TYPE_U8;
+    } else if (match(p, TOK_U16)) {
+        base->kind = TYPE_U16;
+    } else if (match(p, TOK_U32)) {
+        base->kind = TYPE_U32;
+    } else if (match(p, TOK_U64) || match(p, TOK_UINT_KW)) {
+        base->kind = TYPE_U64;
+    } else if (match(p, TOK_F32)) {
+        base->kind = TYPE_F32;
+    } else if (match(p, TOK_F64)) {
+        base->kind = TYPE_F64;
+    } else if (match(p, TOK_BOOL)) {
+        base->kind = TYPE_BOOL;
+    } else if (match(p, TOK_VOID)) {
+        base->kind = TYPE_VOID;
+    } else if (match(p, TOK_IDENT)) {
+        /*
+         * Parsed named type reference.
+         *
+         * Examples:
+         *     Point
+         *     Color
+         *     TokenKind
+         *
+         * Semantic analysis later resolves this to TYPE_STRUCT,
+         * TYPE_ENUM, or future named type kinds.
+         */
+        base->kind = TYPE_NAMED;
+        base->named_name.data = p->previous.start;
+        base->named_name.length = p->previous.length;
     } else {
         error_at(p, &p->current, "expected type");
+
+        /*
+         * Return a safe error-ish type so callers don't read
+         * uninitialized memory. Parser error state is already set.
+         */
+        base->kind = TYPE_VOID;
         return base;
     }
 
     while (match(p, TOK_STAR)) {
-
         Type *ptr = arena_alloc(p->arena, sizeof(Type));
-        ptr->kind               = TYPE_POINTER;
-        ptr->element            = base;
-        ptr->array_size         = -1;
-        ptr->struct_name.data   = NULL;
-        ptr->struct_name.length = 0;
-        base                    = ptr;
+        memset(ptr, 0, sizeof(*ptr));
+
+        ptr->kind = TYPE_POINTER;
+        ptr->element = base;
+        ptr->array_size = -1;
+
+        base = ptr;
     }
 
     if (match(p, TOK_LBRACKET)) {
-
         Type *arr = arena_alloc(p->arena, sizeof(Type));
-        arr->kind               = TYPE_ARRAY;
-        arr->element            = base;
-        arr->array_size         = -1;
-        arr->struct_name.data   = NULL;
-        arr->struct_name.length = 0;
+        memset(arr, 0, sizeof(*arr));
+
+        arr->kind = TYPE_ARRAY;
+        arr->element = base;
+        arr->array_size = -1;
 
         if (!check(p, TOK_RBRACKET)) {
             if (match(p, TOK_NUMBER_INT)) {
-                arr->array_size = (int)strtod(p->previous.start, NULL);
+                arr->array_size = (int)strtod(
+                    p->previous.start,
+                    NULL
+                );
             } else {
                 error_at(p, &p->current, "expected array size");
             }
         }
+
         consume(p, TOK_RBRACKET);
+
         base = arr;
     }
 
@@ -767,14 +799,10 @@ static int parse_parameter_group(Parser *p, Node *func)
 static Type *make_void_type(Arena *arena)
 {
     Type *type = arena_alloc(arena, sizeof(Type));
+    memset(type, 0, sizeof(*type));
 
-    *type = (Type){
-        .kind = TYPE_VOID,
-        .element = NULL,
-        .array_size = -1,
-        .struct_name.data   = NULL,
-        .struct_name.length = 0
-    };
+    type->kind = TYPE_VOID;
+    type->array_size = -1;
 
     return type;
 }

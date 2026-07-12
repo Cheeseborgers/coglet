@@ -109,28 +109,45 @@ static Type *lookup_type(SemanticContext *ctx, const char *name, size_t length) 
 // resolved recursively. Leaves everything else untouched. `error_node`
 // is used purely for diagnostic line info if resolution fails -- pass
 // whatever Node this type came from (a var decl, a param, a field).
-static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
-
-    if (!type) return NULL;
+static Type *resolve_type(
+    SemanticContext *ctx,
+    Type *type,
+    Node *error_node
+) {
+    if (!type)
+        return NULL;
 
     switch (type->kind) {
-        case TYPE_BOOL: return ctx->type_bool;
-        case TYPE_VOID: return ctx->type_void;
-        default: break;
+        case TYPE_BOOL:
+            return ctx->type_bool;
+
+        case TYPE_VOID:
+            return ctx->type_void;
+
+        default:
+            break;
     }
 
-    if (type->kind == TYPE_STRUCT) {
-        Type *resolved = lookup_type(ctx, type->struct_name.data, type->struct_name.length);
+    if (type->kind == TYPE_NAMED) {
+        Type *resolved =
+            lookup_type(
+                ctx,
+                type->named_name.data,
+                type->named_name.length
+            );
+
         if (!resolved) {
             semantic_error_name(
                 ctx,
                 error_node,
                 "unknown type",
-                type->struct_name.data,
-                type->struct_name.length
+                type->named_name.data,
+                type->named_name.length
             );
+
             return NULL;
         }
+
         return resolved;
     }
 
@@ -138,7 +155,11 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
         type->kind == TYPE_ARRAY) {
 
         Type *resolved_element =
-            resolve_type(ctx, type->element, error_node);
+            resolve_type(
+                ctx,
+                type->element,
+                error_node
+            );
 
         if (!resolved_element)
             return NULL;
@@ -151,7 +172,7 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
             copy->element = resolved_element;
             return copy;
         }
-    }
+        }
 
     return type;
 }
@@ -293,18 +314,27 @@ static int type_equal(Type *a, Type *b) {
         return a->array_size == b->array_size &&
                type_equal(a->element, b->element);
 
+    if (a->kind == TYPE_NAMED) {
+        return names_equal(
+            a->named_name.data,
+            a->named_name.length,
+            b->named_name.data,
+            b->named_name.length);
+    }
+
     if (a->kind == TYPE_STRUCT)
         return names_equal(
-            a->struct_name.data, a->struct_name.length,
-            b->struct_name.data, b->struct_name.length);
+            a->struct_name.data,
+            a->struct_name.length,
+            b->struct_name.data,
+            b->struct_name.length);
 
     if (a->kind == TYPE_ENUM) {
         return names_equal(
             a->enum_name.data,
             a->enum_name.length,
             b->enum_name.data,
-            b->enum_name.length
-        );
+            b->enum_name.length);
     }
 
     if (a->kind == TYPE_FUNCTION) {

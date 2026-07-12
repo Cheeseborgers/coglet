@@ -80,6 +80,10 @@ static void print_type(Type *t)
 
             break;
 
+        case TYPE_NAMED:
+            print_string_view(t->named_name);
+            break;
+
         case TYPE_STRUCT:
             printf("struct ");
             print_string_view(t->struct_name);

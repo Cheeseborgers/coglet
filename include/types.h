@@ -23,6 +23,8 @@ typedef enum {
     TYPE_POINTER,
     TYPE_ARRAY,
 
+    TYPE_NAMED, // Used as a placeholder kind until later resolution to struct, enum etc
+
     TYPE_STRUCT,
     TYPE_ENUM,
 
@@ -57,9 +59,14 @@ struct Type {
     int array_size; /* -1 if unspecified */
 
     /*
+    * Named types.
+    */
+    StringView named_name;   // TYPE_NAMED
+
+    /*
      * Struct types.
      */
-    StringView struct_name;
+    StringView struct_name;  // TYPE_STRUCT
     StructField *fields;
     int field_count;
 

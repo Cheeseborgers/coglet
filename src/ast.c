@@ -26,26 +26,30 @@ Node *ast_new_ident(Arena *arena, const char *start, int length, int line) {
     return node;
 }
 
-Node *ast_new_string(Arena *arena, const char *start, int length, int line)
-{
+Node *ast_new_string(Arena *arena, const char *start, int length, int line) {
     Node *node = new_node(arena, NODE_STRING, line);
     node->as.string_literal.data   = start;
     node->as.string_literal.length = length;
     return node;
 }
 
-Node *ast_new_char(Arena *arena, const char *start, int length, int line)
-{
+Node *ast_new_char(Arena *arena, const char *start, int length, int line) {
     Node *node = new_node(arena, NODE_CHAR, line);
     node->as.char_literal.data   = start;
     node->as.char_literal.length = length;
     return node;
 }
 
-Node *ast_new_bool(Arena *arena, int value, int line)
-{
+Node *ast_new_bool(Arena *arena, int value, int line) {
     Node *node = new_node(arena, NODE_BOOL, line);
     node->as.boolean.value = value;
+    return node;
+}
+
+Node *ast_new_cast(Arena *arena, Type *target_type, Node *expression, int line) {
+    Node *node = new_node(arena, NODE_CAST, line);
+    node->as.cast_expr.target_type = target_type;
+    node->as.cast_expr.expression  = expression;
     return node;
 }
 
@@ -331,19 +335,28 @@ Node *ast_clone(Arena *arena, const Node *node)
             break;
 
         case NODE_UNARY:
-            clone->as.unary.op = node->as.unary.op;
+            clone->as.unary.op      = node->as.unary.op;
             clone->as.unary.operand = ast_clone(arena, node->as.unary.operand);
             break;
 
         case NODE_BINARY:
-            clone->as.binary.op = node->as.binary.op;
-            clone->as.binary.left = ast_clone(arena, node->as.binary.left);
+            clone->as.binary.op    = node->as.binary.op;
+            clone->as.binary.left  = ast_clone(arena, node->as.binary.left);
             clone->as.binary.right = ast_clone(arena, node->as.binary.right);
             break;
 
         case NODE_ASSIGN:
             clone->as.assign.target = ast_clone(arena, node->as.assign.target);
-            clone->as.assign.value = ast_clone(arena, node->as.assign.value);
+            clone->as.assign.value  = ast_clone(arena, node->as.assign.value);
+            break;
+
+        case NODE_CAST:
+            clone->as.cast_expr.target_type =
+                node->as.cast_expr.target_type;
+
+            clone->as.cast_expr.expression =
+                ast_clone(arena, node->as.cast_expr.expression);
+
             break;
 
         case NODE_IF:
@@ -377,11 +390,10 @@ Node *ast_clone(Arena *arena, const Node *node)
             break;
 
         case NODE_CALL:
-            clone->as.call.callee =
-                ast_clone(arena, node->as.call.callee);
+            clone->as.call.callee = ast_clone(arena, node->as.call.callee);
 
-            clone->as.call.arguments.items = NULL;
-            clone->as.call.arguments.count = 0;
+            clone->as.call.arguments.items    = NULL;
+            clone->as.call.arguments.count    = 0;
             clone->as.call.arguments.capacity = 0;
 
             for (int i = 0; i < node->as.call.arguments.count; i++) {
@@ -394,24 +406,20 @@ Node *ast_clone(Arena *arena, const Node *node)
             break;
 
         case NODE_FIELD:
-            clone->as.field.object =
-                ast_clone(arena, node->as.field.object);
+            clone->as.field.object = ast_clone(arena, node->as.field.object);
 
-            clone->as.field.name.data = node->as.field.name.data;
+            clone->as.field.name.data   = node->as.field.name.data;
             clone->as.field.name.length = node->as.field.name.length;
             break;
 
         case NODE_INDEX:
-            clone->as.index.object =
-                ast_clone(arena, node->as.index.object);
-
-            clone->as.index.index =
-                ast_clone(arena, node->as.index.index);
+            clone->as.index.object = ast_clone(arena, node->as.index.object);
+            clone->as.index.index  = ast_clone(arena, node->as.index.index);
             break;
 
         case NODE_PROGRAM:
-            clone->as.program.statements.items = NULL;
-            clone->as.program.statements.count = 0;
+            clone->as.program.statements.items    = NULL;
+            clone->as.program.statements.count    = 0;
             clone->as.program.statements.capacity = 0;
 
             for (int i = 0; i < node->as.program.statements.count; i++) {
@@ -424,17 +432,17 @@ Node *ast_clone(Arena *arena, const Node *node)
             break;
 
         case NODE_VAR_DECL:
-            clone->as.var_decl.var_type = node->as.var_decl.var_type;
-            clone->as.var_decl.name.data = node->as.var_decl.name.data;
+            clone->as.var_decl.var_type    = node->as.var_decl.var_type;
+            clone->as.var_decl.name.data   = node->as.var_decl.name.data;
             clone->as.var_decl.name.length = node->as.var_decl.name.length;
             clone->as.var_decl.initializer =
                 ast_clone(arena, node->as.var_decl.initializer);
             break;
 
         case NODE_FUNC_PARAM_DECL:
-            clone->as.param_decl.var_type = node->as.param_decl.var_type;
-            clone->as.param_decl.name.data = node->as.param_decl.name.data;
-            clone->as.param_decl.name.length = node->as.param_decl.name.length;
+            clone->as.param_decl.var_type      = node->as.param_decl.var_type;
+            clone->as.param_decl.name.data     = node->as.param_decl.name.data;
+            clone->as.param_decl.name.length   = node->as.param_decl.name.length;
             clone->as.param_decl.default_value =
                 ast_clone(arena, node->as.param_decl.default_value);
             break;
@@ -493,8 +501,8 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.struct_init.name.data   = node->as.struct_init.name.data;
             clone->as.struct_init.name.length = node->as.struct_init.name.length;
 
-            clone->as.struct_init.fields.items = NULL;
-            clone->as.struct_init.fields.count = 0;
+            clone->as.struct_init.fields.items    = NULL;
+            clone->as.struct_init.fields.count    = 0;
             clone->as.struct_init.fields.capacity = 0;
 
             for (int i = 0; i < node->as.struct_init.fields.count; i++) {
@@ -530,8 +538,8 @@ Node *ast_clone(Arena *arena, const Node *node)
                  */
                 clone->as.enum_decl.resolved_type = NULL;
 
-                clone->as.enum_decl.members.items = NULL;
-                clone->as.enum_decl.members.count = 0;
+                clone->as.enum_decl.members.items    = NULL;
+                clone->as.enum_decl.members.count    = 0;
                 clone->as.enum_decl.members.capacity = 0;
 
                 for (int i = 0;

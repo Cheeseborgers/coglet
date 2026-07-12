@@ -119,7 +119,7 @@ static const Keyword keywords[] = {
     {"struct", TOK_STRUCT},
     {"break", TOK_BREAK}, {"continue", TOK_CONTINUE}, {"enum", TOK_ENUM},
     {"switch", TOK_SWITCH}, {"case", TOK_CASE}, {"default", TOK_DEFAULT},
-    {"void", TOK_VOID},  {"true", TOK_TRUE}, {"false", TOK_FALSE},
+    {"void", TOK_VOID},  {"true", TOK_TRUE}, {"false", TOK_FALSE}, {"cast", TOK_CAST},
 
     {"i8", TOK_I8}, {"i16", TOK_I16}, {"i32", TOK_I32}, {"i64", TOK_I64},
     {"u8", TOK_U8}, {"u16", TOK_U16}, {"u32", TOK_U32}, {"u64", TOK_U64},
@@ -335,6 +335,7 @@ const char *token_type_name(TokenType type) {
         case TOK_SWITCH: return "SWITCH";
         case TOK_CASE: return "CASE";
         case TOK_DEFAULT: return "DEFAULT";
+        case TOK_CAST:   return "CAST";
         case TOK_PLUS: return "PLUS";
         case TOK_MINUS: return "MINUS";
         case TOK_STAR: return "STAR";

@@ -42,6 +42,8 @@ static Node *parse_return_statement(Parser *p);
 static Node *parse_while_statement(Parser *p);
 static Node *parse_for_statement(Parser *p);
 
+static Node *parse_cast_expression(Parser *p);
+
 // postfix helpers
 static Node *finish_call(Parser *p, Node *callee);
 static Node *finish_field(Parser *p, Node *object);
@@ -174,6 +176,7 @@ const char *token_debug_display_name(TokenType t)
         case TOK_CASE:            return "'case'";
         case TOK_DEFAULT:         return "'default'";
         case TOK_BOOL:            return "'bool'";
+        case TOK_CAST:            return "'cast'";
         case TOK_INT_KW:          return "'int'";
         case TOK_UINT_KW:         return "'uint'";
         case TOK_I8:              return "'i8'";
@@ -324,6 +327,11 @@ static Node *parse_primary(Parser *p)
     if (match(p, TOK_CHAR)) {
         Token t = p->previous;
         return ast_new_char(p->arena, t.start + 1, t.length - 2, t.line);
+    }
+
+    // before identifiers so cast is treated as a keyword expression, not a normal name.
+    if (check(p, TOK_CAST)) {
+        return parse_cast_expression(p);
     }
 
     if (match(p, TOK_IDENT)) {
@@ -1297,6 +1305,40 @@ static Node *parse_block(Parser *p) {
 
 // ===================== expression entry =====================
 static Node *parse_expression(Parser *p) { return parse_assignment(p); }
+
+// ===================== casts ================================
+static Node *parse_cast_expression(Parser *p)
+{
+    Token keyword = p->current;
+
+    consume(p, TOK_CAST);
+
+    if (!consume(p, TOK_LPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Type *target_type = parse_type(p);
+
+    if (!consume(p, TOK_COMMA)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *expression = parse_assignment(p);
+
+    if (!consume(p, TOK_RPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    return ast_new_cast(
+        p->arena,
+        target_type,
+        expression,
+        keyword.line
+    );
+}
 
 // ===================== postfix builders =====================
 

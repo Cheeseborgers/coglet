@@ -1,3 +1,8 @@
+Point :: struct {
+    x: i32;
+    y: i32;
+}
+
 CONST_PI::3.14159;
 CONST_PI = 4;
 
@@ -59,6 +64,12 @@ Color :: enum(u16) {
     Blue,
 }
 
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
 BadEnumMemberUse1: Color = Color;
 BadEnumMemberUse2: Color = Color.Purple;
 
@@ -73,12 +84,6 @@ Color.Red == OtherEnum.Red;
 Color.Red < Color.Blue;
 
 Color.Red + Color.Blue;
-
-Color :: enum(u16) {
-    Red,
-    Green,
-    Blue,
-}
 
 BAD_COLOR_CONST: Color : 1;
 
@@ -166,4 +171,27 @@ return_bad_switch_case_falls_through::(c: Color) -> i32 {
         default:
             x := 1;
     }
+}
+
+bad_cast_struct::() -> i32 {
+    return cast(i32, Point {
+        x = 1,
+        y = 2,
+    });
+}
+
+bad_cast_bool_to_int::() -> i32 {
+    return cast(i32, true);
+}
+
+bad_cast_int_to_bool::() -> bool {
+    return cast(bool, 1);
+}
+
+bad_cast_enum_to_float::() -> f64 {
+    return cast(f64, Color.Red);
+}
+
+bad_cast_float_to_enum::() -> Color {
+    return cast(Color, 1.5);
 }

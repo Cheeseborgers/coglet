@@ -128,6 +128,14 @@ static void print_node(Node *node)
             printf("%s", node->as.boolean.value ? "true" : "false");
             break;
 
+        case NODE_CAST:
+            printf("(cast ");
+            print_type(node->as.cast_expr.target_type);
+            printf(" ");
+            print_node(node->as.cast_expr.expression);
+            printf(")");
+            break;
+
         case NODE_UNARY:
             printf("(%s ", token_type_str(node->as.unary.op));
             print_node(node->as.unary.operand);
@@ -526,6 +534,27 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_BOOL:
             indent(depth);
             printf("%s\n", node->as.boolean.value ? "true" : "false");
+            break;
+
+        case NODE_CAST:
+            indent(depth);
+            printf("cast\n");
+
+            indent(depth + 1);
+            printf("target type:\n");
+
+            indent(depth + 2);
+            print_type(node->as.cast_expr.target_type);
+            printf("\n");
+
+            indent(depth + 1);
+            printf("expression:\n");
+
+            print_node_pretty(
+                node->as.cast_expr.expression,
+                depth + 2
+            );
+
             break;
 
         case NODE_UNARY:

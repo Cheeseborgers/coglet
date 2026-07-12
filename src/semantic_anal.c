@@ -194,6 +194,8 @@ static void check_switch_statement(SemanticContext *ctx, Node *node);
 static int declare_enum_shell(SemanticContext *ctx, Node *node);
 static void fill_enum_members(SemanticContext *ctx,Node *node);
 static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
+static Type *check_cast_expression(SemanticContext *ctx, Node *node);
+static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
 
 // ============================================================
 // expressions
@@ -226,6 +228,59 @@ static int contains_void_type(Type *type)
     return 0;
 }
 
+static int type_equal(Type *a, Type *b) {
+
+    if (a == NULL || b == NULL)
+        return 0;
+
+    if (a->kind != b->kind)
+        return 0;
+
+    if (a->kind == TYPE_POINTER)
+        return type_equal(a->element, b->element);
+
+    if (a->kind == TYPE_ARRAY)
+        return a->array_size == b->array_size &&
+               type_equal(a->element, b->element);
+
+    if (a->kind == TYPE_NAMED) {
+        return names_equal(
+            a->named_name.data,
+            a->named_name.length,
+            b->named_name.data,
+            b->named_name.length);
+    }
+
+    if (a->kind == TYPE_STRUCT)
+        return names_equal(
+            a->struct_name.data,
+            a->struct_name.length,
+            b->struct_name.data,
+            b->struct_name.length);
+
+    if (a->kind == TYPE_ENUM) {
+        return names_equal(
+            a->enum_name.data,
+            a->enum_name.length,
+            b->enum_name.data,
+            b->enum_name.length);
+    }
+
+    if (a->kind == TYPE_FUNCTION) {
+        if (a->parameter_count != b->parameter_count)
+            return 0;
+
+        for (int i = 0; i < a->parameter_count; i++) {
+            if (!type_equal(a->parameters[i], b->parameters[i]))
+                return 0;
+        }
+
+        return type_equal(a->return_type, b->return_type);
+    }
+
+    return 1;
+}
+
 static int invalid_value_type(Type *type)
 {
     return contains_void_type(type);
@@ -256,6 +311,12 @@ static int is_integer_kind(TypeKind k) {
 static int is_float_kind(TypeKind k) { return k == TYPE_F32 || k == TYPE_F64; }
 static int is_numeric_type(Type *t)  { return t && (is_integer_kind(t->kind) || is_float_kind(t->kind)); }
 
+static int is_bool_type(Type *t) { return t && t->kind == TYPE_BOOL; }
+
+static int is_int_literal_zero(Node *node) {
+    return node && node->type == NODE_NUMBER && !node->as.number.is_float && node->as.number.value == 0;
+}
+
 static int is_assignable_node(Node *node)
 {
     if (!node)
@@ -280,6 +341,73 @@ static int is_switchable_type(Type *type)
     return is_integer_kind(type->kind) ||
            type->kind == TYPE_BOOL ||
            type->kind == TYPE_ENUM;
+}
+
+static int is_enum_type(Type *type)
+{
+    return type && type->kind == TYPE_ENUM;
+}
+
+static int is_bool_cast_pair(Type *to, Type *from)
+{
+    return is_bool_type(to) && is_bool_type(from);
+}
+
+static int is_numeric_cast_pair(Type *to, Type *from)
+{
+    return is_numeric_type(to) && is_numeric_type(from);
+}
+
+static int is_enum_to_integer_cast(Type *to, Type *from)
+{
+    return is_integer_kind(to->kind) && is_enum_type(from);
+}
+
+static int is_integer_to_enum_cast(Type *to, Type *from)
+{
+    return is_enum_type(to) && is_integer_kind(from->kind);
+}
+
+static int is_allowed_explicit_cast(Type *to, Type *from)
+{
+    if (!to || !from)
+        return 0;
+
+    /*
+     * Casting a type to itself is always allowed.
+     */
+    if (type_equal(to, from))
+        return 1;
+
+    /*
+     * bool is deliberately not part of numeric casts.
+     * For now, only bool -> bool is allowed.
+     */
+    if (is_bool_cast_pair(to, from))
+        return 1;
+
+    /*
+     * Numeric casts:
+     *     i32 -> i64
+     *     i64 -> u8
+     *     f64 -> i32
+     *     i32 -> f64
+     */
+    if (is_numeric_cast_pair(to, from))
+        return 1;
+
+    /*
+     * Enum backing-value casts:
+     *     raw: u16 = cast(u16, Color.Green);
+     *     c: Color = cast(Color, 0);
+     */
+    if (is_enum_to_integer_cast(to, from))
+        return 1;
+
+    if (is_integer_to_enum_cast(to, from))
+        return 1;
+
+    return 0;
 }
 
 static int const_values_equal(ConstValue *a, ConstValue *b)
@@ -335,59 +463,6 @@ static int numeric_promotion_rank(TypeKind kind)
     }
 }
 
-static int type_equal(Type *a, Type *b) {
-
-    if (a == NULL || b == NULL)
-        return 0;
-
-    if (a->kind != b->kind)
-        return 0;
-
-    if (a->kind == TYPE_POINTER)
-        return type_equal(a->element, b->element);
-
-    if (a->kind == TYPE_ARRAY)
-        return a->array_size == b->array_size &&
-               type_equal(a->element, b->element);
-
-    if (a->kind == TYPE_NAMED) {
-        return names_equal(
-            a->named_name.data,
-            a->named_name.length,
-            b->named_name.data,
-            b->named_name.length);
-    }
-
-    if (a->kind == TYPE_STRUCT)
-        return names_equal(
-            a->struct_name.data,
-            a->struct_name.length,
-            b->struct_name.data,
-            b->struct_name.length);
-
-    if (a->kind == TYPE_ENUM) {
-        return names_equal(
-            a->enum_name.data,
-            a->enum_name.length,
-            b->enum_name.data,
-            b->enum_name.length);
-    }
-
-    if (a->kind == TYPE_FUNCTION) {
-        if (a->parameter_count != b->parameter_count)
-            return 0;
-
-        for (int i = 0; i < a->parameter_count; i++) {
-            if (!type_equal(a->parameters[i], b->parameters[i]))
-                return 0;
-    }
-
-    return type_equal(a->return_type, b->return_type);
-}
-
-    return 1;
-}
-
 // Determines the result type of a numeric binary operation.
 //
 //   - If exactly one operand is untyped, the result is the other
@@ -418,12 +493,6 @@ static Type *common_numeric_type(Type *a, Type *b) {
         return NULL;
 
     return a;
-}
-
-static int is_bool_type(Type *t) { return t && t->kind == TYPE_BOOL; }
-
-static int is_int_literal_zero(Node *node) {
-    return node && node->type == NODE_NUMBER && !node->as.number.is_float && node->as.number.value == 0;
 }
 
 /**
@@ -524,15 +593,14 @@ static Type *const_value_default_type(SemanticContext *ctx,const ConstValue *v) 
     return t;
 }
 
+
+
 // Recursively evaluates an expression that must be knowable at compile
 // time: literals, other constants, and unary/binary ops over those.
 // Anything reaching outside that (function calls, variables, struct
 // inits, etc.) is rejected with a diagnostic.
-static int eval_const_expr(
-    SemanticContext *ctx,
-    Node *node,
-    ConstValue *out
-) {
+static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
+
     if (!node)
         return 0;
 
@@ -570,6 +638,8 @@ static int eval_const_expr(
             return 1;
         }
 
+        case NODE_CAST:
+            return eval_const_cast(ctx, node, out);
         case NODE_IDENT:
         {
             Symbol *sym =
@@ -961,6 +1031,146 @@ static int eval_const_expr(
 
             return 0;
     }
+}
+
+static int eval_const_cast(
+    SemanticContext *ctx,
+    Node *node,
+    ConstValue *out
+) {
+    ConstValue value;
+
+    if (!eval_const_expr(
+            ctx,
+            node->as.cast_expr.expression,
+            &value)) {
+        return 0;
+    }
+
+    Type *target_type =
+        resolve_type(
+            ctx,
+            node->as.cast_expr.target_type,
+            node
+        );
+
+    if (!target_type)
+        return 0;
+
+    Type *source_type =
+        const_value_default_type(
+            ctx,
+            &value
+        );
+
+    if (!is_allowed_explicit_cast(
+            target_type,
+            source_type)) {
+
+        semantic_error(
+            ctx,
+            node,
+            "invalid explicit cast"
+        );
+
+        return 0;
+    }
+
+    /*
+     * Store the constant value using the destination type.
+     *
+     * This is intentionally simple. Later you can add exact range checks
+     * for narrowing integer casts.
+     */
+    memset(out, 0, sizeof(*out));
+    out->type = target_type;
+
+    if (target_type->kind == TYPE_ENUM) {
+        /*
+         * integer -> enum
+         */
+        if (value.kind != CONST_VALUE_INT) {
+            semantic_error(
+                ctx,
+                node,
+                "enum cast requires integer constant"
+            );
+
+            return 0;
+        }
+
+        out->kind = CONST_VALUE_INT;
+        out->as.i = value.as.i;
+        return 1;
+    }
+
+    if (is_integer_kind(target_type->kind)) {
+        out->kind = CONST_VALUE_INT;
+
+        if (value.kind == CONST_VALUE_INT) {
+            out->as.i = value.as.i;
+            return 1;
+        }
+
+        if (value.kind == CONST_VALUE_FLOAT) {
+            out->as.i = (long long)value.as.f;
+            return 1;
+        }
+
+        semantic_error(
+            ctx,
+            node,
+            "integer cast requires numeric constant"
+        );
+
+        return 0;
+    }
+
+    if (is_float_kind(target_type->kind)) {
+        out->kind = CONST_VALUE_FLOAT;
+
+        if (value.kind == CONST_VALUE_INT) {
+            out->as.f = (double)value.as.i;
+            return 1;
+        }
+
+        if (value.kind == CONST_VALUE_FLOAT) {
+            out->as.f = value.as.f;
+            return 1;
+        }
+
+        semantic_error(
+            ctx,
+            node,
+            "float cast requires numeric constant"
+        );
+
+        return 0;
+    }
+
+    if (target_type->kind == TYPE_BOOL) {
+        if (value.kind != CONST_VALUE_BOOL) {
+            semantic_error(
+                ctx,
+                node,
+                "bool cast requires boolean constant"
+            );
+
+            return 0;
+        }
+
+        out->kind = CONST_VALUE_BOOL;
+        out->as.b = value.as.b;
+        return 1;
+    }
+
+    semantic_error(
+        ctx,
+        node,
+        "invalid constant cast"
+    );
+
+    return 0;
 }
 
 static Type *check_expression(SemanticContext *ctx, Node *node) {
@@ -1396,6 +1606,8 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return callee->return_type;
         }
 
+        case NODE_CAST:
+            return check_cast_expression(ctx, node);
 
         case NODE_FIELD:
         {
@@ -2691,6 +2903,51 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
             next_value = value + 1;
         }
     }
+}
+
+static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
+    Type *target_type =
+        resolve_type(
+            ctx,
+            node->as.cast_expr.target_type,
+            node
+        );
+
+    if (!target_type) {
+        semantic_error(
+            ctx,
+            node,
+            "could not resolve cast target type"
+        );
+
+        return NULL;
+    }
+
+    if (invalid_value_type(target_type)) {
+        semantic_error(
+            ctx,
+            node,
+            "cannot cast to void"
+        );
+
+        return NULL;
+    }
+
+    Type *source_type =
+        check_expression(ctx, node->as.cast_expr.expression);
+
+    if (!source_type)
+        return NULL;
+
+    if (!is_allowed_explicit_cast(target_type, source_type)) {
+
+        semantic_error(ctx, node,
+            "invalid explicit cast");
+
+        return NULL;
+    }
+
+    return target_type;
 }
 
 static int block_definitely_returns(Node *node)

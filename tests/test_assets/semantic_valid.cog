@@ -145,3 +145,33 @@ return_good_switch::(c: Color) -> i32 {
             return 0;
     }
 }
+
+cast_source: i32 = 10;
+
+cast_i64_test: i64 = cast(i64, cast_source);
+
+cast_color_test: Color = cast(Color, 0);
+
+cast_enum_raw_test: u16 = cast(u16, Color.Green);
+
+cast_i32_to_i64::() -> i64 {
+    small: i32 = 10;
+    return cast(i64, small);
+}
+
+cast_float_to_int::() -> i32 {
+    return cast(i32, 3.14);
+}
+
+cast_enum_to_int::() -> u16 {
+    return cast(u16, Color.Green);
+}
+
+cast_int_to_enum::() -> Color {
+    return cast(Color, 0);
+}
+
+CAST_CONST_INT :: cast(i32, 10);
+CAST_CONST_COLOR :: cast(Color, 1);
+
+cast_const_use: Color = CAST_CONST_COLOR;

@@ -12,6 +12,7 @@ typedef enum {
     NODE_STRING,
     NODE_CHAR,
     NODE_BOOL,
+    NODE_CAST,
 
     NODE_UNARY,        // <op> operand, e.g. -x
     NODE_BINARY,       // left <op> right
@@ -81,6 +82,11 @@ struct Node {
         struct {
             int value;
         } boolean;
+
+        struct {
+            Type *target_type;
+            Node *expression;
+        } cast_expr;
 
         struct {
             TokenType op;   // currently just TOK_MINUS
@@ -237,6 +243,7 @@ Node *ast_new_ident(Arena *arena, const char *start, int length, int line);
 Node *ast_new_string(Arena *arena, const char *start, int length, int line);
 Node *ast_new_char(Arena *arena, const char *start, int length, int line);
 Node *ast_new_bool(Arena *arena, int value, int line);
+Node *ast_new_cast(Arena *arena, Type *target_type, Node *expression, int line);
 Node *ast_new_unary(Arena *arena, TokenType op, Node *operand, int line);
 Node *ast_new_inc_dec(Arena *arena, TokenType op, Node *target, int is_prefix, int line);
 Node *ast_new_binary(Arena *arena, TokenType op, Node *left, Node *right, int line);

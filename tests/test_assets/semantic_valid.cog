@@ -1,0 +1,47 @@
+x: i32 = 1;
+
+{
+    x: i32 = 2;
+    x = 3;
+}
+
+x = 4;
+
+scope_test::() {
+    local := 5;
+
+    {
+        inner := 10;
+        local = inner;
+    }
+
+    local = 20;
+}
+
+Point::struct {
+    x: i32;
+    y: i32;
+}
+
+p := Point {
+    x = 5,
+    y = 10,
+};
+
+{
+    lhs: i64 = 10;
+
+    lhs == 10;
+    lhs != 20;
+    lhs < 30;
+    lhs >= 5;
+}
+
+{
+    lhs: i64 = 10;
+    lhs % 3;
+}
+
+foo::() -> void {
+    return;
+}

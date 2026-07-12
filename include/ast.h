@@ -186,6 +186,7 @@ struct Node {
             NodeList params;      // list of NODE_FUNC_PARAM_DECL
             Type *return_type;
             Node *body;           // NODE_BLOCK
+            Type *resolved_type;  // semantic TYPE_FUNCTION, NULL if declaration failed
         } func_decl;
 
         struct {

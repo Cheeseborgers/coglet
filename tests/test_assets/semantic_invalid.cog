@@ -1,0 +1,41 @@
+CONST_PI::3.14159;
+CONST_PI = 4;
+
+BAD_CALL::some_func();
+BAD_DIV::1 / 0;
+
+bad_float_assignment: i64 = 3.14;
+
+10 % 3.0;
+
+bad_cmp_i32: i32 = 1;
+bad_cmp_i64: i64 = 2;
+
+bad_cmp_i32 == bad_cmp_i64;
+bad_cmp_i32 < bad_cmp_i64;
+
+true < false;
+"hello" > "world";
+
+bad_void_var: void;
+bad_void_ptr: void*;
+bad_void_array: void[4];
+bad_void_const: void: 10;
+
+bad_void_param::(value: void) {
+}
+
+bad_void_ptr_param::(value: void*) {
+}
+
+bad_void_return::() -> void* {
+}
+
+BadVoidStruct::struct {
+    field: void;
+}
+
+BadVoidPointerStruct::struct {
+    field: void*;
+}
+

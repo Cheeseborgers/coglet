@@ -200,10 +200,11 @@ Node *ast_new_continue(Arena *arena, int line) {
 
 Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, int line) {
     Node *node = new_node(arena, NODE_FUNC_DECL, line);
-    node->as.func_decl.name.data   = name;
-    node->as.func_decl.name.length = name_length;
-    node->as.func_decl.return_type = return_type;
-    node->as.func_decl.body        = NULL;
+    node->as.func_decl.name.data     = name;
+    node->as.func_decl.name.length   = name_length;
+    node->as.func_decl.return_type   = return_type;
+    node->as.func_decl.body          = NULL;
+    node->as.func_decl.resolved_type = NULL;
 
     node->as.func_decl.params.items    = NULL;
     node->as.func_decl.params.count    = 0;
@@ -404,9 +405,10 @@ Node *ast_clone(Arena *arena, const Node *node)
             break;
 
         case NODE_FUNC_DECL:
-            clone->as.func_decl.name.data = node->as.func_decl.name.data;
-            clone->as.func_decl.name.length = node->as.func_decl.name.length;
-            clone->as.func_decl.return_type = node->as.func_decl.return_type;
+            clone->as.func_decl.name.data     = node->as.func_decl.name.data;
+            clone->as.func_decl.name.length   = node->as.func_decl.name.length;
+            clone->as.func_decl.return_type   = node->as.func_decl.return_type;
+            clone->as.func_decl.resolved_type = NULL;
 
             clone->as.func_decl.params.items = NULL;
             clone->as.func_decl.params.count = 0;

@@ -203,3 +203,42 @@ aaa == bbb;
 aaa < bbb;
 true < false;
 "hello" > "world";
+
+// Plain void variable — semantic error
+x1: void;
+
+// Pointer to void — semantic error
+x2: void*;
+
+// Array of void — semantic error
+x3: void[4];
+
+// Constant explicitly typed void — semantic error
+x4: void: 10;
+
+// Void parameter — semantic error
+foo1::(x: void) {
+}
+
+// Pointer-to-void parameter — semantic error
+foo2::(x: void*) {
+}
+
+// Plain void return — valid
+foo3::() -> void {
+    return;
+}
+
+// Pointer-to-void return — semantic error
+foo4::() -> void* {
+}
+
+// Void struct field — semantic error
+BadStruct::struct {
+    field: void;
+}
+
+// Pointer-to-void struct field — semantic error
+BadStruct2::struct {
+    field: void*;
+}

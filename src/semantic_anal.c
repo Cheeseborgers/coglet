@@ -3,6 +3,15 @@
 #include <stdio.h>
 #include <string.h>
 
+static Type *new_type(SemanticContext *ctx, TypeKind kind)
+{
+    Type *type = arena_alloc(ctx->arena, sizeof(Type));
+    memset(type, 0, sizeof(*type));
+    type->kind = kind;
+    type->array_size = -1;
+    return type;
+}
+
 static void semantic_error(SemanticContext *ctx, const Node *node, const char *msg) {
 
     printf("semantic error at line %d: %s\n",node->line,msg);
@@ -113,16 +122,31 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
     if (type->kind == TYPE_STRUCT) {
         Type *resolved = lookup_type(ctx, type->struct_name.data, type->struct_name.length);
         if (!resolved) {
-            semantic_error(ctx, error_node, "unknown struct type");
-            return type;   // leave unresolved rather than NULL, avoids extra cascading errors
+            semantic_error_name(
+                ctx,
+                error_node,
+                "unknown struct type",
+                type->struct_name.data,
+                type->struct_name.length
+            );
+            return NULL;
         }
         return resolved;
     }
 
-    if (type->kind == TYPE_POINTER || type->kind == TYPE_ARRAY) {
-        Type *resolved_element = resolve_type(ctx, type->element, error_node);
+    if (type->kind == TYPE_POINTER ||
+        type->kind == TYPE_ARRAY) {
+
+        Type *resolved_element =
+            resolve_type(ctx, type->element, error_node);
+
+        if (!resolved_element)
+            return NULL;
+
         if (resolved_element != type->element) {
-            Type *copy = arena_alloc(ctx->arena, sizeof(Type));
+            Type *copy =
+                arena_alloc(ctx->arena, sizeof(Type));
+
             *copy = *type;
             copy->element = resolved_element;
             return copy;
@@ -146,6 +170,50 @@ static void check_const_decl(SemanticContext *ctx, Node *node);
 // ============================================================
 // expressions
 // ============================================================
+static int contains_void_type(Type *type)
+{
+    if (!type)
+        return 0;
+
+    if (type->kind == TYPE_VOID)
+        return 1;
+
+    if (type->kind == TYPE_POINTER ||
+        type->kind == TYPE_ARRAY) {
+        return contains_void_type(type->element);
+        }
+
+    if (type->kind == TYPE_FUNCTION) {
+        /*
+         * Function return type may be void, but parameter types may not.
+         */
+        for (int i = 0; i < type->parameter_count; i++) {
+            if (contains_void_type(type->parameters[i]))
+                return 1;
+        }
+
+        return 0;
+    }
+
+    return 0;
+}
+
+static int invalid_value_type(Type *type)
+{
+    return contains_void_type(type);
+}
+
+static int invalid_return_type(Type *type)
+{
+    if (!type)
+        return 0;
+
+    if (type->kind == TYPE_VOID)
+        return 0;
+
+    return contains_void_type(type);
+}
+
 static int is_integer_kind(TypeKind k) {
 
     switch (k) {
@@ -170,34 +238,6 @@ static int is_assignable_node(Node *node)
         case NODE_FIELD:
         case NODE_INDEX:
             return 1;
-
-        default:
-            return 0;
-    }
-}
-
-// TODO: integer -> float promotion rules
-static int type_width(TypeKind kind)
-{
-    switch(kind)
-    {
-        case TYPE_I8:
-        case TYPE_U8:
-            return 8;
-
-        case TYPE_I16:
-        case TYPE_U16:
-            return 16;
-
-        case TYPE_I32:
-        case TYPE_U32:
-        case TYPE_F32:
-            return 32;
-
-        case TYPE_I64:
-        case TYPE_U64:
-        case TYPE_F64:
-            return 64;
 
         default:
             return 0;
@@ -243,13 +283,29 @@ static int type_equal(Type *a, Type *b) {
     if (a->kind != b->kind)
         return 0;
 
-    if (a->kind == TYPE_POINTER || a->kind == TYPE_ARRAY)
+    if (a->kind == TYPE_POINTER)
         return type_equal(a->element, b->element);
+
+    if (a->kind == TYPE_ARRAY)
+        return a->array_size == b->array_size &&
+               type_equal(a->element, b->element);
 
     if (a->kind == TYPE_STRUCT)
         return names_equal(
             a->struct_name.data, a->struct_name.length,
             b->struct_name.data, b->struct_name.length);
+
+    if (a->kind == TYPE_FUNCTION) {
+        if (a->parameter_count != b->parameter_count)
+            return 0;
+
+        for (int i = 0; i < a->parameter_count; i++) {
+            if (!type_equal(a->parameters[i], b->parameters[i]))
+                return 0;
+    }
+
+    return type_equal(a->return_type, b->return_type);
+}
 
     return 1;
 }
@@ -355,12 +411,8 @@ static int const_value_to_double(const ConstValue *v, double *out) {
 
 static Type *const_value_default_type(SemanticContext *ctx, const ConstValue *v) {
 
-    Type *t = arena_alloc(ctx->arena, sizeof(Type));
-    t->is_untyped = 1;   // a constant's own value is still untyped until it lands somewhere concrete
-    t->element = NULL;
-    t->array_size = -1;
-    t->struct_name.data = NULL;
-    t->struct_name.length = 0;
+    Type *t = new_type(ctx, TYPE_I32);
+    t->is_untyped = 1;
 
     switch (v->kind) {
         case CONST_VALUE_INT:   t->kind = TYPE_I32;  break;  // matches NODE_NUMBER's untyped-int default
@@ -736,18 +788,13 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                      *     struct_a == struct_b
                      */
                     if (!type_equal(left, right)) {
-                        semantic_error(
-                            ctx,
-                            node,
-                            "comparison type mismatch"
-                        );
 
+                        semantic_error(ctx, node, "comparison type mismatch");
                         return NULL;
                     }
 
                     return ctx->type_bool;
                 }
-
 
                 // ordered comparisons require numbers
                 case TOK_LESS:
@@ -844,7 +891,6 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return target_type;
         }
 
-
         case NODE_ASSIGN:
         {
             Node *target_node = node->as.assign.target;
@@ -877,11 +923,8 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 }
             }
 
-            Type *target_type =
-                check_expression(ctx, target_node);
-
-            Type *value_type =
-                check_expression(ctx, node->as.assign.value);
+            Type *target_type = check_expression(ctx, target_node);
+            Type *value_type  = check_expression(ctx, node->as.assign.value);
 
             if (!target_type || !value_type)
                 return NULL;
@@ -889,16 +932,11 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             if (!initializer_compatible(
                     target_type,
                     value_type,
-                    node->as.assign.value)) {
-
-                semantic_error(
-                    ctx,
-                    node,
-                    "assignment type mismatch"
-                );
-
+                    node->as.assign.value))
+            {
+                semantic_error(ctx, node, "assignment type mismatch");
                 return NULL;
-                    }
+            }
 
             return target_type;
         }
@@ -916,30 +954,22 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             if (argc && !arg_types)
                 return NULL;
 
-
             for (int i = 0; i < argc; i++) {
-                arg_types[i] =
-                    check_expression(ctx,node->as.call.arguments.items[i]);
+                arg_types[i] = check_expression(ctx,node->as.call.arguments.items[i]);
             }
-
 
             if (!callee)
                 return NULL;
 
-
             if (callee->kind != TYPE_FUNCTION) {
-                semantic_error(ctx,node,
-                    "called object is not a function");
+                semantic_error(ctx, node, "called object is not a function");
                 return NULL;
             }
-
 
             if (argc != callee->parameter_count) {
-                semantic_error(ctx,node,
-                    "wrong number of arguments");
+                semantic_error(ctx, node, "wrong number of arguments");
                 return NULL;
             }
-
 
             for (int i = 0; i < argc; i++) {
                 Node *arg = node->as.call.arguments.items[i];
@@ -949,8 +979,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         callee->parameters[i],
                         arg_types[i],
                         arg)) {
-                    semantic_error(ctx, arg,
-                        "argument type mismatch");
+                    semantic_error(ctx, arg, "argument type mismatch");
                         }
             }
 
@@ -965,111 +994,70 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             if(!object)
                 return NULL;
 
-
             if(object->kind != TYPE_STRUCT) {
-                semantic_error(ctx,node,
-                    "field access requires a struct");
+                semantic_error(ctx, node, "field access requires a struct");
                 return NULL;
             }
-
 
             Type *field =
                 find_struct_field(object,
                     node->as.field.name.data,
                     node->as.field.name.length);
 
-
             if(!field) {
-                semantic_error(ctx,node,
-                    "unknown struct field");
+                semantic_error(ctx, node, "unknown struct field");
                 return NULL;
             }
-
 
             return field;
         }
 
-
         case NODE_INDEX:
         {
-            Type *object =
-                check_expression(ctx,node->as.index.object);
-
-            Type *index =
-                check_expression(ctx,node->as.index.index);
-
+            Type *object = check_expression(ctx,node->as.index.object);
+            Type *index  = check_expression(ctx,node->as.index.index);
 
             if(!object || !index)
                 return NULL;
 
-
             if(!is_integer_kind(index->kind)) {
-                semantic_error(ctx,node,
-                    "array index must be integer");
+                semantic_error(ctx, node, "array index must be integer");
                 return NULL;
             }
-
 
             if(object->kind != TYPE_ARRAY &&
                object->kind != TYPE_POINTER) {
 
-                semantic_error(ctx,node,
-                    "object is not indexable");
+                semantic_error(ctx, node, "object is not indexable");
                 return NULL;
             }
-
 
             return object->element;
         }
 
-
         case NODE_NUMBER:
         {
-            Type *t = arena_alloc(ctx->arena,sizeof(Type));
+            Type *t = new_type(
+                ctx, node->as.number.is_float ? TYPE_F64 : TYPE_I32);
 
-            t->kind =
-                node->as.number.is_float ?
-                TYPE_F64 :
-                TYPE_I32;
-
-            t->is_untyped = 1;   // a bare literal, adapts to context
-            t->element = NULL;
-            t->array_size = -1;
+            t->is_untyped = 1;
 
             return t;
         }
-
 
         case NODE_STRING:
         {
-            Type *elem = arena_alloc(ctx->arena,sizeof(Type));
+            Type *elem = new_type(ctx, TYPE_U8);
+            Type *t = new_type(ctx, TYPE_POINTER);
 
-            elem->kind = TYPE_U8;
-            elem->is_untyped = 0;
-            elem->element = NULL;
-            elem->array_size = -1;
-
-
-            Type *t = arena_alloc(ctx->arena,sizeof(Type));
-
-            t->kind = TYPE_POINTER;
-            t->is_untyped = 0;
             t->element = elem;
-            t->array_size = -1;
 
             return t;
         }
 
-
         case NODE_CHAR:
         {
-            Type *t = arena_alloc(ctx->arena,sizeof(Type));
-
-            t->kind = TYPE_U8;
-            t->is_untyped = 0;
-            t->element = NULL;
-            t->array_size = -1;
-
+            Type *t = new_type(ctx, TYPE_U8);
             return t;
         }
 
@@ -1255,17 +1243,35 @@ static void check_block(SemanticContext *ctx, Node *node) {
     scope_pop(ctx);
 }
 
-static void check_const_decl(SemanticContext *ctx, Node *node) {
+static void check_const_decl(SemanticContext *ctx, Node *node)
+{
+    if (scope_find_local(
+            ctx->current_scope,
+            node->as.const_decl.name.data,
+            node->as.const_decl.name.length)) {
 
-    if (scope_find_local(ctx->current_scope, node->as.const_decl.name.data, node->as.const_decl.name.length)) {
         semantic_error_name(
-            ctx, node, "duplicate declaration", node->as.const_decl.name.data, node->as.const_decl.name.length);
+            ctx,
+            node,
+            "duplicate declaration",
+            node->as.const_decl.name.data,
+            node->as.const_decl.name.length
+        );
+
         return;
     }
 
     ConstValue value;
-    if (!eval_const_expr(ctx, node->as.const_decl.value, &value)) {
-        return;   // eval_const_expr already reported the specific error
+
+    if (!eval_const_expr(
+            ctx,
+            node->as.const_decl.value,
+            &value)) {
+
+        /*
+         * eval_const_expr already reported the precise failure.
+         */
+        return;
     }
 
     Type *type = node->as.const_decl.const_type;
@@ -1273,30 +1279,78 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
     if (type) {
         type = resolve_type(ctx, type, node);
 
-        // an untyped int literal is allowed to initialize a float-typed
-        // constant -- promote the stored value so later constant folding
-        // (e.g. another constant referencing this one) sees a float.
-        if (is_float_kind(type->kind) && value.kind == CONST_VALUE_INT) {
+        if (!type) {
+            semantic_error(
+                ctx,
+                node,
+                "could not resolve constant type"
+            );
+
+            return;
+        }
+
+        if (invalid_value_type(type)) {
+            semantic_error(
+                ctx,
+                node,
+                "constant cannot have type void"
+            );
+
+            return;
+        }
+
+        /*
+         * Convert a stored integer constant to a floating-point value
+         * when the explicitly declared destination type is floating.
+         */
+        if (is_float_kind(type->kind) &&
+            value.kind == CONST_VALUE_INT) {
+
+            long long integer_value = value.as.i;
+
             value.kind = CONST_VALUE_FLOAT;
-            value.as.f = (double)value.as.i;
+            value.as.f = (double)integer_value;
         }
 
         Type *value_type = const_value_default_type(ctx, &value);
 
-        if (!initializer_compatible(type, value_type, node->as.const_decl.value)) {
-            semantic_error(ctx, node, "constant value does not match declared type");
+        if (!initializer_compatible(
+                type,
+                value_type,
+                node->as.const_decl.value)) {
+
+            semantic_error(
+                ctx,
+                node,
+                "constant value does not match declared type"
+            );
+
+            return;
         }
     } else {
         type = const_value_default_type(ctx, &value);
+
+        if (!type) {
+            semantic_error(
+                ctx,
+                node,
+                "could not infer constant type"
+            );
+
+            return;
+        }
     }
 
-    Symbol *sym = arena_alloc(ctx->arena, sizeof(Symbol));
-    sym->name.data   = node->as.const_decl.name.data;
-    sym->name.length = node->as.const_decl.name.length;
-    sym->kind        = SYMBOL_CONSTANT;
-    sym->type        = type;
+    Symbol *sym =
+        arena_alloc(ctx->arena, sizeof(Symbol));
+
+    memset(sym, 0, sizeof(*sym));
+
+    sym->name = node->as.const_decl.name;
+    sym->kind = SYMBOL_CONSTANT;
+    sym->type = type;
     sym->const_value = value;
-    sym->next        = ctx->current_scope->symbols;
+    sym->next = ctx->current_scope->symbols;
 
     ctx->current_scope->symbols = sym;
 }
@@ -1310,8 +1364,16 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
     }
 
     Type *init_type = NULL;
-    if (node->as.var_decl.initializer)
-        init_type = check_expression(ctx, node->as.var_decl.initializer);
+
+    if (node->as.var_decl.initializer) {
+        init_type = check_expression(
+            ctx,
+            node->as.var_decl.initializer
+        );
+
+        if (!init_type)
+            return;
+    }
 
     Type *type = node->as.var_decl.var_type;
 
@@ -1322,46 +1384,129 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
         type = resolve_type(ctx, type, node);
     }
 
+    if (!type) {
+        semantic_error(
+            ctx,
+            node,
+            "could not infer variable type"
+        );
+
+        return;
+    }
+
+    if (invalid_value_type(type)) {
+        semantic_error(
+            ctx,
+            node,
+            "variable cannot have type void"
+        );
+
+        return;
+    }
+
     // Step 2: if there's both a declared type and an initializer, check
     // they're compatible -- runs regardless of which branch above fired,
     // including the struct case, using whatever `type` ended up as.
     if (node->as.var_decl.var_type && init_type &&
         !initializer_compatible(type, init_type, node->as.var_decl.initializer)) {
-        semantic_error(ctx, node, "initializer type does not match declared type");
+
+        semantic_error(
+            ctx,
+            node,
+            "initializer type does not match declared type"
+        );
+
+        return;
     }
 
     scope_define(ctx, node->as.var_decl.name, SYMBOL_VARIABLE, type);
 }
 
-static void check_param_decl(SemanticContext *ctx, Node *node) {
+static void check_param_decl(SemanticContext *ctx, Node *node)
+{
+    if (scope_find_local(
+        ctx->current_scope, node->as.param_decl.name.data, node->as.param_decl.name.length)) {
 
-    if (scope_find_local(ctx->current_scope, node->as.param_decl.name.data, node->as.param_decl.name.length)) {
         semantic_error_name(
-            ctx, node, "duplicate param declaration", node->as.param_decl.name.data, node->as.param_decl.name.length);
-        return;
-    }
+            ctx,
+            node,
+            "duplicate param declaration",
+            node->as.param_decl.name.data,
+            node->as.param_decl.name.length
+        );
 
-    Type *init_type = NULL;
-    if (node->as.param_decl.default_value)
-        init_type = check_expression(ctx, node->as.param_decl.default_value);
+        return;
+            }
+
+    Type *default_type = NULL;
+
+    if (node->as.param_decl.default_value) {
+        default_type = check_expression(
+            ctx,
+            node->as.param_decl.default_value
+        );
+
+        /*
+         * The default expression already produced an error.
+         * Do not define a parameter based on a failed expression.
+         */
+        if (!default_type)
+            return;
+    }
 
     Type *type = node->as.param_decl.var_type;
 
-    // Step 1: resolve the declared type, independent of any default_value.
     if (!type) {
-        type = init_type;   // ':=' inference
+        /*
+         * Only keep this branch if inferred parameter declarations
+         * are valid syntax in your language.
+         */
+        type = default_type;
     } else {
         type = resolve_type(ctx, type, node);
     }
 
-    // Step 2: if there's both a declared type and a default_value, check
-    // they're compatible -- runs regardless of which branch above fired,
-    if (node->as.param_decl.var_type && init_type &&
-        !initializer_compatible(type, init_type, node->as.param_decl.default_value)) {
-        semantic_error(ctx, node, "default value type does not match declared type");
-        }
+    if (!type) {
+        semantic_error(
+            ctx,
+            node,
+            "could not determine parameter type"
+        );
 
-    scope_define(ctx, node->as.param_decl.name, SYMBOL_VARIABLE, type);
+        return;
+    }
+
+    if (invalid_value_type(type)) {
+        semantic_error(
+            ctx,
+            node,
+            "parameter cannot have type void"
+        );
+
+        return;
+    }
+
+    if (node->as.param_decl.default_value &&
+        !initializer_compatible(
+            type,
+            default_type,
+            node->as.param_decl.default_value)) {
+
+        semantic_error(
+            ctx,
+            node,
+            "default value type does not match declared type"
+        );
+
+        return;
+            }
+
+    scope_define(
+        ctx,
+        node->as.param_decl.name,
+        SYMBOL_VARIABLE,
+        type
+    );
 }
 
 static void check_program(SemanticContext *ctx, Node *node) {
@@ -1415,6 +1560,18 @@ static void check_if(SemanticContext *ctx, Node *node) {
     if (!is_bool_type(cond))
         semantic_error(ctx, node->as.if_stmt.condition, "if condition must be a boolean expression");
 
+    /*
+   * A NULL type means check_expression already reported an error.
+   * Only report a boolean-type error when a valid type was returned.
+   */
+    if (cond && !is_bool_type(cond)) {
+        semantic_error(
+            ctx,
+            node->as.if_stmt.condition,
+            "if condition must be a boolean expression"
+        );
+    }
+
     check_node(ctx, node->as.if_stmt.then_branch);
 
     if(node->as.if_stmt.else_branch)
@@ -1422,66 +1579,143 @@ static void check_if(SemanticContext *ctx, Node *node) {
 }
 
 // Check functions -------------------------------------------
-static Type *make_function_type(SemanticContext *ctx, Node *func) {
-
-    Type *type = arena_alloc(ctx->arena, sizeof(Type));
-    type->kind = TYPE_FUNCTION;
+static Type *make_function_type(SemanticContext *ctx, Node *func)
+{
+    Type *type = new_type(ctx, TYPE_FUNCTION);
 
     type->parameter_count = func->as.func_decl.params.count;
-    type->parameters      = arena_alloc(ctx->arena, sizeof(Type *) * type->parameter_count);
 
-    for (int i = 0; i < type->parameter_count; i++) {
-        Node *param = func->as.func_decl.params.items[i];
-        type->parameters[i] = resolve_type(ctx, param->as.param_decl.var_type, param);
+    if (type->parameter_count > 0) {
+        type->parameters = arena_alloc(
+            ctx->arena,
+            sizeof(Type *) * type->parameter_count
+        );
     }
 
-    type->return_type = resolve_type(ctx, func->as.func_decl.return_type, func);
+    for (int i = 0; i < type->parameter_count; i++) {
+
+        Node *param = func->as.func_decl.params.items[i];
+
+        Type *param_type =
+            resolve_type(
+                ctx,
+                param->as.param_decl.var_type,
+                param
+            );
+
+        if (!param_type)
+            return NULL;
+
+        if (contains_void_type(param_type)) {
+            semantic_error(
+                ctx,
+                param,
+                "parameter cannot have type void"
+            );
+
+            return NULL;
+        }
+
+        type->parameters[i] = param_type;
+    }
+
+    type->return_type =
+        resolve_type(
+            ctx,
+            func->as.func_decl.return_type,
+            func
+        );
+
+    if (!type->return_type)
+        return NULL;
+
+
+    if (invalid_return_type(type->return_type)) {
+        semantic_error(
+            ctx,
+            func,
+            "function return type cannot contain void"
+        );
+        return NULL;
+    }
 
     return type;
 }
 
-static int declare_function_signature(SemanticContext *ctx, Node *node) {
+static int declare_function_signature(SemanticContext *ctx, Node *node)
+{
+    node->as.func_decl.resolved_type = NULL;
 
-    if (scope_find_local(ctx->current_scope, node->as.func_decl.name.data, node->as.func_decl.name.length)) {
-        semantic_error_name(ctx, node, "duplicate declaration",
-            node->as.func_decl.name.data, node->as.func_decl.name.length);
+    if (scope_find_local(
+            ctx->current_scope,
+            node->as.func_decl.name.data,
+            node->as.func_decl.name.length)) {
+
+        semantic_error_name(
+            ctx,
+            node,
+            "duplicate declaration",
+            node->as.func_decl.name.data,
+            node->as.func_decl.name.length
+        );
+
         return 0;
-    }
+            }
 
     Type *func_type = make_function_type(ctx, node);
-    scope_define(ctx, node->as.func_decl.name, SYMBOL_FUNCTION, func_type);
+
+    if (!func_type)
+        return 0;
+
+    scope_define(
+        ctx,
+        node->as.func_decl.name,
+        SYMBOL_FUNCTION,
+        func_type
+    );
+
+    node->as.func_decl.resolved_type = func_type;
+
     return 1;
 }
 
 static void check_function_body(SemanticContext *ctx, Node *node) {
 
+    Type *func_type = node->as.func_decl.resolved_type;
+    if (!func_type || func_type->kind != TYPE_FUNCTION)
+        return;
+
     scope_push(ctx);
 
     for (int i = 0; i < node->as.func_decl.params.count; i++) {
-        Node *param = node->as.func_decl.params.items[i];
-        check_param_decl(ctx, param);
+        check_param_decl(ctx, node->as.func_decl.params.items[i]);
     }
 
-    int saved_loop_depth = ctx->loop_depth;
+    int saved_loop_depth    = ctx->loop_depth;
+
     Type *saved_return_type = ctx->current_return_type;
 
     ctx->loop_depth = 0;
-    ctx->current_return_type =
-        resolve_type(ctx, node->as.func_decl.return_type, node);
+    ctx->current_return_type = func_type->return_type;
 
     ctx->function_depth++;
 
-    check_node(ctx, node->as.func_decl.body);
+    check_node(ctx,node->as.func_decl.body);
 
     ctx->function_depth--;
+
     ctx->current_return_type = saved_return_type;
+
     ctx->loop_depth = saved_loop_depth;
 
     scope_pop(ctx);
 }
 
-static void check_function(SemanticContext *ctx, Node *node) {
-    declare_function_signature(ctx, node);
+static void check_function(SemanticContext *ctx, Node *node)
+{
+    if (!declare_function_signature(ctx, node))
+        return;
+
     check_function_body(ctx, node);
 }
 
@@ -1493,18 +1727,13 @@ static int declare_struct_shell(SemanticContext *ctx, Node *node) {
         return 0;
     }
 
-    Type *type = arena_alloc(ctx->arena, sizeof(Type));
+    Type *type = new_type(ctx, TYPE_STRUCT);
 
-    type->kind                = TYPE_STRUCT;
-    type->element             = NULL;
-    type->array_size          = -1;
-    type->struct_name.data    = node->as.struct_decl.name.data;
-    type->struct_name.length  = node->as.struct_decl.name.length;
-    type->field_count         = 0;
-    type->fields              = NULL;   // filled in by fill_struct_fields once all struct names are visible
-    type->parameters          = NULL;
-    type->parameter_count     = 0;
-    type->return_type         = NULL;
+    type->struct_name.data =
+        node->as.struct_decl.name.data;
+
+    type->struct_name.length =
+        node->as.struct_decl.name.length;
 
     scope_define(ctx, node->as.struct_decl.name, SYMBOL_TYPE, type);
 
@@ -1542,7 +1771,26 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
 
         type->fields[i].name.data   = field->as.struct_field_decl.name.data;
         type->fields[i].name.length = field->as.struct_field_decl.name.length;
-        type->fields[i].type   = resolve_type(ctx, field->as.struct_field_decl.var_type, field);
+
+        Type *field_type  = resolve_type(ctx, field->as.struct_field_decl.var_type, field);
+
+        if (!field_type) {
+            type->fields[i].type = NULL;
+            continue;
+        }
+
+        if (invalid_value_type(field_type)) {
+            semantic_error(
+                ctx,
+                field,
+                "struct field cannot have type void"
+            );
+
+            type->fields[i].type = NULL;
+            continue;
+        }
+
+        type->fields[i].type = field_type;
     }
 }
 
@@ -1576,8 +1824,13 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
         Type *cond = check_expression(ctx, node->as.while_stmt.condition);
 
-        if (!is_bool_type(cond))
-            semantic_error(ctx, node->as.while_stmt.condition, "while condition must be a boolean expression");
+        if (cond && !is_bool_type(cond)) {
+            semantic_error(
+                ctx,
+                node->as.while_stmt.condition,
+                "while condition must be a boolean expression"
+            );
+        }
 
         ctx->loop_depth++;
         check_node(ctx, node->as.while_stmt.body);
@@ -1589,13 +1842,17 @@ static void check_node(SemanticContext *ctx,Node *node) {
     case NODE_FOR: {
         if (node->as.for_stmt.condition) {
             Type *cond =
-                check_expression(ctx, node->as.for_stmt.condition);
+                check_expression(
+                    ctx,
+                    node->as.for_stmt.condition
+                );
 
-            if (!is_bool_type(cond)) {
+            if (cond && !is_bool_type(cond)) {
                 semantic_error(
                     ctx,
                     node->as.for_stmt.condition,
-                    "for condition must be a boolean expression");
+                    "for condition must be a boolean expression"
+                );
             }
         }
 
@@ -1621,7 +1878,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
         }
 
         Type *expected = ctx->current_return_type;
-        Node *value = node->as.return_stmt.value;
+        Node *value    = node->as.return_stmt.value;
 
         if (!expected) {
             semantic_error(ctx, node,
@@ -1659,17 +1916,6 @@ static void check_node(SemanticContext *ctx,Node *node) {
     }
 }
 
-static Type *make_builtin_type(SemanticContext *ctx, TypeKind kind)
-{
-    Type *type = arena_alloc(ctx->arena, sizeof(Type));
-    memset(type, 0, sizeof(*type));
-
-    type->kind = kind;
-    type->array_size = -1;
-
-    return type;
-}
-
 // ============================================================
 // public entry
 // ============================================================
@@ -1681,8 +1927,8 @@ void semantic_check(Node *program, SemanticContext *ctx) {
 
     ctx->current_return_type = NULL;
 
-    ctx->type_bool = make_builtin_type(ctx, TYPE_BOOL);
-    ctx->type_void = make_builtin_type(ctx, TYPE_VOID);
+    ctx->type_bool = new_type(ctx, TYPE_BOOL);
+    ctx->type_void = new_type(ctx, TYPE_VOID);
 
     ctx->current_scope = scope_new(ctx, NULL);
     check_node(ctx,  program);

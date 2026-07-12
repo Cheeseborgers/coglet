@@ -21,38 +21,78 @@ int main(int argc, char **argv)
     }
 
     const char *filename = argv[1];
-
     char *source = read_file(filename);
+
+    if (!source) {
+        fprintf(stderr, "error: could not read '%s'\n", filename);
+        return 1;
+    }
 
     Arena *arena   = arena_create(MB(2));
     Arena *scratch = arena_create(MB(1));
+
+    if (!arena || !scratch) {
+        fprintf(stderr, "error: failed to create compiler arenas\n");
+        free(source);
+        return 1;
+    }
+
     Parser parser;
-    parser_init(&parser, filename, source, arena, scratch);
+    parser_init(
+        &parser,
+        filename,
+        source,
+        arena,
+        scratch
+    );
 
     Node *ast = parse_program(&parser);
 
-    if (!parser.had_error) {
-        SemanticContext sem = {0};
+    int exit_code = 0;
 
+    if (parser.had_error) {
+        for (int i = 0;
+             i < parser.diagnostic_count;
+             i++) {
+
+            print_diagnostic(
+                parser.lexer.filename,
+                source,
+                &parser.diagnostics[i]
+            );
+             }
+
+        fprintf(
+            stderr,
+            "%d parser error%s generated.\n",
+            parser.error_count,
+            parser.error_count == 1 ? "" : "s"
+        );
+
+        exit_code = 1;
+    } else {
+        SemanticContext sem = {0};
         sem.arena = arena;
 
         semantic_check(ast, &sem);
 
+        if (sem.had_error) {
+            fprintf(
+                stderr,
+                "%d semantic error%s generated.\n",
+                sem.error_count,
+                sem.error_count == 1 ? "" : "s"
+            );
 
-        if (!sem.had_error)
-        {
+            exit_code = 1;
+        } else {
             ast_pretty_print(ast);
         }
     }
-    else {
-        for (int i = 0; i < parser.diagnostic_count; i++)
-            print_diagnostic(parser.lexer.filename, source, &parser.diagnostics[i]);
 
-        fprintf(stderr, "%d error%s generated.\n",
-                parser.error_count,
-                parser.error_count == 1 ? "" : "s");
+    arena_destroy(scratch);
+    arena_destroy(arena);
+    free(source);
 
-    }
-
-    return 0;
+    return exit_code;
 }

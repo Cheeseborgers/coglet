@@ -9,20 +9,20 @@
 static const char *token_type_str(TokenType t)
 {
     switch (t) {
-        case TOK_PLUS: return "+";
-        case TOK_MINUS: return "-";
-        case TOK_STAR: return "*";
-        case TOK_SLASH: return "/";
+        case TOK_PLUS:    return "+";
+        case TOK_MINUS:   return "-";
+        case TOK_STAR:    return "*";
+        case TOK_SLASH:   return "/";
         case TOK_PERCENT: return "%";
 
-        case TOK_EQUAL: return "=";
+        case TOK_EQUAL:       return "=";
         case TOK_EQUAL_EQUAL: return "==";
-        case TOK_BANG: return "!";
-        case TOK_BANG_EQUAL: return "!=";
+        case TOK_BANG:        return "!";
+        case TOK_BANG_EQUAL:  return "!=";
 
-        case TOK_LESS: return "<";
-        case TOK_LESS_EQUAL: return "<=";
-        case TOK_GREATER: return ">";
+        case TOK_LESS:          return "<";
+        case TOK_LESS_EQUAL:    return "<=";
+        case TOK_GREATER:       return ">";
         case TOK_GREATER_EQUAL: return ">=";
 
         case TOK_AND_AND: return "&&";
@@ -70,14 +70,17 @@ static void print_type(Type *t)
 
         case TYPE_ARRAY:
             print_type(t->element);
+
             if (t->array_size >= 0)
                 printf("[%d]", t->array_size);
             else
                 printf("[]");
+
             break;
 
         case TYPE_STRUCT:
-            printf("struct %.*s", t->struct_name_length, t->struct_name);
+            printf("struct ");
+            print_string_view(t->struct_name);
             break;
 
         default:
@@ -97,37 +100,37 @@ static void print_node(Node *node)
                 printf("%lld", (long long)node->as.number.value);
             break;
 
+
         case NODE_IDENT:
-            printf("%.*s", node->as.ident.length, node->as.ident.start);
+            print_string_view(node->as.ident);
             break;
 
         case NODE_STRING:
-            printf("\"%.*s\"", node->as.string_literal.length, node->as.string_literal.start);
+            print_string_view_quoted(node->as.string_literal);
             break;
 
         case NODE_CHAR:
-            printf("'%.*s'", node->as.char_literal.length, node->as.char_literal.start);
+            print_string_view_single_quoted(node->as.char_literal);
             break;
 
         case NODE_BOOL:
-            printf("%s\n", node->as.boolean.value ? "true" : "false");
+            printf("%s", node->as.boolean.value ? "true" : "false");
             break;
 
         case NODE_UNARY:
-            printf("(");
-            printf("%s ", token_type_str(node->as.unary.op));
+            printf("(%s ", token_type_str(node->as.unary.op));
             print_node(node->as.unary.operand);
             printf(")");
             break;
 
         case NODE_BINARY:
-            printf("(");
-            printf("%s ", token_type_str(node->as.binary.op));
+            printf("(%s ", token_type_str(node->as.binary.op));
             print_node(node->as.binary.left);
             printf(" ");
             print_node(node->as.binary.right);
             printf(")");
             break;
+
 
         case NODE_ASSIGN:
             printf("(= ");
@@ -135,7 +138,9 @@ static void print_node(Node *node)
             printf(" ");
             print_node(node->as.assign.value);
             printf(")");
+
             break;
+
 
         case NODE_IF:
             printf("(if ");
@@ -149,87 +154,165 @@ static void print_node(Node *node)
             }
 
             printf(")");
+
             break;
 
         case NODE_EXPR_STMT:
             print_node(node->as.expr_stmt.expr);
             break;
 
+
         case NODE_BLOCK:
             printf("block\n");
-            for (int i = 0; i < node->as.block.statements.count; i++)
+            for (int i = 0;
+                 i < node->as.block.statements.count;
+                 i++)
+            {
                 print_node(node->as.block.statements.items[i]);
+            }
+
             break;
+
 
         case NODE_CALL:
             printf("(call ");
             print_node(node->as.call.callee);
             printf(" (");
 
-            for (int i = 0; i < node->as.call.arguments.count; i++)
+
+            for (int i = 0;
+                 i < node->as.call.arguments.count;
+                 i++)
             {
                 print_node(node->as.call.arguments.items[i]);
+
                 if (i + 1 < node->as.call.arguments.count)
                     printf(" ");
             }
 
+
             printf("))");
+
             break;
 
+
         case NODE_FIELD:
-            printf("field .%.*s\n",
-                node->as.field.length, node->as.field.name);
+            printf("(field ");
+            print_string_view(node->as.field.name);
+            printf(" ");
             print_node(node->as.field.object);
+            printf(")");
+
             break;
 
 
         case NODE_INDEX:
-            printf("index\n");
+            printf("(index ");
             print_node(node->as.index.object);
+            printf(" ");
             print_node(node->as.index.index);
+            printf(")");
+
             break;
 
+
         case NODE_ERROR:
-            printf("<error>\n");
+            printf("<error>");
             break;
 
         case NODE_PROGRAM:
-            for (int i = 0; i < node->as.program.statements.count; i++)
+
+            for (int i = 0;
+                 i < node->as.program.statements.count;
+                 i++)
             {
                 print_node(node->as.program.statements.items[i]);
+
                 if (i + 1 < node->as.program.statements.count)
                     printf("\n");
             }
+
             break;
 
         case NODE_VAR_DECL:
             printf("(var_decl ");
+
             print_type(node->as.var_decl.var_type);
-            printf(" %.*s", node->as.var_decl.length, node->as.var_decl.name);
+
+            printf(" ");
+
+            print_string_view(node->as.var_decl.name);
+
+
             if (node->as.var_decl.initializer) {
                 printf(" = ");
                 print_node(node->as.var_decl.initializer);
             }
+
             printf(")");
+
             break;
+
 
         case NODE_FUNC_PARAM_DECL:
             printf("(param_decl ");
+
             print_type(node->as.param_decl.var_type);
-            printf(" %.*s", node->as.param_decl.length, node->as.param_decl.name);
+
+            printf(" ");
+
+            print_string_view(node->as.param_decl.name);
+
+
             if (node->as.param_decl.default_value) {
                 printf(" = ");
                 print_node(node->as.param_decl.default_value);
             }
+
             printf(")");
+
             break;
+
 
         case NODE_STRUCT_FIELD_DECL:
             printf("(struct_field_decl ");
+
             print_type(node->as.struct_field_decl.var_type);
-            printf(" %.*s", node->as.struct_field_decl.length, node->as.struct_field_decl.name);
+
+            printf(" ");
+
+            print_string_view(node->as.struct_field_decl.name);
+
+            printf(")");
+
+            break;
+
+
+        case NODE_STRUCT_INIT:
+            printf("(struct_init ");
+            print_string_view(node->as.struct_init.name);
+
+            for (int i = 0;
+                 i < node->as.struct_init.fields.count;
+                 i++)
+            {
+                printf(" ");
+                print_node(node->as.struct_init.fields.items[i]);
+            }
             printf(")");
             break;
+
+
+        case NODE_FIELD_INIT:
+            printf("(field_init ");
+            print_string_view(node->as.field_init.name);
+            if (node->as.field_init.value) {
+                printf(" ");
+                print_node(node->as.field_init.value);
+            }
+            printf(")");
+            break;
+
 
         case NODE_RETURN:
             printf("(return");
@@ -240,6 +323,7 @@ static void print_node(Node *node)
             printf(")");
             break;
 
+
         case NODE_WHILE:
             printf("(while ");
             print_node(node->as.while_stmt.condition);
@@ -248,31 +332,46 @@ static void print_node(Node *node)
             printf(")");
             break;
 
+
         case NODE_FOR:
             printf("(for ");
-            if (node->as.for_stmt.condition) print_node(node->as.for_stmt.condition);
+            if (node->as.for_stmt.condition)
+                print_node(node->as.for_stmt.condition);
             printf(" ");
-            if (node->as.for_stmt.post) print_node(node->as.for_stmt.post);
+
+            if (node->as.for_stmt.post)
+                print_node(node->as.for_stmt.post);
             printf(" ");
             print_node(node->as.for_stmt.body);
             printf(")");
             break;
 
+
         case NODE_BREAK:
             printf("(break)");
             break;
+
 
         case NODE_CONTINUE:
             printf("(continue)");
             break;
 
+
         case NODE_FUNC_DECL:
-            printf("(func %.*s (", node->as.func_decl.name_length, node->as.func_decl.name);
-            for (int i = 0; i < node->as.func_decl.params.count; i++) {
+            printf("(func ");
+            print_string_view(node->as.func_decl.name);
+            printf(" (");
+
+            for (int i = 0;
+                 i < node->as.func_decl.params.count;
+                 i++)
+            {
                 print_node(node->as.func_decl.params.items[i]);
+
                 if (i + 1 < node->as.func_decl.params.count)
                     printf(" ");
             }
+
             printf(") -> ");
             print_type(node->as.func_decl.return_type);
             printf(" ");
@@ -280,18 +379,29 @@ static void print_node(Node *node)
             printf(")");
             break;
 
+
         case NODE_STRUCT_DECL:
-            printf("(struct %.*s ", node->as.struct_decl.name_length, node->as.struct_decl.name);
-            for (int i = 0; i < node->as.struct_decl.fields.count; i++) {
+            printf("(struct ");
+            print_string_view(node->as.struct_decl.name);
+            printf(" ");
+
+            for (int i = 0;
+                 i < node->as.struct_decl.fields.count;
+                 i++)
+            {
                 print_node(node->as.struct_decl.fields.items[i]);
+
                 if (i + 1 < node->as.struct_decl.fields.count)
                     printf(" ");
             }
+
             printf(")");
+
             break;
 
+
         default:
-            UNREACHABLE("legacy ast print");
+            UNREACHABLE("unknown ast node");
     }
 }
 
@@ -322,17 +432,17 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_IDENT:
             indent(depth);
-            printf("%.*s\n", node->as.ident.length, node->as.ident.start);
+            print_string_view_ln(node->as.ident);
             break;
 
         case NODE_STRING:
             indent(depth);
-            printf("\"%.*s\"\n", node->as.string_literal.length, node->as.string_literal.start);
+            print_string_view_ln(node->as.string_literal);
             break;
 
         case NODE_CHAR:
             indent(depth);
-            printf("'%.*s'\n", node->as.char_literal.length, node->as.char_literal.start);
+            print_string_view_ln(node->as.char_literal);
             break;
 
         case NODE_BOOL:
@@ -390,12 +500,16 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_FIELD:
             indent(depth);
-            printf("field .%.*s\n",
-                node->as.field.length,
-                node->as.field.name);
+            printf("field .");
+            print_string_view_ln(node->as.field.name);
 
-            print_node_pretty(node->as.field.object, depth + 1);
+            print_node_pretty(
+                node->as.field.object,
+                depth + 1
+            );
+
             break;
+
 
         case NODE_INDEX:
             indent(depth);
@@ -431,33 +545,94 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_VAR_DECL:
             indent(depth);
-            printf("var_decl %.*s: ", node->as.var_decl.length, node->as.var_decl.name);
+
+            printf("var_decl ");
+            print_string_view(node->as.var_decl.name);
+            printf(": ");
+
             print_type(node->as.var_decl.var_type);
             printf("\n");
-            if (node->as.var_decl.initializer) {
+
+
+            if (node->as.var_decl.initializer)
+            {
                 indent(depth + 1);
                 printf("init:\n");
-                print_node_pretty(node->as.var_decl.initializer, depth + 2);
+
+                print_node_pretty(
+                    node->as.var_decl.initializer,
+                    depth + 2
+                );
             }
+
             break;
 
         case NODE_FUNC_PARAM_DECL:
             indent(depth);
-            printf("param_decl %.*s: ", node->as.param_decl.length, node->as.param_decl.name);
+
+            printf("param_decl ");
+            print_string_view(node->as.param_decl.name);
+            printf(": ");
+
             print_type(node->as.param_decl.var_type);
             printf("\n");
-            if (node->as.param_decl.default_value) {
+
+            if (node->as.param_decl.default_value)
+            {
                 indent(depth + 1);
-                printf("init:\n");
-                print_node_pretty(node->as.param_decl.default_value, depth + 2);
+                printf("default:\n");
+
+                print_node_pretty(
+                    node->as.param_decl.default_value,
+                    depth + 2
+                );
             }
+
             break;
 
         case NODE_STRUCT_FIELD_DECL:
             indent(depth);
-            printf("struct_field_decl %.*s: ", node->as.struct_field_decl.length, node->as.struct_field_decl.name);
+
+            printf("struct_field_decl ");
+            print_string_view(node->as.struct_field_decl.name);
+            printf(": ");
+
             print_type(node->as.struct_field_decl.var_type);
             printf("\n");
+
+            break;
+
+
+        case NODE_STRUCT_INIT:
+            indent(depth);
+
+            printf("struct_init ");
+            print_string_view_ln(node->as.struct_init.name);
+
+            for (int i = 0; i < node->as.struct_init.fields.count; i++)
+            {
+                print_node_pretty(
+                    node->as.struct_init.fields.items[i],
+                    depth + 1
+                );
+            }
+
+            break;
+
+        case NODE_FIELD_INIT:
+            indent(depth);
+
+            printf("field_init ");
+            print_string_view_ln(node->as.field_init.name);
+
+            if (node->as.field_init.value)
+            {
+                print_node_pretty(
+                    node->as.field_init.value,
+                    depth + 1
+                );
+            }
+
             break;
 
         case NODE_RETURN:
@@ -511,30 +686,59 @@ static void print_node_pretty(Node *node, int depth)
             printf("continue\n");
             break;
 
+
         case NODE_FUNC_DECL:
             indent(depth);
-            printf("func %.*s -> ", node->as.func_decl.name_length, node->as.func_decl.name);
+
+            printf("func ");
+            print_string_view(node->as.func_decl.name);
+            printf(" -> ");
+
             print_type(node->as.func_decl.return_type);
+
             printf("\n");
 
-            if (node->as.func_decl.params.count > 0) {
+
+            if (node->as.func_decl.params.count > 0)
+            {
                 indent(depth + 1);
                 printf("params:\n");
+
+
                 for (int i = 0; i < node->as.func_decl.params.count; i++)
-                    print_node_pretty(node->as.func_decl.params.items[i], depth + 2);
+                {
+                    print_node_pretty(
+                        node->as.func_decl.params.items[i],
+                        depth + 2
+                    );
+                }
             }
 
             indent(depth + 1);
             printf("body:\n");
-            print_node_pretty(node->as.func_decl.body, depth + 2);
+
+            print_node_pretty(
+                node->as.func_decl.body,
+                depth + 2
+            );
+
             break;
 
         case NODE_STRUCT_DECL:
             indent(depth);
-            printf("struct %.*s\n", node->as.struct_decl.name_length, node->as.struct_decl.name);
+
+            printf("struct ");
+            print_string_view_ln(node->as.struct_decl.name);
+
 
             for (int i = 0; i < node->as.struct_decl.fields.count; i++)
-                print_node_pretty(node->as.struct_decl.fields.items[i], depth + 1);
+            {
+                print_node_pretty(
+                    node->as.struct_decl.fields.items[i],
+                    depth + 1
+                );
+            }
+
             break;
 
         default:

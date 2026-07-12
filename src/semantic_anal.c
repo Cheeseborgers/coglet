@@ -10,9 +10,10 @@ static void semantic_error(SemanticContext *ctx, Node *node, const char *msg) {
     ctx->error_count++;
 }
 
-static void semantic_error_name(SemanticContext *ctx, Node *node, const char *prefix, const char *name, int length) {
+static void semantic_error_name(
+    SemanticContext *ctx, const Node *node, const char *prefix, const char *name, size_t length) {
 
-    printf("semantic error at line %d: %s '%.*s'\n", node->line, prefix,length,name);
+    printf("semantic error at line %d: %s '%.*s'\n", node->line, prefix, (int)length, name);
     ctx->had_error = 1;
     ctx->error_count++;
 }
@@ -35,32 +36,32 @@ static void scope_pop(SemanticContext *ctx)  { ctx->current_scope = ctx->current
 // ============================================================
 // symbols
 // ============================================================
-static int names_equal(const char *a, int a_len, const char *b, int b_len) {
+static int names_equal(const char *a, size_t a_len, const char *b, size_t b_len) {
     return a_len == b_len && memcmp(a,b,a_len) == 0;
 }
 
-static Type *find_struct_field(const Type *struct_type, const char *name, int length) {
+static Type *find_struct_field(const Type *struct_type, const char *name, size_t length) {
 
     for(int i = 0; i < struct_type->field_count; i++) {
 
         StructField *field = &struct_type->fields[i];
-        if(names_equal(field->name, field->length, name, length)) return field->type;
+        if(names_equal(field->name.data, field->name.length, name, length)) return field->type;
     }
 
     return NULL;
 }
 
 // searches current scope only
-static Symbol *scope_find_local(const Scope *scope, const char *name, int length) {
+static Symbol *scope_find_local(const Scope *scope, const char *name, size_t length) {
 
     for(Symbol *sym = scope->symbols; sym; sym = sym->next)
-        if(names_equal(sym->name, sym->length, name, length)) return sym;
+        if(names_equal(sym->name.data, sym->name.length, name, length)) return sym;
 
     return NULL;
 }
 
 // searches current + parents
-static Symbol *scope_lookup(Scope *scope, const char *name, int length) {
+static Symbol *scope_lookup(Scope *scope, const char *name, size_t length) {
 
     for(Scope *s = scope; s; s=s->parent) {
         Symbol *sym = scope_find_local(s,name,length);
@@ -70,21 +71,20 @@ static Symbol *scope_lookup(Scope *scope, const char *name, int length) {
     return NULL;
 }
 
-static void scope_define(SemanticContext *ctx, const char *name, int length, SymbolKind kind, Type *type) {
+static void scope_define(SemanticContext *ctx, StringView name, SymbolKind kind, Type *type) {
 
     Symbol *sym = arena_alloc(ctx->arena, sizeof(Symbol));
 
-    sym->name = name;
-    sym->length = length;
-    sym->kind = kind;
-    sym->type = type;
+    sym->name        = name;
+    sym->kind        = kind;
+    sym->type        = type;
 
     sym->next = ctx->current_scope->symbols;
 
     ctx->current_scope->symbols = sym;
 }
 
-static Type *lookup_type(SemanticContext *ctx, const char *name, int length) {
+static Type *lookup_type(SemanticContext *ctx, const char *name, size_t length) {
 
     Symbol *sym = scope_lookup(ctx->current_scope, name, length);
 
@@ -105,7 +105,7 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
     if (!type) return NULL;
 
     if (type->kind == TYPE_STRUCT) {
-        Type *resolved = lookup_type(ctx, type->struct_name, type->struct_name_length);
+        Type *resolved = lookup_type(ctx, type->struct_name.data, type->struct_name.length);
         if (!resolved) {
             semantic_error(ctx, error_node, "unknown struct type");
             return type;   // leave unresolved rather than NULL, avoids extra cascading errors
@@ -241,8 +241,8 @@ static int type_equal(Type *a, Type *b) {
 
     if (a->kind == TYPE_STRUCT)
         return names_equal(
-            a->struct_name, a->struct_name_length,
-            b->struct_name, b->struct_name_length);
+            a->struct_name.data, a->struct_name.length,
+            b->struct_name.data, b->struct_name.length);
 
     return 1;
 }
@@ -307,12 +307,12 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
     {
         case NODE_IDENT:
         {
-            Symbol *sym = scope_lookup(ctx->current_scope, node->as.ident.start, node->as.ident.length);
+            Symbol *sym = scope_lookup(ctx->current_scope, node->as.ident.data, node->as.ident.length);
 
             if (!sym) {
                 semantic_error_name(ctx,node,
                     "undefined identifier",
-                    node->as.ident.start,
+                    node->as.ident.data,
                     node->as.ident.length);
                 return NULL;
             }
@@ -538,8 +538,8 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
             Type *field =
                 find_struct_field(object,
-                    node->as.field.name,
-                    node->as.field.length);
+                    node->as.field.name.data,
+                    node->as.field.name.length);
 
 
             if(!field) {
@@ -644,6 +644,51 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return t;
         }
 
+        case NODE_STRUCT_INIT:
+        {
+            Type *type = lookup_type(ctx, node->as.struct_init.name.data, node->as.struct_init.name.length);
+
+            if (!type || type->kind != TYPE_STRUCT) {
+                semantic_error_name(ctx, node,
+                    "unknown struct type", node->as.struct_init.name.data, node->as.struct_init.name.length);
+                return NULL;
+            }
+
+            NodeList *inits = &node->as.struct_init.fields;
+
+            for (int i = 0; i < inits->count; i++) {
+
+                Node *field_init = inits->items[i];
+                const char *fname = field_init->as.field_init.name.data;
+                size_t flen          = field_init->as.field_init.name.length; // see note below
+
+                // duplicate field check
+                for (int j = 0; j < i; j++) {
+                    Node *other = inits->items[j];
+                    if (names_equal(other->as.field_init.name.data, other->as.field_init.name.length, fname, flen)) {
+                        semantic_error_name(ctx, field_init, "duplicate field initializer", fname, flen);
+                        break;
+                    }
+                }
+
+                Type *field_type = find_struct_field(type, fname, flen);
+
+                if (!field_type) {
+                    semantic_error_name(ctx, field_init, "unknown struct field", fname, flen);
+                    continue;
+                }
+
+                Type *value_type = check_expression(ctx, field_init->as.field_init.value);
+
+                if (value_type &&
+                    !initializer_compatible(field_type, value_type, field_init->as.field_init.value)) {
+                    semantic_error(ctx, field_init, "field initializer type mismatch");
+                    }
+            }
+
+            return type;
+        }
+
 
         default:
             break;
@@ -670,9 +715,9 @@ static void check_block(SemanticContext *ctx, Node *node) {
 
 static void check_var_decl(SemanticContext *ctx, Node *node) {
 
-    if (scope_find_local(ctx->current_scope, node->as.var_decl.name, node->as.var_decl.length)) {
+    if (scope_find_local(ctx->current_scope, node->as.var_decl.name.data, node->as.var_decl.name.length)) {
         semantic_error_name(
-            ctx, node, "duplicate variable declaration", node->as.var_decl.name, node->as.var_decl.length);
+            ctx, node, "duplicate variable declaration", node->as.var_decl.name.data, node->as.var_decl.name.length);
         return;
     }
 
@@ -697,14 +742,14 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
         semantic_error(ctx, node, "initializer type does not match declared type");
     }
 
-    scope_define(ctx, node->as.var_decl.name, node->as.var_decl.length, SYMBOL_VARIABLE, type);
+    scope_define(ctx, node->as.var_decl.name, SYMBOL_VARIABLE, type);
 }
 
 static void check_param_decl(SemanticContext *ctx, Node *node) {
 
-    if (scope_find_local(ctx->current_scope, node->as.param_decl.name, node->as.param_decl.length)) {
+    if (scope_find_local(ctx->current_scope, node->as.param_decl.name.data, node->as.param_decl.name.length)) {
         semantic_error_name(
-            ctx, node, "duplicate param declaration", node->as.param_decl.name, node->as.param_decl.length);
+            ctx, node, "duplicate param declaration", node->as.param_decl.name.data, node->as.param_decl.name.length);
         return;
     }
 
@@ -728,7 +773,7 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
         semantic_error(ctx, node, "default value type does not match declared type");
         }
 
-    scope_define(ctx, node->as.param_decl.name, node->as.param_decl.length, SYMBOL_VARIABLE, type);
+    scope_define(ctx, node->as.param_decl.name, SYMBOL_VARIABLE, type);
 }
 
 static void check_program(SemanticContext *ctx, Node *node) {
@@ -809,14 +854,14 @@ static Type *make_function_type(SemanticContext *ctx, Node *func) {
 
 static int declare_function_signature(SemanticContext *ctx, Node *node) {
 
-    if (scope_find_local(ctx->current_scope, node->as.func_decl.name, node->as.func_decl.name_length)) {
+    if (scope_find_local(ctx->current_scope, node->as.func_decl.name.data, node->as.func_decl.name.length)) {
         semantic_error_name(ctx, node, "duplicate declaration",
-            node->as.func_decl.name, node->as.func_decl.name_length);
+            node->as.func_decl.name.data, node->as.func_decl.name.length);
         return 0;
     }
 
     Type *func_type = make_function_type(ctx, node);
-    scope_define(ctx, node->as.func_decl.name, node->as.func_decl.name_length, SYMBOL_FUNCTION, func_type);
+    scope_define(ctx, node->as.func_decl.name, SYMBOL_FUNCTION, func_type);
     return 1;
 }
 
@@ -849,9 +894,9 @@ static void check_function(SemanticContext *ctx, Node *node) {
 
 static int declare_struct_shell(SemanticContext *ctx, Node *node) {
 
-    if (scope_find_local(ctx->current_scope, node->as.struct_decl.name, node->as.struct_decl.name_length)) {
+    if (scope_find_local(ctx->current_scope, node->as.struct_decl.name.data, node->as.struct_decl.name.length)) {
         semantic_error_name(ctx, node, "duplicate declaration",
-            node->as.struct_decl.name, node->as.struct_decl.name_length);
+            node->as.struct_decl.name.data, node->as.struct_decl.name.length);
         return 0;
     }
 
@@ -860,22 +905,22 @@ static int declare_struct_shell(SemanticContext *ctx, Node *node) {
     type->kind                = TYPE_STRUCT;
     type->element             = NULL;
     type->array_size          = -1;
-    type->struct_name         = node->as.struct_decl.name;
-    type->struct_name_length  = node->as.struct_decl.name_length;
+    type->struct_name.data    = node->as.struct_decl.name.data;
+    type->struct_name.length  = node->as.struct_decl.name.length;
     type->field_count         = 0;
     type->fields              = NULL;   // filled in by fill_struct_fields once all struct names are visible
     type->parameters          = NULL;
     type->parameter_count     = 0;
     type->return_type         = NULL;
 
-    scope_define(ctx, node->as.struct_decl.name, node->as.struct_decl.name_length, SYMBOL_TYPE, type);
+    scope_define(ctx, node->as.struct_decl.name, SYMBOL_TYPE, type);
 
     return 1;
 }
 
 static void fill_struct_fields(SemanticContext *ctx, Node *node) {
 
-    Symbol *sym = scope_find_local(ctx->current_scope, node->as.struct_decl.name, node->as.struct_decl.name_length);
+    Symbol *sym = scope_find_local(ctx->current_scope, node->as.struct_decl.name.data, node->as.struct_decl.name.length);
 
     // shell registration failed (duplicate name), nothing to fill in
     if (!sym) return;
@@ -895,15 +940,15 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
         Node *field = node->as.struct_decl.fields.items[i];
 
         for (int j = 0; j < i; j++) {
-            if (names_equal(type->fields[j].name, type->fields[j].length,
-                             field->as.struct_field_decl.name, field->as.struct_field_decl.length)) {
+            if (names_equal(type->fields[j].name.data, type->fields[j].name.length,
+                             field->as.struct_field_decl.name.data, field->as.struct_field_decl.name.length)) {
                 semantic_error_name(ctx, field, "duplicate struct field",
-                    field->as.struct_field_decl.name, field->as.struct_field_decl.length);
+                    field->as.struct_field_decl.name.data, field->as.struct_field_decl.name.length);
             }
         }
 
-        type->fields[i].name   = field->as.struct_field_decl.name;
-        type->fields[i].length = field->as.struct_field_decl.length;
+        type->fields[i].name.data   = field->as.struct_field_decl.name.data;
+        type->fields[i].name.length = field->as.struct_field_decl.name.length;
         type->fields[i].type   = resolve_type(ctx, field->as.struct_field_decl.var_type, field);
     }
 }

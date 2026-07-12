@@ -21,7 +21,7 @@ Node *ast_new_number(Arena *arena, double value, int is_float, int line) {
 
 Node *ast_new_ident(Arena *arena, const char *start, int length, int line) {
     Node *node = new_node(arena, NODE_IDENT, line);
-    node->as.ident.start  = start;
+    node->as.ident.data  = start;
     node->as.ident.length = length;
     return node;
 }
@@ -29,7 +29,7 @@ Node *ast_new_ident(Arena *arena, const char *start, int length, int line) {
 Node *ast_new_string(Arena *arena, const char *start, int length, int line)
 {
     Node *node = new_node(arena, NODE_STRING, line);
-    node->as.string_literal.start  = start;
+    node->as.string_literal.data   = start;
     node->as.string_literal.length = length;
     return node;
 }
@@ -37,7 +37,7 @@ Node *ast_new_string(Arena *arena, const char *start, int length, int line)
 Node *ast_new_char(Arena *arena, const char *start, int length, int line)
 {
     Node *node = new_node(arena, NODE_CHAR, line);
-    node->as.char_literal.start  = start;
+    node->as.char_literal.data   = start;
     node->as.char_literal.length = length;
     return node;
 }
@@ -105,8 +105,8 @@ Node *ast_new_call(Arena *arena, Node *callee, int line) {
 Node *ast_new_field(Arena *arena, Node *object, const char *name, int length, int line ) {
     Node *node = new_node(arena, NODE_FIELD, line);
     node->as.field.object = object;
-    node->as.field.name   = name;
-    node->as.field.length = length;
+    node->as.field.name.data   = name;
+    node->as.field.name.length = length;
     return node;
 }
 Node *ast_new_index(Arena *arena, Node *object, Node *index, int line) {
@@ -136,25 +136,25 @@ Node *ast_new_program(Arena *arena, int line) {
 Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, int line) {
     Node *node = new_node(arena, NODE_VAR_DECL, line);
     node->as.var_decl.var_type    = type;
-    node->as.var_decl.name        = name;
-    node->as.var_decl.length      = length;
+    node->as.var_decl.name.data   = name;
+    node->as.var_decl.name.length = length;
     node->as.var_decl.initializer = initializer;
     return node;
 }
 
 Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, int line) {
     Node *node = new_node(arena, NODE_STRUCT_FIELD_DECL, line);
-    node->as.struct_field_decl.var_type = type;
-    node->as.struct_field_decl.name     = name;
-    node->as.struct_field_decl.length   = length;
+    node->as.struct_field_decl.var_type    = type;
+    node->as.struct_field_decl.name.data   = name;
+    node->as.struct_field_decl.name.length = length;
     return node;
 }
 
 Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, int line) {
     Node *node = new_node(arena, NODE_FUNC_PARAM_DECL, line);
     node->as.param_decl.var_type      = type;
-    node->as.param_decl.name          = name;
-    node->as.param_decl.length        = length;
+    node->as.param_decl.name.data     = name;
+    node->as.param_decl.name.length   = length;
     node->as.param_decl.default_value = default_value;
     return node;
 }
@@ -192,8 +192,8 @@ Node *ast_new_continue(Arena *arena, int line) {
 
 Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, int line) {
     Node *node = new_node(arena, NODE_FUNC_DECL, line);
-    node->as.func_decl.name        = name;
-    node->as.func_decl.name_length = name_length;
+    node->as.func_decl.name.data   = name;
+    node->as.func_decl.name.length = name_length;
     node->as.func_decl.return_type = return_type;
     node->as.func_decl.body        = NULL;
 
@@ -206,13 +206,33 @@ Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *r
 
 Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int line) {
     Node *node = new_node(arena, NODE_STRUCT_DECL, line);
-    node->as.struct_decl.name        = name;
-    node->as.struct_decl.name_length = name_length;
+    node->as.struct_decl.name.data   = name;
+    node->as.struct_decl.name.length = name_length;
 
     node->as.struct_decl.fields.items    = NULL;
     node->as.struct_decl.fields.count    = 0;
     node->as.struct_decl.fields.capacity = 0;
 
+    return node;
+}
+
+Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, int line) {
+    Node *node = new_node(arena, NODE_STRUCT_INIT, line);
+    node->as.struct_init.name.data   = name;
+    node->as.struct_init.name.length = name_length;
+
+    node->as.struct_init.fields.items    = NULL;
+    node->as.struct_init.fields.count    = 0;
+    node->as.struct_init.fields.capacity = 0;
+
+    return node;
+}
+
+Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, int line) {
+    Node *node = new_node(arena, NODE_FIELD_INIT, line);
+    node->as.field_init.name.data   = name;
+    node->as.field_init.name.length = name_length;
+    node->as.field_init.value       = value;
     return node;
 }
 
@@ -223,7 +243,7 @@ Node *ast_clone(Arena *arena, const Node *node)
 
     Node *clone = new_node(arena, node->type, node->line);
 
-    switch (node->type)
+        switch (node->type)
     {
         case NODE_NUMBER:
             clone->as.number = node->as.number;
@@ -241,37 +261,69 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.char_literal = node->as.char_literal;
             break;
 
+        case NODE_BOOL:
+            clone->as.boolean = node->as.boolean;
+            break;
+
         case NODE_UNARY:
             clone->as.unary.op = node->as.unary.op;
             clone->as.unary.operand = ast_clone(arena, node->as.unary.operand);
             break;
 
         case NODE_BINARY:
-            clone->as.binary.op    = node->as.binary.op;
-            clone->as.binary.left  = ast_clone(arena, node->as.binary.left);
+            clone->as.binary.op = node->as.binary.op;
+            clone->as.binary.left = ast_clone(arena, node->as.binary.left);
             clone->as.binary.right = ast_clone(arena, node->as.binary.right);
             break;
 
         case NODE_ASSIGN:
             clone->as.assign.target = ast_clone(arena, node->as.assign.target);
-            clone->as.assign.value  = ast_clone(arena, node->as.assign.value);
+            clone->as.assign.value = ast_clone(arena, node->as.assign.value);
+            break;
+
+        case NODE_IF:
+            clone->as.if_stmt.condition =
+                ast_clone(arena, node->as.if_stmt.condition);
+
+            clone->as.if_stmt.then_branch =
+                ast_clone(arena, node->as.if_stmt.then_branch);
+
+            clone->as.if_stmt.else_branch =
+                ast_clone(arena, node->as.if_stmt.else_branch);
+            break;
+
+        case NODE_EXPR_STMT:
+            clone->as.expr_stmt.expr =
+                ast_clone(arena, node->as.expr_stmt.expr);
+            break;
+
+        case NODE_BLOCK:
+            clone->as.block.statements.items = NULL;
+            clone->as.block.statements.count = 0;
+            clone->as.block.statements.capacity = 0;
+
+            for (int i = 0; i < node->as.block.statements.count; i++) {
+                nodelist_push(
+                    arena,
+                    &clone->as.block.statements,
+                    ast_clone(arena, node->as.block.statements.items[i])
+                );
+            }
             break;
 
         case NODE_CALL:
-            clone->as.call.callee = ast_clone(arena, node->as.call.callee);
+            clone->as.call.callee =
+                ast_clone(arena, node->as.call.callee);
 
-            clone->as.call.arguments.items    = NULL;
-            clone->as.call.arguments.count    = 0;
+            clone->as.call.arguments.items = NULL;
+            clone->as.call.arguments.count = 0;
             clone->as.call.arguments.capacity = 0;
 
             for (int i = 0; i < node->as.call.arguments.count; i++) {
                 nodelist_push(
                     arena,
                     &clone->as.call.arguments,
-                    ast_clone(
-                        arena,
-                        node->as.call.arguments.items[i]
-                    )
+                    ast_clone(arena, node->as.call.arguments.items[i])
                 );
             }
             break;
@@ -280,11 +332,8 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.field.object =
                 ast_clone(arena, node->as.field.object);
 
-            clone->as.field.name =
-                node->as.field.name;
-
-            clone->as.field.length =
-                node->as.field.length;
+            clone->as.field.name.data = node->as.field.name.data;
+            clone->as.field.name.length = node->as.field.name.length;
             break;
 
         case NODE_INDEX:
@@ -295,16 +344,146 @@ Node *ast_clone(Arena *arena, const Node *node)
                 ast_clone(arena, node->as.index.index);
             break;
 
+        case NODE_PROGRAM:
+            clone->as.program.statements.items = NULL;
+            clone->as.program.statements.count = 0;
+            clone->as.program.statements.capacity = 0;
+
+            for (int i = 0; i < node->as.program.statements.count; i++) {
+                nodelist_push(
+                    arena,
+                    &clone->as.program.statements,
+                    ast_clone(arena, node->as.program.statements.items[i])
+                );
+            }
+            break;
+
+        case NODE_VAR_DECL:
+            clone->as.var_decl.var_type = node->as.var_decl.var_type;
+            clone->as.var_decl.name.data = node->as.var_decl.name.data;
+            clone->as.var_decl.name.length = node->as.var_decl.name.length;
+            clone->as.var_decl.initializer =
+                ast_clone(arena, node->as.var_decl.initializer);
+            break;
+
+        case NODE_FUNC_PARAM_DECL:
+            clone->as.param_decl.var_type = node->as.param_decl.var_type;
+            clone->as.param_decl.name.data = node->as.param_decl.name.data;
+            clone->as.param_decl.name.length = node->as.param_decl.name.length;
+            clone->as.param_decl.default_value =
+                ast_clone(arena, node->as.param_decl.default_value);
+            break;
+
+        case NODE_STRUCT_FIELD_DECL:
+            clone->as.struct_field_decl.var_type =
+                node->as.struct_field_decl.var_type;
+
+            clone->as.struct_field_decl.name.data =
+                node->as.struct_field_decl.name.data;
+
+            clone->as.struct_field_decl.name.length =
+                node->as.struct_field_decl.name.length;
+            break;
+
+        case NODE_FUNC_DECL:
+            clone->as.func_decl.name.data = node->as.func_decl.name.data;
+            clone->as.func_decl.name.length = node->as.func_decl.name.length;
+            clone->as.func_decl.return_type = node->as.func_decl.return_type;
+
+            clone->as.func_decl.params.items = NULL;
+            clone->as.func_decl.params.count = 0;
+            clone->as.func_decl.params.capacity = 0;
+
+            for (int i = 0; i < node->as.func_decl.params.count; i++) {
+                nodelist_push(
+                    arena,
+                    &clone->as.func_decl.params,
+                    ast_clone(arena, node->as.func_decl.params.items[i])
+                );
+            }
+
+            clone->as.func_decl.body =
+                ast_clone(arena, node->as.func_decl.body);
+            break;
+
+        case NODE_STRUCT_DECL:
+            clone->as.struct_decl.name.data   = node->as.struct_decl.name.data;
+            clone->as.struct_decl.name.length = node->as.struct_decl.name.length;
+
+            clone->as.struct_decl.fields.items = NULL;
+            clone->as.struct_decl.fields.count = 0;
+            clone->as.struct_decl.fields.capacity = 0;
+
+            for (int i = 0; i < node->as.struct_decl.fields.count; i++) {
+                nodelist_push(
+                    arena,
+                    &clone->as.struct_decl.fields,
+                    ast_clone(arena, node->as.struct_decl.fields.items[i])
+                );
+            }
+            break;
+
+        case NODE_STRUCT_INIT:
+            clone->as.struct_init.name.data   = node->as.struct_init.name.data;
+            clone->as.struct_init.name.length = node->as.struct_init.name.length;
+
+            clone->as.struct_init.fields.items = NULL;
+            clone->as.struct_init.fields.count = 0;
+            clone->as.struct_init.fields.capacity = 0;
+
+            for (int i = 0; i < node->as.struct_init.fields.count; i++) {
+                nodelist_push(
+                    arena,
+                    &clone->as.struct_init.fields,
+                    ast_clone(arena, node->as.struct_init.fields.items[i])
+                );
+            }
+            break;
+
+        case NODE_FIELD_INIT:
+            clone->as.field_init.name.data   = node->as.field_init.name.data;
+            clone->as.field_init.name.length = node->as.field_init.name.length;
+            clone->as.field_init.value =
+                ast_clone(arena, node->as.field_init.value);
+            break;
+
+        case NODE_RETURN:
+            clone->as.return_stmt.value =
+                ast_clone(arena, node->as.return_stmt.value);
+            break;
+
+        case NODE_WHILE:
+            clone->as.while_stmt.condition =
+                ast_clone(arena, node->as.while_stmt.condition);
+
+            clone->as.while_stmt.body =
+                ast_clone(arena, node->as.while_stmt.body);
+            break;
+
+        case NODE_FOR:
+            clone->as.for_stmt.condition =
+                ast_clone(arena, node->as.for_stmt.condition);
+
+            clone->as.for_stmt.post =
+                ast_clone(arena, node->as.for_stmt.post);
+
+            clone->as.for_stmt.body =
+                ast_clone(arena, node->as.for_stmt.body);
+            break;
+
+        case NODE_BREAK:
+        case NODE_CONTINUE:
+            // no payload, line/type already copied
+            break;
+
+        case NODE_ERROR:
+            clone->as.error = node->as.error;
+            break;
+
         default:
-            /*
-             * Defaults should only contain expressions.
-             * If you hit this, add support when that node becomes
-             * legal inside a default expression.
-             */
             fprintf(stderr,
                 "ast_clone: unsupported node type %d\n",
                 node->type);
-
             return NULL;
     }
 

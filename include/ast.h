@@ -4,6 +4,7 @@
 #include "lexer.h"
 #include "types.h"
 #include "utils/arena.h"
+#include "utils/string_view.h"
 
 typedef enum {
     NODE_NUMBER,       // a literal like 3 or 3.14
@@ -36,6 +37,9 @@ typedef enum {
     NODE_STRUCT_DECL,
     NODE_STRUCT_FIELD_DECL,
 
+    NODE_STRUCT_INIT,      // Point{ x = 5, y = 10 }
+    NODE_FIELD_INIT,       // one `x = 5` inside a struct init
+
     NODE_RETURN,
     NODE_WHILE,
     NODE_FOR,
@@ -63,20 +67,9 @@ struct Node {
             int is_float;       // 1 if this came from TOK_NUMBER_FLOAT, 0 otherwise
         } number;
 
-        struct {
-            const char *start;
-            int length;
-        } ident;
-
-        struct {
-            const char *start;   // points past the opening quote
-            int length;          // length of the content, NOT including quotes
-        } string_literal;
-
-        struct {
-            const char *start;   // points past the opening quote
-            int length;          // length of the content, NOT including quotes
-        } char_literal;
+        StringView ident;
+        StringView string_literal;
+        StringView char_literal;
 
         struct {
             int value;
@@ -119,8 +112,7 @@ struct Node {
 
         struct {
             Node *object;
-            const char *name;
-            int length;
+            StringView name;
         } field;
 
         struct {
@@ -138,23 +130,30 @@ struct Node {
 
         struct {
             Type *var_type;
-            const char *name;
-            int length;
+            StringView name;
             Node *initializer;   // NULL if none
         } var_decl;
 
         struct {
             Type *var_type;
-            const char *name;
-            int length;
+            StringView name;
             Node *default_value;   // NULL if none
         } param_decl;
 
         struct {
             Type *var_type;
-            const char *name;
-            int length;
+            StringView name;
         } struct_field_decl;
+
+        struct {
+            StringView name;
+            NodeList fields;   // list of NODE_FIELD_INIT
+        } struct_init;
+
+        struct {
+            StringView name;
+            Node *value;
+        } field_init;
 
         struct {
             Node *value;         // NULL for bare `return;`
@@ -174,16 +173,14 @@ struct Node {
         // break/continue need no payload -- `line` on the Node itself is enough
 
         struct {
-            const char *name;
-            int name_length;
+            StringView name;
             NodeList params;      // list of NODE_FUNC_PARAM_DECL
             Type *return_type;
             Node *body;           // NODE_BLOCK
         } func_decl;
 
         struct {
-            const char *name;
-            int name_length;
+            StringView name;
             NodeList fields;      // list of NODE_STRUCT_FIELD_DECL
         } struct_decl;
     } as;
@@ -217,6 +214,8 @@ Node *ast_new_break(Arena *arena, int line);
 Node *ast_new_continue(Arena *arena, int line);
 Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, int line);
 Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int line);
+Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, int line);
+Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, int line);
 
 // TODO: Allow cloning of all ast node types
 Node *ast_clone(Arena *arena, const Node *node);

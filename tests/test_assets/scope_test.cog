@@ -142,3 +142,17 @@ numbers : i32[5];
 
 boolean : bool = false;
 
+Point :: struct {
+    x : i32; // TODO: Add init on create?
+    y : i32;
+}
+
+p := Point {
+    x = 5,
+    y = 10,
+};
+
+y := "string";
+{
+    c : u8 = 'a';
+}

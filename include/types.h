@@ -1,6 +1,8 @@
 #ifndef COGLET_TYPES_H
 #define COGLET_TYPES_H
 
+#include "utils/string_view.h"
+
 typedef enum {
     TYPE_VOID,
     TYPE_BOOL,
@@ -22,8 +24,7 @@ typedef enum {
 typedef struct Type Type;
 
 typedef struct StructField {
-    const char *name;
-    int length;
+    StringView name;
     Type *type;
 } StructField;
 
@@ -34,9 +35,7 @@ struct Type {
 
     int array_size;              // -1 if unspecified
 
-    const char *struct_name;     // TYPE_STRUCT
-    int struct_name_length;
-
+    StringView struct_name;     // TYPE_STRUCT
     StructField *fields;
     int field_count;
 

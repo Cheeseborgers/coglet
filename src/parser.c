@@ -29,6 +29,7 @@ static Node *parse_proc_decl_rest(Parser *p, Token name, int line);
 
 static Node *parse_struct_decl_rest(Parser *p, Token name, int line);
 static Node *parse_struct_field(Parser *p);
+static Node *finish_struct_init(Parser *p, Token type_name);
 
 static Node *parse_return_statement(Parser *p);
 static Node *parse_while_statement(Parser *p);
@@ -147,6 +148,9 @@ const char *token_debug_display_name(TokenType t)
         case TOK_STRING:          return "string literal";
         case TOK_CHAR:            return "character literal";
         case TOK_IDENT:           return "identifier";
+
+        case TOK_TRUE:            return "'true'";
+        case TOK_FALSE:           return "'false'";
 
         // Keywords
         case TOK_IF:              return "'if'";
@@ -280,6 +284,9 @@ void parser_init(Parser *p, const char *filename, const char *source, Arena *are
     p->diagnostic_capacity = 100;
 
     p->diagnostics = arena_alloc(arena, sizeof(Diagnostic) * p->diagnostic_capacity);
+
+    p->suppress_struct_init = 0;
+
     advance(p);
 }
 
@@ -312,11 +319,19 @@ static Node *parse_primary(Parser *p)
 
     if (match(p, TOK_IDENT)) {
         Token t = p->previous;
+        if (check(p, TOK_LBRACE) && !p->suppress_struct_init) {
+            return finish_struct_init(p, t);
+        }
         return ast_new_ident(p->arena, t.start, t.length, t.line);
     }
 
     if (match(p, TOK_LPAREN)) {
+        int saved = p->suppress_struct_init;
+        p->suppress_struct_init = 0;
+
         Node *expr = parse_expression(p);
+
+        p->suppress_struct_init = saved;
         consume(p, TOK_RPAREN);
         return expr;
     }
@@ -330,7 +345,6 @@ static Node *parse_primary(Parser *p)
         Token t = p->previous;
         return ast_new_bool(p->arena, 0, t.line);
     }
-
 
     error_at(p, &p->current, "expected expression");
     return ast_new_error(p->arena, p->current);
@@ -526,8 +540,8 @@ static Type *parse_type(Parser *p)
     Type *base = arena_alloc(p->arena, sizeof(Type));
     base->element            = NULL;
     base->array_size         = -1;
-    base->struct_name        = NULL;
-    base->struct_name_length = 0;
+    base->struct_name.data   = NULL;
+    base->struct_name.length = 0;
 
     if (match(p, TOK_I8))       base->kind = TYPE_I8;
     else if (match(p, TOK_I16)) base->kind = TYPE_I16;
@@ -543,8 +557,8 @@ static Type *parse_type(Parser *p)
     else if (match(p, TOK_VOID)) base->kind = TYPE_VOID;
     else if (match(p, TOK_IDENT)) {
         base->kind               = TYPE_STRUCT;
-        base->struct_name        = p->previous.start;
-        base->struct_name_length = p->previous.length;
+        base->struct_name.data   = p->previous.start;
+        base->struct_name.length = p->previous.length;
     } else {
         error_at(p, &p->current, "expected type");
         return base;
@@ -556,8 +570,8 @@ static Type *parse_type(Parser *p)
         ptr->kind               = TYPE_POINTER;
         ptr->element            = base;
         ptr->array_size         = -1;
-        ptr->struct_name        = NULL;
-        ptr->struct_name_length = 0;
+        ptr->struct_name.data   = NULL;
+        ptr->struct_name.length = 0;
         base                    = ptr;
     }
 
@@ -567,8 +581,8 @@ static Type *parse_type(Parser *p)
         arr->kind               = TYPE_ARRAY;
         arr->element            = base;
         arr->array_size         = -1;
-        arr->struct_name        = NULL;
-        arr->struct_name_length = 0;
+        arr->struct_name.data   = NULL;
+        arr->struct_name.length = 0;
 
         if (!check(p, TOK_RBRACKET)) {
             if (match(p, TOK_NUMBER_INT)) {
@@ -733,8 +747,8 @@ static Type *make_void_type(Arena *arena)
         .kind = TYPE_VOID,
         .element = NULL,
         .array_size = -1,
-        .struct_name = NULL,
-        .struct_name_length = 0
+        .struct_name.data   = NULL,
+        .struct_name.length = 0
     };
 
     return type;
@@ -807,6 +821,48 @@ static Node *parse_struct_field(Parser *p) {
     return ast_new_struct_field_decl(p->arena, type, field.start, field.length, field.line);
 }
 
+// Struct initializer: `Point{ x = 5, y = 10 }` (trailing comma allowed).
+// `type_name` is the identifier already consumed by the caller.
+static Node *finish_struct_init(Parser *p, Token type_name)
+{
+    consume(p, TOK_LBRACE); // known present from caller's check()
+
+    Node *init = ast_new_struct_init(p->arena, type_name.start, type_name.length, type_name.line);
+
+    if (!check(p, TOK_RBRACE)) {
+        while (1) {
+            if (!consume(p, TOK_IDENT)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
+            }
+            Token field_name = p->previous;
+
+            if (!consume(p, TOK_EQUAL)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
+            }
+
+            Node *value = parse_assignment(p);
+
+            Node *field = ast_new_field_init(
+                p->arena,
+                field_name.start,
+                field_name.length,
+                value,
+                field_name.line
+            );
+
+            nodelist_push(p->arena, &init->as.struct_init.fields, field);
+
+            if (!match(p, TOK_COMMA)) break;
+            if (check(p, TOK_RBRACE)) break; // trailing comma
+        }
+    }
+
+    consume(p, TOK_RBRACE);
+    return init;
+}
+
 // ====================== end struct declarations ======================
 
 // ====================== declaration dispatching ======================
@@ -829,6 +885,11 @@ static Node *parse_decl_after_name(Parser *p, Token name) {
 // init clause, and parse_program all call instead of dispatching on
 // a leading type keyword (there isn't one anymore -- declarations
 // are name-first).
+// Entry point for both declarations and identifier-led expression
+// statements. This is what parse_statement, parse_for_statement's
+// init clause, and parse_program all call instead of dispatching on
+// a leading type keyword (there isn't one anymore -- declarations
+// are name-first).
 static Node *parse_decl_or_expr_statement(Parser *p) {
 
     if (check(p, TOK_IDENT)) {
@@ -842,7 +903,14 @@ static Node *parse_decl_or_expr_statement(Parser *p) {
 
         // Not a declaration -- resume ordinary expression parsing from
         // this identifier, then finish out as an expression statement.
-        Node *base      = ast_new_ident(p->arena, name.start, name.length, name.line);
+        Node *base = NULL;
+
+        if (check(p, TOK_LBRACE) && !p->suppress_struct_init) {
+            base = finish_struct_init(p, name);
+        } else {
+            base = ast_new_ident(p->arena, name.start, name.length, name.line);
+        }
+
         Node *postfixed = parse_postfix_from(p, base);
         Node *bin       = parse_binary_from(p, postfixed, PREC_OR);
         Node *full      = parse_assignment_from(p, bin);
@@ -881,8 +949,13 @@ static Node *parse_return_statement(Parser *p) {
 
 static Node *parse_while_statement(Parser *p) {
 
-    int line   = p->previous.line;
+    int line = p->previous.line;
+
+    int saved = p->suppress_struct_init;
+    p->suppress_struct_init = 1;
     Node *cond = parse_expression(p);
+    p->suppress_struct_init = saved;
+
     Node *body = parse_block(p);
     return ast_new_while(p->arena,cond, body, line);
 }
@@ -894,10 +967,16 @@ static Node *parse_for_statement(Parser *p) {
     Node *post = NULL;
 
     if (!check(p, TOK_LBRACE)) {
+
+        int saved = p->suppress_struct_init;
+        p->suppress_struct_init = 1;
+
         cond = parse_expression(p);
 
         if (match(p, TOK_COLON))
             post = parse_expression(p);
+
+        p->suppress_struct_init = saved;
     }
 
     Node *body = parse_statement(p);
@@ -957,12 +1036,17 @@ static Node *finish_call(Parser *p, Node *callee) {
 
     Node *call = ast_new_call(p->arena, callee, callee->line);
 
+    int saved = p->suppress_struct_init;
+    p->suppress_struct_init = 0;
+
     if (!check(p, TOK_RPAREN)) {
         do {
             Node *arg = parse_expression(p);
             nodelist_push(p->arena, &call->as.call.arguments, arg);
         } while (match(p, TOK_COMMA));
     }
+
+    p->suppress_struct_init = saved;
 
     consume(p, TOK_RPAREN);
     return call;
@@ -981,11 +1065,16 @@ static Node *finish_field(Parser *p, Node *object) {
 
 static Node *finish_index(Parser *p, Node *object) {
 
+    int saved = p->suppress_struct_init;
+    p->suppress_struct_init = 0;
+
     Node *index = parse_expression(p);
+
+    p->suppress_struct_init = saved;
+
     consume(p, TOK_RBRACKET);
     return ast_new_index(p->arena, object, index, object->line);
 }
-
 // ===================== statements =====================
 
 static Node *parse_expr_statement(Parser *p) {
@@ -1005,7 +1094,12 @@ static Node *parse_expr_statement(Parser *p) {
 static Node *parse_if_statement(Parser *p) {
 
     int line          = p->previous.line;
-    Node *cond        = parse_expression(p);
+
+    int saved = p->suppress_struct_init;
+    p->suppress_struct_init = 1;
+    Node *cond              = parse_expression(p);
+    p->suppress_struct_init = saved;
+
     Node *then_branch = parse_block(p);
     Node *else_branch = NULL;
 

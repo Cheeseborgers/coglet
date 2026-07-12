@@ -21,6 +21,8 @@ typedef struct {
     Diagnostic *diagnostics;
     int diagnostic_count;
     int diagnostic_capacity;
+
+    int suppress_struct_init;   // true while parsing a bare if/while/for condition
 } Parser;
 
 void parser_init(Parser *p, const char *filename, const char *source, Arena *arena, Arena *scratch);

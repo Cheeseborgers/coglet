@@ -24,6 +24,7 @@ add_library(compiler_core STATIC
         src/utils/arena.c
         src/diag.c
         src/semantic_anal.c
+        include/utils/string_view.h
 )
 target_include_directories(compiler_core PUBLIC include)
 

@@ -12,12 +12,11 @@
 typedef enum {
     SYMBOL_VARIABLE,  // variables
     SYMBOL_FUNCTION,  // functions
-    SYMBOL_TYPE       // struct names, typedefs later
+    SYMBOL_TYPE       // struct names, typedefs later // TODO: make separations for typedefs
 } SymbolKind;
 
 typedef struct Symbol {
-    const char *name;
-    int length;
+    StringView name;
 
     SymbolKind kind;
 

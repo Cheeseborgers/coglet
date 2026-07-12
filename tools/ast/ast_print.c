@@ -758,12 +758,21 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_CONST_DECL:
             indent(depth);
+
+            printf("const_decl ");
             print_string_view(node->as.const_decl.name);
+            printf(": ");
             print_type(node->as.const_decl.const_type);
             printf("\n");
+
             indent(depth + 1);
             printf("value:\n");
-            print_node_pretty(node->as.const_decl.value, depth + 2);
+
+            print_node_pretty(
+                node->as.const_decl.value,
+                depth + 2
+            );
+
             break;
 
         case NODE_RETURN:

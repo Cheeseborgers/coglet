@@ -73,3 +73,15 @@ Color.Red == OtherEnum.Red;
 Color.Red < Color.Blue;
 
 Color.Red + Color.Blue;
+
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+BAD_COLOR_CONST: Color : 1;
+
+BAD_COLOR_CONST_2 :: Color.Purple;
+
+BAD_COLOR_ASSIGN: Color = 1;

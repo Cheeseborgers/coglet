@@ -19,8 +19,23 @@ typedef enum {
     CONST_VALUE_BOOL,
 } ConstValueKind;
 
-typedef struct {
+
+typedef struct ConstValue {
     ConstValueKind kind;
+
+    /*
+     * Semantic type of this compile-time value.
+     *
+     * Examples:
+     *
+     *   123              -> untyped i32
+     *   3.14             -> untyped f64
+     *   true             -> bool
+     *   Color.Red        -> Color
+     *   DEFAULT_COLOR    -> Color
+     */
+    Type *type;
+
     union {
         long long i;
         double f;

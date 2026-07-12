@@ -421,15 +421,38 @@ static int const_value_to_double(const ConstValue *v, double *out) {
     }
 }
 
-static Type *const_value_default_type(SemanticContext *ctx, const ConstValue *v) {
+static Type *const_value_default_type(SemanticContext *ctx,const ConstValue *v) {
+    /*
+     * If constant evaluation already knows the semantic type, trust it.
+     *
+     * Examples:
+     *     Color.Red       -> Color
+     *     DEFAULT_COLOR   -> Color
+     *     true            -> bool
+     */
+    if (v->type)
+        return v->type;
 
+    /*
+     * Fallback for old/simple constants that only have a raw value.
+     * Numeric literals remain untyped so they can adapt to declared types.
+     */
     Type *t = new_type(ctx, TYPE_I32);
     t->is_untyped = 1;
 
     switch (v->kind) {
-        case CONST_VALUE_INT:   t->kind = TYPE_I32;  break;  // matches NODE_NUMBER's untyped-int default
-        case CONST_VALUE_FLOAT: t->kind = TYPE_F64;  break;
-        case CONST_VALUE_BOOL:  t->kind = TYPE_BOOL; break;
+        case CONST_VALUE_INT:
+            t->kind = TYPE_I32;
+            break;
+
+        case CONST_VALUE_FLOAT:
+            t->kind = TYPE_F64;
+            break;
+
+        case CONST_VALUE_BOOL:
+            t->kind = TYPE_BOOL;
+            t->is_untyped = 0;
+            break;
     }
 
     return t;
@@ -439,139 +462,406 @@ static Type *const_value_default_type(SemanticContext *ctx, const ConstValue *v)
 // time: literals, other constants, and unary/binary ops over those.
 // Anything reaching outside that (function calls, variables, struct
 // inits, etc.) is rejected with a diagnostic.
-static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
+static int eval_const_expr(
+    SemanticContext *ctx,
+    Node *node,
+    ConstValue *out
+) {
+    if (!node)
+        return 0;
 
-    if (!node) return 0;
+    /*
+     * Avoid accidentally carrying stale data when callers reuse a ConstValue.
+     */
+    memset(out, 0, sizeof(*out));
 
     switch (node->type) {
-
         case NODE_NUMBER:
+        {
             if (node->as.number.is_float) {
                 out->kind = CONST_VALUE_FLOAT;
                 out->as.f = node->as.number.value;
+
+                out->type = new_type(ctx, TYPE_F64);
+                out->type->is_untyped = 1;
             } else {
                 out->kind = CONST_VALUE_INT;
                 out->as.i = (long long)node->as.number.value;
+
+                out->type = new_type(ctx, TYPE_I32);
+                out->type->is_untyped = 1;
             }
+
             return 1;
+        }
 
         case NODE_BOOL:
+        {
             out->kind = CONST_VALUE_BOOL;
             out->as.b = node->as.boolean.value;
+            out->type = ctx->type_bool;
+
             return 1;
+        }
 
         case NODE_IDENT:
         {
-            Symbol *sym = scope_lookup(ctx->current_scope, node->as.ident.data, node->as.ident.length);
+            Symbol *sym =
+                scope_lookup(
+                    ctx->current_scope,
+                    node->as.ident.data,
+                    node->as.ident.length
+                );
 
             if (!sym || sym->kind != SYMBOL_CONSTANT) {
-                semantic_error(ctx, node, "expression is not a compile-time constant");
+                semantic_error(
+                    ctx,
+                    node,
+                    "expression is not a compile-time constant"
+                );
+
                 return 0;
             }
 
+            /*
+             * Constants store their typed compile-time value.
+             * This preserves enum constant types.
+             */
             *out = sym->const_value;
             return 1;
+        }
+
+        case NODE_FIELD:
+        {
+            /*
+             * Enum members are compile-time constants:
+             *
+             *     Color.Red
+             *
+             * The raw stored value is the enum member's integer value,
+             * but the semantic type is the enum type itself.
+             */
+            if (node->as.field.object &&
+                node->as.field.object->type == NODE_IDENT) {
+
+                Node *object_node =
+                    node->as.field.object;
+
+                Symbol *sym =
+                    scope_lookup(
+                        ctx->current_scope,
+                        object_node->as.ident.data,
+                        object_node->as.ident.length
+                    );
+
+                if (sym &&
+                    sym->kind == SYMBOL_TYPE &&
+                    sym->type &&
+                    sym->type->kind == TYPE_ENUM) {
+
+                    EnumMember *member =
+                        find_enum_member(
+                            sym->type,
+                            node->as.field.name.data,
+                            node->as.field.name.length
+                        );
+
+                    if (!member) {
+                        semantic_error_name(
+                            ctx,
+                            node,
+                            "unknown enum member",
+                            node->as.field.name.data,
+                            node->as.field.name.length
+                        );
+
+                        return 0;
+                    }
+
+                    out->kind = CONST_VALUE_INT;
+                    out->as.i = member->value;
+                    out->type = sym->type;
+
+                    return 1;
+                }
+            }
+
+            semantic_error(
+                ctx,
+                node,
+                "expression is not a compile-time constant"
+            );
+
+            return 0;
         }
 
         case NODE_UNARY:
         {
             ConstValue operand;
-            if (!eval_const_expr(ctx, node->as.unary.operand, &operand)) return 0;
+
+            if (!eval_const_expr(
+                    ctx,
+                    node->as.unary.operand,
+                    &operand)) {
+                return 0;
+            }
 
             if (node->as.unary.op == TOK_MINUS) {
                 if (operand.kind == CONST_VALUE_INT) {
                     out->kind = CONST_VALUE_INT;
                     out->as.i = -operand.as.i;
+                    out->type = operand.type;
                     return 1;
                 }
+
                 if (operand.kind == CONST_VALUE_FLOAT) {
                     out->kind = CONST_VALUE_FLOAT;
                     out->as.f = -operand.as.f;
+                    out->type = operand.type;
                     return 1;
                 }
-                semantic_error(ctx, node, "unary '-' requires a numeric constant");
+
+                semantic_error(
+                    ctx,
+                    node,
+                    "unary '-' requires a numeric constant"
+                );
+
                 return 0;
             }
 
             if (node->as.unary.op == TOK_BANG) {
                 if (operand.kind != CONST_VALUE_BOOL) {
-                    semantic_error(ctx, node, "unary '!' requires a boolean constant");
+                    semantic_error(
+                        ctx,
+                        node,
+                        "unary '!' requires a boolean constant"
+                    );
+
                     return 0;
                 }
+
                 out->kind = CONST_VALUE_BOOL;
                 out->as.b = !operand.as.b;
+                out->type = ctx->type_bool;
+
                 return 1;
             }
 
-            semantic_error(ctx, node, "operator not allowed in a constant expression");
+            semantic_error(
+                ctx,
+                node,
+                "operator not allowed in a constant expression"
+            );
+
             return 0;
         }
 
         case NODE_BINARY:
         {
-            ConstValue left, right;
-            if (!eval_const_expr(ctx, node->as.binary.left, &left))  return 0;
-            if (!eval_const_expr(ctx, node->as.binary.right, &right)) return 0;
+            ConstValue left;
+            ConstValue right;
+
+            if (!eval_const_expr(
+                    ctx,
+                    node->as.binary.left,
+                    &left)) {
+                return 0;
+            }
+
+            if (!eval_const_expr(
+                    ctx,
+                    node->as.binary.right,
+                    &right)) {
+                return 0;
+            }
 
             switch (node->as.binary.op) {
-
-                case TOK_PLUS: case TOK_MINUS: case TOK_STAR:
-                case TOK_SLASH: case TOK_PERCENT:
+                case TOK_PLUS:
+                case TOK_MINUS:
+                case TOK_STAR:
+                case TOK_SLASH:
+                case TOK_PERCENT:
                 {
-                    if (left.kind == CONST_VALUE_INT && right.kind == CONST_VALUE_INT) {
+                    Type *left_type =
+                        const_value_default_type(ctx, &left);
 
-                        long long a = left.as.i, b = right.as.i;
-                        out->kind = CONST_VALUE_INT;
+                    Type *right_type =
+                        const_value_default_type(ctx, &right);
 
-                        switch (node->as.binary.op) {
-                            case TOK_PLUS:  out->as.i = a + b; return 1;
-                            case TOK_MINUS: out->as.i = a - b; return 1;
-                            case TOK_STAR:  out->as.i = a * b; return 1;
-                            case TOK_SLASH:
-                                if (b == 0) {
-                                    semantic_error(ctx, node, "division by zero in constant expression"); return 0;
-                                }
-                                out->as.i = a / b; return 1;
-                            case TOK_PERCENT:
-                                if (b == 0) {
-                                    semantic_error(ctx, node, "division by zero in constant expression"); return 0;
-                                }
-                                out->as.i = a % b; return 1;
-                            default: return 0;
-                        }
-                    }
+                    if (!is_numeric_type(left_type) ||
+                        !is_numeric_type(right_type)) {
 
-                    if (node->as.binary.op == TOK_PERCENT) {
-                        semantic_error(ctx, node, "'%' requires integer constants");
+                        semantic_error(
+                            ctx,
+                            node,
+                            "operands must be numeric constants"
+                        );
+
                         return 0;
                     }
 
-                    double a, b;
-                    if (!const_value_to_double(&left, &a) || !const_value_to_double(&right, &b)) {
-                        semantic_error(ctx, node, "operands must be numeric constants");
+                    if (node->as.binary.op == TOK_PERCENT) {
+                        if (!is_integer_kind(left_type->kind) ||
+                            !is_integer_kind(right_type->kind)) {
+
+                            semantic_error(
+                                ctx,
+                                node,
+                                "'%' requires integer constants"
+                            );
+
+                            return 0;
+                        }
+                    }
+
+                    Type *result_type =
+                        common_numeric_type(left_type, right_type);
+
+                    if (!result_type) {
+                        semantic_error(
+                            ctx,
+                            node,
+                            "constant operands have incompatible numeric types"
+                        );
+
+                        return 0;
+                    }
+
+                    /*
+                     * Integer result path.
+                     */
+                    if (left.kind == CONST_VALUE_INT &&
+                        right.kind == CONST_VALUE_INT &&
+                        is_integer_kind(result_type->kind)) {
+
+                        long long a = left.as.i;
+                        long long b = right.as.i;
+
+                        out->kind = CONST_VALUE_INT;
+                        out->type = result_type;
+
+                        switch (node->as.binary.op) {
+                            case TOK_PLUS:
+                                out->as.i = a + b;
+                                return 1;
+
+                            case TOK_MINUS:
+                                out->as.i = a - b;
+                                return 1;
+
+                            case TOK_STAR:
+                                out->as.i = a * b;
+                                return 1;
+
+                            case TOK_SLASH:
+                                if (b == 0) {
+                                    semantic_error(
+                                        ctx,
+                                        node,
+                                        "division by zero in constant expression"
+                                    );
+
+                                    return 0;
+                                }
+
+                                out->as.i = a / b;
+                                return 1;
+
+                            case TOK_PERCENT:
+                                if (b == 0) {
+                                    semantic_error(
+                                        ctx,
+                                        node,
+                                        "division by zero in constant expression"
+                                    );
+
+                                    return 0;
+                                }
+
+                                out->as.i = a % b;
+                                return 1;
+
+                            default:
+                                return 0;
+                        }
+                    }
+
+                    /*
+                     * Floating result path.
+                     */
+                    if (node->as.binary.op == TOK_PERCENT) {
+                        semantic_error(
+                            ctx,
+                            node,
+                            "'%' requires integer constants"
+                        );
+
+                        return 0;
+                    }
+
+                    double a;
+                    double b;
+
+                    if (!const_value_to_double(&left, &a) ||
+                        !const_value_to_double(&right, &b)) {
+
+                        semantic_error(
+                            ctx,
+                            node,
+                            "operands must be numeric constants"
+                        );
+
                         return 0;
                     }
 
                     out->kind = CONST_VALUE_FLOAT;
+                    out->type = result_type;
 
                     switch (node->as.binary.op) {
-                        case TOK_PLUS:  out->as.f = a + b; return 1;
-                        case TOK_MINUS: out->as.f = a - b; return 1;
-                        case TOK_STAR:  out->as.f = a * b; return 1;
+                        case TOK_PLUS:
+                            out->as.f = a + b;
+                            return 1;
+
+                        case TOK_MINUS:
+                            out->as.f = a - b;
+                            return 1;
+
+                        case TOK_STAR:
+                            out->as.f = a * b;
+                            return 1;
+
                         case TOK_SLASH:
                             if (b == 0.0) {
-                                semantic_error(ctx, node, "division by zero in constant expression"); return 0;
+                                semantic_error(
+                                    ctx,
+                                    node,
+                                    "division by zero in constant expression"
+                                );
+
+                                return 0;
                             }
-                            out->as.f = a / b; return 1;
-                        default: return 0;
+
+                            out->as.f = a / b;
+                            return 1;
+
+                        default:
+                            return 0;
                     }
                 }
 
                 case TOK_AND_AND:
                 case TOK_OR_OR:
                 {
-                    if (left.kind != CONST_VALUE_BOOL || right.kind != CONST_VALUE_BOOL) {
-                        semantic_error(ctx, node, "operands must be boolean constants");
+                    if (left.kind != CONST_VALUE_BOOL ||
+                        right.kind != CONST_VALUE_BOOL) {
+
+                        semantic_error(
+                            ctx,
+                            node,
+                            "operands must be boolean constants"
+                        );
+
                         return 0;
                     }
 
@@ -579,17 +869,30 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                     out->as.b = (node->as.binary.op == TOK_AND_AND)
                         ? (left.as.b && right.as.b)
                         : (left.as.b || right.as.b);
+
+                    out->type = ctx->type_bool;
+
                     return 1;
                 }
 
                 default:
-                    semantic_error(ctx, node, "operator not allowed in a constant expression");
+                    semantic_error(
+                        ctx,
+                        node,
+                        "operator not allowed in a constant expression"
+                    );
+
                     return 0;
             }
         }
 
         default:
-            semantic_error(ctx, node, "expression is not a compile-time constant");
+            semantic_error(
+                ctx,
+                node,
+                "expression is not a compile-time constant"
+            );
+
             return 0;
     }
 }
@@ -1357,8 +1660,7 @@ static void check_block(SemanticContext *ctx, Node *node) {
     scope_pop(ctx);
 }
 
-static void check_const_decl(SemanticContext *ctx, Node *node)
-{
+static void check_const_decl(SemanticContext *ctx, Node *node) {
     if (scope_find_local(
             ctx->current_scope,
             node->as.const_decl.name.data,
@@ -1381,22 +1683,42 @@ static void check_const_decl(SemanticContext *ctx, Node *node)
             ctx,
             node->as.const_decl.value,
             &value)) {
-
         /*
          * eval_const_expr already reported the precise failure.
          */
         return;
     }
 
+    /*
+     * Type-check the expression too.
+     *
+     * eval_const_expr proves "this is compile-time known".
+     * check_expression gives us the normal semantic type.
+     *
+     * For example:
+     *     Color.Red
+     *
+     * eval_const_expr -> integer value 0, type Color
+     * check_expression -> type Color
+     */
+    Type *value_type = check_expression(ctx,node->as.const_decl.value);
+
+    if (!value_type)
+        return;
+
     Type *type = node->as.const_decl.const_type;
 
     if (type) {
+        /*
+         * Explicit typed constant:
+         *
+         *     X: i64 : 10;
+         *     DEFAULT_COLOR: Color : Color.Red;
+         */
         type = resolve_type(ctx, type, node);
 
         if (!type) {
-            semantic_error(
-                ctx,
-                node,
+            semantic_error(ctx, node,
                 "could not resolve constant type"
             );
 
@@ -1404,9 +1726,7 @@ static void check_const_decl(SemanticContext *ctx, Node *node)
         }
 
         if (invalid_value_type(type)) {
-            semantic_error(
-                ctx,
-                node,
+            semantic_error(ctx, node,
                 "constant cannot have type void"
             );
 
@@ -1414,19 +1734,24 @@ static void check_const_decl(SemanticContext *ctx, Node *node)
         }
 
         /*
-         * Convert a stored integer constant to a floating-point value
-         * when the explicitly declared destination type is floating.
+         * Allow integer constants to be stored as float constants when the
+         * declared destination is a float.
+         *
+         * Do not do this for enums. Enums are strongly typed and should
+         * only accept enum values of the same enum type.
          */
         if (is_float_kind(type->kind) &&
-            value.kind == CONST_VALUE_INT) {
+            value.kind == CONST_VALUE_INT &&
+            is_integer_kind(value_type->kind)) {
 
-            long long integer_value = value.as.i;
+            long long integer_value =
+                value.as.i;
 
             value.kind = CONST_VALUE_FLOAT;
             value.as.f = (double)integer_value;
+            value.type = type;
+            value_type = type;
         }
-
-        Type *value_type = const_value_default_type(ctx, &value);
 
         if (!initializer_compatible(
                 type,
@@ -1441,31 +1766,50 @@ static void check_const_decl(SemanticContext *ctx, Node *node)
 
             return;
         }
+
+        /*
+         * Store the declared type as the constant's final type.
+         *
+         * Example:
+         *     X: i64 : 10;
+         *
+         * The literal 10 starts as untyped i32, but the constant X is i64.
+         */
+        value.type = type;
     } else {
-        type = const_value_default_type(ctx, &value);
+        /*
+         * Inferred constant:
+         *
+         *     X :: 10;
+         *     DEFAULT_COLOR :: Color.Red;
+         *
+         * This now correctly preserves enum types because ConstValue
+         * carries a Type*.
+         */
+        type = value.type
+            ? value.type
+            : const_value_default_type(ctx, &value);
 
         if (!type) {
-            semantic_error(
-                ctx,
-                node,
+            semantic_error(ctx, node,
                 "could not infer constant type"
             );
 
             return;
         }
+
+        value.type = type;
     }
 
-    Symbol *sym =
-        arena_alloc(ctx->arena, sizeof(Symbol));
-
+    Symbol *sym = arena_alloc(ctx->arena, sizeof(Symbol));
     memset(sym, 0, sizeof(*sym));
 
     sym->name = node->as.const_decl.name;
     sym->kind = SYMBOL_CONSTANT;
     sym->type = type;
     sym->const_value = value;
-    sym->next = ctx->current_scope->symbols;
 
+    sym->next = ctx->current_scope->symbols;
     ctx->current_scope->symbols = sym;
 }
 

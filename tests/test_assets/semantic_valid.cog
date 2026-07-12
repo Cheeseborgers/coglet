@@ -46,7 +46,6 @@ foo::() -> void {
     return;
 }
 
-// new
 Color :: enum(u16) {
     Red,
     Green,
@@ -77,3 +76,11 @@ use_color::(c: Color) -> Color {
 }
 
 result_color := use_color(Color.Red);
+
+DEFAULT_COLOR :: Color.Red;
+
+favorite: Color = DEFAULT_COLOR;
+
+EXPLICIT_COLOR: Color : Color.Blue;
+
+other: Color = EXPLICIT_COLOR;

@@ -156,3 +156,10 @@ y := "string";
 {
     c : u8 = 'a';
 }
+
+PI :: 3.14159;
+PII: f64 : 3.14159;
+TAU :: PI * 2;
+PI = 4;
+BAD :: some_func();
+BAD :: 1 / 0;

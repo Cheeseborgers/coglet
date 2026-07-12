@@ -135,6 +135,7 @@ static int  declare_struct_shell(SemanticContext *ctx, Node *node);
 static void fill_struct_fields(SemanticContext *ctx, Node *node);
 static int  declare_function_signature(SemanticContext *ctx, Node *node);
 static void check_function_body(SemanticContext *ctx, Node *node);
+static void check_const_decl(SemanticContext *ctx, Node *node);
 
 // ============================================================
 // expressions
@@ -299,6 +300,188 @@ static int initializer_compatible(Type *declared, Type *init_type, Node *init_no
     return 0;
 }
 
+// ============================================================
+// compile-time constant evaluation
+// ============================================================
+
+static int const_value_to_double(const ConstValue *v, double *out) {
+    switch (v->kind) {
+        case CONST_VALUE_INT:   *out = (double)v->as.i; return 1;
+        case CONST_VALUE_FLOAT: *out = v->as.f;          return 1;
+        default: return 0;
+    }
+}
+
+static Type *const_value_default_type(SemanticContext *ctx, const ConstValue *v) {
+
+    Type *t = arena_alloc(ctx->arena, sizeof(Type));
+    t->element = NULL;
+    t->array_size = -1;
+    t->struct_name.data = NULL;
+    t->struct_name.length = 0;
+
+    switch (v->kind) {
+        case CONST_VALUE_INT:   t->kind = TYPE_I32;  break;  // matches NODE_NUMBER's untyped-int default
+        case CONST_VALUE_FLOAT: t->kind = TYPE_F64;  break;
+        case CONST_VALUE_BOOL:  t->kind = TYPE_BOOL; break;
+    }
+
+    return t;
+}
+
+// Recursively evaluates an expression that must be knowable at compile
+// time: literals, other constants, and unary/binary ops over those.
+// Anything reaching outside that (function calls, variables, struct
+// inits, etc.) is rejected with a diagnostic.
+static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
+
+    if (!node) return 0;
+
+    switch (node->type) {
+
+        case NODE_NUMBER:
+            if (node->as.number.is_float) {
+                out->kind = CONST_VALUE_FLOAT;
+                out->as.f = node->as.number.value;
+            } else {
+                out->kind = CONST_VALUE_INT;
+                out->as.i = (long long)node->as.number.value;
+            }
+            return 1;
+
+        case NODE_BOOL:
+            out->kind = CONST_VALUE_BOOL;
+            out->as.b = node->as.boolean.value;
+            return 1;
+
+        case NODE_IDENT:
+        {
+            Symbol *sym = scope_lookup(ctx->current_scope, node->as.ident.data, node->as.ident.length);
+
+            if (!sym || sym->kind != SYMBOL_CONSTANT) {
+                semantic_error(ctx, node, "expression is not a compile-time constant");
+                return 0;
+            }
+
+            *out = sym->const_value;
+            return 1;
+        }
+
+        case NODE_UNARY:
+        {
+            ConstValue operand;
+            if (!eval_const_expr(ctx, node->as.unary.operand, &operand)) return 0;
+
+            if (node->as.unary.op == TOK_MINUS) {
+                if (operand.kind == CONST_VALUE_INT) {
+                    out->kind = CONST_VALUE_INT;
+                    out->as.i = -operand.as.i;
+                    return 1;
+                }
+                if (operand.kind == CONST_VALUE_FLOAT) {
+                    out->kind = CONST_VALUE_FLOAT;
+                    out->as.f = -operand.as.f;
+                    return 1;
+                }
+                semantic_error(ctx, node, "unary '-' requires a numeric constant");
+                return 0;
+            }
+
+            if (node->as.unary.op == TOK_BANG) {
+                if (operand.kind != CONST_VALUE_BOOL) {
+                    semantic_error(ctx, node, "unary '!' requires a boolean constant");
+                    return 0;
+                }
+                out->kind = CONST_VALUE_BOOL;
+                out->as.b = !operand.as.b;
+                return 1;
+            }
+
+            semantic_error(ctx, node, "operator not allowed in a constant expression");
+            return 0;
+        }
+
+        case NODE_BINARY:
+        {
+            ConstValue left, right;
+            if (!eval_const_expr(ctx, node->as.binary.left, &left))  return 0;
+            if (!eval_const_expr(ctx, node->as.binary.right, &right)) return 0;
+
+            switch (node->as.binary.op) {
+
+                case TOK_PLUS: case TOK_MINUS: case TOK_STAR:
+                case TOK_SLASH: case TOK_PERCENT:
+                {
+                    if (left.kind == CONST_VALUE_INT && right.kind == CONST_VALUE_INT) {
+
+                        long long a = left.as.i, b = right.as.i;
+                        out->kind = CONST_VALUE_INT;
+
+                        switch (node->as.binary.op) {
+                            case TOK_PLUS:  out->as.i = a + b; return 1;
+                            case TOK_MINUS: out->as.i = a - b; return 1;
+                            case TOK_STAR:  out->as.i = a * b; return 1;
+                            case TOK_SLASH:
+                                if (b == 0) { semantic_error(ctx, node, "division by zero in constant expression"); return 0; }
+                                out->as.i = a / b; return 1;
+                            case TOK_PERCENT:
+                                if (b == 0) { semantic_error(ctx, node, "division by zero in constant expression"); return 0; }
+                                out->as.i = a % b; return 1;
+                            default: return 0;
+                        }
+                    }
+
+                    if (node->as.binary.op == TOK_PERCENT) {
+                        semantic_error(ctx, node, "'%' requires integer constants");
+                        return 0;
+                    }
+
+                    double a, b;
+                    if (!const_value_to_double(&left, &a) || !const_value_to_double(&right, &b)) {
+                        semantic_error(ctx, node, "operands must be numeric constants");
+                        return 0;
+                    }
+
+                    out->kind = CONST_VALUE_FLOAT;
+
+                    switch (node->as.binary.op) {
+                        case TOK_PLUS:  out->as.f = a + b; return 1;
+                        case TOK_MINUS: out->as.f = a - b; return 1;
+                        case TOK_STAR:  out->as.f = a * b; return 1;
+                        case TOK_SLASH:
+                            if (b == 0.0) { semantic_error(ctx, node, "division by zero in constant expression"); return 0; }
+                            out->as.f = a / b; return 1;
+                        default: return 0;
+                    }
+                }
+
+                case TOK_AND_AND:
+                case TOK_OR_OR:
+                {
+                    if (left.kind != CONST_VALUE_BOOL || right.kind != CONST_VALUE_BOOL) {
+                        semantic_error(ctx, node, "operands must be boolean constants");
+                        return 0;
+                    }
+
+                    out->kind = CONST_VALUE_BOOL;
+                    out->as.b = (node->as.binary.op == TOK_AND_AND)
+                        ? (left.as.b && right.as.b)
+                        : (left.as.b || right.as.b);
+                    return 1;
+                }
+
+                default:
+                    semantic_error(ctx, node, "operator not allowed in a constant expression");
+                    return 0;
+            }
+        }
+
+        default:
+            semantic_error(ctx, node, "expression is not a compile-time constant");
+            return 0;
+    }
+}
+
 static Type *check_expression(SemanticContext *ctx, Node *node) {
 
     if (!node) return NULL;
@@ -455,6 +638,20 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_ASSIGN:
         {
+            if (node->as.assign.target->type == NODE_IDENT) {
+
+                Symbol *sym = scope_lookup(ctx->current_scope,
+                    node->as.assign.target->as.ident.data,
+                    node->as.assign.target->as.ident.length);
+
+                if (sym && sym->kind == SYMBOL_CONSTANT) {
+                    semantic_error_name(ctx, node, "cannot assign to constant",
+                        node->as.assign.target->as.ident.data,
+                        node->as.assign.target->as.ident.length);
+                    return NULL;
+                }
+            }
+
             Type *target = check_expression(ctx, node->as.assign.target);
             Type *value  = check_expression(ctx, node->as.assign.value);
 
@@ -713,6 +910,52 @@ static void check_block(SemanticContext *ctx, Node *node) {
     scope_pop(ctx);
 }
 
+static void check_const_decl(SemanticContext *ctx, Node *node) {
+
+    if (scope_find_local(ctx->current_scope, node->as.const_decl.name.data, node->as.const_decl.name.length)) {
+        semantic_error_name(
+            ctx, node, "duplicate declaration", node->as.const_decl.name.data, node->as.const_decl.name.length);
+        return;
+    }
+
+    ConstValue value;
+    if (!eval_const_expr(ctx, node->as.const_decl.value, &value)) {
+        return;   // eval_const_expr already reported the specific error
+    }
+
+    Type *type = node->as.const_decl.const_type;
+
+    if (type) {
+        type = resolve_type(ctx, type, node);
+
+        // an untyped int literal is allowed to initialize a float-typed
+        // constant -- promote the stored value so later constant folding
+        // (e.g. another constant referencing this one) sees a float.
+        if (is_float_kind(type->kind) && value.kind == CONST_VALUE_INT) {
+            value.kind = CONST_VALUE_FLOAT;
+            value.as.f = (double)value.as.i;
+        }
+
+        Type *value_type = const_value_default_type(ctx, &value);
+
+        if (!initializer_compatible(type, value_type, node->as.const_decl.value)) {
+            semantic_error(ctx, node, "constant value does not match declared type");
+        }
+    } else {
+        type = const_value_default_type(ctx, &value);
+    }
+
+    Symbol *sym = arena_alloc(ctx->arena, sizeof(Symbol));
+    sym->name.data   = node->as.const_decl.name.data;
+    sym->name.length = node->as.const_decl.name.length;
+    sym->kind        = SYMBOL_CONSTANT;
+    sym->type        = type;
+    sym->const_value = value;
+    sym->next        = ctx->current_scope->symbols;
+
+    ctx->current_scope->symbols = sym;
+}
+
 static void check_var_decl(SemanticContext *ctx, Node *node) {
 
     if (scope_find_local(ctx->current_scope, node->as.var_decl.name.data, node->as.var_decl.name.length)) {
@@ -968,6 +1211,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
     case NODE_FUNC_PARAM_DECL: check_param_decl(ctx,node); break;
     case NODE_FUNC_DECL:       check_function(ctx,node);   break;
     case NODE_IF:              check_if(ctx,node);         break;
+    case NODE_CONST_DECL:      check_const_decl(ctx,node); break;
 
     case NODE_EXPR_STMT: check_expression(ctx, node->as.expr_stmt.expr); break;
     case NODE_BREAK: if(ctx->loop_depth == 0) semantic_error(ctx,node,"break outside loop"); break;

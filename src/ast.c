@@ -236,6 +236,15 @@ Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *
     return node;
 }
 
+Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, int line) {
+    Node *node = new_node(arena, NODE_CONST_DECL, line);
+    node->as.const_decl.const_type  = type;
+    node->as.const_decl.name.data   = name;
+    node->as.const_decl.name.length = name_length;
+    node->as.const_decl.value       = value;
+    return node;
+}
+
 Node *ast_clone(Arena *arena, const Node *node)
 {
     if (!node)

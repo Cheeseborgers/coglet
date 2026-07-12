@@ -190,7 +190,6 @@ static void print_node(Node *node)
                     printf(" ");
             }
 
-
             printf("))");
 
             break;
@@ -213,6 +212,14 @@ static void print_node(Node *node)
             print_node(node->as.index.index);
             printf(")");
 
+            break;
+
+        case NODE_CONST_DECL:
+            printf("(const_decl ");
+            print_type(node->as.const_decl.const_type);
+            print_string_view(node->as.const_decl.name);
+            print_node(node->as.const_decl.value);
+            printf(")");
             break;
 
 
@@ -633,6 +640,16 @@ static void print_node_pretty(Node *node, int depth)
                 );
             }
 
+            break;
+
+        case NODE_CONST_DECL:
+            indent(depth);
+            print_string_view(node->as.const_decl.name);
+            print_type(node->as.const_decl.const_type);
+            printf("\n");
+            indent(depth + 1);
+            printf("value:\n");
+            print_node_pretty(node->as.const_decl.value, depth + 2);
             break;
 
         case NODE_RETURN:

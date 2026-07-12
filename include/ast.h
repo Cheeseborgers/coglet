@@ -40,6 +40,8 @@ typedef enum {
     NODE_STRUCT_INIT,      // Point{ x = 5, y = 10 }
     NODE_FIELD_INIT,       // one `x = 5` inside a struct init
 
+    NODE_CONST_DECL,       // PI :: 3.14159;  or  PI: f64 : 3.14159;
+
     NODE_RETURN,
     NODE_WHILE,
     NODE_FOR,
@@ -183,6 +185,12 @@ struct Node {
             StringView name;
             NodeList fields;      // list of NODE_STRUCT_FIELD_DECL
         } struct_decl;
+
+        struct {
+            Type *const_type;    // NULL for inferred (::); non-NULL for typed (: type :)
+            StringView name;
+            Node *value;         // required -- never NULL
+        } const_decl;
     } as;
 };
 
@@ -216,6 +224,7 @@ Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *r
 Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int line);
 Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, int line);
 Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, int line);
+Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, int line);
 
 // TODO: Allow cloning of all ast node types
 Node *ast_clone(Arena *arena, const Node *node);

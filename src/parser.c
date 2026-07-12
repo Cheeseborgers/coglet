@@ -22,7 +22,8 @@ static Node *parse_assignment_from(Parser *p, Node *left);
 static Type *parse_type(Parser *p);
 
 static Node *parse_decl_or_expr_statement(Parser *p);
-static Node *finish_typed_var_decl(Parser *p, Token name);
+static Node *finish_typed_decl(Parser *p, Token name);
+static Node *finish_inferred_const_decl(Parser *p, Token name);
 static Node *finish_inferred_var_decl(Parser *p, Token name);
 static Node *parse_decl_after_name(Parser *p, Token name);
 static Node *parse_proc_decl_rest(Parser *p, Token name, int line);
@@ -600,11 +601,24 @@ static Type *parse_type(Parser *p)
 
 // =================== variable declarations ==========================
 
-static Node *finish_typed_var_decl(Parser *p, Token name) {
+static Node *finish_typed_decl(Parser *p, Token name) {
 
     int line   = name.line;
     Type *type = parse_type(p);
 
+    // name : type : expr ;   -- typed constant
+    if (match(p, TOK_COLON)) {
+        Node *value = parse_assignment(p);
+
+        if (!consume(p, TOK_SEMICOLON)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        return ast_new_const_decl(p->arena, type, name.start, name.length, value, line);
+    }
+
+    // name : type ;   or   name : type = expr ;   -- ordinary var decl
     Node *initializer = NULL;
     if (match(p, TOK_EQUAL)) {
         initializer = parse_assignment(p);
@@ -616,6 +630,19 @@ static Node *finish_typed_var_decl(Parser *p, Token name) {
     }
 
     return ast_new_var_decl(p->arena, type, name.start, name.length, initializer, line);
+}
+
+static Node *finish_inferred_const_decl(Parser *p, Token name) {
+
+    int line    = name.line;
+    Node *value = parse_assignment(p);   // '::' always requires a value
+
+    if (!consume(p, TOK_SEMICOLON)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    return ast_new_const_decl(p->arena, NULL, name.start, name.length, value, line);
 }
 
 static Node *finish_inferred_var_decl(Parser *p, Token name) {
@@ -874,10 +901,8 @@ static Node *parse_decl_after_name(Parser *p, Token name) {
     if (check(p, TOK_LPAREN)) return parse_proc_decl_rest(p, name, line);
     if (check(p, TOK_STRUCT)) return parse_struct_decl_rest(p, name, line);
 
-    error_at(p, &p->current, "expected '(' or 'struct' after '::'");
-
-    synchronize(p);
-    return ast_new_error(p->arena, p->current);
+    // anything else after '::' is a constant expression
+    return finish_inferred_const_decl(p, name);
 }
 
 // Entry point for both declarations and identifier-led expression
@@ -899,7 +924,7 @@ static Node *parse_decl_or_expr_statement(Parser *p) {
 
         if (match(p, TOK_COLON_EQUAL)) return finish_inferred_var_decl(p, name);
         if (match(p, TOK_COLON_COLON)) return parse_decl_after_name(p, name);
-        if (match(p, TOK_COLON))       return finish_typed_var_decl(p, name);
+        if (match(p, TOK_COLON))       return finish_typed_decl(p, name);
 
         // Not a declaration -- resume ordinary expression parsing from
         // this identifier, then finish out as an expression statement.

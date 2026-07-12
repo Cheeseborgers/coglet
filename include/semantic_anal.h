@@ -12,13 +12,31 @@
 typedef enum {
     SYMBOL_VARIABLE,  // variables
     SYMBOL_FUNCTION,  // functions
-    SYMBOL_TYPE       // struct names, typedefs later // TODO: make separations for typedefs
+    SYMBOL_TYPE,       // struct names, typedefs later // TODO: make separations for typedefs
+    SYMBOL_CONSTANT,
 } SymbolKind;
+
+typedef enum {
+    CONST_VALUE_INT,
+    CONST_VALUE_FLOAT,
+    CONST_VALUE_BOOL,
+} ConstValueKind;
+
+typedef struct {
+    ConstValueKind kind;
+    union {
+        long long i;
+        double f;
+        int b;
+    } as;
+} ConstValue;
 
 typedef struct Symbol {
     StringView name;
 
     SymbolKind kind;
+
+    ConstValue const_value;   // only meaningful when kind == SYMBOL_CONSTANT
 
     Type *type;
 

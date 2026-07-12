@@ -125,7 +125,7 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
             semantic_error_name(
                 ctx,
                 error_node,
-                "unknown struct type",
+                "unknown type",
                 type->struct_name.data,
                 type->struct_name.length
             );
@@ -602,19 +602,48 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
     {
         case NODE_IDENT:
         {
-            Symbol *sym = scope_lookup(ctx->current_scope, node->as.ident.data, node->as.ident.length);
+            Symbol *sym =
+                scope_lookup(
+                    ctx->current_scope,
+                    node->as.ident.data,
+                    node->as.ident.length
+                );
 
             if (!sym) {
-                semantic_error_name(ctx,node,
+                semantic_error_name(
+                    ctx,
+                    node,
                     "undefined identifier",
                     node->as.ident.data,
-                    node->as.ident.length);
+                    node->as.ident.length
+                );
+
+                return NULL;
+            }
+
+            /*
+             * Type names are not values.
+             *
+             * Valid:
+             *     Color.Red
+             *
+             * Invalid:
+             *     x: Color = Color;
+             */
+            if (sym->kind == SYMBOL_TYPE) {
+                semantic_error_name(
+                    ctx,
+                    node,
+                    "type name cannot be used as a value",
+                    node->as.ident.data,
+                    node->as.ident.length
+                );
+
                 return NULL;
             }
 
             return sym->type;
         }
-
 
         case NODE_UNARY:
         {
@@ -1001,28 +1030,101 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_FIELD:
         {
-            Type *object = check_expression(ctx,node->as.field.object);
+            /*
+             * Special case:
+             *
+             *     Color.Red
+             *
+             * The object side is an identifier naming a type, not a runtime value.
+             */
+            if (node->as.field.object &&
+                node->as.field.object->type == NODE_IDENT) {
 
-            if(!object)
-                return NULL;
+                Node *object_node =
+                    node->as.field.object;
 
-            if(object->kind != TYPE_STRUCT) {
-                semantic_error(ctx, node, "field access requires a struct");
-                return NULL;
-            }
+                Symbol *sym =
+                    scope_lookup(
+                        ctx->current_scope,
+                        object_node->as.ident.data,
+                        object_node->as.ident.length
+                    );
 
-            Type *field =
-                find_struct_field(object,
+            if (sym &&
+                sym->kind == SYMBOL_TYPE &&
+                sym->type &&
+                sym->type->kind == TYPE_ENUM) {
+
+                EnumMember *member =
+                    find_enum_member(
+                        sym->type,
+                        node->as.field.name.data,
+                        node->as.field.name.length
+                    );
+
+            if (!member) {
+                semantic_error_name(
+                    ctx,
+                    node,
+                    "unknown enum member",
                     node->as.field.name.data,
-                    node->as.field.name.length);
+                    node->as.field.name.length
+                );
 
-            if(!field) {
-                semantic_error(ctx, node, "unknown struct field");
                 return NULL;
             }
 
-            return field;
+            /*
+             * The value is stored in `member->value`, but the expression's
+             * type is the enum type itself, not the backing integer type.
+             */
+            return sym->type;
         }
+    }
+
+    /*
+     * Normal runtime field access:
+     *
+     *     point.x
+     */
+    Type *object =
+        check_expression(
+            ctx,
+            node->as.field.object
+        );
+
+    if (!object)
+        return NULL;
+
+    if (object->kind != TYPE_STRUCT) {
+        semantic_error(
+            ctx,
+            node,
+            "field access requires a struct"
+        );
+
+        return NULL;
+    }
+
+    Type *field =
+        find_struct_field(
+            object,
+            node->as.field.name.data,
+            node->as.field.name.length
+        );
+
+    if (!field) {
+        semantic_error(
+            ctx,
+            node,
+            "unknown struct field"
+        );
+
+        return NULL;
+    }
+
+    return field;
+}
 
         case NODE_INDEX:
         {

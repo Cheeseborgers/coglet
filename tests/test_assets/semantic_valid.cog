@@ -64,3 +64,16 @@ Flags :: enum(u8) {
     Write = 2,
     Execute = 4,
 }
+
+favorite: Color = Color.Red;
+
+other_color := Color.Green;
+
+Color.Red == Color.Blue;
+Color.Red != Color.Green;
+
+use_color::(c: Color) -> Color {
+    return Color.Blue;
+}
+
+result_color := use_color(Color.Red);

@@ -52,3 +52,24 @@ DuplicateMember :: enum(u8) {
     A,
     A,
 }
+
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+BadEnumMemberUse1: Color = Color;
+BadEnumMemberUse2: Color = Color.Purple;
+
+BadEnumMemberUse3: Color = 1;
+
+OtherEnum :: enum(u16) {
+    Red,
+}
+
+Color.Red == OtherEnum.Red;
+
+Color.Red < Color.Blue;
+
+Color.Red + Color.Blue;

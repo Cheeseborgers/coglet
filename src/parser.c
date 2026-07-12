@@ -931,21 +931,19 @@ static Node *finish_struct_init(Parser *p, Token type_name)
 }
 
 // ====================== end struct declarations ======================
-
 // ====================== enum declarations ===========================
 static Node *parse_enum_decl_rest(Parser *p, Token name, int line) {
     consume(p, TOK_ENUM);
 
-    if (!consume(p, TOK_LPAREN)) {
-        synchronize(p);
-        return ast_new_error(p->arena, p->current);
-    }
+    Type *backing_type = NULL;
 
-    Type *backing_type = parse_type(p);
+    if (match(p, TOK_LPAREN)) {
+        backing_type = parse_type(p);
 
-    if (!consume(p, TOK_RPAREN)) {
-        synchronize(p);
-        return ast_new_error(p->arena, p->current);
+        if (!consume(p, TOK_RPAREN)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
     }
 
     if (!consume(p, TOK_LBRACE)) {
@@ -989,7 +987,7 @@ static Node *parse_enum_decl_rest(Parser *p, Token name, int line) {
 
             break;
         }
-    }
+           }
 
     consume(p, TOK_RBRACE);
 

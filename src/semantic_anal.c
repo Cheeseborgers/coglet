@@ -2807,15 +2807,24 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
     if (!type)
         return;
 
-    Type *backing_type =
-        resolve_type(
-            ctx,
-            node->as.enum_decl.backing_type,
-            node
-        );
+    Type *backing_type = NULL;
 
-    if (!backing_type)
-        return;
+    if (node->as.enum_decl.backing_type) {
+        backing_type =
+            resolve_type(
+                ctx,
+                node->as.enum_decl.backing_type,
+                node
+            );
+
+        if (!backing_type)
+            return;
+    } else {
+        /*
+         * Default enum backing type.
+         */
+        backing_type = new_type(ctx, TYPE_I32);
+    }
 
     if (!is_integer_kind(backing_type->kind)) {
         semantic_error(

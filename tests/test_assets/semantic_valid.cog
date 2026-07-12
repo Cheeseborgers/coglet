@@ -184,7 +184,28 @@ classify_color_exhaustive::(c: Color) -> i32 {
         case Color.Green:
             return 2;
 
-        //case Color.Blue:
-            //return 3;
+        case Color.Blue:
+            return 3;
+    }
+}
+
+DefaultColor :: enum {
+    Red,
+    Green,
+    Blue,
+}
+
+default_color_value: DefaultColor = DefaultColor.Red;
+
+classify_default_color::(c: DefaultColor) -> i32 {
+    switch c {
+        case DefaultColor.Red:
+            return 1;
+
+        case DefaultColor.Green:
+            return 2;
+
+        case DefaultColor.Blue:
+            return 3;
     }
 }

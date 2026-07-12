@@ -111,7 +111,6 @@ static void print_node(Node *node)
                 printf("%lld", (long long)node->as.number.value);
             break;
 
-
         case NODE_IDENT:
             print_string_view(node->as.ident);
             break;
@@ -172,7 +171,6 @@ static void print_node(Node *node)
 
             break;
 
-
         case NODE_IF:
             printf("(if ");
             print_node(node->as.if_stmt.condition);
@@ -192,7 +190,6 @@ static void print_node(Node *node)
             print_node(node->as.expr_stmt.expr);
             break;
 
-
         case NODE_BLOCK:
             printf("block\n");
             for (int i = 0;
@@ -204,12 +201,10 @@ static void print_node(Node *node)
 
             break;
 
-
         case NODE_CALL:
             printf("(call ");
             print_node(node->as.call.callee);
             printf(" (");
-
 
             for (int i = 0;
                  i < node->as.call.arguments.count;
@@ -225,7 +220,6 @@ static void print_node(Node *node)
 
             break;
 
-
         case NODE_FIELD:
             printf("(field ");
             print_string_view(node->as.field.name);
@@ -234,7 +228,6 @@ static void print_node(Node *node)
             printf(")");
 
             break;
-
 
         case NODE_INDEX:
             printf("(index ");
@@ -252,7 +245,6 @@ static void print_node(Node *node)
             print_node(node->as.const_decl.value);
             printf(")");
             break;
-
 
         case NODE_ERROR:
             printf("<error>");
@@ -289,7 +281,6 @@ static void print_node(Node *node)
             printf(")");
 
             break;
-
 
         case NODE_FUNC_PARAM_DECL:
             printf("(param_decl ");
@@ -354,7 +345,12 @@ static void print_node(Node *node)
                 (int)node->as.enum_decl.name.length,
                 node->as.enum_decl.name.data);
 
-            print_type(node->as.enum_decl.backing_type);
+
+            if (node->as.enum_decl.backing_type) {
+                print_type(node->as.enum_decl.backing_type);
+            } else {
+                printf("<default>");
+            }
 
             printf(")");
 
@@ -378,7 +374,6 @@ static void print_node(Node *node)
 
             printf(")");
             break;
-
 
         case NODE_RETURN:
             printf("(return");
@@ -423,7 +418,6 @@ static void print_node(Node *node)
             print_node(node->as.while_stmt.body);
             printf(")");
             break;
-
 
         case NODE_FOR:
             printf("(for ");
@@ -747,7 +741,13 @@ static void print_node_pretty(Node *node, int depth)
             printf("Backing type\n");
 
             indent(depth + 2);
-            print_type(node->as.enum_decl.backing_type);
+
+            if (node->as.enum_decl.backing_type) {
+                print_type(node->as.enum_decl.backing_type);
+            } else {
+                printf("<default>");
+            }
+
             printf("\n");
 
             /*

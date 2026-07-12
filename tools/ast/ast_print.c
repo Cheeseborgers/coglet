@@ -11,6 +11,8 @@ static const char *token_type_str(TokenType t)
     switch (t) {
         case TOK_PLUS:    return "+";
         case TOK_MINUS:   return "-";
+        case TOK_PLUS_PLUS:   return "++";
+        case TOK_MINUS_MINUS: return "--";
         case TOK_STAR:    return "*";
         case TOK_SLASH:   return "/";
         case TOK_PERCENT: return "%";
@@ -129,6 +131,18 @@ static void print_node(Node *node)
             printf(" ");
             print_node(node->as.binary.right);
             printf(")");
+            break;
+
+        case NODE_INC_DEC:
+            if (node->as.inc_dec.is_prefix) {
+                printf("(%s ", token_type_str(node->as.inc_dec.op));
+                print_node(node->as.inc_dec.target);
+                printf(")");
+            } else {
+                printf("(post%s ", token_type_str(node->as.inc_dec.op));
+                print_node(node->as.inc_dec.target);
+                printf(")");
+            }
             break;
 
 
@@ -470,6 +484,17 @@ static void print_node_pretty(Node *node, int depth)
             print_node_pretty(node->as.binary.right, depth + 1);
             break;
 
+        case NODE_INC_DEC:
+            indent(depth);
+
+            if (node->as.inc_dec.is_prefix)
+                printf("%s prefix\n", token_type_str(node->as.inc_dec.op));
+            else
+                printf("%s postfix\n", token_type_str(node->as.inc_dec.op));
+
+            print_node_pretty(node->as.inc_dec.target, depth + 1);
+            break;
+
         case NODE_ASSIGN:
             indent(depth);
             printf("(=)\n");
@@ -516,7 +541,6 @@ static void print_node_pretty(Node *node, int depth)
             );
 
             break;
-
 
         case NODE_INDEX:
             indent(depth);

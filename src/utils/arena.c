@@ -1,6 +1,7 @@
 #include "../../include/utils/arena.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 // One block is a flat byte buffer plus how much of it is used.
 // When a block fills up, we allocate a new block and link to it --
@@ -120,5 +121,12 @@ size_t arena_remaining(const Arena *a)
     if (!a) return 0;
 
     return a->current->capacity - a->current->used;
+}
+
+char *arena_strdup_len(Arena *arena, const char *s, size_t len) {
+    char *copy = arena_alloc(arena, len + 1);
+    memcpy(copy, s, len);
+    copy[len] = '\0';
+    return copy;
 }
 

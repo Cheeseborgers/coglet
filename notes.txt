@@ -10,3 +10,9 @@ Right now :: only ever leads into ( for procs. Jai/Odin also use :: for compile-
 Once semantic analysis exists, the natural payoff is generating something executable — even a simple tree-walking interpreter first (fastest to get "does my language actually run programs" feedback), then maybe LLVM IR or a small bytecode VM later. I'd genuinely do the interpreter before anything else here — it's the cheapest way to validate that everything above (types, scoping, control flow) is actually coherent, since bugs in semantic analysis often only surface once you try to execute the thing.
 8. Test infrastructure
 Given how much back-and-forth we've had catching regressions by eyeballing error output, this is worth doing soon rather than late: a small harness that feeds .mylang snippets through the parser and diffs against expected ast_pretty_print output (or expected diagnostic messages) would catch the parse_program-bypassing-parse_statement class of bug instantly instead of via a 43-line error dump.
+
+
+
+sem anal:
+Return type checking is missing
+

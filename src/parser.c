@@ -229,17 +229,15 @@ const char *token_debug_display_name(TokenType t)
     }
 }
 
-static void add_diagnostic(Parser *p, Token token, const char *message)
-{
-    if (p->diagnostic_count >= p->diagnostic_capacity - 1) {
+static void add_diagnostic(Parser *p, Token token, const char *message) {
+    if (p->diagnostic_count >= p->diagnostic_capacity) {
         fprintf(stderr, "WARNING: parser diagnostics full\n");
         return;
     }
 
     Diagnostic *d = &p->diagnostics[p->diagnostic_count++];
-
     d->token = token;
-    d->message = message;
+    d->message = arena_strdup_len(p->arena, message, strlen(message));
 
     p->had_error = 1;
     p->error_count++;
@@ -352,23 +350,18 @@ static Node *parse_primary(Parser *p)
 }
 
 // ===================== postfix pipeline =====================
-static Node *make_inc_dec(Parser *p, Node *expr, TokenType op)
+static Node *make_inc_dec(Parser *p, Node *expr, TokenType op, int is_prefix, int line)
 {
     if (!is_assignable(expr)) {
         error_at(p, &p->previous, "invalid increment target");
     }
 
-    return ast_new_assign(
+    return ast_new_inc_dec(
         p->arena,
+        op,
         expr,
-        ast_new_binary(
-            p->arena,
-            op == TOK_PLUS_PLUS ? TOK_PLUS : TOK_MINUS,
-            expr,
-            ast_new_number(p->arena, 1, 0, expr->line),   // 0 = not a float literal
-            expr->line
-        ),
-        expr->line
+        is_prefix,
+        line
     );
 }
 
@@ -400,14 +393,17 @@ static Node *parse_postfix_from(Parser *p, Node *expr)
         }
 
         if (match(p, TOK_PLUS_PLUS)) {
-            expr = make_inc_dec(p, expr, TOK_PLUS_PLUS);
+            Token op = p->previous;
+            expr = make_inc_dec(p, expr, TOK_PLUS_PLUS, 0, op.line);
             continue;
         }
 
         if (match(p, TOK_MINUS_MINUS)) {
-            expr = make_inc_dec(p, expr, TOK_MINUS_MINUS);
+            Token op = p->previous;
+            expr = make_inc_dec(p, expr, TOK_MINUS_MINUS, 0, op.line);
             continue;
         }
+
         break;
     }
 
@@ -429,10 +425,8 @@ static Node *parse_unary(Parser *p)
 
         Node *rhs = parse_unary(p);
 
-        if (op.type == TOK_PLUS_PLUS ||
-           op.type == TOK_MINUS_MINUS)
-        {
-            return make_inc_dec(p, rhs, op.type);
+        if (op.type == TOK_PLUS_PLUS || op.type == TOK_MINUS_MINUS) {
+            return make_inc_dec(p, rhs, op.type, 1, op.line);
         }
 
         return ast_new_unary(

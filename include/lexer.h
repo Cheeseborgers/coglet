@@ -1,5 +1,6 @@
 #ifndef COGLET_LEXER_H
 #define COGLET_LEXER_H
+#include "utils/string_view.h"
 
 typedef enum {
     TOK_EOF = 0,
@@ -47,6 +48,8 @@ typedef enum {
 // source buffer, which must stay alive for the whole compile.
 typedef struct {
     TokenType type;
+
+    //StringView start;
 
     const char *start;
     int length;

@@ -56,6 +56,14 @@ Node *ast_new_unary(Arena *arena, TokenType op, Node *operand, int line) {
     return node;
 }
 
+Node *ast_new_inc_dec(Arena *arena, TokenType op, Node *target, int is_prefix, int line) {
+    Node *node = new_node(arena, NODE_INC_DEC, line);
+    node->as.inc_dec.op = op;
+    node->as.inc_dec.target = target;
+    node->as.inc_dec.is_prefix = is_prefix;
+    return node;
+}
+
 Node *ast_new_binary(Arena *arena, TokenType op, Node *left, Node *right, int line) {
     Node *node = new_node(arena, NODE_BINARY, line);
     node->as.binary.op     = op;
@@ -244,6 +252,7 @@ Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_le
     node->as.const_decl.value       = value;
     return node;
 }
+
 
 Node *ast_clone(Arena *arena, const Node *node)
 {

@@ -30,6 +30,8 @@ typedef struct StructField {
 
 struct Type {
     TypeKind kind;
+    int is_untyped;       // 1 if this came from a bare literal / const-expr with no fixed type yet
+
 
     Type *element;        // TYPE_POINTER / TYPE_ARRAY
 

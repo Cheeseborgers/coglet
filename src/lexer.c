@@ -48,17 +48,18 @@ static char advance(Lexer *lx)
 static int match(Lexer *lx, char expected) {
     if (is_at_end(lx)) return 0;
     if (*lx->current != expected) return 0;
-    lx->current++;
+    advance(lx);
     return 1;
 }
 
-static Token make_token(Lexer *lx, TokenType type, const char *start, int length) {
+static Token make_token(TokenType type, const char *start,int length, int line, int column
+) {
     Token t;
     t.type = type;
     t.start = start;
     t.length = length;
-    t.line = lx->line;
-    t.column = lx->column;
+    t.line = line;
+    t.column = column;
     return t;
 }
 
@@ -75,6 +76,7 @@ static Token error_token(Lexer *lx, const char *msg) {
 
 // Skips whitespace, // line comments, and /* block */ comments.
 // Line comments and block comments never produce tokens.
+// TODO: return a status here and emit error?
 static void skip_whitespace_and_comments(Lexer *lx) {
     for (;;) {
         char c = peek(lx);
@@ -92,10 +94,12 @@ static void skip_whitespace_and_comments(Lexer *lx) {
 
             if (is_at_end(lx))
             {
-                // TODO: emit an error token.
                 lx->error_msg = "unterminated block comment";
                 return;
             }
+
+            advance(lx); // consume '*'
+            advance(lx); // consume '/'
         } else {
             return;
         }
@@ -134,14 +138,23 @@ static TokenType identifier_type(const char *start, int length) {
     return TOK_IDENT;
 }
 
-static Token scan_identifier(Lexer *lx, const char *start) {
-    while (is_alpha(peek(lx)) || is_digit(peek(lx))) advance(lx);
+static Token scan_identifier(Lexer *lx, const char *start, int start_line, int start_column) {
+    while (is_alpha(peek(lx)) || is_digit(peek(lx)))
+        advance(lx);
+
     int length = (int)(lx->current - start);
-    return make_token(lx, identifier_type(start, length), start, length);
+
+    return make_token(
+        identifier_type(start, length),
+        start,
+        length,
+        start_line,
+        start_column
+    );
 }
 
 // Handles integers (123), floats (3.14), no exponent/hex support yet.
-static Token scan_number(Lexer *lx, const char *start) {
+static Token scan_number(Lexer *lx, const char *start, int start_line, int start_column) {
     while (is_digit(peek(lx))) advance(lx);
 
     int is_float = 0;
@@ -152,12 +165,12 @@ static Token scan_number(Lexer *lx, const char *start) {
     }
 
     int length = (int)(lx->current - start);
-    return make_token(lx, is_float ? TOK_NUMBER_FLOAT : TOK_NUMBER_INT, start, length);
+    return make_token(is_float ? TOK_NUMBER_FLOAT : TOK_NUMBER_INT, start, length, start_line, start_column);
 }
 
 // Handles "..." with backslash escapes; does NOT interpret the escapes
 // here (that's the parser/codegen's job) — just scans past them safely.
-static Token scan_string(Lexer *lx, const char *start) {
+static Token scan_string(Lexer *lx, const char *start, int start_line, int start_column) {
     while (
         peek(lx) != '"' &&
         !is_at_end(lx)){
@@ -172,10 +185,10 @@ static Token scan_string(Lexer *lx, const char *start) {
 
     advance(lx); // closing quote
     int length = (int)(lx->current - start);
-    return make_token(lx, TOK_STRING, start, length);
+    return make_token(TOK_STRING, start, length, start_line, start_column);
 }
 
-static Token scan_char(Lexer *lx, const char *start)
+static Token scan_char(Lexer *lx, const char *start, int start_line, int start_column)
 {
     if (is_at_end(lx))
         return error_token(lx, "unterminated char literal");
@@ -200,10 +213,11 @@ static Token scan_char(Lexer *lx, const char *start)
     advance(lx);
 
     return make_token(
-        lx,
         TOK_CHAR,
         start,
-        (int)(lx->current - start)
+        (int)(lx->current - start),
+        start_line,
+        start_column
     );
 }
 
@@ -211,66 +225,69 @@ Token lexer_next(Lexer *lx) {
     skip_whitespace_and_comments(lx);
 
     const char *start = lx->current;
-    if (is_at_end(lx)) return make_token(lx, TOK_EOF, start, 0);
+    int start_line = lx->line;
+    int start_column = lx->column;
+
+    if (is_at_end(lx)) return make_token(TOK_EOF, start, 0, start_line, start_column);
 
     char c = advance(lx);
 
-    if (is_alpha(c)) return scan_identifier(lx, start);
-    if (is_digit(c)) return scan_number(lx, start);
-    if (c == '"') return scan_string(lx, start);
-    if (c == '\'') return scan_char(lx, start);
+    if (is_alpha(c)) return scan_identifier(lx, start, start_line, start_column);
+    if (is_digit(c)) return scan_number(lx, start, start_line, start_column);
+    if (c == '"') return scan_string(lx, start, start_line, start_column);
+    if (c == '\'') return scan_char(lx, start, start_line, start_column);
 
     switch (c) {
-        case '(': return make_token(lx, TOK_LPAREN, start, 1);
-        case ')': return make_token(lx, TOK_RPAREN, start, 1);
-        case '{': return make_token(lx, TOK_LBRACE, start, 1);
-        case '}': return make_token(lx, TOK_RBRACE, start, 1);
-        case '[': return make_token(lx, TOK_LBRACKET, start, 1);
-        case ']': return make_token(lx, TOK_RBRACKET, start, 1);
-        case ';': return make_token(lx, TOK_SEMICOLON, start, 1);
-        case ',': return make_token(lx, TOK_COMMA, start, 1);
-        case '.': return make_token(lx, TOK_DOT, start, 1);
+        case '(': return make_token(TOK_LPAREN, start, 1, start_line, start_column);
+        case ')': return make_token(TOK_RPAREN, start, 1, start_line, start_column);
+        case '{': return make_token(TOK_LBRACE, start, 1, start_line, start_column);
+        case '}': return make_token(TOK_RBRACE, start, 1, start_line, start_column);
+        case '[': return make_token(TOK_LBRACKET, start, 1, start_line, start_column);
+        case ']': return make_token(TOK_RBRACKET, start, 1, start_line, start_column);
+        case ';': return make_token(TOK_SEMICOLON, start, 1, start_line, start_column);
+        case ',': return make_token(TOK_COMMA, start, 1, start_line, start_column);
+        case '.': return make_token(TOK_DOT, start, 1, start_line, start_column);
 
         case '+':
-            if (match(lx, '+')) return make_token(lx, TOK_PLUS_PLUS, start, 2);
-            if (match(lx, '=')) return make_token(lx, TOK_PLUS_EQUAL, start, 2);
-            return make_token(lx, TOK_PLUS, start, 1);
+            if (match(lx, '+')) return make_token(TOK_PLUS_PLUS, start, 2, start_line, start_column);
+            if (match(lx, '=')) return make_token(TOK_PLUS_EQUAL, start, 2, start_line, start_column);
+            return make_token(TOK_PLUS, start, 1, start_line, start_column);
         case '-':
-            if (match(lx, '-')) return make_token(lx, TOK_MINUS_MINUS, start, 2);
-            if (match(lx, '=')) return make_token(lx, TOK_MINUS_EQUAL, start, 2);
-            if (match(lx, '>')) return make_token(lx, TOK_ARROW, start, 2);
-            return make_token(lx, TOK_MINUS, start, 1);
+            if (match(lx, '-')) return make_token(TOK_MINUS_MINUS, start, 2, start_line, start_column);
+            if (match(lx, '=')) return make_token(TOK_MINUS_EQUAL, start, 2, start_line, start_column);
+            if (match(lx, '>')) return make_token(TOK_ARROW, start, 2, start_line, start_column);
+            return make_token(TOK_MINUS, start, 1, start_line, start_column);
         case '*':
-            if (match(lx, '=')) return make_token(lx, TOK_STAR_EQUAL, start, 2);
-            return make_token(lx, TOK_STAR, start, 1);
+            if (match(lx, '=')) return make_token(TOK_STAR_EQUAL, start, 2, start_line, start_column);
+            return make_token(TOK_STAR, start, 1, start_line, start_column);
         case '/':
-            if (match(lx, '=')) return make_token(lx, TOK_SLASH_EQUAL, start, 2);
-            return make_token(lx, TOK_SLASH, start, 1);
+            if (match(lx, '=')) return make_token(TOK_SLASH_EQUAL, start, 2, start_line, start_column);
+            return make_token(TOK_SLASH, start, 1, start_line, start_column);
         case '%':
-            return make_token(lx, TOK_PERCENT, start, 1);
+            return make_token(TOK_PERCENT, start, 1, start_line, start_column);
         case ':':
-            if (match(lx, ':')) return make_token(lx, TOK_COLON_COLON, start, 2);
-            if (match(lx, '=')) return make_token(lx, TOK_COLON_EQUAL, start, 2);
-            return make_token(lx, TOK_COLON, start, 1);
+            if (match(lx, ':')) return make_token(TOK_COLON_COLON, start, 2, start_line, start_column);
+            if (match(lx, '=')) return make_token(TOK_COLON_EQUAL, start, 2, start_line, start_column);
+            return make_token(TOK_COLON, start, 1, start_line, start_column);
         case '=':
-            if (match(lx, '=')) return make_token(lx, TOK_EQUAL_EQUAL, start, 2);
-            return make_token(lx, TOK_EQUAL, start, 1);
+            if (match(lx, '=')) return make_token(TOK_EQUAL_EQUAL, start, 2, start_line, start_column);
+            return make_token(TOK_EQUAL, start, 1, start_line, start_column);
         case '!':
-            if (match(lx, '=')) return make_token(lx, TOK_BANG_EQUAL, start, 2);
-            return make_token(lx, TOK_BANG, start, 1);
+            if (match(lx, '=')) return make_token(TOK_BANG_EQUAL, start, 2, start_line, start_column);
+            return make_token(TOK_BANG, start, 1, start_line, start_column);
         case '<':
-            if (match(lx, '=')) return make_token(lx, TOK_LESS_EQUAL, start, 2);
-            return make_token(lx, TOK_LESS, start, 1);
+            if (match(lx, '=')) return make_token(TOK_LESS_EQUAL, start, 2, start_line, start_column);
+            return make_token(TOK_LESS, start, 1, start_line, start_column);
         case '>':
-            if (match(lx, '=')) return make_token(lx, TOK_GREATER_EQUAL, start, 2);
-            return make_token(lx, TOK_GREATER, start, 1);
+            if (match(lx, '=')) return make_token(TOK_GREATER_EQUAL, start, 2, start_line, start_column);
+            return make_token(TOK_GREATER, start, 1, start_line, start_column);
 
         case '&':
-            if (match(lx, '&')) return make_token(lx, TOK_AND_AND, start, 2);
-            return make_token(lx, TOK_AND, start, 1);
+            if (match(lx, '&')) return make_token(TOK_AND_AND, start, 2, start_line, start_column);
+            return make_token(TOK_AND, start, 1, start_line, start_column);
         case '|':
-            if (match(lx, '|')) return make_token(lx, TOK_OR_OR, start, 2);
-            return make_token(lx, TOK_OR, start, 1);
+            if (match(lx, '|')) return make_token(TOK_OR_OR, start, 2, start_line, start_column);
+            return make_token(TOK_OR, start, 1, start_line, start_column);
 
         default:
             return error_token(lx, "unexpected character");

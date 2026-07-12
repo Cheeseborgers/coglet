@@ -152,4 +152,7 @@ size_t arena_allocated(const Arena *arena);
  */
 size_t arena_remaining(const Arena *arena);
 
+
+char *arena_strdup_len(Arena *arena, const char *s, size_t len);
+
 #endif

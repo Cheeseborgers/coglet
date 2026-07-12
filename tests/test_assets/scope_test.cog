@@ -163,3 +163,43 @@ TAU :: PI * 2;
 PI = 4;
 BAD :: some_func();
 BAD :: 1 / 0;
+
+gf: f64 = PI;
+xf: i64 = gf;
+
+10 % 3;          // valid
+10 % 3.0;        // error: '%' requires integer operands
+
+a: i32 = 10;
+b: i32 = 3;
+a % b;           // valid
+
+x: i32 = 10;
+y: i64 = 3;
+x % y;           // error: different concrete numeric types
+
+z: i64 = 10;
+z % 3;           // valid: untyped literal 3 adapts to i64
+
+// Passes:
+x: i64 = 10;
+x == 10;
+x != 20;
+x < 30;
+x >= 5;
+
+
+// Passes:
+xp: i64 = 10;
+xp == 10;
+xp != 20;
+xp < 30;
+xp >= 5;
+
+// Fails:
+aaa: i32 = 1;
+bbb: i64 = 2;
+aaa == bbb;
+aaa < bbb;
+true < false;
+"hello" > "world";

@@ -184,6 +184,8 @@ static Type *resolve_type(
 static int node_definitely_returns(Node *node);
 static int block_definitely_returns(Node *node);
 static int switch_definitely_returns(Node *node);
+static int enum_switch_is_exhaustive(Node *node, Type *switch_type);
+
 static void check_node(SemanticContext *ctx, Node *node);
 static int  declare_struct_shell(SemanticContext *ctx, Node *node);
 static void fill_struct_fields(SemanticContext *ctx, Node *node);
@@ -2101,6 +2103,8 @@ static void check_switch_statement(SemanticContext *ctx,Node *node) {
     if (!switch_type)
         return;
 
+    node->as.switch_stmt.resolved_type = switch_type;
+
     if (!is_switchable_type(switch_type)) {
         semantic_error(
             ctx,
@@ -2978,14 +2982,119 @@ static int block_definitely_returns(Node *node)
     return 0;
 }
 
+static int enum_switch_is_exhaustive(
+    Node *node,
+    Type *switch_type
+) {
+    if (!node ||
+        node->type != NODE_SWITCH ||
+        !switch_type ||
+        switch_type->kind != TYPE_ENUM) {
+        return 0;
+    }
+
+    /*
+     * Empty enums cannot be exhaustively switched over by cases.
+     * A default case is still handled separately by switch_definitely_returns().
+     */
+    if (switch_type->enum_member_count <= 0)
+        return 0;
+
+    /*
+     * Exhaustiveness is value-based, not name-based.
+     *
+     * If an enum has aliases:
+     *
+     *     A = 1,
+     *     B = 1,
+     *
+     * then one case with value 1 covers both at runtime.
+     */
+    for (int member_index = 0;
+         member_index < switch_type->enum_member_count;
+         member_index++) {
+
+        EnumMember *member =
+            &switch_type->enum_members[member_index];
+
+        int found = 0;
+
+        for (int case_index = 0;
+             case_index < node->as.switch_stmt.cases.count;
+             case_index++) {
+
+            Node *case_node =
+                node->as.switch_stmt.cases.items[case_index];
+
+            if (!case_node ||
+                case_node->type != NODE_SWITCH_CASE ||
+                case_node->as.switch_case.is_default) {
+                continue;
+            }
+
+            Node *value =
+                case_node->as.switch_case.value;
+
+            /*
+             * Version 1: only recognize direct qualified enum members:
+             *
+             *     case Color.Red:
+             *
+             * This avoids re-running constant evaluation during return
+             * analysis and keeps this pass side-effect-free.
+             */
+            if (!value ||
+                value->type != NODE_FIELD ||
+                !value->as.field.object ||
+                value->as.field.object->type != NODE_IDENT) {
+                continue;
+            }
+
+            Node *enum_name =
+                value->as.field.object;
+
+            if (!names_equal(
+                    enum_name->as.ident.data,
+                    enum_name->as.ident.length,
+                    switch_type->enum_name.data,
+                    switch_type->enum_name.length)) {
+                continue;
+            }
+
+            EnumMember *case_member =
+                find_enum_member(
+                    switch_type,
+                    value->as.field.name.data,
+                    value->as.field.name.length
+                );
+
+            if (!case_member)
+                continue;
+
+            if (case_member->value == member->value) {
+                found = 1;
+                break;
+            }
+        }
+
+        if (!found)
+            return 0;
+    }
+
+    return 1;
+}
+
 static int switch_definitely_returns(Node *node)
 {
     if (!node || node->type != NODE_SWITCH)
         return 0;
 
     int has_default = 0;
-    int has_true = 0;
-    int has_false = 0;
+    int has_true    = 0;
+    int has_false   = 0;
+
+    Type *switch_type =
+        node->as.switch_stmt.resolved_type;
 
     if (node->as.switch_stmt.cases.count == 0)
         return 0;
@@ -3006,10 +3115,7 @@ static int switch_definitely_returns(Node *node)
                 case_node->as.switch_case.value;
 
             /*
-             * Tiny first exhaustiveness improvement:
-             *
-             * A bool switch with both `case true:` and `case false:`
-             * covers all possible values even without default.
+             * Bool switches are exhaustive when both literal cases exist.
              */
             if (value && value->type == NODE_BOOL) {
                 if (value->as.boolean.value)
@@ -3023,10 +3129,9 @@ static int switch_definitely_returns(Node *node)
          * Coglet switch has no fallthrough, so every case body must
          * definitely return for the switch as a whole to definitely return.
          */
-        if (!node_definitely_returns(
-                case_node->as.switch_case.body)) {
+        if (!node_definitely_returns(case_node->as.switch_case.body)) {
             return 0;
-                }
+        }
     }
 
     if (has_default)
@@ -3035,10 +3140,9 @@ static int switch_definitely_returns(Node *node)
     if (has_true && has_false)
         return 1;
 
-    /*
-     * Without enum exhaustiveness checking, a switch without default
-     * does not prove that all paths return.
-     */
+    if (enum_switch_is_exhaustive(node, switch_type))
+        return 1;
+
     return 0;
 }
 

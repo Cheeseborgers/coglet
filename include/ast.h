@@ -194,6 +194,7 @@ struct Node {
         struct {
             Node *expression;
             NodeList cases;
+            Type *resolved_type;
         } switch_stmt;
 
         struct {

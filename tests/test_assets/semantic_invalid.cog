@@ -195,3 +195,27 @@ bad_cast_enum_to_float::() -> f64 {
 bad_cast_float_to_enum::() -> Color {
     return cast(Color, 1.5);
 }
+
+classify_color_missing_case::(c: Color) -> i32 {
+    switch c {
+        case Color.Red:
+            return 1;
+
+        case Color.Green:
+            return 2;
+    }
+}
+
+classify_color_case_falls_through::(c: Color) -> i32 {
+    switch c {
+        case Color.Red:
+            return 1;
+
+        case Color.Green:
+            return 2;
+
+        case Color.Blue: {
+            x := 3;
+        }
+    }
+}

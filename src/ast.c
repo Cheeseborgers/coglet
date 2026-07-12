@@ -205,10 +205,11 @@ Node *ast_new_continue(Arena *arena, int line) {
 Node *ast_new_switch(Arena *arena,Node *expression,int line) {
     Node *node = new_node(arena, NODE_SWITCH, line);
 
-    node->as.switch_stmt.expression = expression;
+    node->as.switch_stmt.expression    = expression;
+    node->as.switch_stmt.resolved_type = NULL;
 
-    node->as.switch_stmt.cases.items = NULL;
-    node->as.switch_stmt.cases.count = 0;
+    node->as.switch_stmt.cases.items    = NULL;
+    node->as.switch_stmt.cases.count    = 0;
     node->as.switch_stmt.cases.capacity = 0;
 
     return node;
@@ -522,61 +523,61 @@ Node *ast_clone(Arena *arena, const Node *node)
                 ast_clone(arena, node->as.field_init.value);
             break;
 
-            case NODE_ENUM_DECL:
-                clone->as.enum_decl.name.data =
-                    node->as.enum_decl.name.data;
+        case NODE_ENUM_DECL:
+            clone->as.enum_decl.name.data =
+                node->as.enum_decl.name.data;
 
-                clone->as.enum_decl.name.length =
-                    node->as.enum_decl.name.length;
+            clone->as.enum_decl.name.length =
+                node->as.enum_decl.name.length;
 
-                clone->as.enum_decl.backing_type =
-                    node->as.enum_decl.backing_type;
+            clone->as.enum_decl.backing_type =
+                node->as.enum_decl.backing_type;
 
-                /*
-                 * Semantic information should not be cloned.
-                 * The clone must be re-checked.
-                 */
-                clone->as.enum_decl.resolved_type = NULL;
+            /*
+             * Semantic information should not be cloned.
+             * The clone must be re-checked.
+             */
+            clone->as.enum_decl.resolved_type = NULL;
 
-                clone->as.enum_decl.members.items    = NULL;
-                clone->as.enum_decl.members.count    = 0;
-                clone->as.enum_decl.members.capacity = 0;
+            clone->as.enum_decl.members.items    = NULL;
+            clone->as.enum_decl.members.count    = 0;
+            clone->as.enum_decl.members.capacity = 0;
 
-                for (int i = 0;
-                     i < node->as.enum_decl.members.count;
-                     i++) {
+            for (int i = 0;
+                 i < node->as.enum_decl.members.count;
+                 i++) {
 
-                    nodelist_push(
-                        arena,
-                        &clone->as.enum_decl.members,
-                        ast_clone(
-                            arena,
-                            node->as.enum_decl.members.items[i]
-                        )
-                    );
-                     }
-
-                break;
-
-            case NODE_ENUM_MEMBER:
-                clone->as.enum_member.name.data =
-                    node->as.enum_member.name.data;
-
-                clone->as.enum_member.name.length =
-                    node->as.enum_member.name.length;
-
-                clone->as.enum_member.value =
+                nodelist_push(
+                    arena,
+                    &clone->as.enum_decl.members,
                     ast_clone(
                         arena,
-                        node->as.enum_member.value
-                    );
+                        node->as.enum_decl.members.items[i]
+                    )
+                );
+                 }
 
-                /*
-                 * Semantic information.
-                 */
-                clone->as.enum_member.resolved_value = 0;
+            break;
 
-                break;
+        case NODE_ENUM_MEMBER:
+            clone->as.enum_member.name.data =
+                node->as.enum_member.name.data;
+
+            clone->as.enum_member.name.length =
+                node->as.enum_member.name.length;
+
+            clone->as.enum_member.value =
+                ast_clone(
+                    arena,
+                    node->as.enum_member.value
+                );
+
+            /*
+             * Semantic information.
+             */
+            clone->as.enum_member.resolved_value = 0;
+
+            break;
 
         case NODE_RETURN:
             clone->as.return_stmt.value =
@@ -605,6 +606,8 @@ Node *ast_clone(Arena *arena, const Node *node)
         case NODE_SWITCH:
             clone->as.switch_stmt.expression =
                 ast_clone(arena, node->as.switch_stmt.expression);
+
+            clone->as.switch_stmt.resolved_type = NULL;
 
             clone->as.switch_stmt.cases.items = NULL;
             clone->as.switch_stmt.cases.count = 0;

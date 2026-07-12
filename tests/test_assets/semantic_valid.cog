@@ -79,8 +79,24 @@ result_color := use_color(Color.Red);
 
 DEFAULT_COLOR :: Color.Red;
 
-favorite: Color = DEFAULT_COLOR;
+favorite1: Color = DEFAULT_COLOR;
 
 EXPLICIT_COLOR: Color : Color.Blue;
 
 other: Color = EXPLICIT_COLOR;
+
+classify_color::(c: Color) -> i32 {
+    switch c {
+        case Color.Red:
+            return 1;
+
+        case Color.Green:
+            return 2;
+
+        case Color.Blue:
+            return 3;
+
+        default:
+            return 0;
+    }
+}

@@ -35,6 +35,9 @@ static Node *finish_struct_init(Parser *p, Token type_name);
 static Node *parse_enum_decl_rest(Parser *p, Token name, int line);
 static Node *parse_enum_member(Parser *p);
 
+static Node *parse_expression_before_block(Parser *p);
+static Node *parse_switch_statement(Parser *p);
+static Node *parse_switch_case(Parser *p);
 static Node *parse_return_statement(Parser *p);
 static Node *parse_while_statement(Parser *p);
 static Node *parse_for_statement(Parser *p);
@@ -167,6 +170,9 @@ const char *token_debug_display_name(TokenType t)
         case TOK_ENUM:            return "'enum'";
         case TOK_BREAK:           return "'break'";
         case TOK_CONTINUE:        return "'continue'";
+        case TOK_SWITCH:          return "'switch'";
+        case TOK_CASE:            return "'case'";
+        case TOK_DEFAULT:         return "'default'";
         case TOK_BOOL:            return "'bool'";
         case TOK_INT_KW:          return "'int'";
         case TOK_UINT_KW:         return "'uint'";
@@ -1008,6 +1014,126 @@ static Node *parse_enum_member(Parser *p)
     return member;
 }
 // ====================== end enum declarations ========================
+static Node *parse_expression_before_block(Parser *p)
+{
+    int saved_suppress_struct_init =
+        p->suppress_struct_init;
+
+    p->suppress_struct_init = 1;
+
+    Node *expr =
+        parse_expression(p);
+
+    p->suppress_struct_init =
+        saved_suppress_struct_init;
+
+    return expr;
+}
+// ====================== switch statements ============================
+static Node *parse_switch_statement(Parser *p)
+{
+    Token keyword = p->current;
+
+    consume(p, TOK_SWITCH);
+
+    Node *expression =
+        parse_expression_before_block(p);
+
+    if (!consume(p, TOK_LBRACE)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *stmt =
+        ast_new_switch(
+            p->arena,
+            expression,
+            keyword.line
+        );
+
+    while (!check(p, TOK_RBRACE) &&
+           !check(p, TOK_EOF)) {
+
+        if (!check(p, TOK_CASE) &&
+            !check(p, TOK_DEFAULT)) {
+
+            error_at(
+                p,
+                &p->current,
+                "expected 'case' or 'default' in switch"
+            );
+
+            synchronize(p);
+            continue;
+            }
+
+        Node *case_node =
+            parse_switch_case(p);
+
+        nodelist_push(
+            p->arena,
+            &stmt->as.switch_stmt.cases,
+            case_node
+        );
+           }
+
+    consume(p, TOK_RBRACE);
+
+    return stmt;
+}
+
+static Node *parse_switch_case(Parser *p)
+{
+    if (match(p, TOK_CASE)) {
+        Token keyword = p->previous;
+
+        Node *value = parse_expression(p);
+
+        if (!consume(p, TOK_COLON)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        Node *body = parse_statement(p);
+
+        return ast_new_switch_case(
+            p->arena,
+            value,
+            body,
+            0,
+            keyword.line
+        );
+    }
+
+    if (match(p, TOK_DEFAULT)) {
+        Token keyword = p->previous;
+
+        if (!consume(p, TOK_COLON)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        Node *body = parse_statement(p);
+
+        return ast_new_switch_case(
+            p->arena,
+            NULL,
+            body,
+            1,
+            keyword.line
+        );
+    }
+
+    error_at(
+        p,
+        &p->current,
+        "expected 'case' or 'default'"
+    );
+
+    return ast_new_error(p->arena, p->current);
+}
+
+// ====================== end switch statements ========================
 // ====================== declaration dispatching ======================
 static Node *parse_decl_after_name(Parser *p, Token name) {
 
@@ -1131,6 +1257,7 @@ static Node *parse_statement(Parser *p) {
     if (match(p, TOK_WHILE))  return parse_while_statement(p);
     if (match(p, TOK_FOR))    return parse_for_statement(p);
     if (match(p, TOK_RETURN)) return parse_return_statement(p);
+    if (check(p, TOK_SWITCH)) return parse_switch_statement(p);
 
     if (match(p, TOK_BREAK)) {
         int line = p->previous.line;

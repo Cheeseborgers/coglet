@@ -20,8 +20,6 @@ typedef enum {
     NODE_BLOCK,
     NODE_ASSIGN,       // =
 
-    NODE_IF,
-
     NODE_EXPR_STMT,    // an expression used as a statement: `1 + 2;`
 
     NODE_CALL,         // function calls
@@ -46,6 +44,9 @@ typedef enum {
 
     NODE_CONST_DECL,       // PI :: 3.14159;  or  PI: f64 : 3.14159;
 
+    NODE_IF,
+    NODE_SWITCH,
+    NODE_SWITCH_CASE,
     NODE_RETURN,
     NODE_WHILE,
     NODE_FOR,
@@ -185,6 +186,17 @@ struct Node {
         // break/continue need no payload -- `line` on the Node itself is enough
 
         struct {
+            Node *expression;
+            NodeList cases;
+        } switch_stmt;
+
+        struct {
+            Node *value;      // NULL for default
+            Node *body;
+            int is_default;
+        } switch_case;
+
+        struct {
             StringView name;
             NodeList params;      // list of NODE_FUNC_PARAM_DECL
             Type *return_type;
@@ -245,6 +257,8 @@ Node *ast_new_while(Arena *arena, Node *cond, Node *body, int line);
 Node *ast_new_for(Arena *arena, Node *cond, Node *post, Node *body, int line);
 Node *ast_new_break(Arena *arena, int line);
 Node *ast_new_continue(Arena *arena, int line);
+Node *ast_new_switch(Arena *arena, Node *expression, int line);
+Node *ast_new_switch_case(Arena *arena, Node *value, Node *body, int is_default, int line);
 Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, int line);
 Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int line);
 Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, int line);
@@ -253,7 +267,7 @@ Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, int l
 Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, int line);
 Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, int line);
 
-// TODO: Allow cloning of all ast node types
+// TODO: ENSURE Allow cloning of all ast node types
 Node *ast_clone(Arena *arena, const Node *node);
 
 void nodelist_push(Arena *arena, NodeList *list, Node *node);

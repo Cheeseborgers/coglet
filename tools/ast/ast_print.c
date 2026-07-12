@@ -381,6 +381,32 @@ static void print_node(Node *node)
             printf(")");
             break;
 
+        case NODE_SWITCH:
+            printf("(switch ");
+            print_node(node->as.switch_stmt.expression);
+
+            for (int i = 0; i < node->as.switch_stmt.cases.count; i++) {
+                printf(" ");
+                print_node(node->as.switch_stmt.cases.items[i]);
+            }
+
+            printf(")");
+            break;
+
+        case NODE_SWITCH_CASE:
+            if (node->as.switch_case.is_default) {
+                printf("(default ");
+                print_node(node->as.switch_case.body);
+                printf(")");
+            } else {
+                printf("(case ");
+                print_node(node->as.switch_case.value);
+                printf(" ");
+                print_node(node->as.switch_case.body);
+                printf(")");
+            }
+
+            break;
 
         case NODE_WHILE:
             printf("(while ");
@@ -404,16 +430,13 @@ static void print_node(Node *node)
             printf(")");
             break;
 
-
         case NODE_BREAK:
             printf("(break)");
             break;
 
-
         case NODE_CONTINUE:
             printf("(continue)");
             break;
-
 
         case NODE_FUNC_DECL:
             printf("(func ");
@@ -437,7 +460,6 @@ static void print_node(Node *node)
             printf(")");
             break;
 
-
         case NODE_STRUCT_DECL:
             printf("(struct ");
             print_string_view(node->as.struct_decl.name);
@@ -457,7 +479,6 @@ static void print_node(Node *node)
 
             break;
 
-
         default:
             UNREACHABLE("unknown ast node");
     }
@@ -468,7 +489,6 @@ void ast_print(Node *node)
     print_node(node);
     printf("\n");
 }
-
 
 static void indent(int n)
 {
@@ -558,7 +578,6 @@ static void print_node_pretty(Node *node, int depth)
             }
             break;
 
-
         case NODE_CALL:
             indent(depth);
             printf("call\n");
@@ -620,7 +639,6 @@ static void print_node_pretty(Node *node, int depth)
 
             print_type(node->as.var_decl.var_type);
             printf("\n");
-
 
             if (node->as.var_decl.initializer)
             {
@@ -784,6 +802,57 @@ static void print_node_pretty(Node *node, int depth)
             printf("return\n");
             if (node->as.return_stmt.value)
                 print_node_pretty(node->as.return_stmt.value, depth + 1);
+            break;
+
+        case NODE_SWITCH:
+            indent(depth);
+            printf("switch\n");
+
+            indent(depth + 1);
+            printf("expression:\n");
+
+            print_node_pretty(
+                node->as.switch_stmt.expression,
+                depth + 2
+            );
+
+            indent(depth + 1);
+            printf("cases:\n");
+
+            for (int i = 0; i < node->as.switch_stmt.cases.count; i++) {
+                print_node_pretty(
+                    node->as.switch_stmt.cases.items[i],
+                    depth + 2
+                );
+            }
+
+            break;
+
+        case NODE_SWITCH_CASE:
+            indent(depth);
+
+            if (node->as.switch_case.is_default) {
+                printf("default\n");
+            } else {
+                printf("case\n");
+
+                indent(depth + 1);
+                printf("value:\n");
+
+                print_node_pretty(
+                    node->as.switch_case.value,
+                    depth + 2
+                );
+            }
+
+            indent(depth + 1);
+            printf("body:\n");
+
+            print_node_pretty(
+                node->as.switch_case.body,
+                depth + 2
+            );
+
             break;
 
         case NODE_WHILE:

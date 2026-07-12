@@ -118,6 +118,7 @@ static const Keyword keywords[] = {
     {"for", TOK_FOR}, {"return", TOK_RETURN},
     {"struct", TOK_STRUCT},
     {"break", TOK_BREAK}, {"continue", TOK_CONTINUE}, {"enum", TOK_ENUM},
+    {"switch", TOK_SWITCH}, {"case", TOK_CASE}, {"default", TOK_DEFAULT},
     {"void", TOK_VOID},  {"true", TOK_TRUE}, {"false", TOK_FALSE},
 
     {"i8", TOK_I8}, {"i16", TOK_I16}, {"i32", TOK_I32}, {"i64", TOK_I64},
@@ -225,8 +226,8 @@ Token lexer_next(Lexer *lx) {
     skip_whitespace_and_comments(lx);
 
     const char *start = lx->current;
-    int start_line = lx->line;
-    int start_column = lx->column;
+    int start_line    = lx->line;
+    int start_column  = lx->column;
 
     if (is_at_end(lx)) return make_token(TOK_EOF, start, 0, start_line, start_column);
 
@@ -331,6 +332,9 @@ const char *token_type_name(TokenType type) {
         case TOK_STRUCT: return "STRUCT";
         case TOK_BREAK: return "BREAK";
         case TOK_CONTINUE: return "CONTINUE";
+        case TOK_SWITCH: return "SWITCH";
+        case TOK_CASE: return "CASE";
+        case TOK_DEFAULT: return "DEFAULT";
         case TOK_PLUS: return "PLUS";
         case TOK_MINUS: return "MINUS";
         case TOK_STAR: return "STAR";

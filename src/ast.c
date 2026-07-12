@@ -198,6 +198,27 @@ Node *ast_new_continue(Arena *arena, int line) {
     return node;
 }
 
+Node *ast_new_switch(Arena *arena,Node *expression,int line) {
+    Node *node = new_node(arena, NODE_SWITCH, line);
+
+    node->as.switch_stmt.expression = expression;
+
+    node->as.switch_stmt.cases.items = NULL;
+    node->as.switch_stmt.cases.count = 0;
+    node->as.switch_stmt.cases.capacity = 0;
+
+    return node;
+}
+
+Node *ast_new_switch_case(Arena *arena, Node *value, Node *body, int is_default, int line) {
+    Node *node = new_node(arena, NODE_SWITCH_CASE, line);
+    node->as.switch_case.value = value;
+    node->as.switch_case.body = body;
+    node->as.switch_case.is_default = is_default;
+
+    return node;
+}
+
 Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, int line) {
     Node *node = new_node(arena, NODE_FUNC_DECL, line);
     node->as.func_decl.name.data     = name;
@@ -571,6 +592,36 @@ Node *ast_clone(Arena *arena, const Node *node)
 
             clone->as.for_stmt.body =
                 ast_clone(arena, node->as.for_stmt.body);
+            break;
+
+        case NODE_SWITCH:
+            clone->as.switch_stmt.expression =
+                ast_clone(arena, node->as.switch_stmt.expression);
+
+            clone->as.switch_stmt.cases.items = NULL;
+            clone->as.switch_stmt.cases.count = 0;
+            clone->as.switch_stmt.cases.capacity = 0;
+
+            for (int i = 0; i < node->as.switch_stmt.cases.count; i++) {
+                nodelist_push(
+                    arena,
+                    &clone->as.switch_stmt.cases,
+                    ast_clone(arena, node->as.switch_stmt.cases.items[i])
+                );
+            }
+
+            break;
+
+        case NODE_SWITCH_CASE:
+            clone->as.switch_case.value =
+                ast_clone(arena, node->as.switch_case.value);
+
+            clone->as.switch_case.body =
+                ast_clone(arena, node->as.switch_case.body);
+
+            clone->as.switch_case.is_default =
+                node->as.switch_case.is_default;
+
             break;
 
         case NODE_BREAK:

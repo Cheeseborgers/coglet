@@ -277,3 +277,15 @@ unreachable_after_switch::(c: Color) -> i32 {
 
     x := 4;
 }
+
+break;
+
+continue;
+
+break_invalid_function::() -> void {
+    break;
+}
+
+continue_invalid_function::() -> void {
+    continue;
+}

@@ -236,3 +236,29 @@ SmallEnum :: enum(u8) {
 }
 
 GOOD_CAST_SMALL_ENUM :: cast(SmallEnum, 255);
+
+break_continue_valid::(keep_going, done: bool) -> void {
+    while keep_going {
+        if done {
+            break;
+        }
+
+        continue;
+    }
+}
+
+return_good_while_true::() -> i32 {
+    while true {
+        return 1;
+    }
+}
+
+return_good_while_true_nested::(b: bool) -> i32 {
+    while true {
+        if b {
+            return 1;
+        } else {
+            return 2;
+        }
+    }
+}

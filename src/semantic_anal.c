@@ -364,6 +364,10 @@ static int is_numeric_type(Type *t)  { return t && (is_integer_kind(t->kind) || 
 
 static int is_bool_type(Type *t) { return t && t->kind == TYPE_BOOL; }
 
+static int node_is_literal_true(Node *node) {
+    return node && node->type == NODE_BOOL && node->as.boolean.value;
+}
+
 static int is_int_literal_zero(Node *node) {
     return node && node->type == NODE_NUMBER && !node->as.number.is_float && node->as.number.value == 0;
 }
@@ -3308,6 +3312,28 @@ static int node_definitely_returns(Node *node)
         case NODE_SWITCH:
             return switch_definitely_returns(node);
 
+        case NODE_WHILE:
+            /*
+             * Only an obviously infinite while loop can definitely return.
+             *
+             * while true {
+             *     return 1;
+             * }
+             *
+             * while condition {
+             *     return 1;
+             * }
+             *
+             * The second one is not definitely returning, because the loop may
+             * execute zero times.
+             */
+            if (!node_is_literal_true(node->as.while_stmt.condition))
+                return 0;
+
+            return node_definitely_returns(
+                node->as.while_stmt.body
+            );
+
         default:
             return 0;
     }
@@ -3329,9 +3355,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
     case NODE_FUNC_DECL:       check_function(ctx,node);   break;
     case NODE_IF:              check_if(ctx,node);         break;
     case NODE_CONST_DECL:      check_const_decl(ctx,node); break;
-
-    case NODE_EXPR_STMT: check_expression(ctx, node->as.expr_stmt.expr); break;
-    case NODE_BREAK: if(ctx->loop_depth == 0) semantic_error(ctx,node,"break outside loop"); break;
+    case NODE_EXPR_STMT:       check_expression(ctx, node->as.expr_stmt.expr); break;
 
     case NODE_STRUCT_DECL: {
         declare_struct_shell(ctx, node);
@@ -3363,6 +3387,26 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
         break;
     }
+
+    case NODE_BREAK:
+        if (ctx->loop_depth <= 0) {
+            semantic_error(
+                ctx,
+                node,
+                "break statement not inside loop"
+            );
+        }
+        break;
+
+    case NODE_CONTINUE:
+        if (ctx->loop_depth <= 0) {
+            semantic_error(
+                ctx,
+                node,
+                "continue statement not inside loop"
+            );
+        }
+        break;
 
     case NODE_SWITCH:
         check_switch_statement(ctx, node);
@@ -3414,10 +3458,6 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
         break;
     }
-
-    case NODE_CONTINUE:
-        if(ctx->loop_depth == 0) semantic_error(ctx,node,"continue outside loop");
-        break;
 
     case NODE_RETURN: {
         if (ctx->function_depth == 0) {

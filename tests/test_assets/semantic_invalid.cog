@@ -236,3 +236,44 @@ EnumTooBigExplicit :: enum(i8) {
 EnumTooSmallExplicit :: enum(i8) {
     A = -129,
 }
+
+BAD_CAST_U8_TOO_BIG :: cast(u8, 256);
+BAD_CAST_U8_NEGATIVE :: cast(u8, -1);
+BAD_CAST_I8_TOO_BIG :: cast(i8, 128);
+BAD_CAST_I8_TOO_SMALL :: cast(i8, -129);
+
+SmallCastEnum :: enum(u8) {
+    A,
+    B,
+}
+
+BAD_CAST_SMALL_ENUM_TOO_BIG :: cast(SmallCastEnum, 256);
+BAD_CAST_SMALL_ENUM_NEGATIVE :: cast(SmallCastEnum, -1);
+
+unreachable_after_return::() -> i32 {
+    return 1;
+
+    x := 2;
+}
+
+unreachable_after_if::(b: bool) -> i32 {
+    if b {
+        return 1;
+    } else {
+        return 2;
+    }
+
+    x := 3;
+}
+
+unreachable_after_switch::(c: Color) -> i32 {
+    switch c {
+        case Color.Red:
+            return 1;
+
+        default:
+            return 0;
+    }
+
+    x := 4;
+}

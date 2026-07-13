@@ -190,6 +190,7 @@ static void check_node(SemanticContext *ctx, Node *node);
 static int  declare_struct_shell(SemanticContext *ctx, Node *node);
 static void fill_struct_fields(SemanticContext *ctx, Node *node);
 static int  declare_function_signature(SemanticContext *ctx, Node *node);
+static void check_unreachable_in_block(SemanticContext *ctx, Node *block);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
@@ -1083,11 +1084,8 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
     }
 }
 
-static int eval_const_cast(
-    SemanticContext *ctx,
-    Node *node,
-    ConstValue *out
-) {
+static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
+
     ConstValue value;
 
     if (!eval_const_expr(
@@ -1097,8 +1095,7 @@ static int eval_const_cast(
         return 0;
     }
 
-    Type *target_type =
-        resolve_type(
+    Type *target_type = resolve_type(
             ctx,
             node->as.cast_expr.target_type,
             node
@@ -1149,31 +1146,57 @@ static int eval_const_cast(
             return 0;
         }
 
+        if (!target_type->enum_backing_type ||
+            !integer_value_fits_type(
+                value.as.i,
+                target_type->enum_backing_type->kind)) {
+
+            semantic_error(
+                ctx,
+                node,
+                "enum cast value does not fit in backing type"
+            );
+
+            return 0;
+                }
+
         out->kind = CONST_VALUE_INT;
         out->as.i = value.as.i;
         return 1;
     }
 
     if (is_integer_kind(target_type->kind)) {
-        out->kind = CONST_VALUE_INT;
+        long long integer_value = 0;
 
         if (value.kind == CONST_VALUE_INT) {
-            out->as.i = value.as.i;
-            return 1;
+            integer_value = value.as.i;
+        } else if (value.kind == CONST_VALUE_FLOAT) {
+            integer_value = (long long)value.as.f;
+        } else {
+            semantic_error(
+                ctx,
+                node,
+                "integer cast requires numeric constant"
+            );
+
+            return 0;
         }
 
-        if (value.kind == CONST_VALUE_FLOAT) {
-            out->as.i = (long long)value.as.f;
-            return 1;
-        }
+        if (!integer_value_fits_type(
+                integer_value,
+                target_type->kind)) {
+            semantic_error(
+                ctx,
+                node,
+                "integer cast value does not fit in target type"
+            );
 
-        semantic_error(
-            ctx,
-            node,
-            "integer cast requires numeric constant"
-        );
+            return 0;
+                }
 
-        return 0;
+        out->kind = CONST_VALUE_INT;
+        out->as.i = integer_value;
+        return 1;
     }
 
     if (is_float_kind(target_type->kind)) {
@@ -1985,6 +2008,8 @@ static void check_block(SemanticContext *ctx, Node *node) {
         check_node(ctx, node->as.block.statements.items[i]);
     }
 
+    check_unreachable_in_block(ctx, node);
+
     scope_pop(ctx);
 }
 
@@ -2641,6 +2666,37 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
     node->as.func_decl.resolved_type = func_type;
 
     return 1;
+}
+
+static void check_unreachable_in_block(SemanticContext *ctx, Node *block) {
+    if (!block || block->type != NODE_BLOCK)
+        return;
+
+    int unreachable = 0;
+
+    for (int i = 0;
+         i < block->as.block.statements.count;
+         i++) {
+
+        Node *stmt =
+            block->as.block.statements.items[i];
+
+        if (unreachable) {
+            semantic_error(
+                ctx,
+                stmt,
+                "unreachable statement"
+            );
+
+            /*
+             * Keep checking children so you still catch useful nested
+             * errors inside unreachable code.
+             */
+        }
+
+        if (node_definitely_returns(stmt))
+            unreachable = 1;
+         }
 }
 
 static void check_function_body(SemanticContext *ctx, Node *node)

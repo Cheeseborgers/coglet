@@ -225,3 +225,14 @@ EnumDefaultLargeEnough :: enum {
     A = 255,
     B,
 }
+
+GOOD_CAST_U8_MAX :: cast(u8, 255);
+GOOD_CAST_I8_MIN :: cast(i8, -128);
+GOOD_CAST_I8_MAX :: cast(i8, 127);
+
+SmallEnum :: enum(u8) {
+    A,
+    B,
+}
+
+GOOD_CAST_SMALL_ENUM :: cast(SmallEnum, 255);

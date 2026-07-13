@@ -265,6 +265,7 @@ Token lexer_next(Lexer *lx) {
             if (match(lx, '=')) return make_token(TOK_SLASH_EQUAL, start, 2, start_line, start_column);
             return make_token(TOK_SLASH, start, 1, start_line, start_column);
         case '%':
+            if (match(lx, '=')) return make_token(TOK_PERCENT_EQUAL, start, 2, start_line, start_column);
             return make_token(TOK_PERCENT, start, 1, start_line, start_column);
         case ':':
             if (match(lx, ':')) return make_token(TOK_COLON_COLON, start, 2, start_line, start_column);
@@ -341,6 +342,7 @@ const char *token_type_name(TokenType type) {
         case TOK_STAR: return "STAR";
         case TOK_SLASH: return "SLASH";
         case TOK_PERCENT: return "PERCENT";
+        case TOK_PERCENT_EQUAL: return "PERCENT_EQUAL";
         case TOK_PLUS_PLUS: return "PLUS_PLUS";
         case TOK_MINUS_MINUS: return "MINUS_MINUS";
         case TOK_PLUS_EQUAL: return "PLUS_EQUAL";

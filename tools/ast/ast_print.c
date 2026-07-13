@@ -15,10 +15,11 @@ static const char *token_type_str(TokenType t)
         case TOK_PLUS_PLUS:   return "++";
         case TOK_MINUS_MINUS: return "--";
 
-        case TOK_PLUS_EQUAL:  return "+=";
-        case TOK_MINUS_EQUAL: return "-=";
-        case TOK_STAR_EQUAL:  return "*=";
-        case TOK_SLASH_EQUAL: return "/=";
+        case TOK_PLUS_EQUAL:    return "+=";
+        case TOK_MINUS_EQUAL:   return "-=";
+        case TOK_STAR_EQUAL:    return "*=";
+        case TOK_SLASH_EQUAL:   return "/=";
+        case TOK_PERCENT_EQUAL: return "%=";
 
         case TOK_STAR:        return "*";
         case TOK_SLASH:       return "/";

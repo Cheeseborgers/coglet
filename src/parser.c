@@ -204,6 +204,7 @@ const char *token_debug_display_name(TokenType t)
         case TOK_MINUS_EQUAL:     return "'-='";
         case TOK_STAR_EQUAL:      return "'*='";
         case TOK_SLASH_EQUAL:     return "'/='";
+        case TOK_PERCENT_EQUAL:   return "'%='";
 
         case TOK_EQUAL:           return "'='";
         case TOK_EQUAL_EQUAL:     return "'=='";
@@ -512,7 +513,8 @@ static Node *parse_assignment_from(Parser *p, Node *left)
         op != TOK_PLUS_EQUAL &&
         op != TOK_MINUS_EQUAL &&
         op != TOK_STAR_EQUAL &&
-        op != TOK_SLASH_EQUAL)
+        op != TOK_SLASH_EQUAL &&
+        op != TOK_PERCENT_EQUAL)
     {
         return left;
     }

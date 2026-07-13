@@ -20,7 +20,7 @@ typedef enum {
 
     NODE_BLOCK,
     NODE_ASSIGN,          // =
-    NODE_COMPOUND_ASSIGN, // +=, -=. *=, /=
+    NODE_COMPOUND_ASSIGN, // +=, -=. *=, /= %=
 
     NODE_EXPR_STMT,    // an expression used as a statement: `1 + 2;`
 
@@ -283,7 +283,6 @@ Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, int l
 Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, int line);
 Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, int line);
 
-// TODO: ENSURE Allow cloning of all ast node types
 Node *ast_clone(Arena *arena, const Node *node);
 
 void nodelist_push(Arena *arena, NodeList *list, Node *node);

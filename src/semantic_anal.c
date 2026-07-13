@@ -360,6 +360,7 @@ static int integer_value_fits_type(long long value, TypeKind kind)
     }
 }
 
+static int is_integer_type(Type *t) { return t && is_integer_kind(t->kind); }
 static int is_float_kind(TypeKind k) { return k == TYPE_F32 || k == TYPE_F64; }
 static int is_numeric_type(Type *t)  { return t && (is_integer_kind(t->kind) || is_float_kind(t->kind)); }
 
@@ -1751,6 +1752,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 case TOK_MINUS_EQUAL:
                 case TOK_STAR_EQUAL:
                 case TOK_SLASH_EQUAL:
+                case TOK_PERCENT_EQUAL:
                     break;
 
                 default:
@@ -1761,6 +1763,17 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     );
 
                     return NULL;
+            }
+
+            /*
+            * %= is special: modulo is integer-only.
+            * Do this before the generic numeric checks so floats get a clearer error.
+            */
+            if (node->as.compound_assign.op == TOK_PERCENT_EQUAL) {
+                if (!is_integer_type(target_type) || !is_integer_type(value_type)) {
+                    semantic_error(ctx, node, "modulo compound assignment operands must be integers");
+                    return NULL;
+                }
             }
 
             if (!is_numeric_type(target_type)) {

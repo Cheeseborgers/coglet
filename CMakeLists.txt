@@ -24,16 +24,11 @@ add_library(compiler_core STATIC
         src/utils/arena.c
         src/diag.c
         src/semantic_anal.c
-        include/utils/string_view.h
 )
 target_include_directories(compiler_core PUBLIC include)
 
 # --- The real compiler binary. ---
 add_executable(coglet src/coglet.c ${COMMON_SOURCES})
-target_link_libraries(coglet PRIVATE compiler_core)
-
-# --- The test runner binary. ---
-add_executable(coglet_test_runner src/coglet_test_runner.c ${COMMON_SOURCES})
 target_link_libraries(coglet PRIVATE compiler_core)
 
 # --- Standalone lexer test tool (Stage 1 harness). ---

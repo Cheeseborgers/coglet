@@ -1,4 +1,4 @@
-Array initializer checking
+TOD0: Array initializer checking
 
 This is the best next feature if you want to keep improving semantic completeness.
 
@@ -14,3 +14,47 @@ values: [3]i32 = [1, 2, 3];
 values: []i32 = [1, 2, 3]; // later maybe infer size
 
 But this needs parser/AST support if not already there.
+
+
+////////////////////////////////////////
+Coglet compiler.
+
+Current status:
+
+Parser
+✓ expressions
+✓ functions
+✓ structs
+✓ enums
+✓ switch
+✓ casts
+✓ break/continue
+✓ compound assignment
+
+Semantic
+✓ scopes
+✓ type checking
+✓ constants
+✓ enums
+✓ switch exhaustiveness
+✓ return analysis
+✓ constant array bounds
+✓ casts
+✓ break/continue
+
+Language
+□ strings
+□ slices
+□ imports
+□ modules
+□ generics
+
+Codegen
+(current status...)
+
+Goals:
+- Modern systems language (jai/zig/odin/etc..)
+- Clean compiler architecture
+- No spaghetti code
+- Correctness over cleverness
+- Building toward LLVM backend/ not sure on this yet

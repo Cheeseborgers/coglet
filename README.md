@@ -1,4 +1,4 @@
-# Project README
+# Coglet
 
 ## Overview
 

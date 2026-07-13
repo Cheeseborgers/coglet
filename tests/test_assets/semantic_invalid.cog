@@ -289,3 +289,41 @@ break_invalid_function::() -> void {
 continue_invalid_function::() -> void {
     continue;
 }
+
+array_index_negative::() -> i32 {
+    values: i32[3];
+
+    return values[-1];
+}
+
+array_index_too_large::() -> i32 {
+    values: i32[3];
+
+    return values[3];
+}
+
+BAD_ARRAY_INDEX :: 4;
+
+array_index_bad_const::() -> i32 {
+    values: i32[3];
+
+    return values[BAD_ARRAY_INDEX];
+}
+
+compound_assignment_bool::() -> void {
+    x: bool = true;
+
+    x += 1;
+}
+
+COMPOUND_CONST :: 1;
+
+compound_assignment_const::() -> void {
+    COMPOUND_CONST += 1;
+}
+
+compound_assignment_enum::() -> void {
+    c: Color = Color.Red;
+
+    c += 1;
+}

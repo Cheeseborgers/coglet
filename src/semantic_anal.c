@@ -199,6 +199,7 @@ static void fill_enum_members(SemanticContext *ctx,Node *node);
 static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
 static Type *check_cast_expression(SemanticContext *ctx, Node *node);
 static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
+static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
 
 // ============================================================
 // expressions
@@ -1250,6 +1251,87 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
     return 0;
 }
 
+static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node) {
+    if (!node)
+        return 0;
+
+    switch (node->type) {
+        case NODE_NUMBER:
+        case NODE_BOOL:
+            return 1;
+
+        case NODE_CAST:
+            return expression_is_compile_time_constant(
+                ctx,
+                node->as.cast_expr.expression
+            );
+
+        case NODE_UNARY:
+            return expression_is_compile_time_constant(
+                ctx,
+                node->as.unary.operand
+            );
+
+        case NODE_BINARY:
+            return expression_is_compile_time_constant(
+                       ctx,
+                       node->as.binary.left
+                   ) &&
+                   expression_is_compile_time_constant(
+                       ctx,
+                       node->as.binary.right
+                   );
+
+        case NODE_IDENT:
+        {
+            Symbol *sym =
+                scope_lookup(
+                    ctx->current_scope,
+                    node->as.ident.data,
+                    node->as.ident.length
+                );
+
+            return sym && sym->kind == SYMBOL_CONSTANT;
+        }
+
+        case NODE_FIELD:
+        {
+            /*
+             * Only enum members are compile-time constant fields for now:
+             *
+             *     SomeEnum.Member
+             */
+            if (!node->as.field.object ||
+                node->as.field.object->type != NODE_IDENT) {
+                return 0;
+            }
+
+            Node *object_node =
+                node->as.field.object;
+
+            Symbol *sym =
+                scope_lookup(
+                    ctx->current_scope,
+                    object_node->as.ident.data,
+                    object_node->as.ident.length
+                );
+
+            return sym &&
+                   sym->kind == SYMBOL_TYPE &&
+                   sym->type &&
+                   sym->type->kind == TYPE_ENUM &&
+                   find_enum_member(
+                       sym->type,
+                       node->as.field.name.data,
+                       node->as.field.name.length
+                   );
+        }
+
+        default:
+            return 0;
+    }
+}
+
 static Type *check_expression(SemanticContext *ctx, Node *node) {
 
     if (!node) return NULL;
@@ -1786,23 +1868,79 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_INDEX:
         {
-            Type *object = check_expression(ctx,node->as.index.object);
-            Type *index  = check_expression(ctx,node->as.index.index);
+            Type *object =
+                check_expression(
+                    ctx,
+                    node->as.index.object
+                );
 
-            if(!object || !index)
+            Type *index =
+                check_expression(
+                    ctx,
+                    node->as.index.index
+                );
+
+            if (!object || !index)
                 return NULL;
 
-            if(!is_integer_kind(index->kind)) {
-                semantic_error(ctx, node, "array index must be integer");
+            if (!is_integer_kind(index->kind)) {
+                semantic_error(
+                    ctx,
+                    node,
+                    "array index must be integer"
+                );
+
                 return NULL;
             }
 
-            if(object->kind != TYPE_ARRAY &&
-               object->kind != TYPE_POINTER) {
+            if (object->kind != TYPE_ARRAY &&
+                object->kind != TYPE_POINTER) {
 
-                semantic_error(ctx, node, "object is not indexable");
+                semantic_error(
+                    ctx,
+                    node,
+                    "object is not indexable"
+                );
+
                 return NULL;
-            }
+                }
+
+            /*
+             * Compile-time bounds check for fixed-size arrays.
+             *
+             * Runtime indexes are allowed:
+             *
+             *     arr[i]
+             *
+             * Constant indexes are checked:
+             *
+             *     arr[3]
+             */
+            if (object->kind == TYPE_ARRAY &&
+                object->array_size >= 0 &&
+                expression_is_compile_time_constant(
+                    ctx,
+                    node->as.index.index)) {
+
+                ConstValue index_value;
+
+                if (eval_const_expr(
+                        ctx,
+                        node->as.index.index,
+                        &index_value) &&
+                    index_value.kind == CONST_VALUE_INT) {
+
+                    if (index_value.as.i < 0 ||
+                        index_value.as.i >= object->array_size) {
+
+                        semantic_error(
+                            ctx,
+                            node,
+                            "array index out of bounds"
+                        );
+                        }
+                    }
+                    }
 
             return object->element;
         }

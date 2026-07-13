@@ -1,2 +1,16 @@
-malloc: system calls?
-sizeof()
+Array initializer checking
+
+This is the best next feature if you want to keep improving semantic completeness.
+
+Catch:
+
+values: [3]i32 = [1, 2];       // too few
+values: [3]i32 = [1, 2, 3, 4]; // too many
+values: [3]i32 = [1, true, 3]; // wrong element type
+
+Allow:
+
+values: [3]i32 = [1, 2, 3];
+values: []i32 = [1, 2, 3]; // later maybe infer size
+
+But this needs parser/AST support if not already there.

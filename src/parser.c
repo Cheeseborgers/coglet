@@ -519,25 +519,32 @@ static Node *parse_assignment_from(Parser *p, Node *left)
 
     advance(p);
 
-    if (!is_assignable(left))
-        error_at(p, &p->previous, "invalid assignment target");
+    if (!is_assignable(left)) {
+        error_at(
+            p,
+            &p->previous,
+            "invalid assignment target"
+        );
+    }
 
     Node *right = parse_assignment(p);
 
-    if (op == TOK_EQUAL) return ast_new_assign(p->arena, left, right, left->line);
-
-    TokenType binary_op;
-
-    switch (op) {
-        case TOK_PLUS_EQUAL:  binary_op = TOK_PLUS; break;
-        case TOK_MINUS_EQUAL: binary_op = TOK_MINUS; break;
-        case TOK_STAR_EQUAL:  binary_op = TOK_STAR; break;
-        case TOK_SLASH_EQUAL: binary_op = TOK_SLASH; break;
-        default: return left;
+    if (op == TOK_EQUAL) {
+        return ast_new_assign(
+            p->arena,
+            left,
+            right,
+            left->line
+        );
     }
 
-    Node *combined = ast_new_binary(p->arena, binary_op, left, right, left->line);
-    return ast_new_assign(p->arena, left, combined, left->line);
+    return ast_new_compound_assign(
+        p->arena,
+        op,
+        left,
+        right,
+        left->line
+    );
 }
 
 static Node *parse_assignment(Parser *p) { return parse_assignment_from(p, parse_binary(p, PREC_OR)); }

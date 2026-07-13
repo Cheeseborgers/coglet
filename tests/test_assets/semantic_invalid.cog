@@ -327,3 +327,72 @@ compound_assignment_enum::() -> void {
 
     c += 1;
 }
+
+// new
+compound_assignment_bool::() -> void {
+    x: bool = true;
+
+    x += 1;
+}
+
+COMPOUND_ASSIGN_CONST :: 1;
+
+compound_assignment_const::() -> void {
+    COMPOUND_ASSIGN_CONST += 1;
+}
+
+compound_assignment_mixed_concrete_numeric::() -> void {
+    x: i32 = 1;
+    y: i64 = 2;
+
+    x += y;
+}
+
+CompoundColor :: enum {
+    Red,
+    Green,
+    Blue,
+}
+
+compound_assignment_enum::() -> void {
+    c: CompoundColor = CompoundColor.Red;
+
+    c += 1;
+}
+
+COMPOUND_ASSIGN_CONST :: 1;
+
+compound_assignment_const_invalid::() -> void {
+    COMPOUND_ASSIGN_CONST += 1;
+}
+
+compound_assignment_bool_invalid::() -> void {
+    value: bool = true;
+
+    value += 1;
+}
+
+compound_assignment_value_bool_invalid::() -> void {
+    value: i32 = 1;
+    flag: bool = true;
+
+    value += flag;
+}
+
+compound_assignment_mixed_types_invalid::() -> void {
+    small: i32 = 1;
+    large: i64 = 2;
+
+    small += large;
+}
+
+CompoundAssignColor :: enum {
+    Red,
+    Green,
+}
+
+compound_assignment_enum_invalid::() -> void {
+    color: CompoundAssignColor = CompoundAssignColor.Red;
+
+    color += 1;
+}

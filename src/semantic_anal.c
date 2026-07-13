@@ -1670,6 +1670,171 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return target_type;
         }
 
+        case NODE_COMPOUND_ASSIGN:
+        {
+            Node *target_node =
+                node->as.compound_assign.target;
+
+            Node *value_node =
+                node->as.compound_assign.value;
+
+            /*
+            * Compound assignments require a writable target:
+            *
+            *     x += 1;
+            *     point.x += 1;
+            *     values[i] += 1;
+            */
+            if (!is_assignable_node(target_node)) {
+                semantic_error(
+                 ctx,
+                 node,
+                "compound assignment target is not assignable");
+
+                return NULL;
+            }
+
+            /*
+            * Constants cannot be modified.
+            *
+            * This currently mirrors the ordinary assignment and increment/
+            * decrement checks by detecting direct constant identifiers.
+            */
+            if (target_node->type == NODE_IDENT) {
+                Symbol *sym =
+                    scope_lookup(
+                        ctx->current_scope,
+                        target_node->as.ident.data,
+                        target_node->as.ident.length);
+
+                if (sym && sym->kind == SYMBOL_CONSTANT) {
+                    semantic_error_name(
+                    ctx,
+                    node,
+                    "cannot assign to constant",
+                    target_node->as.ident.data,
+                    target_node->as.ident.length);
+
+                    return NULL;
+                }
+            }
+
+            /*
+             * Check each side exactly once.
+             *
+             * This is one of the main reasons for preserving compound assignment
+             * as its own AST node instead of lowering:
+             *
+             *     values[next_index()] += 1;
+             *
+             * The target must not be duplicated.
+             */
+            Type *target_type =
+                check_expression(ctx, target_node);
+
+            Type *value_type =
+                check_expression(ctx, value_node);
+
+            if (!target_type || !value_type)
+                return NULL;
+
+            /*
+             * Coglet currently supports arithmetic compound assignments only:
+             *
+             *     +=
+             *     -=
+             *     *=
+             *     /=
+             */
+            switch (node->as.compound_assign.op) {
+                case TOK_PLUS_EQUAL:
+                case TOK_MINUS_EQUAL:
+                case TOK_STAR_EQUAL:
+                case TOK_SLASH_EQUAL:
+                    break;
+
+                default:
+                    semantic_error(
+                        ctx,
+                        node,
+                        "unsupported compound assignment operator"
+                    );
+
+                    return NULL;
+            }
+
+            if (!is_numeric_type(target_type)) {
+                semantic_error(
+                    ctx,
+                    node,
+                    "compound assignment target must be numeric"
+                );
+
+                return NULL;
+            }
+
+            if (!is_numeric_type(value_type)) {
+                semantic_error(
+                    ctx,
+                    node,
+                    "compound assignment value must be numeric"
+                );
+
+                return NULL;
+            }
+
+            /*
+             * Apply the same numeric compatibility rules used by ordinary binary
+             * arithmetic.
+             *
+             * Valid:
+             *     x: i64;
+             *     x += 1;       // untyped literal adapts to i64
+             *
+             * Invalid:
+             *     x: i32;
+             *     y: i64;
+             *     x += y;       // two different concrete numeric types
+             */
+            Type *result_type =
+                common_numeric_type(
+                    target_type,
+                    value_type
+                );
+
+            if (!result_type) {
+                semantic_error(
+                    ctx,
+                    node,
+                    "compound assignment operands have incompatible numeric types"
+                );
+
+                return NULL;
+            }
+
+        /*
+         * The arithmetic result must be storable back into the target.
+         *
+         * In most valid cases result_type will already be target_type, but
+         * retaining this check makes the compound-assignment rule explicit.
+         */
+        if (!initializer_compatible(
+                    target_type,
+                    result_type,
+                    value_node)) {
+
+                semantic_error(
+                    ctx,
+                    node,
+                    "compound assignment result does not fit target type"
+                );
+
+                return NULL;
+            }
+
+            return target_type;
+        }
+
         case NODE_ASSIGN:
         {
             Node *target_node = node->as.assign.target;

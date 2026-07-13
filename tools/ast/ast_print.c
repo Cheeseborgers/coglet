@@ -9,13 +9,20 @@
 static const char *token_type_str(TokenType t)
 {
     switch (t) {
-        case TOK_PLUS:    return "+";
-        case TOK_MINUS:   return "-";
+        case TOK_PLUS:        return "+";
+        case TOK_MINUS:       return "-";
+
         case TOK_PLUS_PLUS:   return "++";
         case TOK_MINUS_MINUS: return "--";
-        case TOK_STAR:    return "*";
-        case TOK_SLASH:   return "/";
-        case TOK_PERCENT: return "%";
+
+        case TOK_PLUS_EQUAL:  return "+=";
+        case TOK_MINUS_EQUAL: return "-=";
+        case TOK_STAR_EQUAL:  return "*=";
+        case TOK_SLASH_EQUAL: return "/=";
+
+        case TOK_STAR:        return "*";
+        case TOK_SLASH:       return "/";
+        case TOK_PERCENT:     return "%";
 
         case TOK_EQUAL:       return "=";
         case TOK_EQUAL_EQUAL: return "==";
@@ -161,14 +168,25 @@ static void print_node(Node *node)
             }
             break;
 
-
         case NODE_ASSIGN:
             printf("(= ");
             print_node(node->as.assign.target);
             printf(" ");
             print_node(node->as.assign.value);
             printf(")");
+            break;
 
+        case NODE_COMPOUND_ASSIGN:
+            printf("(%s ",
+                token_type_str(node->as.compound_assign.op));
+
+            print_node(node->as.compound_assign.target);
+
+            printf(" ");
+
+            print_node(node->as.compound_assign.value);
+
+            printf(")");
             break;
 
         case NODE_IF:
@@ -301,7 +319,6 @@ static void print_node(Node *node)
 
             break;
 
-
         case NODE_STRUCT_FIELD_DECL:
             printf("(struct_field_decl ");
             print_type(node->as.struct_field_decl.var_type);
@@ -313,7 +330,6 @@ static void print_node(Node *node)
             printf(")");
 
             break;
-
 
         case NODE_STRUCT_INIT:
             printf("(struct_init ");
@@ -582,6 +598,29 @@ static void print_node_pretty(Node *node, int depth)
             print_node_pretty(node->as.assign.value, depth + 1);
             break;
 
+        case NODE_COMPOUND_ASSIGN:
+            indent(depth);
+            printf("compound_assign %s\n",
+                token_type_str(node->as.compound_assign.op));
+
+            indent(depth + 1);
+            printf("target:\n");
+
+            print_node_pretty(
+                node->as.compound_assign.target,
+                depth + 2
+            );
+
+            indent(depth + 1);
+            printf("value:\n");
+
+            print_node_pretty(
+                node->as.compound_assign.value,
+                depth + 2
+            );
+
+            break;
+
         case NODE_IF:
             indent(depth);
             printf("if\n");
@@ -749,12 +788,6 @@ static void print_node_pretty(Node *node, int depth)
             }
 
             printf("\n");
-
-            /*
-             * Use your existing type-printing helper here.
-             */
-            // TODO: FIX THIS and above
-
             indent(depth + 1);
             printf("Members\n");
 

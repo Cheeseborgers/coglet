@@ -19,7 +19,8 @@ typedef enum {
     NODE_INC_DEC,      // ++x, --x, x++, x--
 
     NODE_BLOCK,
-    NODE_ASSIGN,       // =
+    NODE_ASSIGN,          // =
+    NODE_COMPOUND_ASSIGN, // +=, -=. *=, /=
 
     NODE_EXPR_STMT,    // an expression used as a statement: `1 + 2;`
 
@@ -109,6 +110,12 @@ struct Node {
             Node *target;
             Node *value;
         } assign;           // Currently '=' only
+
+        struct {
+            TokenType op;
+            Node *target;
+            Node *value;
+        } compound_assign;  // +=, -=. *=, /=
 
         struct {
             Node *condition;
@@ -241,6 +248,7 @@ struct Node {
 // individual nodes.
 Node *ast_new_number(Arena *arena, double value, int is_float, int line);
 Node *ast_new_ident(Arena *arena, const char *start, int length, int line);
+Node *ast_new_compound_assign(Arena *arena, TokenType op, Node *target, Node *value, int line);
 Node *ast_new_string(Arena *arena, const char *start, int length, int line);
 Node *ast_new_char(Arena *arena, const char *start, int length, int line);
 Node *ast_new_bool(Arena *arena, int value, int line);

@@ -310,3 +310,39 @@ compound_assignment_array_index::() -> void {
 
     values[0] += 1;
 }
+
+// new
+compound_assignment_valid1::() -> void {
+    x: i32 = 1;
+
+    x += 2;
+    x -= 1;
+    x *= 3;
+    x /= 2;
+}
+
+compound_assignment_untyped_literal1::() -> void {
+    x: i64 = 10;
+
+    x += 1;
+    x -= 2;
+    x *= 3;
+    x /= 2;
+}
+
+compound_assignment_float1::() -> void {
+    x: f64 = 1.5;
+
+    x += 2.5;
+    x -= 1.0;
+    x *= 3.0;
+    x /= 2.0;
+}
+
+compound_assignment_array_index1::() -> void {
+    values: i32[3];
+
+    values[0] += 1;
+    values[1] -= 1;
+    values[2] *= 2;
+}

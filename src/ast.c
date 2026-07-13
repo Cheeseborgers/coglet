@@ -26,6 +26,14 @@ Node *ast_new_ident(Arena *arena, const char *start, int length, int line) {
     return node;
 }
 
+Node *ast_new_compound_assign(Arena *arena, TokenType op, Node *target, Node *value, int line) {
+    Node *node = new_node(arena, NODE_COMPOUND_ASSIGN, line);
+    node->as.compound_assign.op  = op;
+    node->as.compound_assign.target = target;
+    node->as.compound_assign.value = value;
+    return node;
+}
+
 Node *ast_new_string(Arena *arena, const char *start, int length, int line) {
     Node *node = new_node(arena, NODE_STRING, line);
     node->as.string_literal.data   = start;
@@ -349,6 +357,12 @@ Node *ast_clone(Arena *arena, const Node *node)
         case NODE_ASSIGN:
             clone->as.assign.target = ast_clone(arena, node->as.assign.target);
             clone->as.assign.value  = ast_clone(arena, node->as.assign.value);
+            break;
+
+        case NODE_COMPOUND_ASSIGN:
+            clone->as.compound_assign.op     = node->as.compound_assign.op;
+            clone->as.compound_assign.target = ast_clone(arena, node->as.compound_assign.target);
+            clone->as.compound_assign.value  = ast_clone(arena, node->as.compound_assign.value);
             break;
 
         case NODE_CAST:

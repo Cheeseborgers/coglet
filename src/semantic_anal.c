@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "string_decode.h"
+#include "utils/utils.h"
 
 
 static Type *new_type(SemanticContext *ctx, TypeKind kind)
@@ -43,6 +44,69 @@ static void semantic_error_name(
     fprintf(stderr, "semantic error at line %d: %s '%.*s'\n", node->line, prefix, (int)length, name);
     ctx->had_error = 1;
     ctx->error_count++;
+}
+
+// ============================================================
+// sematic expression helpers
+// ============================================================
+static SemExprInfo *sem_find_expr_info(SemanticContext *ctx, Node *node) {
+    for (SemExprInfo *info = ctx->expr_infos; info; info = info->next) {
+        if (info->node == node)
+            return info;
+    }
+
+    return NULL;
+}
+
+static SemExprInfo *sem_get_or_create_expr_info(SemanticContext *ctx, Node *node) {
+    SemExprInfo *info = sem_find_expr_info(ctx, node);
+    if (info)
+        return info;
+
+    info = arena_alloc(ctx->arena, sizeof(*info));
+    memset(info, 0, sizeof(*info));
+
+    info->node = node;
+    info->value_category = VALUE_CATEGORY_NONE;
+
+    info->next = ctx->expr_infos;
+    ctx->expr_infos = info;
+
+    return info;
+}
+
+static void sem_record_expr_info(
+    SemanticContext *ctx, Node *node, Type *type, Symbol *symbol, ValueCategory category) {
+
+    if (!node)
+        return;
+
+    SemExprInfo *info = sem_get_or_create_expr_info(ctx, node);
+
+    info->type = type;
+    info->symbol = symbol;
+    info->value_category = category;
+}
+
+static void sem_record_expr_type(SemanticContext *ctx, Node *node, Type *type) {
+    sem_record_expr_info(
+        ctx,
+        node,
+        type,
+        NULL,
+        VALUE_CATEGORY_RVALUE
+    );
+}
+
+static void sem_record_constant(SemanticContext *ctx, Node *node, ConstValue value) {
+    TODO("sem_record_constant");
+    SemExprInfo *info = sem_get_or_create_expr_info(ctx, node);
+
+    //info->is_constant = 1;
+    //info->constant = &value;
+
+    if (!info->type && value.type)
+        info->type = value.type;
 }
 
 // ============================================================
@@ -1468,6 +1532,19 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 return NULL;
             }
 
+            ValueCategory category = VALUE_CATEGORY_RVALUE;
+
+            if (sym->kind == SYMBOL_VARIABLE)
+                category = VALUE_CATEGORY_LVALUE;
+
+            sem_record_expr_info(
+                ctx,
+                node,
+                sym->type,
+                sym,
+                category
+            );
+
             return sym->type;
         }
 
@@ -1487,9 +1564,9 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
+                    sem_record_expr_info(ctx, node, operand, NULL, VALUE_CATEGORY_RVALUE);
                     return operand;
                 }
-
 
                 case TOK_BANG:
                 {
@@ -1499,15 +1576,14 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
-                    return operand;
+                    sem_record_expr_info(ctx, node, ctx->type_bool, NULL, VALUE_CATEGORY_RVALUE);
+                    return ctx->type_bool;
                 }
 
-
                 default:
-                    return operand;
+                    UNREACHABLE("node->as.unary.op");
             }
         }
-
 
         case NODE_BINARY:
         {
@@ -1591,6 +1667,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
+                    sem_record_expr_info(ctx, node, result, NULL, VALUE_CATEGORY_RVALUE);
                     return result;
                 }
 
@@ -1611,6 +1688,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
+                    sem_record_expr_info(ctx, node, ctx->type_bool, NULL, VALUE_CATEGORY_RVALUE);
                     return ctx->type_bool;
                 }
 
@@ -1643,6 +1721,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                             return NULL;
                         }
 
+                        sem_record_expr_info(ctx, node, ctx->type_bool, NULL, VALUE_CATEGORY_RVALUE);
                         return ctx->type_bool;
                     }
 
@@ -1660,6 +1739,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
+                    sem_record_expr_info(ctx, node, ctx->type_bool, NULL, VALUE_CATEGORY_RVALUE);
                     return ctx->type_bool;
                 }
 
@@ -1705,6 +1785,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
+                    sem_record_expr_info(ctx, node, ctx->type_bool, NULL, VALUE_CATEGORY_RVALUE);
                     return ctx->type_bool;
                 }
 
@@ -2023,11 +2104,33 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             if (!ok)
                 return NULL;
 
+            sem_record_expr_info(
+                ctx,
+                node,
+                callee->return_type,
+                NULL,
+                VALUE_CATEGORY_RVALUE);
+
             return callee->return_type;
         }
 
         case NODE_CAST:
-            return check_cast_expression(ctx, node);
+        {
+            Type *type = check_cast_expression(ctx, node);
+
+            if (!type)
+                return NULL;
+
+            sem_record_expr_info(
+                ctx,
+                node,
+                type,
+                NULL,
+                VALUE_CATEGORY_RVALUE
+            );
+
+            return type;
+        }
 
         case NODE_FIELD:
         {
@@ -2039,49 +2142,50 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
              * The object side is an identifier naming a type, not a runtime value.
              */
             if (node->as.field.object &&
-                node->as.field.object->type == NODE_IDENT) {
+                node->as.field.object->type == NODE_IDENT)
+            {
 
-                Node *object_node =
-                    node->as.field.object;
+                Node *object_node = node->as.field.object;
 
                 Symbol *sym =
                     scope_lookup(
                         ctx->current_scope,
                         object_node->as.ident.data,
-                        object_node->as.ident.length
-                    );
+                        object_node->as.ident.length);
 
-            if (sym &&
-                sym->kind == SYMBOL_TYPE &&
-                sym->type &&
-                sym->type->kind == TYPE_ENUM) {
+                if (sym &&
+                    sym->kind == SYMBOL_TYPE &&
+                    sym->type &&
+                    sym->type->kind == TYPE_ENUM)
+                {
 
-                EnumMember *member =
-                    find_enum_member(
+                    EnumMember *member =
+                        find_enum_member(
+                            sym->type,
+                            node->as.field.name.data,
+                            node->as.field.name.length);
+
+                    if (!member) {
+                        semantic_error_name(
+                            ctx,
+                            node,
+                            "unknown enum member",
+                            node->as.field.name.data,
+                            node->as.field.name.length
+                        );
+
+                        return NULL;
+                }
+                    sem_record_expr_info(
+                        ctx,
+                        node,
                         sym->type,
-                        node->as.field.name.data,
-                        node->as.field.name.length
-                    );
+                        sym,
+                        VALUE_CATEGORY_RVALUE);
 
-            if (!member) {
-                semantic_error_name(
-                    ctx,
-                    node,
-                    "unknown enum member",
-                    node->as.field.name.data,
-                    node->as.field.name.length
-                );
-
-                return NULL;
+                    return sym->type;
+                }
             }
-
-            /*
-             * The value is stored in `member->value`, but the expression's
-             * type is the enum type itself, not the backing integer type.
-             */
-            return sym->type;
-        }
-    }
 
             /*
              * Normal runtime field access:
@@ -2124,6 +2228,24 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 return NULL;
             }
 
+            SemExprInfo *object_info =
+                sem_find_expr_info(ctx, node->as.field.object);
+
+            ValueCategory category = VALUE_CATEGORY_RVALUE;
+
+            if (object_info &&
+                object_info->value_category == VALUE_CATEGORY_LVALUE) {
+                category = VALUE_CATEGORY_LVALUE;
+                }
+
+            sem_record_expr_info(
+                ctx,
+                node,
+                field,
+                NULL,
+                category
+            );
+
             return field;
         }
 
@@ -2164,7 +2286,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 );
 
                 return NULL;
-                }
+            }
 
             /*
              * Compile-time bounds check for fixed-size arrays.
@@ -2203,17 +2325,45 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     }
                     }
 
-            return object->element;
+            Type *element_type = object->element;
+
+            SemExprInfo *object_info =
+                sem_find_expr_info(ctx, node->as.index.object);
+
+            ValueCategory category = VALUE_CATEGORY_RVALUE;
+
+            if (object_info &&
+                object_info->value_category == VALUE_CATEGORY_LVALUE) {
+                category = VALUE_CATEGORY_LVALUE;
+                }
+
+            sem_record_expr_info(
+                ctx,
+                node,
+                element_type,
+                NULL,
+                category
+            );
+
+            return element_type;
         }
 
         case NODE_NUMBER:
         {
-            Type *t = new_type(
-                ctx, node->as.number.is_float ? TYPE_F64 : TYPE_I32);
+            Type *type =
+                new_type(ctx, node->as.number.is_float ? TYPE_F64 : TYPE_I32);
 
-            t->is_untyped = 1;
+            type->is_untyped = 1;
 
-            return t;
+            sem_record_expr_info(
+                ctx,
+                node,
+                type,
+                NULL,
+                VALUE_CATEGORY_RVALUE
+            );
+
+            return type;
         }
 
         case NODE_STRING:
@@ -2227,11 +2377,28 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         case NODE_CHAR:
         {
             Type *t = new_type(ctx, TYPE_U8);
+
+            sem_record_expr_info(
+                ctx,
+                node,
+                t,
+                NULL,
+                VALUE_CATEGORY_RVALUE
+            );
+
             return t;
         }
 
         case NODE_BOOL:
         {
+            sem_record_expr_info(
+                ctx,
+                node,
+                ctx->type_bool,
+                NULL,
+                VALUE_CATEGORY_RVALUE
+            );
+
             return ctx->type_bool;
         }
 
@@ -2384,6 +2551,13 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     );
                 }
             }
+
+            sem_record_expr_info(
+                ctx,
+                node,
+                type,
+                NULL,
+                VALUE_CATEGORY_RVALUE);
 
             return type;
         }
@@ -3975,5 +4149,12 @@ void semantic_check(Node *program, SemanticContext *ctx) {
     ctx->type_void = new_type(ctx, TYPE_VOID);
 
     ctx->current_scope = scope_new(ctx, NULL);
+
+    ctx->expr_infos = NULL;
+
     check_node(ctx,  program);
+}
+
+SemExprInfo *semantic_get_expr_info(SemanticContext *ctx, Node *node) {
+    return sem_find_expr_info(ctx, node);
 }

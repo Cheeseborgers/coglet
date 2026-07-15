@@ -29,7 +29,8 @@ add_library(compiler_core STATIC
 target_include_directories(compiler_core PUBLIC include)
 
 # --- The real compiler binary. ---
-add_executable(coglet src/coglet.c ${COMMON_SOURCES})
+add_executable(coglet src/coglet.c ${COMMON_SOURCES}
+        include/semantic_info.h)
 target_link_libraries(coglet PRIVATE compiler_core)
 
 # --- Standalone lexer test tool (Stage 1 harness). ---

@@ -2,9 +2,7 @@
 #define COGLET_SEMANTIC_H
 
 #include "ast.h"
-
-// TODO: Add: an array with unspecified size is accepted with no complaint. Might be intentional (e.g. as a future "flexible array" feature),
-// but currently there's no rule either enforcing or rejecting it — worth deciding on purpose rather than by omission.
+#include "semantic_info.h"
 
 typedef enum {
     SYMBOL_VARIABLE,  // variables
@@ -18,7 +16,6 @@ typedef enum {
     CONST_VALUE_FLOAT,
     CONST_VALUE_BOOL,
 } ConstValueKind;
-
 
 typedef struct ConstValue {
     ConstValueKind kind;
@@ -74,8 +71,11 @@ typedef struct {
     Type *type_void;
 
     Type *current_return_type;
+
+    SemExprInfo *expr_infos;
 } SemanticContext;
 
 void semantic_check(Node *program, SemanticContext *ctx);
+SemExprInfo *semantic_get_expr_info(SemanticContext *ctx, Node *node);
 
 #endif

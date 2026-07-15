@@ -76,6 +76,5 @@ typedef struct {
 } SemanticContext;
 
 void semantic_check(Node *program, SemanticContext *ctx);
-SemExprInfo *semantic_get_expr_info(SemanticContext *ctx, Node *node);
 
 #endif

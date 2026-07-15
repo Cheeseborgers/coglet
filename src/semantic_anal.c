@@ -6,7 +6,6 @@
 #include "string_decode.h"
 #include "utils/utils.h"
 
-
 static Type *new_type(SemanticContext *ctx, TypeKind kind)
 {
     Type *type = arena_alloc(ctx->arena, sizeof(Type));
@@ -88,14 +87,18 @@ static void sem_record_expr_info(
     info->value_category = category;
 }
 
-static void sem_record_expr_type(SemanticContext *ctx, Node *node, Type *type) {
-    sem_record_expr_info(
-        ctx,
-        node,
-        type,
-        NULL,
-        VALUE_CATEGORY_RVALUE
-    );
+static int expression_is_lvalue(SemanticContext *ctx, Node *node) {
+    SemExprInfo *info = sem_find_expr_info(ctx, node);
+    return info && info->value_category == VALUE_CATEGORY_LVALUE;
+}
+
+static int require_lvalue(SemanticContext *ctx, Node *owner, Node *target, const char *message) {
+    if (!expression_is_lvalue(ctx, target)) {
+        semantic_error(ctx, owner, message);
+        return 0;
+    }
+
+    return 1;
 }
 
 // ============================================================
@@ -446,22 +449,6 @@ static int node_is_literal_true(Node *node) {
 
 static int is_int_literal_zero(Node *node) {
     return node && node->type == NODE_NUMBER && !node->as.number.is_float && node->as.number.value == 0;
-}
-
-static int is_assignable_node(Node *node)
-{
-    if (!node)
-        return 0;
-
-    switch (node->type) {
-        case NODE_IDENT:
-        case NODE_FIELD:
-        case NODE_INDEX:
-            return 1;
-
-        default:
-            return 0;
-    }
 }
 
 static int is_switchable_type(Type *type)
@@ -1665,41 +1652,24 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         case NODE_INC_DEC: {
             Node *target = node->as.inc_dec.target;
 
-            if (!is_assignable_node(target)) {
-                semantic_error(ctx,node,
-                    "increment/decrement target is not assignable");
-
-                return NULL;
-            }
-
             Type *target_type = check_expression(ctx, target);
+            if (!target_type) return NULL;
 
-            if (!target_type)
+            if (!require_lvalue(ctx, node, target, "increment/decrement target is not assignable"))
                 return NULL;
 
             if (!is_numeric_type(target_type)) {
-                semantic_error(ctx, node,
-                    "increment/decrement requires a numeric target");
-
+                semantic_error(ctx, node, "increment/decrement requires a numeric target");
                 return NULL;
             }
 
-            if (target->type == NODE_IDENT) {
-                Symbol *sym = scope_lookup(
-                    ctx->current_scope,
-                    target->as.ident.data,
-                    target->as.ident.length);
-
-                if (sym && sym->kind == SYMBOL_CONSTANT) {
-                    semantic_error_name(
-                        ctx, node,
-                        "cannot modify constant",
-                        target->as.ident.data,
-                        target->as.ident.length);
-
-                    return NULL;
-                }
-            }
+            sem_record_expr_info(
+                ctx,
+                node,
+                target_type,
+                NULL,
+                VALUE_CATEGORY_RVALUE
+            );
 
             return target_type;
         }
@@ -1709,59 +1679,14 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             Node *target_node = node->as.compound_assign.target;
             Node *value_node  = node->as.compound_assign.value;
 
-            /*
-            * Compound assignments require a writable target:
-            *
-            *     x += 1;
-            *     point.x += 1;
-            *     values[i] += 1;
-            */
-            if (!is_assignable_node(target_node)) {
-                semantic_error(ctx, node,
-                "compound assignment target is not assignable");
-
-                return NULL;
-            }
-
-            /*
-            * Constants cannot be modified.
-            *
-            * This currently mirrors the ordinary assignment and increment/
-            * decrement checks by detecting direct constant identifiers.
-            */
-            if (target_node->type == NODE_IDENT) {
-                Symbol *sym =
-                    scope_lookup(
-                        ctx->current_scope,
-                        target_node->as.ident.data,
-                        target_node->as.ident.length);
-
-                if (sym && sym->kind == SYMBOL_CONSTANT) {
-                    semantic_error_name(
-                    ctx, node,
-                    "cannot assign to constant",
-                    target_node->as.ident.data,
-                    target_node->as.ident.length);
-
-                    return NULL;
-                }
-            }
-
-            /*
-             * Check each side exactly once.
-             *
-             * This is one of the main reasons for preserving compound assignment
-             * as its own AST node instead of lowering:
-             *
-             *     values[next_index()] += 1;
-             *
-             * The target must not be duplicated.
-             */
             Type *target_type = check_expression(ctx, target_node);
             Type *value_type  = check_expression(ctx, value_node);
+            if (!target_type || !value_type) return NULL;
 
-            if (!target_type || !value_type)
+            if (!require_lvalue(ctx, node, target_node,
+                    "compound assignment target is not assignable")) {
                 return NULL;
+            }
 
             /*
              * Coglet currently supports arithmetic compound assignments only:
@@ -1851,60 +1776,41 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     return NULL;
             }
 
+            sem_record_expr_info(
+                ctx,
+                node,
+                target_type,
+                NULL,
+                VALUE_CATEGORY_RVALUE);
+
             return target_type;
         }
 
-        case NODE_ASSIGN:
-        {
+        case NODE_ASSIGN: {
             Node *target_node = node->as.assign.target;
-
-            if (!is_assignable_node(target_node)) {
-                semantic_error(ctx, node,
-                    "assignment target is not assignable");
-
-                return NULL;
-            }
-
-            if (target_node->type == NODE_IDENT) {
-                Symbol *sym = scope_lookup(
-                    ctx->current_scope,
-                    target_node->as.ident.data,
-                    target_node->as.ident.length
-                );
-
-                if (sym && sym->kind == SYMBOL_CONSTANT) {
-                    semantic_error_name(
-                        ctx, node,
-                        "cannot assign to constant",
-                        target_node->as.ident.data,
-                        target_node->as.ident.length
-                    );
-
-                    return NULL;
-                }
-            }
+            Node *value_node  = node->as.assign.value;
 
             Type *target_type = check_expression(ctx, target_node);
-            Type *value_type  = check_expression(ctx, node->as.assign.value);
+            if (!target_type) return NULL;
 
-            if (!target_type || !value_type)
+            if (!require_lvalue(ctx, node, target_node, "assignment target is not assignable"))
                 return NULL;
 
-            if (!initializer_compatible(
-                    target_type,
-                    value_type,
-                    node->as.assign.value))
-            {
-                semantic_error(ctx, node, "assignment type mismatch");
+            if (!check_initializer_against_type(ctx, target_type, value_node))
                 return NULL;
-            }
+
+            sem_record_expr_info(
+                ctx,
+                node,
+                target_type,
+                NULL,
+                VALUE_CATEGORY_RVALUE
+            );
 
             return target_type;
         }
 
-
-        case NODE_CALL:
-        {
+        case NODE_CALL: {
             Type *callee = check_expression(ctx, node->as.call.callee);
             if (!callee)
                 return NULL;
@@ -3714,7 +3620,6 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
         if (!value) {
             if (expected->kind != TYPE_VOID) {
-
                 semantic_error(ctx, node,
                     "non-void function must return a value");
             }
@@ -3722,22 +3627,14 @@ static void check_node(SemanticContext *ctx,Node *node) {
             break;
         }
 
-        Type *actual = check_expression(ctx, value);
-
         if (expected->kind == TYPE_VOID) {
-
             semantic_error(ctx, node,
                 "void function cannot return a value");
 
             break;
         }
 
-        if (actual &&
-            !initializer_compatible(expected, actual, value)) {
-
-            semantic_error(ctx, node,
-                "return type does not match function return type");
-            }
+        check_initializer_against_type(ctx, expected, value);
 
         break;
     }

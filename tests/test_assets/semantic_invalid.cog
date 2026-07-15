@@ -400,7 +400,6 @@ compound_assignment_enum_invalid::() -> void {
 }
 
 x: i32 = [1, 2, 3];    // error
-foo([1, 2, 3]);        // error for now, until you add expected argument types
 [1, 2, 3];             // error
 
 string_initializer_too_small::() -> void {
@@ -435,4 +434,83 @@ array_argument_wrong_count::() -> void {
 
 array_argument_wrong_type::() -> void {
     takes_i32_array_invalid([1, true, 3]);
+}
+
+
+takes_i32_array_wrong::(values: i32[3]) -> void {
+}
+
+array_argument_wrong_count_extra::() -> void {
+    takes_i32_array_wrong([1, 2]);
+}
+
+assign_const_invalid::() -> void {
+    ASSIGN_CONST :: 1;
+    ASSIGN_CONST = 2;
+}
+
+AssignPoint :: struct {
+    x: i32;
+}
+
+make_assign_point::() -> AssignPoint {
+    return AssignPoint {
+        x = 0,
+    };
+}
+
+assign_field_of_rvalue_invalid::() -> void {
+    make_assign_point().x = 1;
+}
+
+assign_index_of_rvalue_invalid::() -> void {
+    make_array()[0] = 1;
+}
+
+make_array::() -> i32[3] {
+    return [1, 2, 3];
+}
+
+assign_enum_member_invalid::() -> void {
+    Color.Red = Color.Blue;
+}
+
+string_assignment_wrong_size_invalid::() -> void {
+    s: u8[4] = "abc";
+    s = "hello";
+}
+
+string_assignment_wrong_element_invalid::() -> void {
+    s: i32[6] = [0, 0, 0, 0, 0, 0];
+    s = "hello";
+}
+
+array_assignment_wrong_count_invalid::() -> void {
+    values: i32[2] = [0, 0];
+    values = [1, 2, 3];
+}
+
+array_assignment_wrong_type_invalid::() -> void {
+    values: i32[3] = [0, 0, 0];
+    values = [1, true, 3];
+}
+
+return_string_wrong_size_invalid::() -> u8[4] {
+    return "hello";
+}
+
+return_string_wrong_element_invalid::() -> i32[6] {
+    return "hello";
+}
+
+return_array_wrong_count_invalid::() -> i32[2] {
+    return [1, 2, 3];
+}
+
+return_array_wrong_type_invalid::() -> i32[3] {
+    return [1, true, 3];
+}
+
+bare_string_literal_invalid::() -> void {
+    "hello";
 }

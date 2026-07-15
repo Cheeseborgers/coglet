@@ -212,6 +212,7 @@ static void check_unreachable_in_block(SemanticContext *ctx, Node *block);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
+static int check_initializer_against_type(SemanticContext *ctx, Type *expected, Node *initializer);
 static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 static int declare_enum_shell(SemanticContext *ctx, Node *node);
 static void fill_enum_members(SemanticContext *ctx,Node *node);
@@ -2404,7 +2405,6 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             break;
     }
 
-
     // important fallback
     return NULL;
 }
@@ -2416,9 +2416,8 @@ static void check_block(SemanticContext *ctx, Node *node) {
 
     scope_push(ctx);
 
-    for(int i=0; i < node->as.block.statements.count; i++) {
+    for(int i=0; i < node->as.block.statements.count; i++)
         check_node(ctx, node->as.block.statements.items[i]);
-    }
 
     check_unreachable_in_block(ctx, node);
 
@@ -2509,8 +2508,7 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
             value.kind == CONST_VALUE_INT &&
             is_integer_kind(value_type->kind)) {
 
-            long long integer_value =
-                value.as.i;
+            long long integer_value = value.as.i;
 
             value.kind = CONST_VALUE_FLOAT;
             value.as.f = (double)integer_value;
@@ -2715,9 +2713,7 @@ static void check_switch_statement(SemanticContext *ctx,Node *node) {
                     &seen_cases[j].value,
                     &case_value)) {
 
-                semantic_error(
-                    ctx,
-                    case_node,
+                semantic_error(ctx, case_node,
                     "duplicate switch case"
                 );
 
@@ -2729,17 +2725,36 @@ static void check_switch_statement(SemanticContext *ctx,Node *node) {
         seen_cases[seen_case_count].node  = case_node;
         seen_case_count++;
 
-        check_node(
-            ctx,
-            case_node->as.switch_case.body
-        );
+        check_node(ctx, case_node->as.switch_case.body);
     }
 }
 
-static int check_array_initializer(
-    SemanticContext *ctx,
-    Type *expected,
-    Node *initializer
+static int check_initializer_against_type(SemanticContext *ctx, Type *expected, Node *initializer) {
+
+    if (!expected || !initializer)
+        return 0;
+
+    if (initializer->type == NODE_ARRAY_LITERAL)
+        return check_array_initializer(ctx, expected, initializer);
+
+    if (initializer->type == NODE_STRING)
+        return check_string_initializer(ctx, expected, initializer);
+
+    Type *actual = check_expression(ctx, initializer);
+
+    if (!actual)
+        return 0;
+
+    if (!initializer_compatible(expected, actual, initializer)) {
+        semantic_error(ctx, initializer,
+            "initializer type does not match declared type");
+        return 0;
+    }
+
+    return 1;
+}
+
+static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer
 ) {
     if (!expected || !initializer)
         return 0;
@@ -2827,25 +2842,8 @@ static void check_var_decl(SemanticContext *ctx, Node *node)
     }
 
     if (init) {
-        if (init->type == NODE_ARRAY_LITERAL) {
-            if (!type) {
-                semantic_error(ctx, init,
-                    "array literal requires an explicit array type"
-                );
-                return;
-            }
-
-            if (!check_array_initializer(ctx, type, init))
-                return;
-        } else if (init->type == NODE_STRING) {
-            if (!type) {
-                semantic_error(ctx, init,
-                    "string literal requires an explicit byte array type"
-                );
-                return;
-            }
-
-            if (!check_string_initializer(ctx, type, init))
+        if (type) {
+            if (!check_initializer_against_type(ctx, type, init))
                 return;
         } else {
             Type *init_type = check_expression(ctx, init);
@@ -2853,16 +2851,7 @@ static void check_var_decl(SemanticContext *ctx, Node *node)
             if (!init_type)
                 return;
 
-            if (type) {
-                if (!initializer_compatible(type, init_type, init)) {
-                    semantic_error(ctx, node,
-                        "initializer type does not match declared type"
-                    );
-                    return;
-                }
-            } else {
-                type = init_type;
-            }
+            type = init_type;
         }
     }
 
@@ -2877,8 +2866,10 @@ static void check_var_decl(SemanticContext *ctx, Node *node)
 static void check_param_decl(SemanticContext *ctx, Node *node)
 {
     if (scope_find_local(
-        ctx->current_scope, node->as.param_decl.name.data, node->as.param_decl.name.length)) {
-
+        ctx->current_scope,
+        node->as.param_decl.name.data,
+        node->as.param_decl.name.length))
+    {
         semantic_error_name(
             ctx,
             node,
@@ -2888,7 +2879,7 @@ static void check_param_decl(SemanticContext *ctx, Node *node)
         );
 
         return;
-            }
+    }
 
     Type *default_type = NULL;
 

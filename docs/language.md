@@ -100,6 +100,7 @@ name: i32[6] = "hello";  // destination is not a byte array
 name := "hello";         // string literal inference not supported yet
 print("hello");          // expected-type propagation for call arguments not supported yet
 ```
+String escape validation is shared by semantic analysis and future code generation so that string size checking and emitted bytes follow the same rules.
 
 ## String Mutability
 
@@ -117,6 +118,7 @@ This mutates the array, not the original string literal.
 This distinction is important for future code generation. String literal storage may later live in readonly static memory, while array initialization creates separate mutable storage when required.
 
 ## Future String Direction
+
 
 The first string milestone intentionally does not introduce a final high-level string type.
 

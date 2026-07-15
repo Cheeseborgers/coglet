@@ -117,6 +117,9 @@ This mutates the array, not the original string literal.
 
 This distinction is important for future code generation. String literal storage may later live in readonly static memory, while array initialization creates separate mutable storage when required.
 
+// "abc" has 4 initialized bytes in u8[4]:
+// 'a', 'b', 'c', '\0'
+
 ## Future String Direction
 
 

@@ -45,10 +45,10 @@ Semantic
 
 Language
 □ strings
-□ slices
+□ slices  (when we can compile ourselves?)
 □ imports
 □ modules
-□ generics
+□ generics (when we can compile ourselves?)
 
 Codegen
 (current status...)

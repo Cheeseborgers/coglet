@@ -367,3 +367,17 @@ string_initializer_empty::() -> void {
 string_initializer_escape::() -> void {
     s: u8[3] = "a\n";
 }
+
+takes_name::(s: u8[6]) -> void {
+}
+
+string_argument_ok::() -> void {
+    takes_name("hello");
+}
+
+takes_i32_array::(values: i32[3]) -> void {
+}
+
+array_argument_ok::() -> void {
+    takes_i32_array([1, 2, 3]);
+}

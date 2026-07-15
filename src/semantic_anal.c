@@ -1989,19 +1989,6 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         case NODE_CALL:
         {
             Type *callee = check_expression(ctx, node->as.call.callee);
-
-            int argc = node->as.call.arguments.count;
-            Type **arg_types = argc ?
-                arena_alloc(ctx->arena, sizeof(Type*) * argc) :
-                NULL;
-
-            if (argc && !arg_types)
-                return NULL;
-
-            for (int i = 0; i < argc; i++) {
-                arg_types[i] = check_expression(ctx,node->as.call.arguments.items[i]);
-            }
-
             if (!callee)
                 return NULL;
 
@@ -2010,22 +1997,31 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 return NULL;
             }
 
+            int argc = node->as.call.arguments.count;
+
             if (argc != callee->parameter_count) {
-                semantic_error(ctx, node, "wrong number of arguments");
+                semantic_error_fmt(
+                    ctx,
+                    node,
+                    "wrong number of arguments: expected %d, got %d",
+                    callee->parameter_count,
+                    argc
+                );
                 return NULL;
             }
 
+            int ok = 1;
+
             for (int i = 0; i < argc; i++) {
                 Node *arg = node->as.call.arguments.items[i];
+                Type *param_type = callee->parameters[i];
 
-                if (arg_types[i] &&
-                    !initializer_compatible(
-                        callee->parameters[i],
-                        arg_types[i],
-                        arg)) {
-                    semantic_error(ctx, arg, "argument type mismatch");
-                        }
+                if (!check_initializer_against_type(ctx, param_type, arg))
+                    ok = 0;
             }
+
+            if (!ok)
+                return NULL;
 
             return callee->return_type;
         }

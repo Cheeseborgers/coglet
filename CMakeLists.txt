@@ -6,7 +6,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 add_compile_options(-Wall -Wextra)
 
-set(COMMON_SOURCES tools/ast/ast_print.c)
+set(COMMON_SOURCES tools/ast/ast_print.c tests/file_utils.h)
 
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)

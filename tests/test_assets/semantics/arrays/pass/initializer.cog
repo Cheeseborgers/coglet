@@ -1,0 +1,5 @@
+values: i32[3] = [1, 2, 3];
+
+flags: bool[2] = [true, false];
+
+floats: f64[2] = [1.0, 2.5];

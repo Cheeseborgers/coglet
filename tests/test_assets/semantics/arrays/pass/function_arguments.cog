@@ -1,0 +1,8 @@
+takes_values::(values: i32[3]) {
+}
+
+takes_values([1,2,3]);
+
+values: i32[3] = [1,2,3];
+
+takes_values(values);

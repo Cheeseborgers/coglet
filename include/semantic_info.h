@@ -6,7 +6,6 @@
 
 typedef struct Type Type;
 typedef struct Symbol Symbol;
-typedef struct ConstValue ConstValue;
 
 typedef enum ValueCategory {
     VALUE_CATEGORY_NONE,
@@ -21,9 +20,6 @@ typedef struct SemExprInfo {
     Symbol *symbol;
 
     ValueCategory value_category;
-
-    //int is_constant;
-    //ConstValue *constant;
 
     struct SemExprInfo *next;
 } SemExprInfo;

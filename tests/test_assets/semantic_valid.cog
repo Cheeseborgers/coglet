@@ -1,3 +1,5 @@
+// semantic_valid.cog
+
 x: i32 = 1;
 
 {

@@ -1,0 +1,5 @@
+name: u8[6] = "hello";
+
+empty: u8[1] = "";
+
+newline: u8[3] = "a\n";

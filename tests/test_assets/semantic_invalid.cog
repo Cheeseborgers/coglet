@@ -396,3 +396,7 @@ compound_assignment_enum_invalid::() -> void {
 
     color += 1;
 }
+
+x: i32 = [1, 2, 3];    // error
+foo([1, 2, 3]);        // error for now, until you add expected argument types
+[1, 2, 3];             // error

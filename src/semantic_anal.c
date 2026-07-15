@@ -2001,49 +2001,49 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         }
     }
 
-    /*
-     * Normal runtime field access:
-     *
-     *     point.x
-     */
-    Type *object =
-        check_expression(
-            ctx,
-            node->as.field.object
-        );
+            /*
+             * Normal runtime field access:
+             *
+             *     point.x
+             */
+            Type *object =
+                check_expression(
+                    ctx,
+                    node->as.field.object
+                );
 
-    if (!object)
-        return NULL;
+            if (!object)
+                return NULL;
 
-    if (object->kind != TYPE_STRUCT) {
-        semantic_error(
-            ctx,
-            node,
-            "field access requires a struct"
-        );
+            if (object->kind != TYPE_STRUCT) {
+                semantic_error(
+                    ctx,
+                    node,
+                    "field access requires a struct"
+                );
 
-        return NULL;
-    }
+                return NULL;
+            }
 
-    Type *field =
-        find_struct_field(
-            object,
-            node->as.field.name.data,
-            node->as.field.name.length
-        );
+            Type *field =
+                find_struct_field(
+                    object,
+                    node->as.field.name.data,
+                    node->as.field.name.length
+                );
 
-    if (!field) {
-        semantic_error(
-            ctx,
-            node,
-            "unknown struct field"
-        );
+            if (!field) {
+                semantic_error(
+                    ctx,
+                    node,
+                    "unknown struct field"
+                );
 
-        return NULL;
-    }
+                return NULL;
+            }
 
-    return field;
-}
+            return field;
+        }
 
         case NODE_INDEX:
         {
@@ -2307,6 +2307,14 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
             return type;
         }
+
+        case NODE_ARRAY_LITERAL:
+            semantic_error(
+                ctx,
+                node,
+                "array literal requires an expected array type"
+            );
+            return NULL;
 
 
         default:
@@ -2645,29 +2653,33 @@ static void check_switch_statement(SemanticContext *ctx,Node *node) {
     }
 }
 
-static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer) {
-
+static int check_array_initializer(
+    SemanticContext *ctx,
+    Type *expected,
+    Node *initializer
+) {
     if (!expected || !initializer)
         return 0;
+
+    if (initializer->type != NODE_ARRAY_LITERAL) {
+        semantic_error(ctx, initializer, "internal error: expected array literal");
+        return 0;
+    }
 
     if (expected->kind != TYPE_ARRAY) {
         semantic_error(ctx, initializer, "array literal can only initialize an array type");
         return 0;
     }
 
-    if (initializer->type != NODE_ARRAY_LITERAL) {
-        return initializer_compatible(
-            expected,
-            check_expression(ctx, initializer),
-            initializer
-        );
-    }
-
     int expected_count = expected->array_size;
-    int actual_count   = initializer->as.array_literal.elements.count;
+    int actual_count = initializer->as.array_literal.elements.count;
 
     if (expected_count >= 0 && actual_count != expected_count) {
-        semantic_error(ctx, initializer, "array initializer element count does not match array size");
+        semantic_error(
+            ctx,
+            initializer,
+            "array initializer element count does not match array size"
+        );
         return 0;
     }
 
@@ -2679,7 +2691,11 @@ static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *i
             return 0;
 
         if (!initializer_compatible(expected->element, element_type, element)) {
-            semantic_error(ctx, element, "array initializer element type does not match array element type");
+            semantic_error(
+                ctx,
+                element,
+                "array initializer element type does not match array element type"
+            );
             return 0;
         }
     }
@@ -2687,67 +2703,82 @@ static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *i
     return 1;
 }
 
-static void check_var_decl(SemanticContext *ctx, Node *node) {
-
-    if (scope_find_local(ctx->current_scope, node->as.var_decl.name.data, node->as.var_decl.name.length)) {
+static void check_var_decl(SemanticContext *ctx, Node *node)
+{
+    if (scope_find_local(
+            ctx->current_scope,
+            node->as.var_decl.name.data,
+            node->as.var_decl.name.length)) {
         semantic_error_name(
-            ctx, node, "duplicate variable declaration", node->as.var_decl.name.data, node->as.var_decl.name.length);
-        return;
-    }
-
-    Type *init_type = NULL;
-
-    if (node->as.var_decl.initializer) {
-        init_type = check_expression(
             ctx,
-            node->as.var_decl.initializer
+            node,
+            "duplicate variable declaration",
+            node->as.var_decl.name.data,
+            node->as.var_decl.name.length
         );
-
-        if (!init_type)
-            return;
+        return;
     }
 
     Type *type = node->as.var_decl.var_type;
+    Node *init = node->as.var_decl.initializer;
 
-    // Step 1: resolve the declared type, independent of any initializer.
-    if (!type) {
-        type = init_type;   // ':=' inference
-    } else {
+    /*
+     * Resolve declared type first.
+     *
+     * Important for:
+     *
+     *     values: i32[3] = [1, 2, 3];
+     *
+     * The array literal needs the expected type i32[3].
+     */
+    if (type) {
         type = resolve_type(ctx, type, node);
+
+        if (!type)
+            return;
+
+        if (invalid_value_type(type)) {
+            semantic_error(ctx, node, "variable cannot have type void");
+            return;
+        }
+    }
+
+    if (init) {
+        if (init->type == NODE_ARRAY_LITERAL) {
+            if (!type) {
+                semantic_error(
+                    ctx,
+                    init,
+                    "array literal requires an explicit array type"
+                );
+                return;
+            }
+
+            if (!check_array_initializer(ctx, type, init))
+                return;
+        } else {
+            Type *init_type = check_expression(ctx, init);
+
+            if (!init_type)
+                return;
+
+            if (type) {
+                if (!initializer_compatible(type, init_type, init)) {
+                    semantic_error(
+                        ctx,
+                        node,
+                        "initializer type does not match declared type"
+                    );
+                    return;
+                }
+            } else {
+                type = init_type;
+            }
+        }
     }
 
     if (!type) {
-        semantic_error(
-            ctx,
-            node,
-            "could not infer variable type"
-        );
-
-        return;
-    }
-
-    if (invalid_value_type(type)) {
-        semantic_error(
-            ctx,
-            node,
-            "variable cannot have type void"
-        );
-
-        return;
-    }
-
-    // Step 2: if there's both a declared type and an initializer, check
-    // they're compatible -- runs regardless of which branch above fired,
-    // including the struct case, using whatever `type` ended up as.
-    if (node->as.var_decl.var_type && init_type &&
-        !initializer_compatible(type, init_type, node->as.var_decl.initializer)) {
-
-        semantic_error(
-            ctx,
-            node,
-            "initializer type does not match declared type"
-        );
-
+        semantic_error(ctx, node, "could not infer variable type");
         return;
     }
 

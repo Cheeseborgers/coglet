@@ -46,6 +46,8 @@ typedef enum {
 
     NODE_CONST_DECL,       // PI :: 3.14159;  or  PI: f64 : 3.14159;
 
+    NODE_ARRAY_LITERAL,
+
     NODE_IF,
     NODE_SWITCH,
     NODE_SWITCH_CASE,
@@ -241,6 +243,11 @@ struct Node {
             StringView name;
             Node *value;         // required -- never NULL
         } const_decl;
+
+        struct {
+            NodeList elements;   // values: [3]i32 = [1, 2, 3];
+        } array_literal;
+
     } as;
 };
 
@@ -282,6 +289,7 @@ Node *ast_new_enum_decl(Arena *arena, const char *name, int name_length, int lin
 Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, int line);
 Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, int line);
 Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, int line);
+Node *ast_new_array_literal(Arena *arena, int line);
 
 Node *ast_clone(Arena *arena, const Node *node);
 

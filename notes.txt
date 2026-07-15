@@ -4,14 +4,15 @@ This is the best next feature if you want to keep improving semantic completenes
 
 Catch:
 
-values: [3]i32 = [1, 2];       // too few
-values: [3]i32 = [1, 2, 3, 4]; // too many
-values: [3]i32 = [1, true, 3]; // wrong element type
+values: i32[3] = [1, 2];       // too few
+values: i32[3] = [1, 2, 3, 4]; // too many
+values: i32[3] = [1, true, 3]; // wrong element type
 
 Allow:
 
-values: [3]i32 = [1, 2, 3];
-values: []i32 = [1, 2, 3]; // later maybe infer size
+values: i32[3] = [1, 2, 3];
+values: i32[] = [1, 2, 3]; // later maybe infer size
+// values: i32[3]{1,2,3};  // to add!!
 
 But this needs parser/AST support if not already there.
 
@@ -58,3 +59,5 @@ Goals:
 - No spaghetti code
 - Correctness over cleverness
 - Building toward LLVM backend/ not sure on this yet
+
+TODO:

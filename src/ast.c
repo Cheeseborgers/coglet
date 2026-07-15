@@ -285,6 +285,7 @@ Node *ast_new_enum_decl(Arena *arena, const char *name, int name_length, int lin
 
     return node;
 }
+
 Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, int line) {
     Node *node = new_node(arena, NODE_ENUM_MEMBER, line);
     node->as.enum_member.name.data   = name;
@@ -313,6 +314,13 @@ Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_le
     return node;
 }
 
+Node *ast_new_array_literal(Arena *arena, int line) {
+    Node *node = new_node(arena, NODE_ARRAY_LITERAL, line);
+    node->as.array_literal.elements.items    = NULL;
+    node->as.array_literal.elements.count    = 0;
+    node->as.array_literal.elements.capacity = 0;
+    return node;
+}
 
 Node *ast_clone(Arena *arena, const Node *node)
 {
@@ -647,6 +655,13 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.switch_case.is_default =
                 node->as.switch_case.is_default;
 
+            break;
+
+        case NODE_ARRAY_LITERAL:
+                // Nothing to clone just ensure values are zero and recheck
+                clone->as.array_literal.elements.items    = NULL;
+                clone->as.array_literal.elements.count    = 0;
+                clone->as.array_literal.elements.capacity = 0;
             break;
 
         case NODE_BREAK:

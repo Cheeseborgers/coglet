@@ -194,6 +194,7 @@ static void check_unreachable_in_block(SemanticContext *ctx, Node *block);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
+static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 static int declare_enum_shell(SemanticContext *ctx, Node *node);
 static void fill_enum_members(SemanticContext *ctx,Node *node);
 static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
@@ -2642,6 +2643,48 @@ static void check_switch_statement(SemanticContext *ctx,Node *node) {
             case_node->as.switch_case.body
         );
     }
+}
+
+static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer) {
+
+    if (!expected || !initializer)
+        return 0;
+
+    if (expected->kind != TYPE_ARRAY) {
+        semantic_error(ctx, initializer, "array literal can only initialize an array type");
+        return 0;
+    }
+
+    if (initializer->type != NODE_ARRAY_LITERAL) {
+        return initializer_compatible(
+            expected,
+            check_expression(ctx, initializer),
+            initializer
+        );
+    }
+
+    int expected_count = expected->array_size;
+    int actual_count   = initializer->as.array_literal.elements.count;
+
+    if (expected_count >= 0 && actual_count != expected_count) {
+        semantic_error(ctx, initializer, "array initializer element count does not match array size");
+        return 0;
+    }
+
+    for (int i = 0; i < actual_count; i++) {
+        Node *element = initializer->as.array_literal.elements.items[i];
+        Type *element_type = check_expression(ctx, element);
+
+        if (!element_type)
+            return 0;
+
+        if (!initializer_compatible(expected->element, element_type, element)) {
+            semantic_error(ctx, element, "array initializer element type does not match array element type");
+            return 0;
+        }
+    }
+
+    return 1;
 }
 
 static void check_var_decl(SemanticContext *ctx, Node *node) {

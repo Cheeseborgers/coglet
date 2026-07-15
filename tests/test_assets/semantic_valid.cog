@@ -349,3 +349,7 @@ compound_assignment_array_index1::() -> void {
 
 t: u32 = 10;
 t %= 2;
+
+array_initializer_ok::() -> void {
+    values: i32[3] = [1, 2, 3];
+}

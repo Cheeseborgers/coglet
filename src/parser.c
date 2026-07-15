@@ -43,6 +43,7 @@ static Node *parse_while_statement(Parser *p);
 static Node *parse_for_statement(Parser *p);
 
 static Node *parse_cast_expression(Parser *p);
+static Node *parse_array_literal(Parser *p);
 
 // postfix helpers
 static Node *finish_call(Parser *p, Node *callee);
@@ -362,6 +363,10 @@ static Node *parse_primary(Parser *p)
     if (match(p, TOK_FALSE)) {
         Token t = p->previous;
         return ast_new_bool(p->arena, 0, t.line);
+    }
+
+    if (match(p, TOK_LBRACKET)) {
+        return parse_array_literal(p);
     }
 
     error_at(p, &p->current, "expected expression");
@@ -1356,6 +1361,39 @@ static Node *parse_cast_expression(Parser *p)
         expression,
         keyword.line
     );
+}
+
+static Node *parse_array_literal(Parser *p) {
+    Token open = p->previous;
+
+    Node *array = ast_new_array_literal(p->arena, open.line);
+
+    if (!check(p, TOK_RBRACKET)) {
+        while (1) {
+            Node *element = parse_assignment(p);
+
+            nodelist_push(
+                p->arena,
+                &array->as.array_literal.elements,
+                element
+            );
+
+            if (!match(p, TOK_COMMA))
+                break;
+
+            /*
+             * Allow trailing comma:
+             *
+             * [1, 2, 3,]
+             */
+            if (check(p, TOK_RBRACKET))
+                break;
+        }
+    }
+
+    consume(p, TOK_RBRACKET);
+
+    return array;
 }
 
 // ===================== postfix builders =====================

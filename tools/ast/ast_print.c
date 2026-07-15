@@ -542,12 +542,12 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_STRING:
             indent(depth);
-            print_string_view_ln(node->as.string_literal);
+            print_string_view_quoted(node->as.string_literal);
             break;
 
         case NODE_CHAR:
             indent(depth);
-            print_string_view_ln(node->as.char_literal);
+            print_string_view_single_quoted(node->as.char_literal);
             break;
 
         case NODE_BOOL:

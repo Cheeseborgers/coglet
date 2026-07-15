@@ -324,12 +324,12 @@ static inline void print_string_view_ln(StringView view)
 
 static inline void print_string_view_quoted(StringView view)
 {
-    printf("\"%.*s\"", (int)view.length, view.data);
+    printf("\"%.*s\"\n", (int)view.length, view.data);
 }
 
 static inline void print_string_view_single_quoted(StringView view)
 {
-    printf("'%.*s'", (int)view.length, view.data);
+    printf("'%.*s'\n", (int)view.length, view.data);
 }
 
 #endif // COGLET_STRING_VIEW_H

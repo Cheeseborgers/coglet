@@ -400,3 +400,15 @@ compound_assignment_enum_invalid::() -> void {
 x: i32 = [1, 2, 3];    // error
 foo([1, 2, 3]);        // error for now, until you add expected argument types
 [1, 2, 3];             // error
+
+string_initializer_too_small::() -> void {
+    s: u8[5] = "hello";
+}
+
+string_initializer_wrong_element::() -> void {
+    s: i32[6] = "hello";
+}
+
+string_initializer_no_type::() -> void {
+    s := "hello";
+}

@@ -1,5 +1,6 @@
 #include "semantic_anal.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -12,9 +13,24 @@ static Type *new_type(SemanticContext *ctx, TypeKind kind)
     return type;
 }
 
+static void semantic_error_fmt(SemanticContext *ctx, const Node *node, const char *fmt, ...)
+{
+    fprintf(stderr, "semantic error at line %d: ", node->line);
+
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+
+    fputc('\n', stderr);
+
+    ctx->had_error = 1;
+    ctx->error_count++;
+}
+
 static void semantic_error(SemanticContext *ctx, const Node *node, const char *msg) {
 
-    printf("semantic error at line %d: %s\n",node->line,msg);
+    fprintf(stderr, "semantic error at line %d: %s\n", node->line,msg);
     ctx->had_error = 1;
     ctx->error_count++;
 }
@@ -22,7 +38,7 @@ static void semantic_error(SemanticContext *ctx, const Node *node, const char *m
 static void semantic_error_name(
     SemanticContext *ctx, const Node *node, const char *prefix, const char *name, size_t length) {
 
-    printf("semantic error at line %d: %s '%.*s'\n", node->line, prefix, (int)length, name);
+    fprintf(stderr, "semantic error at line %d: %s '%.*s'\n", node->line, prefix, (int)length, name);
     ctx->had_error = 1;
     ctx->error_count++;
 }
@@ -202,6 +218,9 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node);
 static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
 
+static int string_literal_decoded_length(Node *node);
+static int check_string_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
+
 // ============================================================
 // expressions
 // ============================================================
@@ -361,11 +380,11 @@ static int integer_value_fits_type(long long value, TypeKind kind)
     }
 }
 
-static int is_integer_type(Type *t) { return t && is_integer_kind(t->kind); }
+static int is_u8_type(Type *type)    { return type && type->kind == TYPE_U8; }
+static int is_integer_type(Type *t)  { return t && is_integer_kind(t->kind); }
 static int is_float_kind(TypeKind k) { return k == TYPE_F32 || k == TYPE_F64; }
 static int is_numeric_type(Type *t)  { return t && (is_integer_kind(t->kind) || is_float_kind(t->kind)); }
-
-static int is_bool_type(Type *t) { return t && t->kind == TYPE_BOOL; }
+static int is_bool_type(Type *t)     { return t && t->kind == TYPE_BOOL; }
 
 static int node_is_literal_true(Node *node) {
     return node && node->type == NODE_BOOL && node->as.boolean.value;
@@ -1334,6 +1353,82 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
     }
 }
 
+static int string_literal_decoded_length(Node *node)
+{
+    StringView s = node->as.string_literal;
+    int length = 0;
+
+    for (size_t i = 0; i < s.length; i++) {
+        if (s.data[i] == '\\') {
+            i++;
+
+            if (i >= s.length)
+                return -1;
+
+            switch (s.data[i]) {
+                case 'n':
+                case 't':
+                case 'r':
+                case '\\':
+                case '"':
+                case '0':
+                    length++;
+                    break;
+
+                default:
+                    return -1;
+            }
+        } else {
+            length++;
+        }
+    }
+
+    return length;
+}
+
+static int check_string_initializer(SemanticContext *ctx,Type *expected, Node *initializer) {
+
+    if (!expected || !initializer)
+        return 0;
+
+    if (initializer->type != NODE_STRING) {
+        semantic_error(ctx, initializer, "internal error: expected string literal");
+        return 0;
+    }
+
+    if (expected->kind != TYPE_ARRAY) {
+        semantic_error(ctx, initializer, "string literal can only initialize a byte array");
+        return 0;
+    }
+
+    if (!is_u8_type(expected->element)) {
+        semantic_error(ctx, initializer, "string literal destination must be u8 array");
+        return 0;
+    }
+
+    int decoded_len = string_literal_decoded_length(initializer);
+
+    if (decoded_len < 0) {
+        semantic_error(ctx, initializer, "invalid escape sequence in string literal");
+        return 0;
+    }
+
+    int required_size = decoded_len + 1;
+
+    if (expected->array_size != required_size) {
+        semantic_error_fmt(
+            ctx,
+            initializer,
+            "string literal requires destination array size %d, got %d",
+            required_size,
+            expected->array_size
+        );
+        return 0;
+    }
+
+    return 1;
+}
+
 static Type *check_expression(SemanticContext *ctx, Node *node) {
 
     if (!node) return NULL;
@@ -2135,14 +2230,12 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         }
 
         case NODE_STRING:
-        {
-            Type *elem = new_type(ctx, TYPE_U8);
-            Type *t = new_type(ctx, TYPE_POINTER);
-
-            t->element = elem;
-
-            return t;
-        }
+            semantic_error(
+                ctx,
+                node,
+                "string literal requires an expected byte array type"
+            );
+            return NULL;
 
         case NODE_CHAR:
         {
@@ -2746,15 +2839,23 @@ static void check_var_decl(SemanticContext *ctx, Node *node)
     if (init) {
         if (init->type == NODE_ARRAY_LITERAL) {
             if (!type) {
-                semantic_error(
-                    ctx,
-                    init,
+                semantic_error(ctx, init,
                     "array literal requires an explicit array type"
                 );
                 return;
             }
 
             if (!check_array_initializer(ctx, type, init))
+                return;
+        } else if (init->type == NODE_STRING) {
+            if (!type) {
+                semantic_error(ctx, init,
+                    "string literal requires an explicit byte array type"
+                );
+                return;
+            }
+
+            if (!check_string_initializer(ctx, type, init))
                 return;
         } else {
             Type *init_type = check_expression(ctx, init);
@@ -2764,9 +2865,7 @@ static void check_var_decl(SemanticContext *ctx, Node *node)
 
             if (type) {
                 if (!initializer_compatible(type, init_type, init)) {
-                    semantic_error(
-                        ctx,
-                        node,
+                    semantic_error(ctx, node,
                         "initializer type does not match declared type"
                     );
                     return;
@@ -2830,9 +2929,7 @@ static void check_param_decl(SemanticContext *ctx, Node *node)
     }
 
     if (!type) {
-        semantic_error(
-            ctx,
-            node,
+        semantic_error(ctx, node,
             "could not determine parameter type"
         );
 
@@ -2840,9 +2937,7 @@ static void check_param_decl(SemanticContext *ctx, Node *node)
     }
 
     if (invalid_value_type(type)) {
-        semantic_error(
-            ctx,
-            node,
+        semantic_error(ctx, node,
             "parameter cannot have type void"
         );
 
@@ -2855,9 +2950,7 @@ static void check_param_decl(SemanticContext *ctx, Node *node)
             default_type,
             node->as.param_decl.default_value)) {
 
-        semantic_error(
-            ctx,
-            node,
+        semantic_error(ctx, node,
             "default value type does not match declared type"
         );
 
@@ -2990,9 +3083,7 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
             return NULL;
 
         if (contains_void_type(param_type)) {
-            semantic_error(
-                ctx,
-                param,
+            semantic_error(ctx, param,
                 "parameter cannot have type void"
             );
 
@@ -3014,9 +3105,7 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
 
 
     if (invalid_return_type(type->return_type)) {
-        semantic_error(
-            ctx,
-            func,
+        semantic_error(ctx, func,
             "function return type cannot contain void"
         );
         return NULL;

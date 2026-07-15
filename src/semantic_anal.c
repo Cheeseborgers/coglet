@@ -3,6 +3,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include "string_decode.h"
+
 
 static Type *new_type(SemanticContext *ctx, TypeKind kind)
 {
@@ -217,8 +219,6 @@ static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t le
 static Type *check_cast_expression(SemanticContext *ctx, Node *node);
 static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
-
-static int string_literal_decoded_length(Node *node);
 static int check_string_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 
 // ============================================================
@@ -1353,40 +1353,7 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
     }
 }
 
-static int string_literal_decoded_length(Node *node)
-{
-    StringView s = node->as.string_literal;
-    int length = 0;
-
-    for (size_t i = 0; i < s.length; i++) {
-        if (s.data[i] == '\\') {
-            i++;
-
-            if (i >= s.length)
-                return -1;
-
-            switch (s.data[i]) {
-                case 'n':
-                case 't':
-                case 'r':
-                case '\\':
-                case '"':
-                case '0':
-                    length++;
-                    break;
-
-                default:
-                    return -1;
-            }
-        } else {
-            length++;
-        }
-    }
-
-    return length;
-}
-
-static int check_string_initializer(SemanticContext *ctx,Type *expected, Node *initializer) {
+static int check_string_initializer(SemanticContext *ctx,Type *expected,Node *initializer) {
 
     if (!expected || !initializer)
         return 0;
@@ -1406,14 +1373,37 @@ static int check_string_initializer(SemanticContext *ctx,Type *expected, Node *i
         return 0;
     }
 
-    int decoded_len = string_literal_decoded_length(initializer);
+    StringDecodeInfo info = string_analyze(initializer->as.string_literal);
 
-    if (decoded_len < 0) {
-        semantic_error(ctx, initializer, "invalid escape sequence in string literal");
+    if (!info.ok) {
+        if (info.invalid_escape) {
+            semantic_error_fmt(
+                ctx,
+                initializer,
+                "invalid escape sequence '\\%c' in string literal",
+                info.invalid_escape
+            );
+        } else {
+            semantic_error(
+                ctx,
+                initializer,
+                "unterminated escape sequence in string literal"
+            );
+        }
+
         return 0;
     }
 
-    int required_size = decoded_len + 1;
+    /*
+     * Stage 1 rule:
+     *
+     * "hello" initializes:
+     *
+     *     h e l l o \0
+     *
+     * so it requires u8[6].
+     */
+    int required_size = info.decoded_length + 1;
 
     if (expected->array_size != required_size) {
         semantic_error_fmt(

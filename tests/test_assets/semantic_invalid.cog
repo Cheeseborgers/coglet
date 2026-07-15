@@ -412,3 +412,7 @@ string_initializer_wrong_element::() -> void {
 string_initializer_no_type::() -> void {
     s := "hello";
 }
+
+string_initializer_invalid_escape::() -> void {
+    s: u8[3] = "a\x";
+}

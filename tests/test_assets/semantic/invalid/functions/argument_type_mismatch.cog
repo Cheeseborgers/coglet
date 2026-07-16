@@ -2,5 +2,5 @@ takes_u8::(value: u8) -> void {
 }
 
 test::() -> void {
-    takes_u8(true);
+   takes_u8(true);
 }

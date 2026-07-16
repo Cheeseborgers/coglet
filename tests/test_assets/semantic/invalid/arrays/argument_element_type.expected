@@ -1,2 +1,2 @@
-semantic error at line 9: initializer type does not match declared type
+semantic error at line 9: array literal requires an expected array type
 1 semantic error generated.

@@ -1,4 +1,4 @@
-// check_semantics.c
+// tools/tests/check_semantics.c
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,7 +11,7 @@
 
 int main(int argc, char **argv)
 {
-    int exit_code = 0;
+    int exit_code = EXIT_OK;
 
     char *source = NULL;
     Arena *arena = NULL;
@@ -19,7 +19,7 @@ int main(int argc, char **argv)
 
     if (argc != 2) {
         fprintf(stderr, "usage: %s <file>\n", argv[0]);
-        return 2;
+        return EXIT_DRIVER_ERROR;
     }
 
     const char *filename = argv[1];
@@ -28,7 +28,7 @@ int main(int argc, char **argv)
 
     if (!source) {
         fprintf(stderr, "error: could not read '%s'\n", filename);
-        return 2;
+        return EXIT_DRIVER_ERROR;
     }
 
     arena = arena_create(1 << 16);
@@ -36,7 +36,7 @@ int main(int argc, char **argv)
 
     if (!arena || !scratch) {
         fprintf(stderr, "error: failed to create compiler arenas\n");
-        exit_code = 2;
+        exit_code = EXIT_DRIVER_ERROR;
         goto cleanup;
     }
 
@@ -68,7 +68,7 @@ int main(int argc, char **argv)
             parser.error_count == 1 ? "" : "s"
         );
 
-        exit_code = 2;
+        exit_code = EXIT_PARSE_ERROR;
         goto cleanup;
     }
 
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
             sem.error_count == 1 ? "" : "s"
         );
 
-        exit_code = 1;
+        exit_code = EXIT_SEMANTIC_ERROR;
         goto cleanup;
     }
 

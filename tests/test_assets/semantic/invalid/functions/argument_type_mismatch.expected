@@ -1,0 +1,2 @@
+semantic error at line 5: argument type does not match parameter type: expected u8, got bool
+1 semantic error generated.

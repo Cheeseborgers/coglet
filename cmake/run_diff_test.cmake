@@ -1,13 +1,8 @@
-# Invoked by ctest as: cmake -DEXE=... -DINPUT=... -DEXPECTED=... -P run_diff_test.cmake
-# Runs EXE on INPUT, compares stdout against the contents of EXPECTED,
-# and fails (non-zero exit) on any mismatch. Generic: used for both
-# the lexer tests (dump_tokens) and parser tests (dump_ast).
-
-execute_process(
-    COMMAND ${EXE} ${INPUT}
-    OUTPUT_VARIABLE actual_output
-    RESULT_VARIABLE exit_code
-)
+# Invoked by ctest as:
+# cmake -DEXE=... -DINPUT=... -DEXPECTED=... -DEXPECT_EXIT=... -DOUTPUT_STREAM=... -P run_diff_test.cmake
+#
+# Runs EXE on INPUT, compares selected output stream against EXPECTED,
+# and fails on exit-code or output mismatch.
 
 if(NOT DEFINED EXPECT_EXIT)
     set(EXPECT_EXIT 0)
@@ -15,18 +10,6 @@ endif()
 
 if(NOT DEFINED OUTPUT_STREAM)
     set(OUTPUT_STREAM stdout)
-endif()
-
-if(OUTPUT_STREAM STREQUAL "stdout")
-    set(actual_output "${actual_stdout}")
-elseif(OUTPUT_STREAM STREQUAL "stderr")
-    set(actual_output "${actual_stderr}")
-elseif(OUTPUT_STREAM STREQUAL "combined")
-    set(actual_output "${actual_stdout}${actual_stderr}")
-else()
-    message(FATAL_ERROR
-            "Invalid OUTPUT_STREAM: ${OUTPUT_STREAM}"
-    )
 endif()
 
 execute_process(
@@ -45,13 +28,23 @@ if(NOT exit_code EQUAL EXPECT_EXIT)
     )
 endif()
 
-file(READ ${EXPECTED} expected_output)
+if(OUTPUT_STREAM STREQUAL "stdout")
+    set(actual_output "${actual_stdout}")
+elseif(OUTPUT_STREAM STREQUAL "stderr")
+    set(actual_output "${actual_stderr}")
+elseif(OUTPUT_STREAM STREQUAL "combined")
+    set(actual_output "${actual_stdout}${actual_stderr}")
+else()
+    message(FATAL_ERROR
+            "Invalid OUTPUT_STREAM: ${OUTPUT_STREAM}"
+    )
+endif()
+
+file(READ "${EXPECTED}" expected_output)
 
 string(REPLACE "\r\n" "\n" expected_output "${expected_output}")
 string(REPLACE "\r\n" "\n" actual_output "${actual_output}")
 
-# Strip trailing whitespace/newlines only, so the comparison isn't
-# thrown off by editors adding/removing a final newline.
 string(STRIP "${actual_output}" actual_output)
 string(STRIP "${expected_output}" expected_output)
 

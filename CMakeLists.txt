@@ -32,7 +32,7 @@ target_include_directories(compiler_core PUBLIC include)
 add_executable(coglet src/coglet.c ${COMMON_SOURCES})
 target_link_libraries(coglet PRIVATE compiler_core)
 
-add_executable(coglet_test_runner src/coglet_test_runner.c ${COMMON_SOURCES})
+add_executable(coglet_test_runner tools/tests/check_semantic_info.c ${COMMON_SOURCES})
 target_link_libraries(coglet_test_runner PRIVATE compiler_core)
 
 # --- Standalone Semantic checker -------------
@@ -101,6 +101,42 @@ endfunction()
 
 add_diff_tests(lexer  ${CMAKE_SOURCE_DIR}/tests/lexer  dump_tokens)
 add_diff_tests(parser ${CMAKE_SOURCE_DIR}/tests/parser dump_ast)
+
+function(add_semantic_valid_tests root_dir)
+    file(GLOB_RECURSE test_sources CONFIGURE_DEPENDS
+            "${root_dir}/*.cog"
+    )
+
+    foreach(test_src IN LISTS test_sources)
+        file(RELATIVE_PATH relative_path "${root_dir}" "${test_src}")
+        get_filename_component(relative_dir "${relative_path}" DIRECTORY)
+        get_filename_component(test_name "${test_src}" NAME_WE)
+
+        if(relative_dir STREQUAL "")
+            set(ctest_name "semantic_valid_${test_name}")
+            set(category_label "semantic.uncategorized")
+        else()
+            string(REPLACE "/" "_" category_name "${relative_dir}")
+            string(REPLACE "\\" "_" category_name "${category_name}")
+            set(ctest_name "semantic_valid_${category_name}_${test_name}")
+
+            string(REPLACE "/" "." category_label "${relative_dir}")
+            string(REPLACE "\\" "." category_label "${category_label}")
+            set(category_label "semantic.${category_label}")
+        endif()
+
+        add_test(
+                NAME "${ctest_name}"
+                COMMAND "$<TARGET_FILE:check_semantics>" "${test_src}"
+        )
+
+        set_tests_properties(
+                "${ctest_name}"
+                PROPERTIES
+                LABELS "semantic;semantic.valid;${category_label}"
+        )
+    endforeach()
+endfunction()
 
 # Copy assets
 add_custom_command(

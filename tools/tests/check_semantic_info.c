@@ -1,19 +1,13 @@
-/*
- * Main cog compiler dummy test
- *
- */
+// tools/test/check_semantic_info.c
 
 #include <stdio.h>
-#include <assert.h>
 
 #include "parser.h"
-#include "../include/ast.h"
-#include "../include/diag.h"
-#include "../include/semantic_anal.h"
-
-#include "../tools/ast/ast_print.h"
-#include "../include/utils/utils.h"
-
+#include "ast.h"
+#include "diag.h"
+#include "utils/utils.h"
+#include "semantic_anal.h"
+#include "../ast/ast_print.h"
 
 static const char *value_category_name(ValueCategory category)
 {

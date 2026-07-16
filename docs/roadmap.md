@@ -32,7 +32,10 @@ Implemented language and semantic features include:
 - semantic side-table facts for expression type, resolved symbol, and value category
 - explicit distinction between value-producing expressions and no-value expressions
 - void-returning calls accepted in statement position and rejected in value-required contexts
-
+- Compile-time-known integer and enum casts are range-checked consistently
+  across all expression contexts.
+- Runtime narrowing-cast semantics still need a deliberate language decision:
+  checked conversion, truncating/wrapping conversion, or rejection.
 ## Recently Completed: Mutation and Void-Expression Semantics
 
 Mutation operators are statement-only operations.

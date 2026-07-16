@@ -3285,6 +3285,24 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
         return NULL;
     }
 
+    /*
+    * A compile-time-known cast must satisfy the same representability
+    * checks everywhere it appears, even when its result is discarded.
+    *
+    * Constant declarations already reach eval_const_cast() through
+    * eval_const_expr(). Reuse that path here so ordinary expression
+    * contexts do not accidentally skip integer and enum backing-range
+    * validation.
+    */
+    if (expression_is_compile_time_constant(
+            ctx,
+            node->as.cast_expr.expression)) {
+        ConstValue ignored;
+
+        if (!eval_const_cast(ctx, node, &ignored))
+            return NULL;
+            }
+
     return target_type;
 }
 

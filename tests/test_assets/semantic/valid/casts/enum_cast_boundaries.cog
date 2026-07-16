@@ -1,0 +1,7 @@
+SmallEnum :: enum(u8) {
+    A,
+    B,
+}
+
+GOOD_ENUM_MIN :: cast(SmallEnum, 0);
+GOOD_ENUM_MAX :: cast(SmallEnum, 255);

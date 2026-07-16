@@ -42,9 +42,9 @@ Semantic
 ✓ constant array bounds
 ✓ casts
 ✓ break/continue
+ strings
 
 Language
-□ strings
 □ slices  (when we can compile ourselves?)
 □ imports
 □ modules
@@ -60,4 +60,3 @@ Goals:
 - Correctness over cleverness
 - Building toward LLVM backend/ not sure on this yet
 
-TODO:

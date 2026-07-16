@@ -34,7 +34,7 @@ without sacrificing performance or explicit control.
 
 ``` text
 value: i32 = 42;
-name := "Hello";
+name: u8[6] = "Hello";
 ```
 
 -   Explicit type declarations.

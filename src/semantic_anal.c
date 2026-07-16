@@ -87,9 +87,7 @@ static void sem_record_expr_info(
     info->value_category = category;
 }
 
-// type == NULL and category == NONE together mean "checked, valid,
-// deliberately produces no value" -- distinct from no entry existing
-// at all, which means the node was never checked.
+// No successful semantic fact is available. The node was either not visited or did not check successfully.
 static void sem_record_no_value(SemanticContext *ctx, Node *node) {
     sem_record_expr_info(ctx, node, NULL, NULL, VALUE_CATEGORY_NONE);
 }

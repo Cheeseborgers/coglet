@@ -514,3 +514,95 @@ return_array_wrong_type_invalid::() -> i32[3] {
 bare_string_literal_invalid::() -> void {
     "hello";
 }
+
+// new
+assignment_in_inferred_declaration_is_invalid :: () {
+    x: i32 = 0;
+    y := (x = 1);
+}
+
+assignment_in_typed_declaration_is_invalid :: () {
+    x: i32 = 0;
+    y: i32 = (x = 1);
+}
+
+compound_assignment_in_declaration_is_invalid :: () {
+    x: i32 = 0;
+    y := (x += 1);
+}
+
+increment_in_declaration_is_invalid :: () {
+    x: i32 = 0;
+    y := x++;
+}
+
+takes_i32 :: (value: i32) {
+}
+
+mutation_argument_is_invalid :: () {
+    x: i32 = 0;
+
+    takes_i32(x = 1);
+    takes_i32(x += 1);
+    takes_i32(x++);
+}
+
+assignment_return_is_invalid :: () -> i32 {
+    x: i32 = 0;
+    return x = 1;
+}
+
+increment_return_is_invalid :: () -> i32 {
+    x: i32 = 0;
+    return x++;
+}
+
+assignment_condition_is_invalid :: () {
+    x: i32 = 0;
+
+    if x = 1 {
+    }
+}
+
+mutation_operand_is_invalid :: () {
+    x: i32 = 0;
+    y := 1 + (x = 2);
+}
+
+chained_assignment_is_invalid :: () {
+    a: i32 = 0;
+    b: i32 = 0;
+
+    a = b = 1;
+}
+
+CONSTANT3 :: 1;
+
+constant_mutations_are_invalid :: () {
+    CONSTANT3 = 2;
+    CONSTANT3 += 1;
+    CONSTANT3++;
+}
+
+Color :: enum {
+    Red,
+    Blue,
+}
+
+enum_member_mutations_are_invalid :: () {
+    Color.Red = Color.Blue;
+    Color.Red += 1;
+    Color.Red++;
+}
+
+field_of_rvalue_is_invalid :: () {
+    make_point().x = 1;
+    make_point().x += 1;
+    make_point().x++;
+}
+
+index_of_rvalue_is_invalid :: () {
+    make_values()[0] = 1;
+    make_values()[0] += 1;
+    make_values()[0]++;
+}

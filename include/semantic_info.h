@@ -4,6 +4,20 @@
 
 #include "ast.h"
 
+/*
+ * Semantic-info states:
+ *
+ * No entry:
+ *     the node was not successfully checked.
+ *
+ * type != NULL and category is LVALUE/RVALUE:
+ *     the node produces a value.
+ *
+ * type == NULL and category == NONE:
+ *     the node was successfully checked but deliberately
+ *     produces no value, such as a mutation statement.
+ */
+
 typedef struct Type Type;
 typedef struct Symbol Symbol;
 

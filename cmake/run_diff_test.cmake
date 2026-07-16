@@ -1,8 +1,5 @@
 # Invoked by ctest as:
 # cmake -DEXE=... -DINPUT=... -DEXPECTED=... -DEXPECT_EXIT=... -DOUTPUT_STREAM=... -P run_diff_test.cmake
-#
-# Runs EXE on INPUT, compares selected output stream against EXPECTED,
-# and fails on exit-code or output mismatch.
 
 if(NOT DEFINED EXPECT_EXIT)
     set(EXPECT_EXIT 0)

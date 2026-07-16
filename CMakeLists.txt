@@ -99,9 +99,6 @@ function(add_diff_tests prefix dir exe_target)
     endforeach()
 endfunction()
 
-add_diff_tests(lexer  ${CMAKE_SOURCE_DIR}/tests/lexer  dump_tokens)
-add_diff_tests(parser ${CMAKE_SOURCE_DIR}/tests/parser dump_ast)
-
 function(add_semantic_valid_tests root_dir)
     file(GLOB_RECURSE test_sources CONFIGURE_DEPENDS
             "${root_dir}/*.cog"
@@ -137,6 +134,63 @@ function(add_semantic_valid_tests root_dir)
         )
     endforeach()
 endfunction()
+
+function(add_semantic_invalid_tests root_dir)
+    file(GLOB_RECURSE test_sources CONFIGURE_DEPENDS
+            "${root_dir}/*.cog"
+    )
+
+    foreach(test_src IN LISTS test_sources)
+        file(RELATIVE_PATH relative_path "${root_dir}" "${test_src}")
+        get_filename_component(relative_dir "${relative_path}" DIRECTORY)
+        get_filename_component(test_name "${test_src}" NAME_WE)
+
+        set(expected_file "${test_src}")
+        string(REGEX REPLACE "\\.cog$" ".expected" expected_file "${expected_file}")
+
+        if(relative_dir STREQUAL "")
+            set(ctest_name "semantic_invalid_${test_name}")
+            set(category_label "semantic.uncategorized")
+        else()
+            string(REPLACE "/" "_" category_name "${relative_dir}")
+            string(REPLACE "\\" "_" category_name "${category_name}")
+            set(ctest_name "semantic_invalid_${category_name}_${test_name}")
+
+            string(REPLACE "/" "." category_label "${relative_dir}")
+            string(REPLACE "\\" "." category_label "${category_label}")
+            set(category_label "semantic.${category_label}")
+        endif()
+
+        if(EXISTS "${expected_file}")
+            add_test(
+                    NAME "${ctest_name}"
+                    COMMAND "${CMAKE_COMMAND}"
+                    -DEXE=$<TARGET_FILE:check_semantics>
+                    -DINPUT=${test_src}
+                    -DEXPECTED=${expected_file}
+                    -DEXPECT_EXIT=1
+                    -DOUTPUT_STREAM=stderr
+                    -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+            )
+
+            set_tests_properties(
+                    "${ctest_name}"
+                    PROPERTIES
+                    LABELS "semantic;semantic.invalid;${category_label}"
+            )
+        else()
+            message(WARNING
+                    "No .expected file for ${test_src}; skipping semantic invalid test"
+            )
+        endif()
+    endforeach()
+endfunction()
+
+add_diff_tests(lexer  ${CMAKE_SOURCE_DIR}/tests/lexer  dump_tokens)
+add_diff_tests(parser ${CMAKE_SOURCE_DIR}/tests/parser dump_ast)
+add_semantic_valid_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/valid)
+add_semantic_invalid_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/invalid)
+
 
 # Copy assets
 add_custom_command(

@@ -1,0 +1,3 @@
+CAST_CONST_INT :: cast(i32, 10);
+CAST_CONST_COLOR :: cast(Color, 1);
+cast_const_use: Color = CAST_CONST_COLOR;

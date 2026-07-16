@@ -1,0 +1,9 @@
+assignment_return::() -> i32 {
+    x: i32 = 0;
+    return x = 1;
+}
+
+increment_return::() -> i32 {
+    x: i32 = 0;
+    return x++;
+}

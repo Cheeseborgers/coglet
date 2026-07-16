@@ -1,0 +1,12 @@
+mutation_for_post_is_valid :: () {
+    i: i32 = 0;
+
+    for i < 10 : i++ {
+    }
+
+    for i < 10 : i += 1 {
+    }
+
+    for i < 10 : i = i + 1 {
+    }
+}

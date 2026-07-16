@@ -1,0 +1,6 @@
+does_nothing::() -> void {
+}
+
+test::() -> void {
+    value := -does_nothing();
+}

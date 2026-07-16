@@ -1,0 +1,4 @@
+DuplicateMember :: enum(u8) {
+    A,
+    A,
+}

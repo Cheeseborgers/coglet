@@ -1,0 +1,8 @@
+// semantic error at line 4: string literal requires destination array size 6, got 4
+// 1 semantic error generated.
+
+test::() -> void {
+    value: u8[4] = "abc";
+
+    value = "hello";
+}

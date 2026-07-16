@@ -1,0 +1,7 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+BadEnumMemberUse: Color = Color.Purple;

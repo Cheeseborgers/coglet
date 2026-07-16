@@ -1,0 +1,3 @@
+BadBacking :: enum(f32) {
+    A,
+}

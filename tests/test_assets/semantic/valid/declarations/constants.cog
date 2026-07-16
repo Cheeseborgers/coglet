@@ -1,0 +1,7 @@
+INTEGER_CONSTANT :: 10;
+FLOAT_CONSTANT :: 3.14;
+
+test::() -> void {
+    a: i32 = INTEGER_CONSTANT;
+    b: f64 = FLOAT_CONSTANT;
+}

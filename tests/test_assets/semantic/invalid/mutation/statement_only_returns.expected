@@ -1,0 +1,3 @@
+semantic error at line 3: assignment cannot be used as a value; it is a statement
+semantic error at line 8: increment/decrement cannot be used as a value; it is a statement
+2 semantic errors generated.

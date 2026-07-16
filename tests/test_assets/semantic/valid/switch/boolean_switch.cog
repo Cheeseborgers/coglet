@@ -1,0 +1,9 @@
+classify_bool::(b: bool) -> i32 {
+    switch b {
+        case true:
+            return 1;
+
+        case false:
+            return 0;
+    }
+}

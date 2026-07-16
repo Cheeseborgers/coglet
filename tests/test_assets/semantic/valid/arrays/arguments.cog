@@ -1,0 +1,6 @@
+takes_i32_array::(values: i32[3]) -> void {
+}
+
+array_argument_ok::() -> void {
+    takes_i32_array([1, 2, 3]);
+}

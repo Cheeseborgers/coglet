@@ -1,0 +1,7 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+value: Color = 1;

@@ -1,0 +1,5 @@
+semantic error at line 1: variable cannot have type void
+semantic error at line 2: variable cannot have type void
+semantic error at line 3: variable cannot have type void
+semantic error at line 4: constant cannot have type void
+4 semantic errors generated.

@@ -1,0 +1,5 @@
+some_func::() -> i32 {
+    return 1;
+}
+
+BAD_CALL :: some_func();

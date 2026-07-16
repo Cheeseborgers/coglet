@@ -1,0 +1,5 @@
+array_initializer_ok::() {
+    values: i32[3] = [1, 2, 3];
+}
+
+values_p: i32[3] = [1, 2, 3];

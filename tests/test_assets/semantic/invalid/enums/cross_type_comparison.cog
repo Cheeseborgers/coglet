@@ -1,0 +1,12 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+OtherEnum :: enum(u16) {
+    Red,
+}
+
+Color.Red == OtherEnum.Red;
+Color.Blue < OtherEnum.Red;

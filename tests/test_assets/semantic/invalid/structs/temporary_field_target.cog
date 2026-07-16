@@ -1,0 +1,13 @@
+Point :: struct {
+    x: i32;
+}
+
+make_point::() -> Point {
+    return Point {
+        x = 0,
+    };
+}
+
+test::() -> void {
+    make_point().x = 1;
+}

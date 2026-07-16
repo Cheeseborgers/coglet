@@ -1,0 +1,19 @@
+assignment_in_inferred_declaration::() -> void {
+    x: i32 = 0;
+    y := (x = 1);
+}
+
+assignment_in_typed_declaration::() -> void {
+    x: i32 = 0;
+    y: i32 = (x = 1);
+}
+
+compound_assignment_in_declaration::() -> void {
+    x: i32 = 0;
+    y := (x += 1);
+}
+
+increment_in_declaration::() -> void {
+    x: i32 = 0;
+    y := x++;
+}

@@ -1,0 +1,7 @@
+SmallCastEnum :: enum(u8) {
+    A,
+    B,
+}
+
+BAD_CAST_SMALL_ENUM_TOO_BIG :: cast(SmallCastEnum, 256);
+BAD_CAST_SMALL_ENUM_NEGATIVE :: cast(SmallCastEnum, -1);

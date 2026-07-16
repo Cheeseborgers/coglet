@@ -1,0 +1,6 @@
+// semantic error at line 2: array initializer element count does not match array size
+// 1 semantic error generated.
+
+test::() -> i32[2] {
+    return [1, 2, 3];
+}

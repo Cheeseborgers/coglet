@@ -1,0 +1,3 @@
+semantic error at line 2: struct field cannot have type void
+semantic error at line 6: struct field cannot have type void
+2 semantic errors generated.

@@ -1,0 +1,12 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+return_bad_switch_no_default::(c: Color) -> i32 {
+    switch c {
+        case Color.Red:
+            return 1;
+    }
+}

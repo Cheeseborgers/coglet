@@ -1,0 +1,4 @@
+semantic error at line 4: assignment target is not assignable
+semantic error at line 5: compound assignment target is not assignable
+semantic error at line 6: increment/decrement target is not assignable
+3 semantic errors generated.

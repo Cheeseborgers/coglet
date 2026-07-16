@@ -1,0 +1,6 @@
+// semantic error at line 2: string literal destination must be u8 array
+// 1 semantic error generated.
+
+test::() -> void {
+    value: i32[6] = "hello";
+}

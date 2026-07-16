@@ -1,0 +1,3 @@
+return_string_ok::() -> u8[6] {
+    return "hello";
+}

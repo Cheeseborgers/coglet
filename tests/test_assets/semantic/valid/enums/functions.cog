@@ -1,0 +1,11 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+use_color::(c: Color) -> Color {
+    return Color.Blue;
+}
+
+result_color := use_color(Color.Red);

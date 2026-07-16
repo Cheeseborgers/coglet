@@ -1,0 +1,10 @@
+// semantic error at line 5: initializer type does not match declared type
+// 1 semantic error generated.
+
+
+takes_values::(values: i32[3]) -> void {
+}
+
+test::() -> void {
+    takes_values([1, true, 3]);
+}

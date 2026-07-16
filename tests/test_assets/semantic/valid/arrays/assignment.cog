@@ -1,0 +1,4 @@
+array_assignment_ok::() -> void {
+    values: i32[3] = [0, 0, 0];
+    values = [1, 2, 3];
+}

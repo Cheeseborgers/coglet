@@ -1,0 +1,9 @@
+does_nothing::() -> void {
+}
+
+test::() -> void {
+    switch does_nothing() {
+        default:
+            return;
+    }
+}

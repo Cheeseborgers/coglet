@@ -1,0 +1,7 @@
+Color :: enum {
+    Red,
+}
+
+Color :: enum {
+    Blue,
+}

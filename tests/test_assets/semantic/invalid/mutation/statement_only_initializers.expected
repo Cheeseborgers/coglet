@@ -1,0 +1,5 @@
+semantic error at line 3: assignment cannot be used as a value; it is a statement
+semantic error at line 8: assignment cannot be used as a value; it is a statement
+semantic error at line 13: compound assignment cannot be used as a value; it is a statement
+semantic error at line 18: increment/decrement cannot be used as a value; it is a statement
+4 semantic errors generated.

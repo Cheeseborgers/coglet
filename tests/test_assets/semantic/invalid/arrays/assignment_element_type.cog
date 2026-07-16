@@ -1,0 +1,8 @@
+// semantic error at line 4: initializer type does not match declared type
+// 1 semantic error generated.
+
+test::() -> void {
+    values: i32[3] = [0, 0, 0];
+
+    values = [1, true, 3];
+}

@@ -1,0 +1,6 @@
+// semantic error at line 2: initializer type does not match declared type
+// 1 semantic error generated.
+
+test::() -> i32[3] {
+    return [1, true, 3];
+}

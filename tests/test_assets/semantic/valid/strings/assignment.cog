@@ -1,0 +1,4 @@
+string_assignment_ok::() -> void {
+    s: u8[6] = "xxxxx";
+    s = "hello";
+}

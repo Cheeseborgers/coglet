@@ -1,0 +1,3 @@
+semantic error at line 6: enum cast value does not fit in backing type
+semantic error at line 7: enum cast value does not fit in backing type
+2 semantic errors generated.

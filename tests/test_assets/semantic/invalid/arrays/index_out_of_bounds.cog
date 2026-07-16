@@ -1,0 +1,25 @@
+// semantic error at line 6: array index out of bounds
+// semantic error at line 12: array index out of bounds
+// semantic error at line 18: array index out of bounds
+// 3 semantic errors generated.
+
+
+BAD_INDEX :: 4;
+
+negative_index::() -> i32 {
+    values: i32[3];
+
+    return values[-1];
+}
+
+index_equal_to_length::() -> i32 {
+    values: i32[3];
+
+    return values[3];
+}
+
+constant_index_too_large::() -> i32 {
+    values: i32[3];
+
+    return values[BAD_INDEX];
+}

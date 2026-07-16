@@ -35,6 +35,7 @@ int main(int argc, char **argv) {
 
     ast_pretty_print(program);
 
+    arena_destroy(scratch);
     arena_destroy(arena);
     free(source);
     return 0;

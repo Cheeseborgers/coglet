@@ -1,0 +1,10 @@
+// semantic error at line 5: string literal requires destination array size 3, got 6
+// 1 semantic error generated.
+
+
+takes_name::(value: u8[6]) -> void {
+}
+
+test::() -> void {
+    takes_name("hi");
+}

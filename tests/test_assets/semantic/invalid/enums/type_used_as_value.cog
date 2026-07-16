@@ -1,0 +1,5 @@
+Color :: enum {
+    Red,
+}
+
+value: Color = Color;

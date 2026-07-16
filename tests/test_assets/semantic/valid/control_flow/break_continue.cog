@@ -1,0 +1,9 @@
+break_continue_valid::(keep_going, done: bool) -> void {
+    while keep_going {
+        if done {
+            break;
+        }
+
+        continue;
+    }
+}

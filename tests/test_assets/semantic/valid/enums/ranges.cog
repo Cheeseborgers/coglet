@@ -1,0 +1,22 @@
+EnumU8Max :: enum(u8) {
+    A = 254,
+    B,
+}
+
+EnumI8Range :: enum(i8) {
+    A = -128,
+    B,
+    C = 127,
+}
+
+EnumDefaultLargeEnough :: enum {
+    A = 255,
+    B,
+}
+
+SmallEnum :: enum(u8) {
+    A,
+    B,
+}
+
+GOOD_CAST_SMALL_ENUM :: cast(SmallEnum, 255);

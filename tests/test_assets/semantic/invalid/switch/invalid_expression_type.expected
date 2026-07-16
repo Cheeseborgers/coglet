@@ -1,0 +1,2 @@
+semantic error at line 2: switch expression must be integer, bool, or enum
+1 semantic error generated.

@@ -1,0 +1,2 @@
+bad_void_return::() -> void* {
+}

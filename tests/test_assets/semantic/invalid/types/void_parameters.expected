@@ -1,0 +1,3 @@
+semantic error at line 1: parameter cannot have type void
+semantic error at line 4: parameter cannot have type void
+2 semantic errors generated.

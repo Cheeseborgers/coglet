@@ -1,0 +1,6 @@
+// semantic error at line 2: invalid escape sequence '\x' in string literal
+// 1 semantic error generated.
+
+test::() -> void {
+    value: u8[3] = "a\x";
+}

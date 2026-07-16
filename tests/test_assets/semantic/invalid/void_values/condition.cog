@@ -1,0 +1,7 @@
+does_nothing::() -> void {
+}
+
+test::() -> void {
+    if does_nothing() {
+    }
+}

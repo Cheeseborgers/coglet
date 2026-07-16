@@ -1,0 +1,9 @@
+test::(value: f64) -> i32 {
+    switch value {
+        case 1.0:
+            return 1;
+
+        default:
+            return 0;
+    }
+}

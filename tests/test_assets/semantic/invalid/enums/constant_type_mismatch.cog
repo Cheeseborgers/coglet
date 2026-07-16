@@ -1,0 +1,7 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+BAD_COLOR_CONST: Color : 1;

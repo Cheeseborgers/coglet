@@ -1,0 +1,17 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+ErrorCode :: enum(i32) {
+    None = 0,
+    File = 10,
+    Parse,
+}
+
+Flags :: enum(u8) {
+    Read = 1,
+    Write = 2,
+    Execute = 4,
+}

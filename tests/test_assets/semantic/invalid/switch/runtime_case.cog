@@ -1,0 +1,9 @@
+test::(value, runtime_case: i32) -> i32 {
+    switch value {
+        case runtime_case:
+            return 1;
+
+        default:
+            return 0;
+    }
+}

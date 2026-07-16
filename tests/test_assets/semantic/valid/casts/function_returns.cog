@@ -1,0 +1,22 @@
+cast_i32_to_i64::() -> i64 {
+    small: i32 = 10;
+    return cast(i64, small);
+}
+
+cast_float_to_int::() -> i32 {
+    return cast(i32, 3.14);
+}
+
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+cast_enum_to_int::() -> u16 {
+    return cast(u16, Color.Green);
+}
+
+cast_int_to_enum::() -> Color {
+    return cast(Color, 0);
+}

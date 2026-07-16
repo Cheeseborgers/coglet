@@ -9,8 +9,40 @@ execute_process(
     RESULT_VARIABLE exit_code
 )
 
-if(NOT exit_code EQUAL 0)
-    message(FATAL_ERROR "${EXE} exited with code ${exit_code} on ${INPUT}")
+if(NOT DEFINED EXPECT_EXIT)
+    set(EXPECT_EXIT 0)
+endif()
+
+if(NOT DEFINED OUTPUT_STREAM)
+    set(OUTPUT_STREAM stdout)
+endif()
+
+if(OUTPUT_STREAM STREQUAL "stdout")
+    set(actual_output "${actual_stdout}")
+elseif(OUTPUT_STREAM STREQUAL "stderr")
+    set(actual_output "${actual_stderr}")
+elseif(OUTPUT_STREAM STREQUAL "combined")
+    set(actual_output "${actual_stdout}${actual_stderr}")
+else()
+    message(FATAL_ERROR
+            "Invalid OUTPUT_STREAM: ${OUTPUT_STREAM}"
+    )
+endif()
+
+execute_process(
+        COMMAND "${EXE}" "${INPUT}"
+        OUTPUT_VARIABLE actual_stdout
+        ERROR_VARIABLE actual_stderr
+        RESULT_VARIABLE exit_code
+)
+
+if(NOT exit_code EQUAL EXPECT_EXIT)
+    message(FATAL_ERROR
+            "${EXE} exited with code ${exit_code} on ${INPUT}\n"
+            "expected exit code: ${EXPECT_EXIT}\n"
+            "--- stdout ---\n${actual_stdout}\n"
+            "--- stderr ---\n${actual_stderr}\n"
+    )
 endif()
 
 file(READ ${EXPECTED} expected_output)

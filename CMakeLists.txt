@@ -35,6 +35,10 @@ target_link_libraries(coglet PRIVATE compiler_core)
 add_executable(coglet_test_runner src/coglet_test_runner.c ${COMMON_SOURCES})
 target_link_libraries(coglet_test_runner PRIVATE compiler_core)
 
+# --- Standalone Semantic checker -------------
+add_executable(check_semantics tools/tests/check_semantics.c)
+target_link_libraries(check_semantics PRIVATE compiler_core)
+
 # --- Standalone lexer test tool (Stage 1 harness). ---
 add_executable(dump_tokens tools/dump_tokens.c ${COMMON_SOURCES})
 target_link_libraries(dump_tokens PRIVATE compiler_core)
@@ -51,22 +55,46 @@ enable_testing()
 # the .expected file. Reused for both tests/lexer and tests/parser so
 # adding a new test stage later is just one more call to this.
 function(add_diff_tests prefix dir exe_target)
-    file(GLOB test_sources ${dir}/*.cog)
-    foreach(test_src ${test_sources})
-        get_filename_component(test_name ${test_src} NAME_WE)
-        set(expected_file ${dir}/${test_name}.expected)
+    file(GLOB_RECURSE test_sources CONFIGURE_DEPENDS
+            "${dir}/*.cog"
+    )
 
-        if(EXISTS ${expected_file})
+    foreach(test_src IN LISTS test_sources)
+        file(RELATIVE_PATH relative_path "${dir}" "${test_src}")
+        get_filename_component(relative_dir "${relative_path}" DIRECTORY)
+        get_filename_component(test_name "${test_src}" NAME_WE)
+
+        set(expected_file "${test_src}")
+        string(REGEX REPLACE "\\.cog$" ".expected" expected_file "${expected_file}")
+
+        if(relative_dir STREQUAL "")
+            set(ctest_name "${prefix}_${test_name}")
+        else()
+            string(REPLACE "/" "_" category_name "${relative_dir}")
+            string(REPLACE "\\" "_" category_name "${category_name}")
+            set(ctest_name "${prefix}_${category_name}_${test_name}")
+        endif()
+
+        if(EXISTS "${expected_file}")
             add_test(
-                    NAME ${prefix}_${test_name}
-                    COMMAND ${CMAKE_COMMAND}
+                    NAME "${ctest_name}"
+                    COMMAND "${CMAKE_COMMAND}"
                     -DEXE=$<TARGET_FILE:${exe_target}>
                     -DINPUT=${test_src}
                     -DEXPECTED=${expected_file}
-                    -P ${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake
+                    -DEXPECT_EXIT=0
+                    -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+            )
+
+            set_tests_properties(
+                    "${ctest_name}"
+                    PROPERTIES
+                    LABELS "${prefix};snapshot"
             )
         else()
-            message(WARNING "No .expected file for ${test_src}, skipping test")
+            message(WARNING
+                    "No .expected file for ${test_src}; skipping test"
+            )
         endif()
     endforeach()
 endfunction()

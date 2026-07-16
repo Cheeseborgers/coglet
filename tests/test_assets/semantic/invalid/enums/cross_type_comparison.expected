@@ -1,0 +1,3 @@
+semantic error at line 11: comparison type mismatch
+semantic error at line 12: ordered comparison requires numeric operands
+2 semantic errors generated.

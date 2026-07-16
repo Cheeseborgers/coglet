@@ -1,0 +1,5 @@
+semantic error at line 3: enum member value does not fit in backing type
+semantic error at line 7: enum member value does not fit in backing type
+semantic error at line 11: enum member value does not fit in backing type
+semantic error at line 15: enum member value does not fit in backing type
+4 semantic errors generated.

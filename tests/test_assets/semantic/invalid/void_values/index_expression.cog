@@ -1,0 +1,8 @@
+does_nothing::() -> void {
+}
+
+test::() -> void {
+    values: i32[3];
+
+    value := values[does_nothing()];
+}

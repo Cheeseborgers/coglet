@@ -1,0 +1,5 @@
+unreachable_after_return::() -> i32 {
+    return 1;
+
+    x := 2;
+}

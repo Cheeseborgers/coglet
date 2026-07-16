@@ -1,0 +1,18 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+classify_color::(c: Color) -> i32 {
+    switch c {
+        case Color.Red:
+            return 1;
+        case Color.Green:
+            return 2;
+        case Color.Blue:
+            return 3;
+        default:
+            return 0;
+    }
+}

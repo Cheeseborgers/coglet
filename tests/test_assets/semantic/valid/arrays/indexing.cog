@@ -1,0 +1,25 @@
+array_index_valid::() -> i32 {
+    values: i32[3];
+
+    return values[0];
+}
+
+array_index_valid_last::() -> i32 {
+    values: i32[5];
+
+    return values[2];
+}
+
+ARRAY_INDEX_CONST :: 1;
+
+array_index_valid_const::() -> i32 {
+    values: i32[3];
+
+    return values[ARRAY_INDEX_CONST];
+}
+
+array_index_runtime_allowed::(i: i32) -> i32 {
+    values: i32[3];
+
+    return values[i];
+}

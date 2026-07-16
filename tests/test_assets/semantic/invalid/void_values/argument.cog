@@ -1,0 +1,9 @@
+does_nothing::() -> void {
+}
+
+takes_i32::(x: i32) -> void {
+}
+
+test::() {
+    takes_i32(does_nothing());
+}

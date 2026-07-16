@@ -1,0 +1,10 @@
+takes_i32::(value: i32) -> void {
+}
+
+test::() -> void {
+    x: i32 = 0;
+
+    takes_i32(x = 1);
+    takes_i32(x += 1);
+    takes_i32(x++);
+}

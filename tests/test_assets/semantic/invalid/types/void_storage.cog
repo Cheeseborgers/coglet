@@ -1,0 +1,4 @@
+bad_void_var: void;
+bad_void_ptr: void*;
+bad_void_array: void[4];
+bad_void_const: void: 10;

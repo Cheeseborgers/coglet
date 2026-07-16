@@ -1,0 +1,8 @@
+returns_i32::() -> i32 {
+    return 1;
+}
+
+discarded_values_are_valid::() {
+    returns_i32();
+    1 + 2;
+}

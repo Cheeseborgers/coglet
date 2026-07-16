@@ -1,0 +1,17 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+favorite: Color = Color.Red;
+other_color := Color.Green;
+
+Color.Red == Color.Blue;
+Color.Red != Color.Green;
+
+DEFAULT_COLOR :: Color.Red;
+favorite1: Color = DEFAULT_COLOR;
+
+EXPLICIT_COLOR: Color : Color.Blue;
+other: Color = EXPLICIT_COLOR;

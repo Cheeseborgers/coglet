@@ -1,0 +1,7 @@
+BadVoidStruct::struct {
+    field: void;
+}
+
+BadVoidPointerStruct::struct {
+    field: void*;
+}

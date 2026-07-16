@@ -1,0 +1,3 @@
+BadValue :: enum(u8) {
+    A = 1.5,
+}

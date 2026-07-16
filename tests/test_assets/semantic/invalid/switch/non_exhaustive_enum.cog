@@ -1,0 +1,19 @@
+// may report this as a return-path failure rather than a dedicated non-exhaustive-switch diagnostic.
+//semantic error at line 7: non-void function may not return a value
+//1 semantic error generated.
+
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+test::(color: Color) -> i32 {
+    switch color {
+        case Color.Red:
+            return 1;
+
+        case Color.Green:
+            return 2;
+    }
+}

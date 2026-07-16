@@ -1,0 +1,6 @@
+takes_name::(s: u8[6]) -> void {
+}
+
+string_argument_ok::() -> void {
+    takes_name("hello");
+}

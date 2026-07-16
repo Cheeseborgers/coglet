@@ -1,5 +1,0 @@
-values: i32[3];
-
-values[-1];
-
-values[3];

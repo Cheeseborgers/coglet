@@ -1,0 +1,10 @@
+Color :: enum {
+    Red,
+    Blue,
+}
+
+test::() -> void {
+    Color.Red = Color.Blue;
+    Color.Red += 1;
+    Color.Red++;
+}

@@ -1,0 +1,19 @@
+test::() -> void {
+    a: bool = true;
+
+    b: i8 = 1;
+    c: i16 = 2;
+    d: i32 = 3;
+    e: i64 = 4;
+
+    f: u8 = 5;
+    g: u16 = 6;
+    h: u32 = 7;
+    i: u64 = 8;
+
+    j: f32 = 1.5;
+    k: f64 = 2.5;
+
+    values: i32[3];
+    pointer: i32*;
+}

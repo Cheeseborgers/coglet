@@ -1,0 +1,6 @@
+does_nothing::() -> void {
+}
+
+test::() -> i32 {
+    return does_nothing();
+}

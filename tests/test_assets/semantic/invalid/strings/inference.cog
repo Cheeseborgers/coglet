@@ -1,0 +1,6 @@
+// semantic error at line 2: string literal requires an expected byte array type
+// 1 semantic error generated.
+
+test::() -> void {
+    value := "hello";
+}

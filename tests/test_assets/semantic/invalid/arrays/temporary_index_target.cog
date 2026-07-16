@@ -1,0 +1,10 @@
+// semantic error at line 6: assignment target is not assignable
+// 1 semantic error generated.
+
+make_values::() -> i32[3] {
+    return [1, 2, 3];
+}
+
+test::() -> void {
+    make_values()[0] = 1;
+}

@@ -1,0 +1,19 @@
+x: i32 = 1;
+
+{
+    x: i32 = 2;
+    x = 3;
+}
+
+x = 4;
+
+scope_test::() {
+    local := 5;
+
+    {
+        inner := 10;
+        local = inner;
+    }
+
+    local = 20;
+}

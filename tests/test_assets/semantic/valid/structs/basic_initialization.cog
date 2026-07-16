@@ -1,0 +1,9 @@
+Point::struct {
+    x: i32;
+    y: i32;
+}
+
+p := Point {
+    x = 5,
+    y = 10,
+};

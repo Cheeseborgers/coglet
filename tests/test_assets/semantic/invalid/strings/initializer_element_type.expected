@@ -1,0 +1,2 @@
+semantic error at line 5: string literal destination must be u8 array
+1 semantic error generated.

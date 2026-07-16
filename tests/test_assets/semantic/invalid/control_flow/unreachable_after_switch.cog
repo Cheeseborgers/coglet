@@ -1,0 +1,17 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+    Blue,
+}
+
+unreachable_after_switch::(c: Color) -> i32 {
+    switch c {
+        case Color.Red:
+            return 1;
+
+        default:
+            return 0;
+    }
+
+    x := 4;
+}

@@ -1,0 +1,11 @@
+return_good_direct::() -> i32 {
+    return 1;
+}
+
+return_good_if::(b: bool) -> i32 {
+    if b {
+        return 1;
+    } else {
+        return 2;
+    }
+}

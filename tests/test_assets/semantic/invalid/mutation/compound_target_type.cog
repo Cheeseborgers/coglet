@@ -1,0 +1,14 @@
+Color :: enum {
+    Red,
+    Green,
+}
+
+bool_target::() -> void {
+    value: bool = true;
+    value += 1;
+}
+
+enum_target::() -> void {
+    color: Color = Color.Red;
+    color += 1;
+}

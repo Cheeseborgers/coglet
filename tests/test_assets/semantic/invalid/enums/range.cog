@@ -1,0 +1,16 @@
+EnumTooBig :: enum(u8) {
+    A = 255,
+    B,
+}
+
+EnumNegativeUnsigned :: enum(u8) {
+    A = -1,
+}
+
+EnumTooBigExplicit :: enum(i8) {
+    A = 128,
+}
+
+EnumTooSmallExplicit :: enum(i8) {
+    A = -129,
+}

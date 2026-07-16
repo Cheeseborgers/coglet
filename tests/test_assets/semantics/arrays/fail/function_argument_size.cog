@@ -1,4 +1,0 @@
-takes::(values: i32[3]) {
-}
-
-takes([1,2]);

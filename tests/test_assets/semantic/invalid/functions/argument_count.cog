@@ -1,0 +1,11 @@
+add::(a, b: i32) -> i32 {
+    return a + b;
+}
+
+too_few::() -> void {
+    result := add(1);
+}
+
+too_many::() -> void {
+    result := add(1, 2, 3);
+}

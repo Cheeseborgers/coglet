@@ -1,0 +1,5 @@
+CONSTANT :: 1;
+
+test::() -> void {
+    CONSTANT += 1;
+}

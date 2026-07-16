@@ -1,0 +1,8 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+}
+
+test::() -> void {
+    Color.Red + Color.Green;
+}

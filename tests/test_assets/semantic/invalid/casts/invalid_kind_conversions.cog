@@ -1,0 +1,32 @@
+Point :: struct {
+    x: i32;
+    y: i32;
+}
+
+Color :: enum(u16) {
+    Red,
+    Green,
+}
+
+bad_struct_to_integer::() -> i32 {
+    return cast(i32, Point {
+        x = 1,
+        y = 2,
+    });
+}
+
+bad_bool_to_integer::() -> i32 {
+    return cast(i32, true);
+}
+
+bad_integer_to_bool::() -> bool {
+    return cast(bool, 1);
+}
+
+bad_enum_to_float::() -> f64 {
+    return cast(f64, Color.Red);
+}
+
+bad_float_to_enum::() -> Color {
+    return cast(Color, 1.5);
+}

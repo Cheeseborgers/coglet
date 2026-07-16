@@ -1,0 +1,17 @@
+Color :: enum(u16) {
+    Red,
+    Green,
+}
+
+test::(color: Color) -> i32 {
+    switch color {
+        case Color.Red:
+            return 1;
+
+        case Color.Red:
+            return 2;
+
+        default:
+            return 0;
+    }
+}

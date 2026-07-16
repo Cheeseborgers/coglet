@@ -1,0 +1,5 @@
+bad_void_param::(value: void) {
+}
+
+bad_void_ptr_param::(value: void*) {
+}

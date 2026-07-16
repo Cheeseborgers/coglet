@@ -265,6 +265,7 @@ static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
 static int check_statement_expression(SemanticContext *ctx, Node *node);
+static Type *check_value_expression(SemanticContext *ctx, Node *node);
 static int check_assignment_statement(SemanticContext *ctx, Node *node);
 static int check_compound_assignment_statement(SemanticContext *ctx, Node *node);
 static int check_inc_dec_statement(SemanticContext *ctx, Node *node);
@@ -1425,7 +1426,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_UNARY:
         {
-            Type *operand = check_expression(ctx, node->as.unary.operand);
+            Type *operand = check_value_expression(ctx, node->as.unary.operand);
 
             if (!operand) return NULL;
 
@@ -1464,11 +1465,11 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_BINARY:
         {
-            Type *left  = check_expression(ctx, node->as.binary.left);
-            Type *right = check_expression(ctx, node->as.binary.right);
+            Type *left = check_value_expression(ctx, node->as.binary.left);
+            if (!left) return NULL;
 
-            if(!left || !right) return NULL;
-
+            Type *right = check_value_expression(ctx, node->as.binary.right);
+            if (!right) return NULL;
 
             switch(node->as.binary.op)
             {
@@ -1663,7 +1664,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return NULL;
 
         case NODE_CALL: {
-            Type *callee = check_expression(ctx, node->as.call.callee);
+            Type *callee = check_value_expression(ctx, node->as.call.callee);
             if (!callee)
                 return NULL;
 
@@ -1697,11 +1698,18 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             if (!ok)
                 return NULL;
 
+            ValueCategory category =
+                callee->return_type->kind == TYPE_VOID
+                ? VALUE_CATEGORY_NONE
+                : VALUE_CATEGORY_RVALUE;
+
             sem_record_expr_info(
-                ctx, node,
+                ctx,
+                node,
                 callee->return_type,
                 NULL,
-                VALUE_CATEGORY_RVALUE);
+                category
+            );
 
             return callee->return_type;
         }
@@ -1783,7 +1791,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
              *
              *     point.x
              */
-            Type *object = check_expression(ctx, node->as.field.object);
+            Type *object = check_value_expression(ctx, node->as.field.object);
 
             if (!object)
                 return NULL;
@@ -1836,10 +1844,14 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_INDEX:
         {
-            Type *object =check_expression(ctx, node->as.index.object);
-            Type *index = check_expression(ctx, node->as.index.index);
+            Type *object = check_value_expression(ctx, node->as.index.object);
 
-            if (!object || !index)
+            if (!object)
+                return NULL;
+
+            Type *index = check_value_expression(ctx, node->as.index.index);
+
+            if (!index)
                 return NULL;
 
             if (!is_integer_kind(index->kind)) {
@@ -2163,19 +2175,7 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
     if (!eval_const_expr(ctx, node->as.const_decl.value, &value))
         return;
 
-    /*
-     * Type-check the expression too.
-     *
-     * eval_const_expr proves "this is compile-time known".
-     * check_expression gives us the normal semantic type.
-     *
-     * For example:
-     *     Color.Red
-     *
-     * eval_const_expr -> integer value 0, type Color
-     * check_expression -> type Color
-     */
-    Type *value_type = check_expression(ctx,node->as.const_decl.value);
+    Type *value_type = check_value_expression(ctx,node->as.const_decl.value);
 
     if (!value_type)
         return;
@@ -2282,7 +2282,7 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
 
 static void check_switch_statement(SemanticContext *ctx,Node *node) {
 
-    Type *switch_type = check_expression(ctx, node->as.switch_stmt.expression);
+    Type *switch_type = check_value_expression(ctx, node->as.switch_stmt.expression);
 
     if (!switch_type)
         return;
@@ -2337,25 +2337,8 @@ static void check_switch_statement(SemanticContext *ctx,Node *node) {
         }
 
         Node *case_value_node = case_node->as.switch_case.value;
+        Type *case_type       = check_value_expression(ctx, case_value_node);
 
-        /*
-         * First use normal expression checking to get the semantic type.
-         *
-         * Example:
-         *     case Color.Red:
-         *
-         * check_expression gives type Color.
-         */
-        Type *case_type = check_expression(ctx, case_value_node);
-
-        /*
-         * Then require it to be compile-time known.
-         *
-         * Example:
-         *     case some_runtime_variable:
-         *
-         * should fail.
-         */
         ConstValue case_value;
 
         int has_const_value =
@@ -2426,13 +2409,17 @@ static int check_compound_assignment_statement(SemanticContext *ctx, Node *node)
     Node *value_node  = node->as.compound_assign.value;
 
     Type *target_type = check_expression(ctx, target_node);
-    Type *value_type  = check_expression(ctx, value_node);
-    if (!target_type || !value_type) return 0;
 
-    if (!require_lvalue(ctx, node, target_node,
-            "compound assignment target is not assignable")) {
+    if (!target_type)
         return 0;
-    }
+
+    if (!require_lvalue(ctx, node, target_node, "compound assignment target is not assignable"))
+        return 0;
+
+    Type *value_type = check_value_expression(ctx, value_node);
+
+    if (!value_type)
+        return 0;
 
     switch (node->as.compound_assign.op) {
         case TOK_PLUS_EQUAL:
@@ -2511,6 +2498,28 @@ static int check_statement_expression(SemanticContext *ctx, Node *node) {
     }
 }
 
+static Type *check_value_expression(SemanticContext *ctx, Node *node
+) {
+    Type *type = check_expression(ctx, node);
+
+    if (!type)
+        return NULL;
+
+    SemExprInfo *info = sem_find_expr_info(ctx, node);
+
+    if (!info ||
+        type->kind == TYPE_VOID ||
+        info->value_category == VALUE_CATEGORY_NONE) {
+
+        semantic_error(ctx, node,
+            "expression does not produce a value");
+
+        return NULL;
+    }
+
+    return type;
+}
+
 static int check_initializer_against_type(SemanticContext *ctx, Type *expected, Node *initializer) {
 
     if (!expected || !initializer)
@@ -2546,15 +2555,21 @@ static int check_initializer_against_type(SemanticContext *ctx, Type *expected, 
         return 1;
     }
 
-    Type *actual = check_expression(ctx, initializer);
+    Type *actual = check_value_expression(ctx, initializer);
 
     if (!actual)
         return 0;
 
-    if (!initializer_compatible(expected, actual, initializer)) {
+    if (!initializer_compatible(
+            expected,
+            actual,
+            initializer)) {
 
-        semantic_error(ctx, initializer,
-            "initializer type does not match declared type");
+        semantic_error(
+            ctx,
+            initializer,
+            "initializer type does not match declared type"
+        );
 
         return 0;
     }
@@ -2640,7 +2655,7 @@ static void check_var_decl(SemanticContext *ctx, Node *node)
             if (!check_initializer_against_type(ctx, type, init))
                 return;
         } else {
-            Type *init_type = check_expression(ctx, init);
+            Type *init_type = check_value_expression(ctx, init);
 
             if (!init_type)
                 return;
@@ -2654,74 +2669,101 @@ static void check_var_decl(SemanticContext *ctx, Node *node)
         return;
     }
 
-    scope_define(ctx, node->as.var_decl.name, SYMBOL_VARIABLE, type);
-}
-
-static void check_param_decl(SemanticContext *ctx, Node *node)
-{
-    if (scope_find_local(ctx->current_scope, node->as.param_decl.name.data, node->as.param_decl.name.length)) {
-
-        semantic_error_name(
-            ctx, node,
-            "duplicate param declaration",
-            node->as.param_decl.name.data,
-            node->as.param_decl.name.length);
-
+    if (invalid_value_type(type)) {
+        semantic_error(ctx, node, "variable cannot have type void");
         return;
     }
 
-    Type *default_type = NULL;
+    scope_define(ctx, node->as.var_decl.name, SYMBOL_VARIABLE, type);
+}
 
-    if (node->as.param_decl.default_value) {
+static void check_param_decl(
+    SemanticContext *ctx,
+    Node *node
+) {
+    if (scope_find_local(
+            ctx->current_scope,
+            node->as.param_decl.name.data,
+            node->as.param_decl.name.length)) {
 
-        default_type = check_expression(ctx, node->as.param_decl.default_value);
+        semantic_error_name(
+            ctx,
+            node,
+            "duplicate param declaration",
+            node->as.param_decl.name.data,
+            node->as.param_decl.name.length
+        );
 
-        /*
-         * The default expression already produced an error.
-         * Do not define a parameter based on a failed expression.
-         */
-        if (!default_type)
-            return;
-    }
+        return;
+            }
 
     Type *type = node->as.param_decl.var_type;
 
-    if (!type) {
-        /*
-         * Only keep this branch if inferred parameter declarations
-         * are valid syntax in your language.
-         */
-        type = default_type;
-    } else {
+    if (type) {
         type = resolve_type(ctx, type, node);
+
+        if (!type)
+            return;
+
+        if (invalid_value_type(type)) {
+            semantic_error(
+                ctx,
+                node,
+                "parameter cannot have type void"
+            );
+
+            return;
+        }
+    }
+
+    Node *default_value =
+        node->as.param_decl.default_value;
+
+    if (default_value) {
+        if (type) {
+            if (!check_initializer_against_type(
+                    ctx,
+                    type,
+                    default_value)) {
+                return;
+                    }
+        } else {
+            type = check_value_expression(
+                ctx,
+                default_value
+            );
+
+            if (!type)
+                return;
+        }
     }
 
     if (!type) {
-
-        semantic_error(ctx, node,
-            "could not determine parameter type");
+        semantic_error(
+            ctx,
+            node,
+            "could not determine parameter type"
+        );
 
         return;
     }
 
     if (invalid_value_type(type)) {
-
-        semantic_error(ctx, node,
-            "parameter cannot have type void");
-
-        return;
-    }
-
-    if (node->as.param_decl.default_value &&
-        !initializer_compatible(type, default_type, node->as.param_decl.default_value)) {
-
-        semantic_error(ctx, node,
-            "default value type does not match declared type");
+        semantic_error(
+            ctx,
+            node,
+            "parameter cannot have type void"
+        );
 
         return;
     }
 
-    scope_define(ctx, node->as.param_decl.name, SYMBOL_VARIABLE, type);
+    scope_define(
+        ctx,
+        node->as.param_decl.name,
+        SYMBOL_VARIABLE,
+        type
+    );
 }
 
 static void check_program(SemanticContext *ctx, Node *node)
@@ -2793,7 +2835,7 @@ static void check_program(SemanticContext *ctx, Node *node)
 
 static void check_if(SemanticContext *ctx, Node *node) {
 
-    Type *cond = check_expression(ctx, node->as.if_stmt.condition);
+    Type *cond = check_value_expression(ctx, node->as.if_stmt.condition);
 
     /*
    * A NULL type means check_expression already reported an error.
@@ -3187,7 +3229,7 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
                  * expression node in the program has semantic info -- no
                  * exception needed in the future invariant verifier or dump.
                  */
-                check_expression(ctx, value_node);
+                check_value_expression(ctx, value_node);
             }
         }
 
@@ -3230,7 +3272,7 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
         return NULL;
     }
 
-    Type *source_type = check_expression(ctx, node->as.cast_expr.expression);
+    Type *source_type = check_value_expression(ctx, node->as.cast_expr.expression);
 
     if (!source_type)
         return NULL;
@@ -3502,7 +3544,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
     case NODE_WHILE: {
 
-        Type *cond = check_expression(ctx, node->as.while_stmt.condition);
+        Type *cond = check_value_expression(ctx, node->as.while_stmt.condition);
 
         if (cond && !is_bool_type(cond)) {
             semantic_error(ctx,node->as.while_stmt.condition,
@@ -3545,7 +3587,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
          * This fallback is only for malformed/manual ASTs.
          */
         if (!node->as.switch_case.is_default)
-            check_expression(ctx, node->as.switch_case.value);
+            check_value_expression(ctx, node->as.switch_case.value);
 
         check_node(ctx, node->as.switch_case.body);
 
@@ -3553,7 +3595,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
     case NODE_FOR: {
         if (node->as.for_stmt.condition) {
-            Type *cond = check_expression(ctx, node->as.for_stmt.condition);
+            Type *cond = check_value_expression(ctx, node->as.for_stmt.condition);
 
             if (cond && !is_bool_type(cond)) {
                 semantic_error(ctx,node->as.for_stmt.condition,

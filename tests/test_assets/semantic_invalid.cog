@@ -595,14 +595,34 @@ enum_member_mutations_are_invalid :: () {
     Color.Red++;
 }
 
-field_of_rvalue_is_invalid :: () {
-    make_point().x = 1;
-    make_point().x += 1;
-    make_point().x++;
+does_nothing :: () -> void {
 }
 
-index_of_rvalue_is_invalid :: () {
-    make_values()[0] = 1;
-    make_values()[0] += 1;
-    make_values()[0]++;
+void_call_inferred_variable_is_invalid :: () {
+    x := does_nothing();
+}
+
+takes_i32_for_void_test :: (x: i32) -> void {
+}
+
+void_call_argument_is_invalid :: () {
+    takes_i32_for_void_test(does_nothing());
+}
+
+void_call_return_is_invalid :: () -> i32 {
+    return does_nothing();
+}
+
+void_call_binary_operand_is_invalid :: () {
+    x := does_nothing() + 1;
+}
+
+x := does_nothing();
+takes_i32(does_nothing());
+
+x := does_nothing() + 1;
+
+void_call_statement_in_void_function_is_valid :: () -> void {
+    does_nothing();
+    return;
 }

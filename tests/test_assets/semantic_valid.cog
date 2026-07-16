@@ -465,3 +465,10 @@ discarded_values_are_valid :: () {
     1 + 2;
 }
 
+does_nothing :: () -> void {
+}
+
+void_call_statement_is_valid :: () {
+    does_nothing();
+}
+

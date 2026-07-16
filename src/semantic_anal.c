@@ -183,23 +183,14 @@ static Type *lookup_type(SemanticContext *ctx, const char *name, size_t length) 
 // resolved recursively. Leaves everything else untouched. `error_node`
 // is used purely for diagnostic line info if resolution fails -- pass
 // whatever Node this type came from (a var decl, a param, a field).
-static Type *resolve_type(
-    SemanticContext *ctx,
-    Type *type,
-    Node *error_node
-) {
+static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
     if (!type)
         return NULL;
 
     switch (type->kind) {
-        case TYPE_BOOL:
-            return ctx->type_bool;
-
-        case TYPE_VOID:
-            return ctx->type_void;
-
-        default:
-            break;
+        case TYPE_BOOL: return ctx->type_bool;
+        case TYPE_VOID: return ctx->type_void;
+        default: break;
     }
 
     if (type->kind == TYPE_NAMED) {
@@ -246,7 +237,7 @@ static Type *resolve_type(
             copy->element = resolved_element;
             return copy;
         }
-        }
+    }
 
     return type;
 }

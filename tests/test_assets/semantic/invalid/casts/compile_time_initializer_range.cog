@@ -1,0 +1,3 @@
+test::() -> void {
+    value: u8 = cast(u8, 256);
+}

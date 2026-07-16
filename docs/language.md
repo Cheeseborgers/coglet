@@ -392,17 +392,17 @@ Explicit casts use the form:
 cast(TargetType, expression)
 ```
 
-A cast whose operand is known at compile time must be checked for
-representability in the destination type. If the value cannot be represented,
-the cast is a semantic error regardless of where the cast appears.
+A cast whose operand is known at compile time is checked for representability
+in the destination type. If the value cannot be represented, the cast is a
+semantic error regardless of where the cast appears.
 
 This applies in all expression contexts, including:
 
-constant declarations
-variable initializers
-return expressions
-function arguments
-discarded expression statements
+* constant declarations
+* variable initializers
+* return expressions
+* function arguments
+* discarded expression statements
 
 Discarding a cast result does not skip semantic validation:
 
@@ -414,7 +414,7 @@ test::() -> void {
 Integer-to-enum casts and enum-to-integer casts are checked against the enum's
 backing type when the value is known at compile time.
 
-Runtime narrowing-cast behavior is not yet specified. Coglet should make an
+Runtime narrowing-cast behavior is not yet specified. Coglet must make an
 explicit decision before relying on runtime narrowing as checked conversion,
 wrapping/truncating conversion, or rejection.
 

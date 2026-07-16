@@ -250,7 +250,6 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
 // ============================================================
 // forward declarations
 // ============================================================
-
 static int node_definitely_returns(Node *node);
 static int block_definitely_returns(Node *node);
 static int switch_definitely_returns(Node *node);
@@ -270,6 +269,8 @@ static int check_assignment_statement(SemanticContext *ctx, Node *node);
 static int check_compound_assignment_statement(SemanticContext *ctx, Node *node);
 static int check_inc_dec_statement(SemanticContext *ctx, Node *node);
 static int check_initializer_against_type(SemanticContext *ctx, Type *expected, Node *initializer);
+static void format_type_name(Type *type, char *buffer, size_t buffer_size);
+static int check_argument_against_parameter(SemanticContext *ctx, Type *expected, Node *argument);
 static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 static int declare_enum_shell(SemanticContext *ctx, Node *node);
 static void fill_enum_members(SemanticContext *ctx,Node *node);
@@ -308,6 +309,129 @@ static int contains_void_type(Type *type)
     }
 
     return 0;
+}
+
+static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
+
+    if (!buffer || buffer_size == 0)
+        return;
+
+    if (!type) {
+        snprintf(buffer, buffer_size, "<unknown>");
+        return;
+    }
+
+    switch (type->kind) {
+        case TYPE_VOID:
+            snprintf(buffer, buffer_size, "void");
+            return;
+
+        case TYPE_BOOL:
+            snprintf(buffer, buffer_size, "bool");
+            return;
+
+        case TYPE_I8:
+            snprintf(buffer, buffer_size, "i8");
+            return;
+
+        case TYPE_I16:
+            snprintf(buffer, buffer_size, "i16");
+            return;
+
+        case TYPE_I32:
+            snprintf(buffer, buffer_size, "i32");
+            return;
+
+        case TYPE_I64:
+            snprintf(buffer, buffer_size, "i64");
+            return;
+
+        case TYPE_U8:
+            snprintf(buffer, buffer_size, "u8");
+            return;
+
+        case TYPE_U16:
+            snprintf(buffer, buffer_size, "u16");
+            return;
+
+        case TYPE_U32:
+            snprintf(buffer, buffer_size, "u32");
+            return;
+
+        case TYPE_U64:
+            snprintf(buffer, buffer_size, "u64");
+            return;
+
+        case TYPE_F32:
+            snprintf(buffer, buffer_size, "f32");
+            return;
+
+        case TYPE_F64:
+            snprintf(buffer, buffer_size, "f64");
+            return;
+
+        case TYPE_NAMED:
+            snprintf(
+                buffer,
+                buffer_size,
+                "%.*s",
+                (int)type->named_name.length,
+                type->named_name.data
+            );
+            return;
+
+        case TYPE_STRUCT:
+            snprintf(
+                buffer,
+                buffer_size,
+                "%.*s",
+                (int)type->struct_name.length,
+                type->struct_name.data
+            );
+            return;
+
+        case TYPE_ENUM:
+            snprintf(
+                buffer,
+                buffer_size,
+                "%.*s",
+                (int)type->enum_name.length,
+                type->enum_name.data
+            );
+            return;
+
+        case TYPE_POINTER: {
+            char element[128];
+            format_type_name(type->element, element, sizeof(element));
+            snprintf(buffer, buffer_size, "*%s", element);
+            return;
+        }
+
+        case TYPE_ARRAY: {
+            char element[128];
+            format_type_name(type->element, element, sizeof(element));
+
+            if (type->array_size >= 0) {
+                snprintf(
+                    buffer,
+                    buffer_size,
+                    "[%d]%s",
+                    type->array_size,
+                    element
+                );
+            } else {
+                snprintf(buffer, buffer_size, "[]%s", element);
+            }
+
+            return;
+        }
+
+        case TYPE_FUNCTION:
+            snprintf(buffer, buffer_size, "function");
+            return;
+    }
+
+    snprintf(buffer, buffer_size, "<unknown>");
 }
 
 static int type_equal(Type *a, Type *b) {
@@ -1691,7 +1815,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 Node *arg        = node->as.call.arguments.items[i];
                 Type *param_type = callee->parameters[i];
 
-                if (!check_initializer_against_type(ctx, param_type, arg))
+                if (!check_argument_against_parameter(ctx, param_type, arg))
                     ok = 0;
             }
 
@@ -2573,6 +2697,45 @@ static int check_initializer_against_type(SemanticContext *ctx, Type *expected, 
 
         return 0;
     }
+
+    return 1;
+}
+
+static int check_argument_against_parameter(
+    SemanticContext *ctx,
+    Type *expected,
+    Node *argument
+) {
+
+    if (!expected || !argument)
+        return 0;
+
+    Type *actual = check_value_expression(ctx, argument);
+
+    if (!actual)
+        return 0;
+
+    if (!initializer_compatible(
+            expected,
+            actual,
+            argument)) {
+
+        char expected_name[128];
+        char actual_name[128];
+
+        format_type_name(expected, expected_name, sizeof(expected_name));
+        format_type_name(actual, actual_name, sizeof(actual_name));
+
+        semantic_error_fmt(
+            ctx,
+            argument,
+            "argument type does not match parameter type: expected %s, got %s",
+            expected_name,
+            actual_name
+        );
+
+        return 0;
+            }
 
     return 1;
 }

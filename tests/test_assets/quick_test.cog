@@ -1,3 +1,17 @@
 test::() -> void {
-    cast(u8, 256);
+    1 + true; // invalid binary operands, even though result is discarded
+}
+
+takes_u8::(value: u8) -> void {
+}
+
+test1::() -> void {
+    takes_u8(true); // invalid argument type, even though call result is discarded
+}
+
+returns_void::() -> void {
+}
+
+test2::() -> void {
+    returns_void() + 1; // invalid use of void value, even though result is discarded
 }

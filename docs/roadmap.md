@@ -36,6 +36,13 @@ Implemented language and semantic features include:
   across all expression contexts.
 - Runtime narrowing-cast semantics still need a deliberate language decision:
   checked conversion, truncating/wrapping conversion, or rejection.
+
+Runtime narrowing casts remain intentionally unspecified.
+
+Current semantic analysis rejects out-of-range casts only when the operand is
+known at compile time. Coglet still needs a deliberate decision for runtime
+narrowing casts: checked conversion, explicit truncation, or rejection.
+
 ## Recently Completed: Mutation and Void-Expression Semantics
 
 Mutation operators are statement-only operations.

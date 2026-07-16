@@ -87,6 +87,13 @@ static void sem_record_expr_info(
     info->value_category = category;
 }
 
+// type == NULL and category == NONE together mean "checked, valid,
+// deliberately produces no value" -- distinct from no entry existing
+// at all, which means the node was never checked.
+static void sem_record_no_value(SemanticContext *ctx, Node *node) {
+    sem_record_expr_info(ctx, node, NULL, NULL, VALUE_CATEGORY_NONE);
+}
+
 static int expression_is_lvalue(SemanticContext *ctx, Node *node) {
     SemExprInfo *info = sem_find_expr_info(ctx, node);
     return info && info->value_category == VALUE_CATEGORY_LVALUE;
@@ -259,6 +266,10 @@ static void check_unreachable_in_block(SemanticContext *ctx, Node *block);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
+static int check_statement_expression(SemanticContext *ctx, Node *node);
+static int check_assignment_statement(SemanticContext *ctx, Node *node);
+static int check_compound_assignment_statement(SemanticContext *ctx, Node *node);
+static int check_inc_dec_statement(SemanticContext *ctx, Node *node);
 static int check_initializer_against_type(SemanticContext *ctx, Type *expected, Node *initializer);
 static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 static int declare_enum_shell(SemanticContext *ctx, Node *node);
@@ -701,8 +712,6 @@ static Type *const_value_default_type(SemanticContext *ctx,const ConstValue *v) 
 
     return t;
 }
-
-
 
 // Recursively evaluates an expression that must be knowable at compile
 // time: literals, other constants, and unary/binary ops over those.
@@ -1640,166 +1649,20 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             }
         }
 
-        case NODE_INC_DEC: {
-            Node *target = node->as.inc_dec.target;
-
-            Type *target_type = check_expression(ctx, target);
-            if (!target_type) return NULL;
-
-            if (!require_lvalue(ctx, node, target, "increment/decrement target is not assignable"))
-                return NULL;
-
-            if (!is_numeric_type(target_type)) {
-                semantic_error(ctx, node, "increment/decrement requires a numeric target");
-                return NULL;
-            }
-
-            sem_record_expr_info(
-                ctx,
-                node,
-                target_type,
-                NULL,
-                VALUE_CATEGORY_RVALUE
-            );
-
-            return target_type;
-        }
+        case NODE_INC_DEC:
+            semantic_error(ctx, node,
+                "increment/decrement cannot be used as a value; it is a statement");
+            return NULL;
 
         case NODE_COMPOUND_ASSIGN:
-        {
-            Node *target_node = node->as.compound_assign.target;
-            Node *value_node  = node->as.compound_assign.value;
+            semantic_error(ctx, node,
+                "compound assignment cannot be used as a value; it is a statement");
+            return NULL;
 
-            Type *target_type = check_expression(ctx, target_node);
-            Type *value_type  = check_expression(ctx, value_node);
-            if (!target_type || !value_type) return NULL;
-
-            if (!require_lvalue(ctx, node, target_node,
-                    "compound assignment target is not assignable")) {
-                return NULL;
-            }
-
-            /*
-             * Coglet currently supports arithmetic compound assignments only:
-             *
-             *     +=
-             *     -=
-             *     *=
-             *     /=
-             */
-            switch (node->as.compound_assign.op) {
-                case TOK_PLUS_EQUAL:
-                case TOK_MINUS_EQUAL:
-                case TOK_STAR_EQUAL:
-                case TOK_SLASH_EQUAL:
-                case TOK_PERCENT_EQUAL:
-                    break;
-
-                default:
-                    semantic_error(
-                        ctx,
-                        node,
-                        "unsupported compound assignment operator"
-                    );
-
-                    return NULL;
-            }
-
-            /*
-            * %= is special: modulo is integer-only.
-            * Do this before the generic numeric checks so floats get a clearer error.
-            */
-            if (node->as.compound_assign.op == TOK_PERCENT_EQUAL) {
-                if (!is_integer_type(target_type) || !is_integer_type(value_type)) {
-                    semantic_error(ctx, node, "modulo compound assignment operands must be integers");
-
-                    return NULL;
-                }
-            }
-
-            if (!is_numeric_type(target_type)) {
-                semantic_error(ctx, node,
-                    "compound assignment target must be numeric");
-
-                return NULL;
-            }
-
-            if (!is_numeric_type(value_type)) {
-                semantic_error(ctx, node,
-                    "compound assignment value must be numeric");
-
-                return NULL;
-            }
-
-            /*
-             * Apply the same numeric compatibility rules used by ordinary binary
-             * arithmetic.
-             *
-             * Valid:
-             *     x: i64;
-             *     x += 1;       // untyped literal adapts to i64
-             *
-             * Invalid:
-             *     x: i32;
-             *     y: i64;
-             *     x += y;       // two different concrete numeric types
-             */
-            Type *result_type = common_numeric_type(target_type, value_type);
-
-            if (!result_type) {
-                semantic_error(ctx, node,
-                    "compound assignment operands have incompatible numeric types");
-
-                return NULL;
-            }
-
-            /*
-             * The arithmetic result must be storable back into the target.
-             *
-             * In most valid cases result_type will already be target_type, but
-             * retaining this check makes the compound-assignment rule explicit.
-             */
-            if (!initializer_compatible(target_type, result_type, value_node)) {
-
-                    semantic_error(ctx, node,
-                        "compound assignment result does not fit target type");
-
-                    return NULL;
-            }
-
-            sem_record_expr_info(
-                ctx,
-                node,
-                target_type,
-                NULL,
-                VALUE_CATEGORY_RVALUE);
-
-            return target_type;
-        }
-
-        case NODE_ASSIGN: {
-            Node *target_node = node->as.assign.target;
-            Node *value_node  = node->as.assign.value;
-
-            Type *target_type = check_expression(ctx, target_node);
-            if (!target_type) return NULL;
-
-            if (!require_lvalue(ctx, node, target_node, "assignment target is not assignable"))
-                return NULL;
-
-            if (!check_initializer_against_type(ctx, target_type, value_node))
-                return NULL;
-
-            sem_record_expr_info(
-                ctx,
-                node,
-                target_type,
-                NULL,
-                VALUE_CATEGORY_RVALUE
-            );
-
-            return target_type;
-        }
+        case NODE_ASSIGN:
+            semantic_error(ctx, node,
+                "assignment cannot be used as a value; it is a statement");
+            return NULL;
 
         case NODE_CALL: {
             Type *callee = check_expression(ctx, node->as.call.callee);
@@ -2543,6 +2406,113 @@ static void check_switch_statement(SemanticContext *ctx,Node *node) {
     }
 }
 
+static int check_assignment_statement(SemanticContext *ctx, Node *node) {
+    Node *target_node = node->as.assign.target;
+    Node *value_node  = node->as.assign.value;
+
+    Type *target_type = check_expression(ctx, target_node);
+    if (!target_type) return 0;
+
+    if (!require_lvalue(ctx, node, target_node, "assignment target is not assignable"))
+        return 0;
+
+    if (!check_initializer_against_type(ctx, target_type, value_node))
+        return 0;
+
+    sem_record_no_value(ctx, node);
+    return 1;
+}
+
+static int check_compound_assignment_statement(SemanticContext *ctx, Node *node) {
+    Node *target_node = node->as.compound_assign.target;
+    Node *value_node  = node->as.compound_assign.value;
+
+    Type *target_type = check_expression(ctx, target_node);
+    Type *value_type  = check_expression(ctx, value_node);
+    if (!target_type || !value_type) return 0;
+
+    if (!require_lvalue(ctx, node, target_node,
+            "compound assignment target is not assignable")) {
+        return 0;
+    }
+
+    switch (node->as.compound_assign.op) {
+        case TOK_PLUS_EQUAL:
+        case TOK_MINUS_EQUAL:
+        case TOK_STAR_EQUAL:
+        case TOK_SLASH_EQUAL:
+        case TOK_PERCENT_EQUAL:
+            break;
+        default:
+            semantic_error(ctx, node, "unsupported compound assignment operator");
+            return 0;
+    }
+
+    if (node->as.compound_assign.op == TOK_PERCENT_EQUAL &&
+        (!is_integer_type(target_type) || !is_integer_type(value_type))) {
+        semantic_error(ctx, node, "modulo compound assignment operands must be integers");
+        return 0;
+    }
+
+    if (!is_numeric_type(target_type)) {
+        semantic_error(ctx, node, "compound assignment target must be numeric");
+        return 0;
+    }
+
+    if (!is_numeric_type(value_type)) {
+        semantic_error(ctx, node, "compound assignment value must be numeric");
+        return 0;
+    }
+
+    Type *result_type = common_numeric_type(target_type, value_type);
+    if (!result_type) {
+        semantic_error(ctx, node, "compound assignment operands have incompatible numeric types");
+        return 0;
+    }
+
+    if (!initializer_compatible(target_type, result_type, value_node)) {
+        semantic_error(ctx, node, "compound assignment result does not fit target type");
+        return 0;
+    }
+
+    sem_record_no_value(ctx, node);
+    return 1;
+}
+
+static int check_inc_dec_statement(SemanticContext *ctx, Node *node) {
+    Node *target = node->as.inc_dec.target;
+
+    Type *target_type = check_expression(ctx, target);
+    if (!target_type) return 0;
+
+    if (!require_lvalue(ctx, node, target, "increment/decrement target is not assignable"))
+        return 0;
+
+    if (!is_numeric_type(target_type)) {
+        semantic_error(ctx, node, "increment/decrement requires a numeric target");
+        return 0;
+    }
+
+    sem_record_no_value(ctx, node);
+    return 1;
+}
+
+// Entry point for expressions in statement position: a bare
+// expression-statement, or a for-loop's post clause. The only place
+// assignment/compound-assignment/increment/decrement are legal.
+// Everything else -- calls, any other value-producing expression --
+// delegates to check_expression with its value discarded.
+static int check_statement_expression(SemanticContext *ctx, Node *node) {
+    if (!node) return 0;
+
+    switch (node->type) {
+        case NODE_ASSIGN:          return check_assignment_statement(ctx, node);
+        case NODE_COMPOUND_ASSIGN: return check_compound_assignment_statement(ctx, node);
+        case NODE_INC_DEC:         return check_inc_dec_statement(ctx, node);
+        default:                   return check_expression(ctx, node) != NULL;
+    }
+}
+
 static int check_initializer_against_type(SemanticContext *ctx, Type *expected, Node *initializer) {
 
     if (!expected || !initializer)
@@ -3189,12 +3159,13 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
 
         if (member_node->as.enum_member.value) {
 
+            Node *value_node = member_node->as.enum_member.value;
+
             ConstValue constant;
 
-            if (!eval_const_expr(ctx, member_node->as.enum_member.value, &constant)) {
-
+            if (!eval_const_expr(ctx, value_node, &constant)) {
                 /*
-                 * eval_const_expr already reported the error.
+                 * eval_const_expr already reported the precise error.
                  * Keep recovery going with next_value, but avoid
                  * producing a misleading range error.
                  */
@@ -3209,6 +3180,16 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
                 value_is_valid = 0;
             } else {
                 value = constant.as.i;
+
+                /*
+                 * eval_const_expr already proved this is compile-time known
+                 * and drives the actual enum member value below. This call
+                 * only populates the side table with the ordinary semantic
+                 * type/category, mirroring check_const_decl, so every
+                 * expression node in the program has semantic info -- no
+                 * exception needed in the future invariant verifier or dump.
+                 */
+                check_expression(ctx, value_node);
             }
         }
 
@@ -3507,7 +3488,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
     case NODE_FUNC_DECL:       check_function(ctx,node);   break;
     case NODE_IF:              check_if(ctx,node);         break;
     case NODE_CONST_DECL:      check_const_decl(ctx,node); break;
-    case NODE_EXPR_STMT:       check_expression(ctx, node->as.expr_stmt.expr); break;
+    case NODE_EXPR_STMT:       check_statement_expression(ctx, node->as.expr_stmt.expr); break;
 
     case NODE_STRUCT_DECL: {
         declare_struct_shell(ctx, node);
@@ -3583,7 +3564,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
         }
 
         if (node->as.for_stmt.post)
-            check_expression(ctx, node->as.for_stmt.post);
+            check_statement_expression(ctx, node->as.for_stmt.post);
 
         ctx->loop_depth++;
         check_node(ctx, node->as.for_stmt.body);

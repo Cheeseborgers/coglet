@@ -6,7 +6,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 add_compile_options(-Wall -Wextra)
 
-set(COMMON_SOURCES tools/ast/ast_print.c tests/file_utils_delete.h)
+set(COMMON_SOURCES tools/ast/ast_print.c)
 
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
@@ -33,12 +33,16 @@ target_include_directories(compiler_core PUBLIC include)
 add_executable(coglet src/coglet.c ${COMMON_SOURCES})
 target_link_libraries(coglet PRIVATE compiler_core)
 
-add_executable(coglet_test_runner tools/tests/check_semantic_info.c ${COMMON_SOURCES})
-target_link_libraries(coglet_test_runner PRIVATE compiler_core)
+# --- Standalone Semantic info checker -------------
+add_executable(check_semantic_info
+        tools/tests/check_semantic_info.c
+        tools/tests/semantic_info_verifier.c
+        tools/tests/semantic_info_verifier.h
+        ${COMMON_SOURCES})
+target_link_libraries(check_semantic_info PRIVATE compiler_core)
 
 # --- Standalone Semantic checker -------------
-add_executable(check_semantics tools/tests/check_semantics.c
-        include/compiler_driver.h)
+add_executable(check_semantics tools/tests/check_semantics.c)
 target_link_libraries(check_semantics PRIVATE compiler_core)
 
 # --- Standalone lexer test tool (Stage 1 harness). ---
@@ -213,7 +217,7 @@ function(add_semantic_info_tests root_dir)
 
         add_test(
                 NAME "${ctest_name}"
-                COMMAND "$<TARGET_FILE:coglet_test_runner>" "${test_src}"
+                COMMAND "$<TARGET_FILE:check_semantic_info>" "${test_src}"
         )
 
         set_tests_properties(

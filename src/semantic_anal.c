@@ -2707,19 +2707,25 @@ static int check_argument_against_parameter(
     Type *expected,
     Node *argument
 ) {
-
     if (!expected || !argument)
         return 0;
+
+    /*
+     * Array and string literals are contextual initializers, same as
+     * any other check_initializer_against_type call site (var decls,
+     * struct fields, returns, assignment RHS). Delegate so call
+     * arguments get the same treatment instead of hitting the bare
+     * "literal requires an expected type" errors in check_expression.
+     */
+    if (argument->type == NODE_ARRAY_LITERAL || argument->type == NODE_STRING)
+        return check_initializer_against_type(ctx, expected, argument);
 
     Type *actual = check_value_expression(ctx, argument);
 
     if (!actual)
         return 0;
 
-    if (!initializer_compatible(
-            expected,
-            actual,
-            argument)) {
+    if (!initializer_compatible(expected, actual, argument)) {
 
         char expected_name[128];
         char actual_name[128];
@@ -2736,7 +2742,7 @@ static int check_argument_against_parameter(
         );
 
         return 0;
-            }
+    }
 
     return 1;
 }

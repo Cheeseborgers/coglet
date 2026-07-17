@@ -1,4 +1,4 @@
-1      INT             int
+1      INT_KW          int
 1      IDENT           x
 1      EQUAL           =
 1      NUMBER_INT      1

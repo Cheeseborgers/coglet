@@ -1,10 +1,10 @@
-#include "../include/lexer.h"
+#include "lexer.h"
 
 #include <assert.h>
 #include <string.h>
 #include <ctype.h>
 
-#include "../include/utils/utils.h"
+#include "utils/utils.h"
 
 void lexer_init(Lexer *lx, const char *filename, const char *source) {
     assert(filename); // TODO: Add better asserts
@@ -52,8 +52,7 @@ static int match(Lexer *lx, char expected) {
     return 1;
 }
 
-static Token make_token(TokenType type, const char *start,int length, int line, int column
-) {
+static Token make_token(TokenType type, const char *start,int length, int line, int column) {
     Token t;
     t.type = type;
     t.start = start;
@@ -63,46 +62,84 @@ static Token make_token(TokenType type, const char *start,int length, int line, 
     return t;
 }
 
-static Token error_token(Lexer *lx, const char *msg) {
-    lx->error_msg = msg;
-    Token t;
-    t.type = TOK_ERROR;
-    t.start = msg;
-    t.length = (int)strlen(msg);
-    t.line = lx->line;
-    t.column = lx->column;
-    return t;
+static Token error_token(
+    Lexer *lx,
+    const char *start,
+    int length,
+    int line,
+    int column,
+    const char *message
+) {
+    lx->error_msg = message;
+
+    return make_token(
+        TOK_ERROR,
+        start,
+        length,
+        line,
+        column
+    );
 }
 
 // Skips whitespace, // line comments, and /* block */ comments.
 // Line comments and block comments never produce tokens.
+// 1 = whitespace/comments skipped successfully
+// 0 = lexical error was produced
 // TODO: return a status here and emit error?
-static void skip_whitespace_and_comments(Lexer *lx) {
+static int skip_whitespace_and_comments(
+    Lexer *lx,
+    Token *error
+) {
     for (;;) {
         char c = peek(lx);
-        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+
+        if (c == ' ' ||
+            c == '\t' ||
+            c == '\r' ||
+            c == '\n') {
             advance(lx);
-        } else if (c == '/' && peek_next(lx) == '/') {
-            while (peek(lx) != '\n' && !is_at_end(lx)) advance(lx);
-        } else if (c == '/' && peek_next(lx) == '*') {
-            advance(lx); advance(lx); // consume "/*"
-            while (!is_at_end(lx) &&
-                !(peek(lx) == '*' && peek_next(lx) == '/'))
-            {
+            continue;
+            }
+
+        if (c == '/' && peek_next(lx) == '/') {
+            while (peek(lx) != '\n' && !is_at_end(lx)) {
                 advance(lx);
             }
 
-            if (is_at_end(lx))
-            {
-                lx->error_msg = "unterminated block comment";
-                return;
+            continue;
+        }
+
+        if (c == '/' && peek_next(lx) == '*') {
+            const char *comment_start = lx->current;
+            int comment_line = lx->line;
+            int comment_column = lx->column;
+
+            advance(lx);
+            advance(lx);
+
+            while (!is_at_end(lx) && !(peek(lx) == '*' && peek_next(lx) == '/')) {
+                advance(lx);
             }
 
-            advance(lx); // consume '*'
-            advance(lx); // consume '/'
-        } else {
-            return;
+            if (is_at_end(lx)) {
+                *error = error_token(
+                    lx,
+                    comment_start,
+                    2,
+                    comment_line,
+                    comment_column,
+                    "unterminated block comment"
+                );
+
+                return 0;
+            }
+
+            advance(lx);
+            advance(lx);
+            continue;
         }
+
+        return 1;
     }
 }
 
@@ -172,34 +209,64 @@ static Token scan_number(Lexer *lx, const char *start, int start_line, int start
 // Handles "..." with backslash escapes; does NOT interpret the escapes
 // here (that's the parser/codegen's job) — just scans past them safely.
 static Token scan_string(Lexer *lx, const char *start, int start_line, int start_column) {
-    while (
-        peek(lx) != '"' &&
-        !is_at_end(lx)){
+
+    while (peek(lx) != '"' && !is_at_end(lx)) {
         if (peek(lx) == '\\' && peek_next(lx) != '\0') {
             advance(lx); // skip escaped char
         }
+
         advance(lx);
     }
 
-    if (is_at_end(lx))
-        return error_token(lx, "unterminated string");
+    if (is_at_end(lx)) {
+        return error_token(
+            lx,
+            start,
+            1,
+            start_line,
+            start_column,
+            "unterminated string"
+        );
+    }
 
     advance(lx); // closing quote
-    int length = (int)(lx->current - start);
-    return make_token(TOK_STRING, start, length, start_line, start_column);
+
+    return make_token(
+        TOK_STRING,
+        start,
+        (int)(lx->current - start),
+        start_line,
+        start_column
+    );
 }
 
 static Token scan_char(Lexer *lx, const char *start, int start_line, int start_column)
 {
-    if (is_at_end(lx))
-        return error_token(lx, "unterminated char literal");
+    if (is_at_end(lx)) {
+        return error_token(
+            lx,
+            start,
+            1,
+            start_line,
+            start_column,
+            "unterminated character literal"
+        );
+    }
 
     if (peek(lx) == '\\')
     {
         advance(lx); // '\'
 
-        if (is_at_end(lx))
-            return error_token(lx, "unterminated char literal");
+        if (is_at_end(lx)) {
+            return error_token(
+                lx,
+                start,
+                1,
+                start_line,
+                start_column,
+                "unterminated character literal"
+            );
+        }
 
         advance(lx); // escaped char
     }
@@ -208,8 +275,16 @@ static Token scan_char(Lexer *lx, const char *start, int start_line, int start_c
         advance(lx); // normal char
     }
 
-    if (peek(lx) != '\'')
-        return error_token(lx, "expected closing '\''");
+    if (peek(lx) != '\'') {
+        return error_token(
+            lx,
+            start,
+            1,
+            start_line,
+            start_column,
+            "expected closing quote for character literal"
+        );
+    }
 
     advance(lx);
 
@@ -223,7 +298,12 @@ static Token scan_char(Lexer *lx, const char *start, int start_line, int start_c
 }
 
 Token lexer_next(Lexer *lx) {
-    skip_whitespace_and_comments(lx);
+
+    Token comment_error;
+
+    if (!skip_whitespace_and_comments(lx, &comment_error)) {
+        return comment_error;
+    }
 
     const char *start = lx->current;
     int start_line    = lx->line;
@@ -248,7 +328,6 @@ Token lexer_next(Lexer *lx) {
         case ';': return make_token(TOK_SEMICOLON, start, 1, start_line, start_column);
         case ',': return make_token(TOK_COMMA, start, 1, start_line, start_column);
         case '.': return make_token(TOK_DOT, start, 1, start_line, start_column);
-
         case '+':
             if (match(lx, '+')) return make_token(TOK_PLUS_PLUS, start, 2, start_line, start_column);
             if (match(lx, '=')) return make_token(TOK_PLUS_EQUAL, start, 2, start_line, start_column);
@@ -283,23 +362,20 @@ Token lexer_next(Lexer *lx) {
         case '>':
             if (match(lx, '=')) return make_token(TOK_GREATER_EQUAL, start, 2, start_line, start_column);
             return make_token(TOK_GREATER, start, 1, start_line, start_column);
-
         case '&':
             if (match(lx, '&')) return make_token(TOK_AND_AND, start, 2, start_line, start_column);
             return make_token(TOK_AND, start, 1, start_line, start_column);
         case '|':
             if (match(lx, '|')) return make_token(TOK_OR_OR, start, 2, start_line, start_column);
             return make_token(TOK_OR, start, 1, start_line, start_column);
-
-        default:
-            return error_token(lx, "unexpected character");
+        default: return error_token(lx, start, 1, start_line, start_column, "unexpected character");
     }
 }
 
 const char *token_type_name(TokenType type) {
     switch (type) {
-        case TOK_EOF:          return "EOF";
-        case TOK_ERROR:        return "ERROR";
+        case TOK_EOF:   return "EOF";
+        case TOK_ERROR: return "ERROR";
 
         case TOK_NUMBER_INT:   return "NUMBER_INT";
         case TOK_NUMBER_FLOAT: return "NUMBER_FLOAT";

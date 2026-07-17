@@ -52,6 +52,8 @@ static Node *finish_index(Parser *p, Node *object);
 
 static int is_assignable(Node *n);
 
+static void add_diagnostic(Parser *p, Token token, const char *message);
+
 // ===================== precedence =====================
 
 typedef enum {
@@ -102,7 +104,26 @@ static int get_precedence(TokenType t)
 
 static void advance(Parser *p) {
     p->previous = p->current;
-    p->current = lexer_next(&p->lexer);
+
+    for (;;) {
+        p->current = lexer_next(&p->lexer);
+
+        if (p->current.type != TOK_ERROR) {
+            return;
+        }
+
+        const char *message = p->lexer.error_msg;
+
+        if (!message) {
+            message = "invalid token";
+        }
+
+        add_diagnostic(
+            p,
+            p->current,
+            message
+        );
+    }
 }
 
 static int check(Parser *p, TokenType type) {
@@ -245,6 +266,7 @@ const char *token_debug_display_name(TokenType t)
 }
 
 static void add_diagnostic(Parser *p, Token token, const char *message) {
+
     if (p->diagnostic_count >= p->diagnostic_capacity) {
         fprintf(stderr, "WARNING: parser diagnostics full\n");
         return;

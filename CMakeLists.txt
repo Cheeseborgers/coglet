@@ -25,6 +25,7 @@ add_library(compiler_core STATIC
         src/diag.c
         src/semantic_anal.c
         src/string_decode.c
+        src/compiler_driver.c
 )
 target_include_directories(compiler_core PUBLIC include)
 
@@ -36,7 +37,8 @@ add_executable(coglet_test_runner tools/tests/check_semantic_info.c ${COMMON_SOU
 target_link_libraries(coglet_test_runner PRIVATE compiler_core)
 
 # --- Standalone Semantic checker -------------
-add_executable(check_semantics tools/tests/check_semantics.c)
+add_executable(check_semantics tools/tests/check_semantics.c
+        include/compiler_driver.h)
 target_link_libraries(check_semantics PRIVATE compiler_core)
 
 # --- Standalone lexer test tool (Stage 1 harness). ---

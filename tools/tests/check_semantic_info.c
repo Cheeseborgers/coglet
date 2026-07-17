@@ -2,9 +2,8 @@
 
 #include <stdio.h>
 
-#include "parser.h"
 #include "ast.h"
-#include "diag.h"
+#include "compiler_driver.h"
 #include "utils/utils.h"
 #include "semantic_anal.h"
 #include "../ast/ast_print.h"
@@ -450,113 +449,68 @@ static int verify_mutations_in_ast(
 int main(int argc, char **argv)
 {
     if (argc != 2) {
-        fprintf(stderr, "usage: %s <file>\n", argv[0]);
+        fprintf(
+            stderr,
+            "usage: %s <file>\n",
+            argv[0]
+        );
+
         return 1;
     }
 
-    const char *filename = argv[1];
-    char *source = read_file(filename);
+    CompileResult result;
 
-    if (!source) {
-        fprintf(stderr, "error: could not read '%s'\n", filename);
-        return 1;
-    }
-
-    Arena *arena   = arena_create(MB(2));
-    Arena *scratch = arena_create(MB(1));
-
-    if (!arena || !scratch) {
-        fprintf(stderr, "error: failed to create compiler arenas\n");
-        free(source);
-        return 1;
-    }
-
-    Parser parser;
-    parser_init(
-        &parser,
-        filename,
-        source,
-        arena,
-        scratch
-    );
-
-    Node *ast = parse_program(&parser);
+    CompileStatus status =
+        compile_parse_and_check(
+            argv[1],
+            &result
+        );
 
     int exit_code = 0;
 
-    //ast_pretty_print(ast);
-
-    if (parser.had_error) {
-        for (int i = 0;
-             i < parser.diagnostic_count;
-             i++) {
-
-            print_diagnostic(
-                parser.lexer.filename,
-                source,
-                &parser.diagnostics[i]
-            );
-             }
-
-        fprintf(
-            stderr,
-            "%d parser error%s generated.\n",
-            parser.error_count,
-            parser.error_count == 1 ? "" : "s"
-        );
-
+    if (status == COMPILE_STATUS_SEMANTIC_ERROR) {
+        /*
+         * The driver has already printed the individual semantic
+         * diagnostics and the semantic-error summary.
+         *
+         * Failed semantic analysis intentionally leaves partial
+         * side-table information available for this debugging tool.
+         */
+        dump_semantic_info(&result.sem);
+        exit_code = 1;
+    } else if (status != COMPILE_STATUS_OK) {
+        /*
+         * Parser and driver diagnostics have already been printed by
+         * the shared driver.
+         *
+         * This tool historically maps every failure to exit 1.
+         */
         exit_code = 1;
     } else {
-        SemanticContext sem = {0};
-        sem.arena = arena;
+        int mutation_count = 0;
 
-        semantic_check(ast, &sem);
+        if (!verify_mutations_in_ast(
+                &result.sem,
+                result.program,
+                &mutation_count)) {
 
-        if (sem.had_error) {
             fprintf(
                 stderr,
-                "%d semantic error%s generated.\n",
-                sem.error_count,
-                sem.error_count == 1 ? "" : "s"
+                "semantic-info mutation test failed\n"
             );
 
-            /*
-             * Failed semantic analysis produces a deliberately partial
-             * side table. Dump it for inspection, but do not run the
-             * successful-mutation invariant verifier.
-             */
-            dump_semantic_info(&sem);
-
             exit_code = 1;
-        } else {
-            int mutation_count = 0;
+                } else {
+                    printf(
+                        "semantic-info mutation test passed: "
+                        "%d mutation nodes verified\n",
+                        mutation_count
+                    );
 
-            if (!verify_mutations_in_ast(
-                    &sem,
-                    ast,
-                    &mutation_count)) {
-
-                fprintf(
-                    stderr,
-                    "semantic-info mutation test failed\n"
-                );
-
-                exit_code = 1;
-                    } else {
-                        printf(
-                            "semantic-info mutation test passed: "
-                            "%d mutation nodes verified\n",
-                            mutation_count
-                        );
-
-                        ast_pretty_print(ast);
-                    }
-        }
+                    ast_pretty_print(result.program);
+                }
     }
 
-    arena_destroy(scratch);
-    arena_destroy(arena);
-    free(source);
-
+    compile_result_destroy(&result);
     return exit_code;
 }

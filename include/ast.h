@@ -74,8 +74,11 @@ struct Node {
 
     union {
         struct {
-            double value;
-            int is_float;       // 1 if this came from TOK_NUMBER_FLOAT, 0 otherwise
+            NumberLiteralKind kind;
+            union {
+                uint64_t integer;
+                double floating;
+            } value;
         } number;
 
         StringView ident;
@@ -235,7 +238,7 @@ struct Node {
         struct {
             StringView name;
             Node *value;     // NULL if implicit
-            long long resolved_value;
+            IntegerValue resolved_value;
         } enum_member;
 
         struct {
@@ -253,7 +256,8 @@ struct Node {
 
 // Constructors allocate from the given arena -- callers never free
 // individual nodes.
-Node *ast_new_number(Arena *arena, double value, int is_float, int line);
+Node *ast_new_integer(Arena *arena, uint64_t value, int line);
+Node *ast_new_float(Arena *arena, double value, int line);
 Node *ast_new_ident(Arena *arena, const char *start, int length, int line);
 Node *ast_new_compound_assign(Arena *arena, TokenType op, Node *target, Node *value, int line);
 Node *ast_new_string(Arena *arena, const char *start, int length, int line);

@@ -1,8 +1,11 @@
-#include "../include/parser.h"
+#include "parser.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
+#include <math.h>
+#include <stdint.h>
 
 // ===================== forward declarations =====================
 
@@ -44,6 +47,9 @@ static Node *parse_for_statement(Parser *p);
 
 static Node *parse_cast_expression(Parser *p);
 static Node *parse_array_literal(Parser *p);
+
+static int parse_decimal_u64(Token token, uint64_t *out);
+static int parse_float_token(Parser *p, Token token, double *out);
 
 // postfix helpers
 static Node *finish_call(Parser *p, Node *callee);
@@ -336,13 +342,45 @@ void parser_init(Parser *p, const char *filename, const char *source, Arena *are
 static Node *parse_primary(Parser *p)
 {
     if (match(p, TOK_NUMBER_INT)) {
-        Token t = p->previous;
-        return ast_new_number(p->arena, strtod(t.start, NULL), 0, t.line);
+        Token token = p->previous;
+        uint64_t value;
+
+        if (!parse_decimal_u64(token, &value)) {
+            error_at(
+                p,
+                &token,
+                "integer literal exceeds u64 range"
+            );
+
+            value = 0;
+        }
+
+        return ast_new_integer(
+            p->arena,
+            value,
+            token.line
+        );
     }
 
     if (match(p, TOK_NUMBER_FLOAT)) {
-        Token t = p->previous;
-        return ast_new_number(p->arena, strtod(t.start, NULL), 1, t.line);
+        Token token = p->previous;
+        double value;
+
+        if (!parse_float_token(p, token, &value)) {
+            error_at(
+                p,
+                &token,
+                "floating-point literal is out of range"
+            );
+
+            value = 0.0;
+        }
+
+        return ast_new_float(
+            p->arena,
+            value,
+            token.line
+        );
     }
 
     /* our token's start/length from the lexer include the quotes
@@ -668,10 +706,24 @@ static Type *parse_type(Parser *p)
 
         if (!check(p, TOK_RBRACKET)) {
             if (match(p, TOK_NUMBER_INT)) {
-                arr->array_size = (int)strtod(
-                    p->previous.start,
-                    NULL
-                );
+                Token size_token = p->previous;
+                uint64_t size;
+
+                if (!parse_decimal_u64(size_token, &size)) {
+                    error_at(
+                        p,
+                        &size_token,
+                        "array size exceeds u64 range"
+                    );
+                } else if (size > INT_MAX) {
+                    error_at(
+                        p,
+                        &size_token,
+                        "array size exceeds compiler limit"
+                    );
+                } else {
+                    arr->array_size = (int)size;
+                }
             } else {
                 error_at(p, &p->current, "expected array size");
             }
@@ -1422,6 +1474,41 @@ static Node *parse_array_literal(Parser *p) {
     consume(p, TOK_RBRACKET);
 
     return array;
+}
+
+static int parse_decimal_u64(Token token, uint64_t *out)
+{
+    uint64_t value = 0;
+
+    for (int i = 0; i < token.length; i++) {
+        unsigned digit = (unsigned)(token.start[i] - '0');
+
+        if (value > (UINT64_MAX - digit) / 10)
+            return 0;
+
+        value = value * 10 + digit;
+    }
+
+    *out = value;
+    return 1;
+}
+
+static int parse_float_token(Parser *p, Token token, double *out)
+{
+    // TODO: Why we using scratch here? what is the life time?
+    char *text = arena_alloc(p->scratch, (size_t)token.length + 1);
+
+    memcpy(text, token.start, (size_t)token.length);
+    text[token.length] = '\0';
+
+    char *end    = NULL;
+    double value = strtod(text, &end);
+
+    if (!isfinite(value) || end != text + token.length)
+        return 0;
+
+    *out = value;
+    return 1;
 }
 
 // ===================== postfix builders =====================

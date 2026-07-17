@@ -1,7 +1,11 @@
 #ifndef COGLET_TYPES_H
 #define COGLET_TYPES_H
 
+#include <stdint.h>
+
 #include "utils/string_view.h"
+
+typedef struct Type Type;
 
 typedef enum {
     TYPE_VOID,
@@ -31,7 +35,15 @@ typedef enum {
     TYPE_FUNCTION,
 } TypeKind;
 
-typedef struct Type Type;
+typedef enum {
+    NUMBER_LITERAL_INTEGER,
+    NUMBER_LITERAL_FLOAT,
+} NumberLiteralKind;
+
+typedef struct IntegerValue {
+    uint64_t magnitude;
+    int is_negative;
+} IntegerValue;
 
 typedef struct StructField {
     StringView name;
@@ -40,7 +52,7 @@ typedef struct StructField {
 
 typedef struct EnumMember {
     StringView name;
-    long long value;
+    IntegerValue value;
 } EnumMember;
 
 struct Type {

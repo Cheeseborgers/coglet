@@ -2,9 +2,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
-#include "../../include/types.h"
-#include "../../include/utils/utils.h"
+#include "types.h"
+#include "utils/utils.h"
 
 static const char *token_type_str(TokenType t)
 {
@@ -113,10 +114,14 @@ static void print_node(Node *node)
     switch (node->type)
     {
         case NODE_NUMBER:
-            if (node->as.number.is_float)
-                printf("%g", node->as.number.value);
-            else
-                printf("%lld", (long long)node->as.number.value);
+            if (node->as.number.kind == NUMBER_LITERAL_FLOAT) {
+                printf("%.17g", node->as.number.value.floating);
+            } else {
+                printf(
+                    "%" PRIu64,
+                    node->as.number.value.integer
+                );
+            }
             break;
 
         case NODE_IDENT:
@@ -529,10 +534,14 @@ static void print_node_pretty(Node *node, int depth)
     {
         case NODE_NUMBER:
             indent(depth);
-            if (node->as.number.is_float)
-                printf("%g\n", node->as.number.value);
-            else
-                printf("%lld\n", (long long)node->as.number.value);
+            if (node->as.number.kind == NUMBER_LITERAL_FLOAT) {
+                printf("%.17g\n", node->as.number.value.floating);
+            } else {
+                printf(
+                    "%" PRIu64 "\n",
+                    node->as.number.value.integer
+                );
+            }
             break;
 
         case NODE_IDENT:

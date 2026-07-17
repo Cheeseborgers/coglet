@@ -34,9 +34,9 @@ typedef struct ConstValue {
     Type *type;
 
     union {
-        long long i;
-        double f;
-        int b;
+        IntegerValue integer;
+        double floating;
+        int boolean;
     } as;
 } ConstValue;
 

@@ -12,10 +12,23 @@ static Node *new_node(Arena *arena, NodeType type, int line) {
     return node;
 }
 
-Node *ast_new_number(Arena *arena, double value, int is_float, int line) {
+Node *ast_new_integer(Arena *arena, uint64_t value, int line)
+{
     Node *node = new_node(arena, NODE_NUMBER, line);
-    node->as.number.value    = value;
-    node->as.number.is_float = is_float;
+
+    node->as.number.kind = NUMBER_LITERAL_INTEGER;
+    node->as.number.value.integer = value;
+
+    return node;
+}
+
+Node *ast_new_float(Arena *arena, double value, int line)
+{
+    Node *node = new_node(arena, NODE_NUMBER, line);
+
+    node->as.number.kind = NUMBER_LITERAL_FLOAT;
+    node->as.number.value.floating = value;
+
     return node;
 }
 
@@ -291,8 +304,9 @@ Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, int l
     node->as.enum_member.name.data   = name;
     node->as.enum_member.name.length = name_length;
 
-    node->as.enum_member.value          = NULL;
-    node->as.enum_member.resolved_value = 0;
+    node->as.enum_member.value = NULL;
+    node->as.enum_member.resolved_value.magnitude   = 0;
+    node->as.enum_member.resolved_value.is_negative = 0;
 
     return node;
 }
@@ -597,7 +611,8 @@ Node *ast_clone(Arena *arena, const Node *node)
             /*
              * Semantic information.
              */
-            clone->as.enum_member.resolved_value = 0;
+                clone->as.enum_member.resolved_value.magnitude   = 0;
+                clone->as.enum_member.resolved_value.is_negative = 0;
 
             break;
 

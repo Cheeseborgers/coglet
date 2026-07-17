@@ -120,9 +120,5 @@ void compile_result_destroy(CompileResult *result)
 
     free(result->source);
 
-    /*
-     * Prevent accidental use of arena-backed pointers after cleanup
-     * and make repeated destruction harmless.
-     */
     memset(result, 0, sizeof(*result));
 }

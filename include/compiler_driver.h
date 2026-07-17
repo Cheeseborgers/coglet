@@ -22,9 +22,8 @@ typedef struct CompileResult {
     CompileStatus status;
 
     /*
-     * Borrowed from the caller. This string must remain valid until
-     * compile_result_destroy() is called.
-     */
+    * Borrowed from the caller and retained by parser/lexer state.
+    */
     const char *filename;
 
     /*
@@ -47,35 +46,42 @@ typedef struct CompileResult {
 } CompileResult;
 
 /*
- * Reads, parses, and semantically checks one source file.
+ * Initializes out and runs the source-file parse/check pipeline.
  *
- * This function:
- *   - initializes *out
- *   - owns and reports parser diagnostics
- *   - runs semantic analysis
- *   - prints the semantic error summary
+ * Ownership after return:
+ *   - out->filename is borrowed
+ *   - out->source is owned by out
+ *   - out->arena and out->scratch are owned by out
+ *   - out->program, parser diagnostics, and semantic data remain valid until
+ *     compile_result_destroy(out)
  *
- * Individual semantic diagnostics are printed by semantic_check().
- *
- * After this function returns, *out may always be passed to
- * compile_result_destroy(), regardless of the returned status.
+ * The result may be destroyed after any returned status.
  *
  * On COMPILE_STATUS_OK:
- *   program and sem contain successful frontend results.
+ *   - program and semantic state are available for later compiler phases
  *
  * On COMPILE_STATUS_SEMANTIC_ERROR:
- *   program is valid and sem may contain partial semantic information.
+ *   - program is available
+ *   - semantic state may be partial and is intended only for diagnostics or
+ *     debugging tools
  *
  * On COMPILE_STATUS_PARSE_ERROR:
- *   parser and program may contain partial parser results.
+ *   - parser state and a partial program may be available
+ *   - semantic analysis has not run
+ *
+ * Diagnostics:
+ *   - parser diagnostics are printed here after parsing
+ *   - semantic_check() prints individual semantic diagnostics
+ *   - this function prints the semantic error summary
  */
 CompileStatus compile_parse_and_check(const char *filename, CompileResult *out);
 
 /*
- * Releases the source and both arenas.
+ * Releases all resources owned by result.
  *
- * All pointers into the AST, parser diagnostics, and semantic context
- * become invalid after this call.
+ * Safe to call after any normal return from compile_parse_and_check().
+ * After this call, all AST, parser, and semantic pointers from result are
+ * invalid.
  */
 void compile_result_destroy(CompileResult *result);
 

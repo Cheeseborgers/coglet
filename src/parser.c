@@ -289,13 +289,15 @@ void parser_init(Parser *p, const char *filename, const char *source, Arena *are
 {
     lexer_init(&p->lexer, filename, source); // lexer asserts filename
 
-    p->arena = arena;
+    p->arena   = arena;
     p->scratch = scratch;
 
-    p->had_error = 0;
-    p->error_count = 0;
-    p->current.type = TOK_EOF;
+    p->had_error           = 0;
+    p->error_count         = 0;
+    p->diagnostic_count    = 0;
     p->diagnostic_capacity = 100;
+
+    p->current.type = TOK_EOF;
 
     p->diagnostics = arena_alloc(arena, sizeof(Diagnostic) * p->diagnostic_capacity);
 

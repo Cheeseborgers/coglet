@@ -2727,8 +2727,9 @@ static int check_argument_against_parameter(
 
     if (!initializer_compatible(expected, actual, argument)) {
 
-        char expected_name[128];
-        char actual_name[128];
+        const int name_buffer_size = 128;
+        char expected_name[name_buffer_size];
+        char actual_name[name_buffer_size];
 
         format_type_name(expected, expected_name, sizeof(expected_name));
         format_type_name(actual, actual_name, sizeof(actual_name));

@@ -4,15 +4,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "arena.h"
 
-
-// TODO: Consider moving these elsewhere
+// TODO: Consider moving this elsewhere
 #define MULTI_THREADING 0
-
-#define EXIT_OK 0
-#define EXIT_SEMANTIC_ERROR 1
-#define EXIT_PARSE_ERROR 2
-#define EXIT_DRIVER_ERROR 2
 
 #define KB(x) ((size_t)(x) * 1024ULL)
 #define MB(x) (KB(x) * 1024ULL)
@@ -35,5 +30,14 @@ abort();                                                                        
 } while (0)
 
 char *read_file(const char *path);
+
+/*
+ * Reads an entire file into arena-owned, null-terminated memory.
+ *
+ * Returns NULL on an open, seek, size, or read failure.
+ * The returned buffer remains valid until the arena is reset past the
+ * allocation or destroyed.
+ */
+char *arena_read_file(Arena *arena, const char *path);
 
 #endif

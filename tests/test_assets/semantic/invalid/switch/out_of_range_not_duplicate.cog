@@ -1,0 +1,7 @@
+test_out_of_range::(value: u8) -> void {
+    switch value {
+        case 256: {}
+        case 0: {}
+        default: {}
+    }
+}

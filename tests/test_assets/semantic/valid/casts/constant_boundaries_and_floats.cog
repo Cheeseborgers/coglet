@@ -1,0 +1,6 @@
+I8_MIN: i8 : cast(i8, -128);
+I8_MAX: i8 : cast(i8, 127);
+U8_MAX: u8 : cast(u8, 255);
+TRUNCATE_POSITIVE: i32 : cast(i32, 3.9);
+TRUNCATE_NEGATIVE: i32 : cast(i32, -3.9);
+INTEGER_TO_F32: f32 : cast(f32, 9223372586610589697);

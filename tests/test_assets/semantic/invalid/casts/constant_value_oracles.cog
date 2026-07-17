@@ -1,0 +1,42 @@
+// Each predicate must evaluate to true. Pairing it with a literal true case
+// intentionally creates a duplicate and makes the computed value observable.
+F32_ARITHMETIC_OK: bool :
+    ((cast(f32, 16777216.0) + cast(f32, 1.0)) - cast(f32, 16777216.0)) == cast(f32, 0.0);
+
+DIRECT_INTEGER_TO_F32_OK: bool :
+    cast(f32, 9223372586610589697) == cast(f32, 9223373136366403584);
+
+TRUNCATE_POSITIVE_OK: bool : cast(i32, 3.9) == 3;
+TRUNCATE_NEGATIVE_OK: bool : cast(i32, -3.9) == -3;
+
+check_f32_arithmetic::(value: bool) -> void {
+    switch value {
+        case F32_ARITHMETIC_OK: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_direct_integer_to_f32::(value: bool) -> void {
+    switch value {
+        case DIRECT_INTEGER_TO_F32_OK: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_truncate_positive::(value: bool) -> void {
+    switch value {
+        case TRUNCATE_POSITIVE_OK: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_truncate_negative::(value: bool) -> void {
+    switch value {
+        case TRUNCATE_NEGATIVE_OK: {}
+        case true: {}
+        default: {}
+    }
+}

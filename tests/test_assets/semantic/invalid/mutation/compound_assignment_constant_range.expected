@@ -1,0 +1,6 @@
+semantic error at line 3: integer constant operand does not fit compound assignment type
+semantic error at line 4: integer constant operand does not fit compound assignment type
+semantic error at line 7: integer constant operand does not fit compound assignment type
+semantic error at line 11: compound assignment operands have incompatible numeric types
+semantic error at line 14: modulo compound assignment operands must be integers
+5 semantic errors generated.

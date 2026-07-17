@@ -1,0 +1,3 @@
+error: integer literal exceeds u64 range
+TOO_LARGE :: 18446744073709551616;
+             ^~~~~~~~~~~~~~~~~~~~

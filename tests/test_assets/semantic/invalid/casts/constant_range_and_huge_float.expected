@@ -1,0 +1,6 @@
+semantic error at line 1: integer cast value does not fit in target type
+semantic error at line 2: integer cast value does not fit in target type
+semantic error at line 3: integer cast value does not fit in target type
+semantic error at line 4: integer cast value does not fit in target type
+semantic error at line 5: float cast value does not fit in target type
+5 semantic errors generated.

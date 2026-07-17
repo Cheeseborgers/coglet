@@ -1,0 +1,23 @@
+equal_too_large::(x: u8) -> bool {
+    return x == 256;
+}
+
+ordered_too_large::(x: u8) -> bool {
+    return x < 256;
+}
+
+equal_negative_unsigned::(x: u8) -> bool {
+    return x == -1;
+}
+
+ordered_negative_unsigned::(x: u8) -> bool {
+    return -1 < x;
+}
+
+equal_i8_too_large::(x: i8) -> bool {
+    return x == 128;
+}
+
+equal_i8_too_small::(x: i8) -> bool {
+    return x == -129;
+}

@@ -1,0 +1,46 @@
+Color :: enum(u8) {
+    Red = 0,
+    Green = 255,
+}
+
+switch_u8::(value: u8) -> i32 {
+    switch value {
+        case 0:
+            return 0;
+        case 255:
+            return 1;
+        default:
+            return 2;
+    }
+}
+
+switch_i8::(value: i8) -> i32 {
+    switch value {
+        case -128:
+            return 0;
+        case 127:
+            return 1;
+        default:
+            return 2;
+    }
+}
+
+switch_bool::(value: bool) -> i32 {
+    switch value {
+        case false:
+            return 0;
+        case true:
+            return 1;
+    }
+}
+
+switch_enum::(value: Color) -> i32 {
+    switch value {
+        case Color.Red:
+            return 0;
+        case Color.Green:
+            return 1;
+        default:
+            return 2;
+    }
+}

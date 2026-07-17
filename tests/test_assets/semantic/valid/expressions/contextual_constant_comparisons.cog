@@ -1,0 +1,19 @@
+equal_u8_max::(x: u8) -> bool {
+    return x == 255;
+}
+
+not_equal_u8_min::(x: u8) -> bool {
+    return x != 0;
+}
+
+ordered_u8_max::(x: u8) -> bool {
+    return x <= 255;
+}
+
+ordered_u8_reversed::(x: u8) -> bool {
+    return 0 <= x;
+}
+
+ordered_i8_min::(x: i8) -> bool {
+    return x >= -128;
+}

@@ -1,0 +1,6 @@
+test_bool_case::(value: bool) -> void {
+    switch value {
+        case 1: {}
+        default: {}
+    }
+}

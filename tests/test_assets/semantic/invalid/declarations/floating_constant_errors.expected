@@ -1,0 +1,3 @@
+semantic error at line 1: constant floating-point value does not fit declared type
+semantic error at line 2: division by zero in constant expression
+2 semantic errors generated.

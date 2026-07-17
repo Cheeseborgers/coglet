@@ -1,0 +1,7 @@
+test_duplicate_evaluated::(value: u8) -> void {
+    switch value {
+        case 3: {}
+        case 1 + 2: {}
+        default: {}
+    }
+}

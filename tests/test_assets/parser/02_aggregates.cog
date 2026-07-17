@@ -1,0 +1,15 @@
+Point::struct {
+    x: i32;
+    y: i32;
+}
+
+Color::enum(u8) {
+    Red,
+    Green = 4,
+    Blue,
+}
+
+origin := Point {
+    x = 0,
+    y = 0,
+};

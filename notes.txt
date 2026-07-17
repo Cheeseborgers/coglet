@@ -1,0 +1,11 @@
+Recommended order
+
+My preferred sequence before code generation is:
+
+Frontend/test baseline and lexical diagnostics
+Exact integer literals and checked constants
+Type well-formedness and aggregate sizedness
+Complete semantic facts and declaration/member bindings
+Structured flow outcomes and real switch exhaustiveness
+Address-of, dereference, and pointer-derived storage
+Declaration-based type identity and target-layout queries

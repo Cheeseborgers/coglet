@@ -1,0 +1,16 @@
+program
+  func add -> i32
+    params:
+      param_decl a: i32
+      param_decl b: i32
+    body:
+      block
+        var_decl result: <inferred>
+          init:
+            (+)
+              a
+              (*)
+                b
+                2
+        return
+          result

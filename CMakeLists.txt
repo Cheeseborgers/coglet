@@ -188,11 +188,47 @@ function(add_semantic_invalid_tests root_dir)
     endforeach()
 endfunction()
 
-add_diff_tests(lexer  ${CMAKE_SOURCE_DIR}/tests/lexer  dump_tokens)
-add_diff_tests(parser ${CMAKE_SOURCE_DIR}/tests/parser dump_ast)
+function(add_semantic_info_tests root_dir)
+    file(GLOB_RECURSE test_sources CONFIGURE_DEPENDS
+            "${root_dir}/*.cog"
+    )
+
+    foreach(test_src IN LISTS test_sources)
+        file(RELATIVE_PATH relative_path "${root_dir}" "${test_src}")
+        get_filename_component(relative_dir "${relative_path}" DIRECTORY)
+        get_filename_component(test_name "${test_src}" NAME_WE)
+
+        if(relative_dir STREQUAL "")
+            set(ctest_name "semantic_info_${test_name}")
+            set(category_label "semantic.uncategorized")
+        else()
+            string(REPLACE "/" "_" category_name "${relative_dir}")
+            string(REPLACE "\\" "_" category_name "${category_name}")
+            set(ctest_name "semantic_info_${category_name}_${test_name}")
+
+            string(REPLACE "/" "." category_label "${relative_dir}")
+            string(REPLACE "\\" "." category_label "${category_label}")
+            set(category_label "semantic.${category_label}")
+        endif()
+
+        add_test(
+                NAME "${ctest_name}"
+                COMMAND "$<TARGET_FILE:coglet_test_runner>" "${test_src}"
+        )
+
+        set_tests_properties(
+                "${ctest_name}"
+                PROPERTIES
+                LABELS "semantic;semantic.info;${category_label}"
+        )
+    endforeach()
+endfunction()
+
+add_diff_tests(lexer  ${CMAKE_SOURCE_DIR}/tests/test_assets/lexer  dump_tokens)
+add_diff_tests(parser ${CMAKE_SOURCE_DIR}/tests/test_assets/parser dump_ast)
 add_semantic_valid_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/valid)
 add_semantic_invalid_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/invalid)
-
+add_semantic_info_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/valid)
 
 # Copy assets
 add_custom_command(

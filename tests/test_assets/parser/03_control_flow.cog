@@ -1,0 +1,21 @@
+classify::(value: i32, keep_going: bool) -> i32 {
+    while keep_going {
+        if value == 0 {
+            break;
+        }
+
+        value -= 1;
+    }
+
+    for value < 10 : value++ {
+        continue;
+    }
+
+    switch value {
+        case 0:
+            return 0;
+
+        default:
+            return value;
+    }
+}

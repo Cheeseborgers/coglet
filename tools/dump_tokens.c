@@ -15,6 +15,10 @@ int main(int argc, char **argv) {
     const char *filename = argv[1];
 
     char *source = read_file(filename);
+    if (source == NULL) {
+        fprintf(stderr, "error: could not read file '%s'\n", filename);
+        return 1;
+    }
 
     Lexer lx;
     lexer_init(&lx, filename, source);
@@ -22,25 +26,24 @@ int main(int argc, char **argv) {
     for (;;) {
         Token t = lexer_next(&lx);
 
-        // Print lexeme for anything that has meaningful source text
         if (t.length > 0 &&
             t.type != TOK_EOF &&
             t.type != TOK_ERROR) {
-
-            printf("%-6d %-15s %.*s\n",
+            printf("%d %s %.*s\n",
                    t.line,
                    token_type_name(t.type),
                    t.length,
                    t.start);
             } else {
-                printf("%-6d %s\n",
+                printf("%d %s\n",
                        t.line,
                        token_type_name(t.type));
             }
 
-        if (t.type == TOK_EOF || t.type == TOK_ERROR) break;
+        if (t.type == TOK_EOF || t.type == TOK_ERROR) {
+            break;
+        }
     }
-
 
     free(source);
     return 0;

@@ -1,0 +1,50 @@
+program
+  func classify -> i32
+    params:
+      param_decl value: i32
+      param_decl keep_going: bool
+    body:
+      block
+        while
+          condition:
+            keep_going
+          body:
+            block
+              if
+                condition:
+                  (==)
+                    value
+                    0
+                then:
+                  block
+                    break
+              compound_assign -=
+                target:
+                  value
+                value:
+                  1
+        for
+          condition:
+            (<)
+              value
+              10
+          post:
+            ++ postfix
+              value
+          body:
+            block
+              continue
+        switch
+          expression:
+            value
+          cases:
+            case
+              value:
+                0
+              body:
+                return
+                  0
+            default
+              body:
+                return
+                  value

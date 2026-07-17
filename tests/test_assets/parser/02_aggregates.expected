@@ -1,0 +1,20 @@
+program
+  struct Point
+    struct_field_decl x: i32
+    struct_field_decl y: i32
+  enum_decl Color
+    Backing type
+      u8
+    Members
+      EnumMember Red
+      EnumMember Green
+        Explicit value
+          4
+      EnumMember Blue
+  var_decl origin: <inferred>
+    init:
+      struct_init Point
+        field_init x
+          0
+        field_init y
+          0

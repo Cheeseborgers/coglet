@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
 
     char *source = read_file(filename);
 
-    Arena *arena = arena_create(1 << 16);
+    Arena *arena   = arena_create(1 << 16);
     Arena *scratch = arena_create(1 << 8);
 
     Parser parser;

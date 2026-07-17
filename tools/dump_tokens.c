@@ -7,6 +7,7 @@
 #include "../include/utils/utils.h"
 
 int main(int argc, char **argv) {
+
     if (argc != 2) {
         fprintf(stderr, "usage: %s <file>\n", argv[0]);
         return 1;
@@ -20,31 +21,56 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    Lexer lx;
-    lexer_init(&lx, filename, source);
+    Lexer lexer;
+    lexer_init(&lexer, filename, source);
+
+    int exit_code = 0;
 
     for (;;) {
-        Token t = lexer_next(&lx);
+        Token token = lexer_next(&lexer);
 
-        if (t.length > 0 &&
-            t.type != TOK_EOF &&
-            t.type != TOK_ERROR) {
-            printf("%d %s %.*s\n",
-                   t.line,
-                   token_type_name(t.type),
-                   t.length,
-                   t.start);
-            } else {
-                printf("%d %s\n",
-                       t.line,
-                       token_type_name(t.type));
-            }
+        if (token.type == TOK_ERROR) {
+            printf(
+                "%d %s %.*s\n",
+                token.line,
+                token_type_name(token.type),
+                token.length,
+                token.start
+            );
 
-        if (t.type == TOK_EOF || t.type == TOK_ERROR) {
+            fprintf(
+                stderr,
+                "%d:%d: error: %s\n",
+                token.line,
+                token.column,
+                lexer.error_msg
+                    ? lexer.error_msg
+                    : "invalid token"
+            );
+
+            exit_code = 1;
             break;
         }
+
+        if (token.type == TOK_EOF) {
+            printf(
+                "%d %s\n",
+                token.line,
+                token_type_name(token.type)
+            );
+
+            break;
+        }
+
+        printf(
+            "%d %s %.*s\n",
+            token.line,
+            token_type_name(token.type),
+            token.length,
+            token.start
+        );
     }
 
     free(source);
-    return 0;
+    return exit_code;
 }

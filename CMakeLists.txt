@@ -22,10 +22,11 @@ add_library(compiler_core STATIC
         src/ast.c
         src/utils/utils.c
         src/utils/arena.c
-        src/diag.c
+        src/parser_diag.c
         src/semantic_anal.c
         src/string_decode.c
         src/compiler_driver.c
+        include/utils/flag.h
 )
 target_include_directories(compiler_core PUBLIC include)
 
@@ -224,8 +225,64 @@ function(add_semantic_info_tests root_dir)
     endforeach()
 endfunction()
 
-add_diff_tests(lexer  ${CMAKE_SOURCE_DIR}/tests/test_assets/lexer  dump_tokens)
+function(add_invalid_lexer_tests root_dir)
+    file(
+            GLOB test_sources
+            CONFIGURE_DEPENDS
+            "${root_dir}/*.cog"
+    )
+
+    foreach(test_src IN LISTS test_sources)
+        get_filename_component(test_name "${test_src}" NAME_WE)
+
+        set(expected_stdout
+                "${root_dir}/${test_name}.stdout.expected"
+        )
+
+        set(expected_stderr
+                "${root_dir}/${test_name}.stderr.expected"
+        )
+
+        if(NOT EXISTS "${expected_stdout}")
+            message(FATAL_ERROR
+                    "Missing expected stdout file: ${expected_stdout}"
+            )
+        endif()
+
+        if(NOT EXISTS "${expected_stderr}")
+            message(FATAL_ERROR
+                    "Missing expected stderr file: ${expected_stderr}"
+            )
+        endif()
+
+        add_test(
+                NAME "lexer_invalid_${test_name}"
+                COMMAND
+                "${CMAKE_COMMAND}"
+                "-DEXE=$<TARGET_FILE:dump_tokens>"
+                "-DINPUT=${test_src}"
+                "-DEXPECTED_STDOUT=${expected_stdout}"
+                "-DEXPECTED_STDERR=${expected_stderr}"
+                "-DEXPECT_EXIT=1"
+                -P "${CMAKE_SOURCE_DIR}/cmake/run_output_test.cmake"
+        )
+
+        set_tests_properties(
+                "lexer_invalid_${test_name}"
+                PROPERTIES
+                LABELS "lexer;lexer.invalid"
+        )
+    endforeach()
+endfunction()
+
+# lexer tests
+add_diff_tests(lexer  ${CMAKE_SOURCE_DIR}/tests/test_assets/lexer/valid  dump_tokens)
+add_invalid_lexer_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/lexer/invalid)
+
+# parser tests
 add_diff_tests(parser ${CMAKE_SOURCE_DIR}/tests/test_assets/parser dump_ast)
+
+# semantic anal tests
 add_semantic_valid_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/valid)
 add_semantic_invalid_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/invalid)
 add_semantic_info_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/valid)

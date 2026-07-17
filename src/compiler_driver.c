@@ -4,14 +4,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "diag.h"
+#include "parser_diag.h"
 #include "utils/utils.h"
 
 static void report_parser_errors(const CompileResult *result)
 {
-    for (int i = 0; i < result->parser.diagnostic_count; i++) {
+    for (size_t i = 0; i < result->parser.diagnostic_count; i++) {
 
-        print_diagnostic(
+        parser_print_diagnostic(
             result->parser.lexer.filename,
             result->source,
             &result->parser.diagnostics[i]
@@ -121,4 +121,20 @@ void compile_result_destroy(CompileResult *result)
     free(result->source);
 
     memset(result, 0, sizeof(*result));
+}
+
+int status_to_exit_code(CompileStatus status) {
+    switch (status) {
+        case COMPILE_STATUS_OK:
+            return 0;
+
+        case COMPILE_STATUS_SEMANTIC_ERROR:
+            return 1;
+
+        case COMPILE_STATUS_PARSE_ERROR:
+        case COMPILE_STATUS_DRIVER_ERROR:
+            return 2;
+    }
+
+    return 2;
 }

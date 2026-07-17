@@ -2,14 +2,12 @@
 
 #include "compiler_driver.h"
 
+
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
-        fprintf(
-            stderr,
-            "usage: %s <file>\n",
-            argv[0]
-        );
+        fprintf(stderr, "usage: %s <file>\n", argv[0]);
 
         return COMPILE_STATUS_DRIVER_ERROR;
     }
@@ -22,6 +20,8 @@ int main(int argc, char **argv)
             &result
         );
 
+    int exit_code = status_to_exit_code(status);
+
     compile_result_destroy(&result);
-    return status;
+    return exit_code;
 }

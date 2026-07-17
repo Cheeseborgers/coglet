@@ -102,6 +102,7 @@ static void dump_semantic_info(const SemanticContext *sem)
 
         const Node *node = info->node;
 
+
         fprintf(
             stderr,
             "  line %-4d node=%-20s type=%-12s category=%-6s symbol=%s\n",

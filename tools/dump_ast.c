@@ -4,9 +4,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../include/ast.h"
-#include "../include/parser.h"
-#include "../include/utils/arena.h"
+#include "ast.h"
+#include "parser.h"
+#include "parser_diag.h"
+#include "utils/arena.h"
 #include "ast/ast_print.h"
 #include "utils/utils.h"
 
@@ -16,9 +17,14 @@ int main(int argc, char **argv) {
         fprintf(stderr, "usage: %s <file>\n", argv[0]);
         return 1;
     }
+
     const char *filename = argv[1];
 
     char *source = read_file(filename);
+    if (!source) {
+        fprintf(stderr, "error: could not read '%s'\n", filename);
+        return 1;
+    }
 
     Arena *arena   = arena_create(1 << 16);
     Arena *scratch = arena_create(1 << 8);
@@ -27,16 +33,18 @@ int main(int argc, char **argv) {
     parser_init(&parser, filename, source, arena, scratch);
     Node *program = parse_program(&parser);
 
-    if (parser.had_error) {
-        arena_destroy(arena);
-        free(source);
-        return 1;
-    }
+    int exit_code = 0;
 
-    ast_pretty_print(program);
+    if (parser.had_error) {
+        parser_print_diagnostics(filename, source, &parser);
+        exit_code = 1;
+    } else {
+        ast_pretty_print(program);
+    }
 
     arena_destroy(scratch);
     arena_destroy(arena);
     free(source);
-    return 0;
+
+    return exit_code;
 }

@@ -3,10 +3,10 @@
 
 #include "lexer.h"
 #include "ast.h"
-#include "diag.h"
+#include "parser_diag.h"
 #include "utils/arena.h"
 
-typedef struct {
+typedef struct Parser {
     Lexer lexer;
 
     Token current;   // next token not yet consumed (1-token lookahead)
@@ -18,8 +18,8 @@ typedef struct {
     int had_error;
     int error_count;
 
-    Diagnostic *diagnostics;
-    int diagnostic_count;
+    ParserDiagnostic *diagnostics;
+    size_t diagnostic_count;
     int diagnostic_capacity;
 
     int suppress_struct_init;   // true while parsing a bare if/while/for condition

@@ -272,7 +272,7 @@ static void add_diagnostic(Parser *p, Token token, const char *message) {
         return;
     }
 
-    Diagnostic *d = &p->diagnostics[p->diagnostic_count++];
+    ParserDiagnostic *d = &p->diagnostics[p->diagnostic_count++];
     d->token = token;
     d->message = arena_strdup_len(p->arena, message, strlen(message));
 
@@ -321,7 +321,7 @@ void parser_init(Parser *p, const char *filename, const char *source, Arena *are
 
     p->current.type = TOK_EOF;
 
-    p->diagnostics = arena_alloc(arena, sizeof(Diagnostic) * p->diagnostic_capacity);
+    p->diagnostics = arena_alloc(arena, sizeof(ParserDiagnostic) * p->diagnostic_capacity);
 
     p->suppress_struct_init = 0;
 

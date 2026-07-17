@@ -8,14 +8,9 @@
 
 typedef enum CompileStatus {
     COMPILE_STATUS_OK = 0,
-    COMPILE_STATUS_SEMANTIC_ERROR = 1,
-
-    /*
-     * Parser and driver failures intentionally share exit status 2.
-     * Separate names let callers distinguish their meaning when needed.
-     */
-    COMPILE_STATUS_PARSE_ERROR = 2,
-    COMPILE_STATUS_DRIVER_ERROR = 2,
+    COMPILE_STATUS_SEMANTIC_ERROR,
+    COMPILE_STATUS_PARSE_ERROR,
+    COMPILE_STATUS_DRIVER_ERROR,
 } CompileStatus;
 
 typedef struct CompileResult {
@@ -84,5 +79,7 @@ CompileStatus compile_parse_and_check(const char *filename, CompileResult *out);
  * invalid.
  */
 void compile_result_destroy(CompileResult *result);
+
+int status_to_exit_code(CompileStatus status);
 
 #endif

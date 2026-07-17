@@ -28,10 +28,14 @@ static ArenaBlock *block_create(size_t capacity) {
 Arena *arena_create(size_t block_size) {
 
     Arena *arena = malloc(sizeof(Arena));
+
     if (!arena) { fprintf(stderr, "arena: out of memory\n"); exit(1); }
+
     arena->block_size = block_size;
-    arena->first = block_create(block_size);
-    arena->current = arena->first;
+    arena->first      = block_create(block_size);
+    arena->current    = arena->first;
+    arena->allocated  = 0;
+
     return arena;
 }
 

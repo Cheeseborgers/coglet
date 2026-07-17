@@ -105,7 +105,11 @@ void parser_print_diagnostic( const char *filename, const char *source, ParserDi
  */
 void parser_print_diagnostics(const char *filename, const char *source, const Parser *parser) {
 
-    for (size_t i = 0; i < parser->diagnostic_count; i++) {
-        parser_print_diagnostic(filename, source, &parser->diagnostics[i]);
-    }
+    for (const ParserDiagnosticNode *node = parser->diagnostics_first; node; node = node->next) {
+        parser_print_diagnostic(
+            filename,
+            source,
+            &node->diagnostic
+        );
+}
 }

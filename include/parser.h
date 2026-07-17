@@ -16,11 +16,10 @@ typedef struct Parser {
     Arena *scratch;
 
     int had_error;
-    int error_count;
 
-    ParserDiagnostic *diagnostics;
+    ParserDiagnosticNode *diagnostics_first;
+    ParserDiagnosticNode *diagnostics_last;
     size_t diagnostic_count;
-    int diagnostic_capacity;
 
     int suppress_struct_init;   // true while parsing a bare if/while/for condition
 } Parser;

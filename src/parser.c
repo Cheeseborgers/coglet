@@ -267,17 +267,23 @@ const char *token_debug_display_name(TokenType t)
 
 static void add_diagnostic(Parser *p, Token token, const char *message) {
 
-    if (p->diagnostic_count >= p->diagnostic_capacity) {
-        fprintf(stderr, "WARNING: parser diagnostics full\n");
-        return;
+    ParserDiagnosticNode *node = arena_alloc(p->arena, sizeof(*node));
+
+    node->diagnostic.token   = token;
+    node->diagnostic.message = arena_strdup_len(p->arena,message, strlen(message));
+
+    node->next = NULL;
+
+    if (p->diagnostics_last) {
+        p->diagnostics_last->next = node;
+    } else {
+        p->diagnostics_first = node;
     }
 
-    ParserDiagnostic *d = &p->diagnostics[p->diagnostic_count++];
-    d->token = token;
-    d->message = arena_strdup_len(p->arena, message, strlen(message));
+    p->diagnostics_last = node;
+    p->diagnostic_count++;
 
     p->had_error = 1;
-    p->error_count++;
 }
 
 static void error_at(Parser *p, Token *tok, const char *msg)
@@ -314,15 +320,13 @@ void parser_init(Parser *p, const char *filename, const char *source, Arena *are
     p->arena   = arena;
     p->scratch = scratch;
 
-    p->had_error           = 0;
-    p->error_count         = 0;
-    p->diagnostic_count    = 0;
-    p->diagnostic_capacity = 100;
+    p->had_error   = 0;
+
+    p->diagnostics_first = NULL;
+    p->diagnostics_last  = NULL;
+    p->diagnostic_count  = 0;
 
     p->current.type = TOK_EOF;
-
-    p->diagnostics = arena_alloc(arena, sizeof(ParserDiagnostic) * p->diagnostic_capacity);
-
     p->suppress_struct_init = 0;
 
     advance(p);

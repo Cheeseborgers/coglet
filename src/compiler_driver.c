@@ -7,22 +7,15 @@
 #include "parser_diag.h"
 #include "utils/utils.h"
 
-static void report_parser_errors(const CompileResult *result)
-{
-    for (size_t i = 0; i < result->parser.diagnostic_count; i++) {
+static void report_parser_errors(const CompileResult *result) {
 
-        parser_print_diagnostic(
-            result->parser.lexer.filename,
-            result->source,
-            &result->parser.diagnostics[i]
-        );
-    }
+    parser_print_diagnostics(result->filename, result->source, &result->parser);
 
     fprintf(
         stderr,
-        "%d parser error%s generated.\n",
-        result->parser.error_count,
-        result->parser.error_count == 1 ? "" : "s"
+        "%ld parser error%s generated.\n",
+        result->parser.diagnostic_count,
+        result->parser.diagnostic_count == 1 ? "" : "s"
     );
 }
 

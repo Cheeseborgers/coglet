@@ -26,7 +26,6 @@ add_library(compiler_core STATIC
         src/semantic_anal.c
         src/string_decode.c
         src/compiler_driver.c
-        include/utils/flag.h
 )
 target_include_directories(compiler_core PUBLIC include)
 

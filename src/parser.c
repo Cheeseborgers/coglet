@@ -509,7 +509,12 @@ static Node *parse_postfix(Parser *p)
 
 static Node *parse_unary(Parser *p)
 {
-    if (check(p, TOK_PLUS_PLUS) || check(p, TOK_MINUS_MINUS) || check(p, TOK_MINUS) || check(p, TOK_BANG)) {
+    if (check(p, TOK_PLUS_PLUS) ||
+        check(p, TOK_MINUS_MINUS) ||
+        check(p, TOK_MINUS) ||
+        check(p, TOK_BANG) ||
+        check(p, TOK_AND) ||
+        check(p, TOK_STAR)) {
         Token op = p->current;
         advance(p);
 
@@ -570,6 +575,10 @@ static int is_assignable(Node *n)
         case NODE_FIELD:
         case NODE_INDEX:
             return 1;
+
+        case NODE_UNARY:
+            return n->as.unary.op == TOK_STAR;
+
         default: return 0;
     }
 }

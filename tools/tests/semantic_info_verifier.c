@@ -158,11 +158,19 @@ static int node_is_mutation(NodeType type)
            type == NODE_INC_DEC;
 }
 
-static int node_can_be_lvalue(NodeType type)
+static int node_can_be_lvalue(const Node *node)
 {
-    return type == NODE_IDENT ||
-           type == NODE_FIELD ||
-           type == NODE_INDEX;
+    if (!node)
+        return 0;
+
+    if (node->type == NODE_IDENT ||
+        node->type == NODE_FIELD ||
+        node->type == NODE_INDEX) {
+        return 1;
+        }
+
+    return node->type == NODE_UNARY &&
+           node->as.unary.op == TOK_STAR;
 }
 
 static void expression_list_destroy(ExpressionList *list)
@@ -194,10 +202,8 @@ static int expression_list_push(ExpressionList *list, Node *expression)
     return 1;
 }
 
-static int expression_list_contains(
-    const ExpressionList *list,
-    const Node *expression
-) {
+static int expression_list_contains(const ExpressionList *list, const Node *expression) {
+
     for (int i = 0; i < list->count; i++) {
         if (list->items[i] == expression)
             return 1;
@@ -212,10 +218,7 @@ static void verifier_error(Verifier *verifier,const Node *node,const char *forma
         ? verifier->diagnostics
         : stderr;
 
-    fprintf(
-        output,
-        "semantic-info verification failed"
-    );
+    fprintf(output, "semantic-info verification failed");
 
     if (node) {
         fprintf(
@@ -257,23 +260,17 @@ static int field_uses_enum_type_qualifier(SemanticContext *sem, Node *field) {
 static void walk_expression(ExpressionWalker *walker, Node *expression);
 static void walk_node(ExpressionWalker *walker, Node *node);
 
-static void walk_expression_list(
-    ExpressionWalker *walker,
-    NodeList *list
-) {
-    if (!list)
-        return;
+static void walk_expression_list(ExpressionWalker *walker, NodeList *list) {
+
+    if (!list) return;
 
     for (int i = 0; i < list->count; i++)
         walk_expression(walker, list->items[i]);
 }
 
-static void walk_node_list(
-    ExpressionWalker *walker,
-    NodeList *list
-) {
-    if (!list)
-        return;
+static void walk_node_list(ExpressionWalker *walker, NodeList *list) {
+
+    if (!list) return;
 
     for (int i = 0; i < list->count; i++)
         walk_node(walker, list->items[i]);
@@ -281,8 +278,7 @@ static void walk_node_list(
 
 static void walk_expression(ExpressionWalker *walker, Node *expression)
 {
-    if (!expression)
-        return;
+    if (!expression) return;
 
     walker->visit(walker->context, expression);
 
@@ -633,11 +629,8 @@ static void collect_expression(void *context, Node *expression)
         verifier->mutation_count++;
 }
 
-static int verify_mutation_info(
-    Verifier *verifier,
-    Node *expression,
-    SemExprInfo *info
-) {
+static int verify_mutation_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
+
     int valid = 1;
 
     if (info->type) {
@@ -672,11 +665,109 @@ static int verify_mutation_info(
     return valid;
 }
 
-static int verify_value_info(
-    Verifier *verifier,
-    Node *expression,
-    SemExprInfo *info
-) {
+static int verify_pointer_unary_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
+
+    if (expression->type != NODE_UNARY)
+        return 1;
+
+    TokenType op = expression->as.unary.op;
+
+    if (op != TOK_AND && op != TOK_STAR)
+        return 1;
+
+    Node *operand = expression->as.unary.operand;
+
+    SemExprInfo *operand_info =
+        semantic_get_expr_info(
+            verifier->sem,
+            operand
+        );
+
+    if (!operand_info || !operand_info->type) {
+        verifier_error(
+            verifier,
+            expression,
+            "pointer unary operand has no semantic type"
+        );
+
+        return 0;
+    }
+
+    int valid = 1;
+
+    if (op == TOK_AND) {
+        if (operand_info->value_category !=
+            VALUE_CATEGORY_LVALUE) {
+            verifier_error(
+                verifier,
+                expression,
+                "address-of operand is not an lvalue"
+            );
+
+            valid = 0;
+        }
+
+        if (info->type->kind != TYPE_POINTER ||
+            info->type->element != operand_info->type) {
+            verifier_error(
+                verifier,
+                expression,
+                "address-of result is not a pointer "
+                "to the operand type"
+            );
+
+            valid = 0;
+        }
+
+        if (info->value_category !=
+            VALUE_CATEGORY_RVALUE) {
+            verifier_error(
+                verifier,
+                expression,
+                "address-of result is not an rvalue"
+            );
+
+            valid = 0;
+        }
+
+        return valid;
+    }
+
+    if (operand_info->type->kind != TYPE_POINTER) {
+        verifier_error(
+            verifier,
+            expression,
+            "dereference operand is not a pointer"
+        );
+
+        valid = 0;
+    } else if (info->type != operand_info->type->element) {
+        verifier_error(
+            verifier,
+            expression,
+            "dereference result does not match "
+            "the pointer element type"
+        );
+
+        valid = 0;
+    }
+
+    if (info->value_category !=
+        VALUE_CATEGORY_LVALUE) {
+        verifier_error(
+            verifier,
+            expression,
+            "dereference result is not an lvalue"
+        );
+
+        valid = 0;
+    }
+
+    return valid;
+}
+
+static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
+
     int valid = 1;
 
     if (!info->type) {
@@ -712,8 +803,14 @@ static int verify_value_info(
         valid = 0;
     }
 
+    /*
+    *  *p may be lvalue
+    *  -x never lvalue
+    *  !x never lvalue
+    *  &x never lvalue
+    */
     if (info->value_category == VALUE_CATEGORY_LVALUE &&
-        !node_can_be_lvalue(expression->type)) {
+        !node_can_be_lvalue(expression)) {
         verifier_error(
             verifier,
             expression,
@@ -754,17 +851,16 @@ static int verify_value_info(
         }
     }
 
+    if (!verify_pointer_unary_info(verifier, expression, info)) {
+        valid = 0;
+    }
+
     return valid;
 }
 
-static void verify_expression_info(
-    Verifier *verifier,
-    Node *expression
-) {
-    SemExprInfo *info = semantic_get_expr_info(
-        verifier->sem,
-        expression
-    );
+static void verify_expression_info(Verifier *verifier, Node *expression) {
+
+    SemExprInfo *info = semantic_get_expr_info(verifier->sem, expression);
 
     if (!info) {
         verifier_error(
@@ -793,18 +889,13 @@ static void verify_expression_info(
         return;
     }
 
-    verify_value_info(
-        verifier,
-        expression,
-        info
-    );
+    verify_value_info(verifier, expression, info);
 }
 
-static void verify_table_entries(Verifier *verifier)
-{
-    for (SemExprInfo *info = verifier->sem->expr_infos;
-         info;
-         info = info->next) {
+static void verify_table_entries(Verifier *verifier) {
+
+    for (SemExprInfo *info = verifier->sem->expr_infos; info; info = info->next) {
+
         verifier->table_entry_count++;
 
         if (!info->node) {
@@ -852,10 +943,7 @@ static void verify_table_entries(Verifier *verifier)
 static void dump_expression(void *context, Node *expression)
 {
     DumpContext *dump = context;
-    SemExprInfo *info = semantic_get_expr_info(
-        dump->sem,
-        expression
-    );
+    SemExprInfo *info = semantic_get_expr_info(dump->sem, expression);
 
     const char *type_name     = "<missing>";
     const char *category_name = "<missing>";
@@ -885,11 +973,8 @@ static void dump_expression(void *context, Node *expression)
     dump->count++;
 }
 
-void semantic_info_dump_program(
-    SemanticContext *sem,
-    Node *program,
-    FILE *output
-) {
+void semantic_info_dump_program(SemanticContext *sem, Node *program, FILE *output) {
+
     if (!output)
         output = stderr;
 
@@ -902,13 +987,13 @@ void semantic_info_dump_program(
 
     DumpContext dump;
 
-    dump.sem = sem;
+    dump.sem    = sem;
     dump.output = output;
-    dump.count = 1;
+    dump.count  = 1;
 
     ExpressionWalker walker;
-    walker.sem = sem;
-    walker.visit = dump_expression;
+    walker.sem     = sem;
+    walker.visit   = dump_expression;
     walker.context = &dump;
 
     walk_node(&walker, program);
@@ -922,11 +1007,8 @@ void semantic_info_dump_program(
 }
 
 int semantic_info_verify_program(
-    SemanticContext *sem,
-    Node *program,
-    FILE *diagnostics,
-    SemanticInfoVerification *verification
-) {
+    SemanticContext *sem, Node *program, FILE *diagnostics, SemanticInfoVerification *verification) {
+
     if (verification)
         memset(verification, 0, sizeof(*verification));
 

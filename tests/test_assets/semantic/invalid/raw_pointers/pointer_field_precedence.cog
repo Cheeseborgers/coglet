@@ -1,0 +1,7 @@
+Point :: struct {
+    x: i32;
+}
+
+test::(point: Point*) -> void {
+    *point.x = 1;
+}

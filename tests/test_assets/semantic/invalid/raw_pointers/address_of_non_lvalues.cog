@@ -1,0 +1,28 @@
+VALUE :: 1;
+
+Color :: enum {
+    Red,
+}
+
+Point :: struct {
+    x: i32;
+}
+
+make_point::() -> Point {
+    return Point {
+        x = 0,
+    };
+}
+
+make_value::() -> i32 {
+    return 1;
+}
+
+test::() -> void {
+    a: i32* = &VALUE;
+    b: Color* = &Color.Red;
+    c: i32* = &1;
+    d: i32* = &(1 + 2);
+    e: i32* = &make_value();
+    f: i32* = &make_point().x;
+}

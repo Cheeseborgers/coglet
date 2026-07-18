@@ -95,7 +95,14 @@ struct Node {
         } cast_expr;
 
         struct {
-            TokenType op;   // currently just TOK_MINUS
+            /*
+             * Prefix unary operators:
+             *     -x
+             *     !x
+             *     &x
+             *     *p
+             */
+            TokenType op;
             Node *operand;
         } unary;
 

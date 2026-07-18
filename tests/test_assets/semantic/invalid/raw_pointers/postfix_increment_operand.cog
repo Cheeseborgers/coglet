@@ -1,0 +1,3 @@
+test::(pointer: i32*) -> void {
+    *pointer++;
+}

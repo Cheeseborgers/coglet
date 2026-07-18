@@ -1,0 +1,16 @@
+main::() -> void {
+    value: i32 = 10;
+    pointer: i32* = &value;
+
+    *pointer = 20;
+    *pointer += 2;
+    (*pointer)++;
+
+    same_pointer: i32* = &*pointer;
+    *&value = 30;
+
+    null_pointer: i32* = 0;
+
+    same_pointer;
+    null_pointer;
+}

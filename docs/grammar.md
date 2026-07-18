@@ -425,4 +425,3 @@ Color :: enum(u16) #repr_c {
 ```
 
 The annotation is not currently implemented and will concern ABI representation, not enum openness.
-

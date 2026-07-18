@@ -1,6 +1,3 @@
-Library
-/roadmap.md
-
 # Coglet Roadmap
 
 Coglet is focused on building a small, correct systems-language core with explicit semantics and a compiler architecture that remains understandable.
@@ -147,4 +144,3 @@ The choice should be driven by what Coglet is intended to become. Backend work s
 ## Self-Hosting Direction
 
 Self-hosting remains a long-term objective rather than the next milestone. The language still needs runtime and file I/O facilities, allocation support, diagnostics suitable for larger programs, and some form of multi-file compilation before self-hosting becomes practical.
-

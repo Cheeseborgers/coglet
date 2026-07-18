@@ -1,0 +1,28 @@
+Point :: struct {
+    x: i32;
+}
+
+get_pointer :: (pointer: i32*) -> i32* {
+    return pointer;
+}
+
+precedence_and_subobjects::() -> i32 {
+    point := Point {
+        x = 1,
+    };
+
+    values: i32[2] = [2, 3];
+
+    point_pointer: Point* = &point;
+
+    field_pointer: i32* = &point.x;
+    element_pointer: i32* = &values[1];
+
+    *field_pointer = 4;
+    *element_pointer = 5;
+
+    (*point_pointer).x = 10;
+    get_pointer(&values[0])[0] = 20;
+
+    return point.x + values[0] + values[1];
+}

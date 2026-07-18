@@ -36,18 +36,64 @@ static const char *token_type_str(TokenType t)
         case TOK_GREATER:       return ">";
         case TOK_GREATER_EQUAL: return ">=";
 
+        case TOK_AND:     return "&";
         case TOK_AND_AND: return "&&";
-        case TOK_OR_OR: return "||";
+        case TOK_OR:      return "|";
+        case TOK_OR_OR:   return "||";
 
-        case TOK_DOT: return ".";
-        case TOK_LBRACKET: return "[";
-        case TOK_RBRACKET: return "]";
-        case TOK_LPAREN: return "(";
-        case TOK_RPAREN: return ")";
+        case TOK_DOT:         return ".";
+        case TOK_LBRACKET:    return "[";
+        case TOK_RBRACKET:    return "]";
+        case TOK_LPAREN:      return "(";
+        case TOK_RPAREN:      return ")";
+        case TOK_LBRACE:      return "{";
+        case TOK_RBRACE:      return "}";
+        case TOK_SEMICOLON:   return ";";
+        case TOK_COLON:       return ":";
+        case TOK_COMMA:       return ",";
+        case TOK_ARROW:       return "->";
+        case TOK_COLON_COLON: return "::";
+        case TOK_COLON_EQUAL: return ":=";
 
-        case TOK_IDENT: return "IDENT";
-        case TOK_NUMBER_INT: return "INT";
+        case TOK_IDENT:        return "IDENT";
+        case TOK_NUMBER_INT:   return "INT";
         case TOK_NUMBER_FLOAT: return "FLOAT";
+        case TOK_STRING:       return "STRING";
+        case TOK_CHAR:         return "CHAR";
+        case TOK_BOOL:         return "BOOL";
+        case TOK_TRUE:         return "TRUE";
+        case TOK_FALSE:        return "FALSE";
+
+        case TOK_IF:       return "IF";
+        case TOK_ELSE:     return "ELSE";
+        case TOK_WHILE:    return "WHILE";
+        case TOK_FOR:      return "FOR";
+        case TOK_RETURN:   return "RETURN";
+        case TOK_VOID:     return "VOID";
+        case TOK_STRUCT:   return "STRUCT";
+        case TOK_BREAK:    return "BREAK";
+        case TOK_CONTINUE: return "CONTINUE";
+        case TOK_ENUM:     return "ENUM";
+        case TOK_SWITCH:   return "SWITCH";
+        case TOK_CASE:     return "CASE";
+        case TOK_DEFAULT:  return "DEFAULT";
+        case TOK_CAST:     return "CAST";
+
+        case TOK_EOF:   return "EOF";
+        case TOK_ERROR: return "ERROR";
+
+        case TOK_I8:  return "I8";
+        case TOK_I16: return "I16";
+        case TOK_I32: return "I32";
+        case TOK_I64: return "I64";
+        case TOK_U8:  return "U8";
+        case TOK_U16: return "U16";
+        case TOK_U32: return "U32";
+        case TOK_U64: return "U64";
+        case TOK_F32: return "F32";
+        case TOK_F64: return "F64";
+        case TOK_INT_KW:  return "INT KW";
+        case TOK_UINT_KW: return "UINT KW";
 
         default: return "?";
     }

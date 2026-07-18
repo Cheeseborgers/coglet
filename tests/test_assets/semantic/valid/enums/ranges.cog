@@ -19,4 +19,4 @@ SmallEnum :: enum(u8) {
     B,
 }
 
-GOOD_CAST_SMALL_ENUM :: cast(SmallEnum, 255);
+GOOD_CAST_ENUM_U8_MAX :: cast(EnumU8Max, 255);

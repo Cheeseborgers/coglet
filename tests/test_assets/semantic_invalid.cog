@@ -626,3 +626,12 @@ void_call_statement_in_void_function_is_valid :: () -> void {
     does_nothing();
     return;
 }
+
+// add this to
+Color3 :: enum(u16) {
+    Red = 0,
+    Green = 1,
+    Blue = 2,
+}
+
+BAD :: cast(Color3, 3);

@@ -67,6 +67,11 @@ typedef struct {
     int loop_depth;
     int function_depth;
 
+    Type *type_i32;
+    Type *type_i64;
+    Type *type_u64;
+    Type *type_f32;
+    Type *type_f64;
     Type *type_bool;
     Type *type_void;
 

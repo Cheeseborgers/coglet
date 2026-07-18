@@ -4,4 +4,12 @@ SmallEnum :: enum(u8) {
 }
 
 GOOD_ENUM_MIN :: cast(SmallEnum, 0);
-GOOD_ENUM_MAX :: cast(SmallEnum, 255);
+GOOD_ENUM_MAX :: cast(SmallEnum, 1);
+
+SmallEnum2 :: enum(u8) {
+    A = 0,
+    Maximum = 255,
+}
+
+GOOD_ENUM_MIN2 :: cast(SmallEnum2, 0);
+GOOD_ENUM_MAX2 :: cast(SmallEnum2, 255);

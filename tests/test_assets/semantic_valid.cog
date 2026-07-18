@@ -237,8 +237,6 @@ SmallEnum :: enum(u8) {
     B,
 }
 
-GOOD_CAST_SMALL_ENUM :: cast(SmallEnum, 255);
-
 break_continue_valid::(keep_going, done: bool) -> void {
     while keep_going {
         if done {
@@ -499,4 +497,14 @@ small: u8 = A;
 wide: i64 = A;
 floating: f32 = A;
 rounded: f32 = B;
+
+Color3 :: enum(u16) {
+    Red = 0,
+    Green = 1,
+    Blue = 2,
+}
+
+GOOD_RED :: cast(Color3, 0);
+GOOD_GREEN :: cast(Color3, 1);
+GOOD_BLUE :: cast(Color3, 2);
 

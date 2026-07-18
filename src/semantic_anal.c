@@ -282,6 +282,7 @@ static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *i
 static int declare_enum_shell(SemanticContext *ctx, Node *node);
 static void fill_enum_members(SemanticContext *ctx,Node *node);
 static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
+static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value);
 static Type *check_cast_expression(SemanticContext *ctx, Node *node);
 static Type *concretize_inferred_numeric_type(SemanticContext *ctx, Node *expression, Type *type);
 
@@ -2292,7 +2293,7 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
             semantic_error(
                 ctx,
                 node,
-                "enum cast requires integer constant"
+                "enum cast requires an integer constant"
             );
 
             return 0;
@@ -2310,10 +2311,26 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
             );
 
             return 0;
-        }
+            }
+
+        if (!find_enum_member_by_value(
+                target_type,
+                value.as.integer
+            )) {
+            semantic_error_fmt(
+                ctx,
+                node,
+                "integer value is not a declared member of enum %.*s",
+                (int)target_type->enum_name.length,
+                target_type->enum_name.data
+            );
+
+            return 0;
+            }
 
         out->kind = CONST_VALUE_INT;
         out->as.integer = value.as.integer;
+        out->type = target_type;
 
         return 1;
     }
@@ -4653,14 +4670,9 @@ static int declare_enum_shell(SemanticContext *ctx, Node *node) {
     return 1;
 }
 
-static EnumMember *find_enum_member(
-    Type *enum_type,
-    const char *name,
-    size_t length
-) {
-    if (!enum_type || enum_type->kind != TYPE_ENUM)
-        return NULL;
+static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length) {
 
+    if (!enum_type || enum_type->kind != TYPE_ENUM) return NULL;
 
     for (int i = 0; i < enum_type->enum_member_count; i++) {
 
@@ -4669,6 +4681,30 @@ static EnumMember *find_enum_member(
         if (names_equal(member->name.data, member->name.length, name, length))
             return member;
     }
+
+    return NULL;
+}
+
+static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value) {
+
+    if (!enum_type ||
+        enum_type->kind != TYPE_ENUM) {
+        return NULL;
+        }
+
+    for (int i = 0;
+         i < enum_type->enum_member_count;
+         i++) {
+        EnumMember *member =
+            &enum_type->enum_members[i];
+
+        if (integer_values_equal(
+                member->value,
+                value
+            )) {
+            return member;
+            }
+         }
 
     return NULL;
 }
@@ -4809,46 +4845,113 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
 
 static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
 
-    Type *target_type = resolve_type(ctx, node->as.cast_expr.target_type, node);
+    Type *target_type = resolve_type(
+        ctx,
+        node->as.cast_expr.target_type,
+        node
+    );
 
     if (!target_type) {
+        semantic_error(ctx, node,
+            "could not resolve cast target type");
 
-        semantic_error(ctx, node, "could not resolve cast target type");
         return NULL;
     }
 
     if (invalid_value_type(target_type)) {
+        semantic_error(ctx, node,
+            "cannot cast to void");
 
-        semantic_error(ctx, node, "cannot cast to void");
         return NULL;
     }
 
-    Type *source_type = check_value_expression(ctx, node->as.cast_expr.expression);
+    Node *source_expression = node->as.cast_expr.expression;
 
-    if (!source_type) return NULL;
+    Type *source_type = check_value_expression(
+        ctx,
+        source_expression
+    );
 
-    if (!is_allowed_explicit_cast(target_type, source_type)) {
+    if (!source_type)
+        return NULL;
 
+    if (!is_allowed_explicit_cast(
+            target_type,
+            source_type
+        )) {
         semantic_error(ctx, node,
             "invalid explicit cast");
 
         return NULL;
     }
 
+    int source_is_constant =
+        expression_is_compile_time_constant(
+            ctx,
+            source_expression
+        );
+
     /*
-    * A compile-time-known cast must satisfy the same representability
-    * checks everywhere it appears, even when its result is discarded.
-    *
-    * Constant declarations already reach eval_const_cast() through
-    * eval_const_expr(). Reuse that path here so ordinary expression
-    * contexts do not accidentally skip integer and enum backing-range
-    * validation.
-    */
-    if (expression_is_compile_time_constant(ctx, node->as.cast_expr.expression)) {
+     * Closed enums may only be constructed from declared member values.
+     *
+     * For a compile-time integer, eval_const_cast() can prove that:
+     *
+     *   1. the integer fits the enum backing type;
+     *   2. the integer equals a declared enum member value.
+     *
+     * For a runtime integer, the compiler cannot prove membership without
+     * emitting a runtime check. Runtime checked enum conversion is not yet
+     * implemented, so reject it for now.
+     */
+    if (is_integer_to_enum_cast(
+            target_type,
+            source_type
+        )) {
+        if (!source_is_constant) {
+            semantic_error(ctx, node,
+                "runtime integer-to-enum cast is not supported");
+
+            return NULL;
+        }
 
         ConstValue ignored;
-        if (!eval_const_cast(ctx, node, &ignored))
+
+        if (!eval_const_cast(
+                ctx,
+                node,
+                &ignored
+            )) {
             return NULL;
+        }
+
+        return target_type;
+    }
+
+    /*
+     * Every other compile-time-known cast must still satisfy its
+     * representability rules, even when the result is discarded.
+     *
+     * Examples checked here:
+     *
+     *   cast(u8, 256)
+     *   cast(i8, -129)
+     *   cast(f32, very_large_value)
+     *   cast(u16, SomeEnum.Member)
+     *
+     * Constant declarations also reach eval_const_cast() through
+     * eval_const_expr(), but ordinary expression statements and nested
+     * expression contexts need the same validation.
+     */
+    if (source_is_constant) {
+        ConstValue ignored;
+
+        if (!eval_const_cast(
+                ctx,
+                node,
+                &ignored
+            )) {
+            return NULL;
+        }
     }
 
     return target_type;
@@ -5230,6 +5333,11 @@ void semantic_check(Node *program, SemanticContext *ctx) {
 
     ctx->current_return_type = NULL;
 
+    ctx->type_i32  = new_type(ctx, TYPE_I32);
+    ctx->type_i64  = new_type(ctx, TYPE_I64);
+    ctx->type_u64  = new_type(ctx, TYPE_U64);
+    ctx->type_f32  = new_type(ctx, TYPE_F32);
+    ctx->type_f64  = new_type(ctx, TYPE_F64);
     ctx->type_bool = new_type(ctx, TYPE_BOOL);
     ctx->type_void = new_type(ctx, TYPE_VOID);
 

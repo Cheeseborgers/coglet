@@ -283,6 +283,8 @@ static int declare_enum_shell(SemanticContext *ctx, Node *node);
 static void fill_enum_members(SemanticContext *ctx,Node *node);
 static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
 static Type *check_cast_expression(SemanticContext *ctx, Node *node);
+static Type *concretize_inferred_numeric_type(SemanticContext *ctx, Node *expression, Type *type);
+
 static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
 static int check_string_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
@@ -377,6 +379,14 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
             snprintf(buffer, buffer_size, "f64");
             return;
 
+        case TYPE_UNTYPED_INT:
+            snprintf(buffer, buffer_size, "untyped-int");
+            return;
+
+        case TYPE_UNTYPED_FLOAT:
+            snprintf(buffer, buffer_size, "untyped-float");
+            return;
+
         case TYPE_NAMED:
             snprintf(
                 buffer,
@@ -443,11 +453,9 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
 
 static int type_equal(Type *a, Type *b) {
 
-    if (a == NULL || b == NULL)
-        return 0;
+    if (a == NULL || b == NULL) return 0;
 
-    if (a->kind != b->kind)
-        return 0;
+    if (a->kind != b->kind) return 0;
 
     if (a->kind == TYPE_POINTER)
         return type_equal(a->element, b->element);
@@ -456,13 +464,12 @@ static int type_equal(Type *a, Type *b) {
         return a->array_size == b->array_size &&
                type_equal(a->element, b->element);
 
-    if (a->kind == TYPE_NAMED) {
+    if (a->kind == TYPE_NAMED)
         return names_equal(
             a->named_name.data,
             a->named_name.length,
             b->named_name.data,
             b->named_name.length);
-    }
 
     if (a->kind == TYPE_STRUCT)
         return names_equal(
@@ -471,13 +478,12 @@ static int type_equal(Type *a, Type *b) {
             b->struct_name.data,
             b->struct_name.length);
 
-    if (a->kind == TYPE_ENUM) {
+    if (a->kind == TYPE_ENUM)
         return names_equal(
             a->enum_name.data,
             a->enum_name.length,
             b->enum_name.data,
             b->enum_name.length);
-    }
 
     if (a->kind == TYPE_FUNCTION) {
         if (a->parameter_count != b->parameter_count)
@@ -510,15 +516,60 @@ static int invalid_return_type(Type *type)
     return contains_void_type(type);
 }
 
-static int is_integer_kind(TypeKind k) {
-
-    switch (k) {
-        case TYPE_I8: case TYPE_I16: case TYPE_I32: case TYPE_I64:
-        case TYPE_U8: case TYPE_U16: case TYPE_U32: case TYPE_U64:
+static int is_concrete_integer_kind(TypeKind kind)
+{
+    switch (kind) {
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
             return 1;
+
         default:
             return 0;
     }
+}
+
+static int is_untyped_integer_kind(TypeKind kind)
+{
+    return kind == TYPE_UNTYPED_INT;
+}
+
+static int is_integer_kind(TypeKind kind)
+{
+    return is_concrete_integer_kind(kind) ||
+           is_untyped_integer_kind(kind);
+}
+
+static int is_concrete_float_kind(TypeKind kind)
+{
+    return kind == TYPE_F32 || kind == TYPE_F64;
+}
+
+static int is_untyped_float_kind(TypeKind kind)
+{
+    return kind == TYPE_UNTYPED_FLOAT;
+}
+
+static int is_float_kind(TypeKind kind)
+{
+    return is_concrete_float_kind(kind) ||
+           is_untyped_float_kind(kind);
+}
+
+static int is_untyped_numeric_kind(TypeKind kind)
+{
+    return is_untyped_integer_kind(kind) ||
+           is_untyped_float_kind(kind);
+}
+
+static int is_untyped_numeric_type(const Type *type)
+{
+    return type && is_untyped_numeric_kind(type->kind);
 }
 
 static IntegerValue integer_value_make(uint64_t magnitude, int is_negative) {
@@ -559,8 +610,8 @@ static int integer_value_compare(IntegerValue a, IntegerValue b)
     return a.magnitude < b.magnitude ? -1 : 1;
 }
 
-static int integer_value_fits_type(IntegerValue value, TypeKind kind) {
-
+static int integer_value_fits_type(IntegerValue value, TypeKind kind)
+{
     switch (kind) {
         case TYPE_I8:
             return value.is_negative
@@ -597,37 +648,52 @@ static int integer_value_fits_type(IntegerValue value, TypeKind kind) {
         case TYPE_U64:
             return !value.is_negative;
 
+        case TYPE_UNTYPED_INT:
+            /*
+             * Untyped integers retain an exact uint64_t magnitude and
+             * may be negative down to the i64 minimum.
+             */
+            return !value.is_negative ||
+                   value.magnitude <= (UINT64_C(1) << 63);
+
         default:
             return 0;
     }
+}
+
+static int default_integer_kind_for_value(
+    IntegerValue value,
+    TypeKind *out_kind
+) {
+    if (value.is_negative) {
+        if (value.magnitude <= UINT64_C(2147483648)) {
+            *out_kind = TYPE_I32;
+        } else if (value.magnitude <= (UINT64_C(1) << 63)) {
+            *out_kind = TYPE_I64;
+        } else {
+            return 0;
+        }
+    } else if (value.magnitude <= INT32_MAX) {
+        *out_kind = TYPE_I32;
+    } else if (value.magnitude <= INT64_MAX) {
+        *out_kind = TYPE_I64;
+    } else {
+        *out_kind = TYPE_U64;
+    }
+
+    return 1;
 }
 
 static Type *untyped_integer_type_for_value(
     SemanticContext *ctx,
     IntegerValue value
 ) {
-    TypeKind kind;
+    TypeKind ignored_kind;
 
-    if (value.is_negative) {
-        if (value.magnitude <= UINT64_C(2147483648)) {
-            kind = TYPE_I32;
-        } else if (value.magnitude <= (UINT64_C(1) << 63)) {
-            kind = TYPE_I64;
-        } else {
-            return NULL;
-        }
-    } else if (value.magnitude <= INT32_MAX) {
-        kind = TYPE_I32;
-    } else if (value.magnitude <= INT64_MAX) {
-        kind = TYPE_I64;
-    } else {
-        kind = TYPE_U64;
-    }
+    if (!default_integer_kind_for_value(value, &ignored_kind))
+        return NULL;
 
-    Type *type = new_type(ctx, kind);
-    type->is_untyped = 1;
-
-    return type;
+    return new_type(ctx, TYPE_UNTYPED_INT);
 }
 
 static double integer_value_to_double(IntegerValue value)
@@ -672,6 +738,9 @@ static int round_float_for_type(
 ) {
     if (!isfinite(value))
         return 0;
+
+    if (kind == TYPE_UNTYPED_FLOAT)
+        kind = TYPE_F64;
 
     if (kind == TYPE_F32) {
         if (value > FLT_MAX || value < -FLT_MAX)
@@ -777,7 +846,10 @@ static int signed_integer_min_magnitude(
     }
 }
 
-static int integer_division_overflows(IntegerValue left, IntegerValue right, TypeKind result_kind) {
+static int integer_division_overflows(
+    IntegerValue left,
+    IntegerValue right,
+    TypeKind result_kind) {
 
     uint64_t minimum_magnitude;
 
@@ -793,7 +865,6 @@ static int integer_division_overflows(IntegerValue left, IntegerValue right, Typ
 
 static int is_u8_type(Type *type)    { return type && type->kind == TYPE_U8; }
 static int is_integer_type(Type *t)  { return t && is_integer_kind(t->kind); }
-static int is_float_kind(TypeKind k) { return k == TYPE_F32 || k == TYPE_F64; }
 static int is_numeric_type(Type *t)  { return t && (is_integer_kind(t->kind) || is_float_kind(t->kind)); }
 static int is_bool_type(Type *t)     { return t && t->kind == TYPE_BOOL; }
 static int is_enum_type(Type *type)  { return type && type->kind == TYPE_ENUM; }
@@ -916,45 +987,116 @@ static int numeric_promotion_rank(TypeKind kind)
     }
 }
 
-// Determines the result type of a numeric binary operation.
+static int default_numeric_kind_for_constant(
+    const ConstValue *value,
+    TypeKind *out_kind
+) {
+    if (value->type &&
+        !is_untyped_numeric_type(value->type)) {
+        if (!is_concrete_integer_kind(value->type->kind) &&
+            !is_concrete_float_kind(value->type->kind)) {
+            return 0;
+        }
+
+        *out_kind = value->type->kind;
+        return 1;
+    }
+
+    switch (value->kind) {
+        case CONST_VALUE_INT:
+            return default_integer_kind_for_value(
+                value->as.integer,
+                out_kind
+            );
+
+        case CONST_VALUE_FLOAT:
+            *out_kind = TYPE_F64;
+            return 1;
+
+        default:
+            return 0;
+    }
+}
+
+static int constant_numeric_operation_kind(
+    const ConstValue *left,
+    const ConstValue *right,
+    Type *common_type,
+    TypeKind *out_kind
+) {
+    if (!common_type)
+        return 0;
+
+    if (is_concrete_integer_kind(common_type->kind) ||
+        is_concrete_float_kind(common_type->kind)) {
+        *out_kind = common_type->kind;
+        return 1;
+    }
+
+    if (!is_untyped_numeric_type(common_type))
+        return 0;
+
+    TypeKind left_kind;
+    TypeKind right_kind;
+
+    if (!default_numeric_kind_for_constant(left, &left_kind) ||
+        !default_numeric_kind_for_constant(right, &right_kind)) {
+        return 0;
+    }
+
+    int left_rank = numeric_promotion_rank(left_kind);
+    int right_rank = numeric_promotion_rank(right_kind);
+
+    if (!left_rank || !right_rank)
+        return 0;
+
+    if (left_rank != right_rank) {
+        *out_kind = left_rank > right_rank
+            ? left_kind
+            : right_kind;
+        return 1;
+    }
+
+    if (left_kind == TYPE_U64 || right_kind == TYPE_U64) {
+        *out_kind = TYPE_U64;
+        return 1;
+    }
+
+    *out_kind = left_kind;
+    return 1;
+}
+
+
+// Determines the semantic result type of a numeric binary operation.
 //
 //   - If exactly one operand is untyped, the result is the other
-//     (concrete) operand's type -- the untyped side just adapts.
-//   - If both operands are untyped, the result is the higher-ranked
-//     of the two (matches literal-vs-literal arithmetic like `1 + 2.0`).
-//   - If both operands are concrete, they must be the exact same type;
-//     mixing two named numeric types requires an explicit cast.
+//     concrete operand's type.
+//   - If both operands are untyped, the result remains untyped-int or
+//     untyped-float. Constant evaluation separately selects a provisional
+//     concrete operation kind for overflow and rounding behaviour.
+//   - If both operands are concrete, they must be exactly equal.
 static Type *common_numeric_type(Type *a, Type *b)
 {
-    if (!a || !b)
+    if (!a || !b ||
+        !is_numeric_type(a) ||
+        !is_numeric_type(b)) {
         return NULL;
+    }
 
-    int rank_a = numeric_promotion_rank(a->kind);
-    int rank_b = numeric_promotion_rank(b->kind);
+    int a_is_untyped = is_untyped_numeric_type(a);
+    int b_is_untyped = is_untyped_numeric_type(b);
 
-    if (!rank_a || !rank_b)
-        return NULL;
-
-    if (a->is_untyped && !b->is_untyped)
+    if (a_is_untyped && !b_is_untyped)
         return b;
 
-    if (b->is_untyped && !a->is_untyped)
+    if (b_is_untyped && !a_is_untyped)
         return a;
 
-    if (a->is_untyped && b->is_untyped) {
-        if (rank_a != rank_b)
-            return rank_a > rank_b ? a : b;
-
-        /*
-         * i64 and u64 share a promotion rank. Selecting u64 when
-         * either side is an untyped u64 makes the answer independent
-         * of operand order. A negative operand will subsequently fail
-         * the representability check.
-         */
-        if (a->kind == TYPE_U64)
+    if (a_is_untyped && b_is_untyped) {
+        if (a->kind == TYPE_UNTYPED_FLOAT)
             return a;
 
-        if (b->kind == TYPE_U64)
+        if (b->kind == TYPE_UNTYPED_FLOAT)
             return b;
 
         return a;
@@ -991,27 +1133,31 @@ static Type *common_numeric_type(Type *a, Type *b)
  * @return 1 if the initializer is considered compatible with the declared
  *         type under the current rules, otherwise 0.
  */
-static int initializer_compatible(Type *declared, Type *init_type, Node *init_node) {
+static int initializer_compatible(
+    Type *declared,
+    Type *init_type,
+    Node *init_node
+) {
+    if (!declared || !init_type)
+        return 1;
 
-    if (!declared || !init_type) return 1;
+    if (type_equal(declared, init_type))
+        return 1;
 
-    if (type_equal(declared, init_type)) return 1;
-
-    // integer literal 0 is a valid null-pointer constant for any pointer type
-    if (declared->kind == TYPE_POINTER && is_int_literal_zero(init_node)) return 1;
-
-    // an untyped numeric literal/constant adapts to any compatible declared kind
-    if (init_type->is_untyped) {
-
-        if (is_integer_kind(init_type->kind) &&
-            (is_integer_kind(declared->kind) || is_float_kind(declared->kind)))
-            return 1;
-
-        if (is_float_kind(init_type->kind) && is_float_kind(declared->kind))
-            return 1;
+    /* Integer literal zero is a null-pointer constant. */
+    if (declared->kind == TYPE_POINTER &&
+        is_int_literal_zero(init_node)) {
+        return 1;
     }
 
-    // two concrete types must match exactly
+    if (init_type->kind == TYPE_UNTYPED_INT) {
+        return is_concrete_integer_kind(declared->kind) ||
+               is_concrete_float_kind(declared->kind);
+    }
+
+    if (init_type->kind == TYPE_UNTYPED_FLOAT)
+        return is_concrete_float_kind(declared->kind);
+
     return 0;
 }
 
@@ -1062,9 +1208,12 @@ static int const_value_to_float_type(const ConstValue *value, TypeKind target_ki
     }
 }
 
-static Type *const_value_default_type(SemanticContext *ctx, const ConstValue *value) {
-
-    if (value->type) return value->type;
+static Type *const_value_default_type(
+    SemanticContext *ctx,
+    const ConstValue *value
+) {
+    if (value->type)
+        return value->type;
 
     switch (value->kind) {
         case CONST_VALUE_INT:
@@ -1074,11 +1223,40 @@ static Type *const_value_default_type(SemanticContext *ctx, const ConstValue *va
             );
 
         case CONST_VALUE_FLOAT:
+            return new_type(ctx, TYPE_UNTYPED_FLOAT);
+
+        case CONST_VALUE_BOOL:
+            return ctx->type_bool;
+    }
+
+    return NULL;
+}
+
+static Type *default_concrete_type_for_constant(
+    SemanticContext *ctx,
+    const ConstValue *value
+) {
+    if (value->type &&
+        !is_untyped_numeric_type(value->type)) {
+        return value->type;
+    }
+
+    switch (value->kind) {
+        case CONST_VALUE_INT:
         {
-            Type *type = new_type(ctx, TYPE_F64);
-            type->is_untyped = 1;
-            return type;
+            TypeKind kind;
+
+            if (!default_integer_kind_for_value(
+                    value->as.integer,
+                    &kind)) {
+                return NULL;
+            }
+
+            return new_type(ctx, kind);
         }
+
+        case CONST_VALUE_FLOAT:
+            return new_type(ctx, TYPE_F64);
 
         case CONST_VALUE_BOOL:
             return ctx->type_bool;
@@ -1088,21 +1266,33 @@ static Type *const_value_default_type(SemanticContext *ctx, const ConstValue *va
 }
 
 static int integer_constant_result(
-    SemanticContext *ctx, Node *node, Type *result_type, IntegerValue value, ConstValue *out) {
-
+    SemanticContext *ctx,
+    Node *node,
+    Type *result_type,
+    TypeKind operation_kind,
+    IntegerValue value,
+    ConstValue *out
+) {
     if (!result_type ||
-        !is_integer_kind(result_type->kind)) {
-
-        semantic_error(ctx, node,
-            "integer constant expression has no integer result type");
+        !is_integer_kind(result_type->kind) ||
+        !is_concrete_integer_kind(operation_kind)) {
+        semantic_error(
+            ctx,
+            node,
+            "integer constant expression has no integer operation type"
+        );
 
         return 0;
     }
 
-    if (!integer_value_fits_type(value, result_type->kind)) {
-
-        semantic_error(ctx, node,
-            "integer overflow in constant expression");
+    if (!integer_value_fits_type(value, operation_kind) ||
+        (result_type->kind == TYPE_UNTYPED_INT &&
+         !integer_value_fits_type(value, TYPE_UNTYPED_INT))) {
+        semantic_error(
+            ctx,
+            node,
+            "integer overflow in constant expression"
+        );
 
         return 0;
     }
@@ -1114,18 +1304,25 @@ static int integer_constant_result(
     return 1;
 }
 
-static int float_constant_result(SemanticContext *ctx, Node *node, Type *result_type, double value, ConstValue *out) {
-
+static int float_constant_result(
+    SemanticContext *ctx,
+    Node *node,
+    Type *result_type,
+    TypeKind operation_kind,
+    double value,
+    ConstValue *out
+) {
     double rounded;
 
     if (!result_type ||
-        !is_float_kind(result_type->kind) || !round_float_for_type(
-            value,
-            result_type->kind,
-            &rounded
-        )) {
-        semantic_error(ctx, node,
-            "floating-point overflow in constant expression");
+        !is_float_kind(result_type->kind) ||
+        !is_concrete_float_kind(operation_kind) ||
+        !round_float_for_type(value, operation_kind, &rounded)) {
+        semantic_error(
+            ctx,
+            node,
+            "floating-point overflow in constant expression"
+        );
 
         return 0;
     }
@@ -1141,16 +1338,18 @@ static int eval_float_binary_operation(
     SemanticContext *ctx,
     Node *node,
     Type *result_type,
+    TypeKind operation_kind,
     const ConstValue *left,
     const ConstValue *right,
     ConstValue *out
 ) {
     if (!result_type ||
-        !is_float_kind(result_type->kind)) {
+        !is_float_kind(result_type->kind) ||
+        !is_concrete_float_kind(operation_kind)) {
         semantic_error(
             ctx,
             node,
-            "floating-point constant expression has no floating-point result type"
+            "floating-point constant expression has no floating-point operation type"
         );
 
         return 0;
@@ -1161,12 +1360,12 @@ static int eval_float_binary_operation(
 
     if (!const_value_to_float_type(
             left,
-            result_type->kind,
+            operation_kind,
             &left_value
         ) ||
         !const_value_to_float_type(
             right,
-            result_type->kind,
+            operation_kind,
             &right_value
         )) {
         semantic_error(
@@ -1178,12 +1377,7 @@ static int eval_float_binary_operation(
         return 0;
     }
 
-    if (result_type->kind == TYPE_F32) {
-        /*
-         * Perform a f32 operation as an actual host float operation.
-         * Storing f32 constants as double is fine, provided the stored
-         * double is the exact widening of a value rounded to float.
-         */
+    if (operation_kind == TYPE_F32) {
         float left_f = (float)left_value;
         float right_f = (float)right_value;
         float result_f;
@@ -1273,6 +1467,7 @@ static int eval_float_binary_operation(
         ctx,
         node,
         result_type,
+        operation_kind,
         result,
         out
     );
@@ -1286,20 +1481,27 @@ static int eval_const_comparison(
     const ConstValue *right,
     ConstValue *out
 ) {
-    Type *left_type =
-        const_value_default_type(ctx, left);
-
-    Type *right_type =
-        const_value_default_type(ctx, right);
+    Type *left_type = const_value_default_type(ctx, left);
+    Type *right_type = const_value_default_type(ctx, right);
 
     int comparison = 0;
 
     if (is_numeric_type(left_type) &&
         is_numeric_type(right_type)) {
-        Type *common =
-            common_numeric_type(left_type, right_type);
+        Type *common = common_numeric_type(
+            left_type,
+            right_type
+        );
 
-        if (!common) {
+        TypeKind operation_kind;
+
+        if (!common ||
+            !constant_numeric_operation_kind(
+                left,
+                right,
+                common,
+                &operation_kind
+            )) {
             semantic_error(
                 ctx,
                 node,
@@ -1309,16 +1511,16 @@ static int eval_const_comparison(
             return 0;
         }
 
-        if (is_integer_kind(common->kind)) {
+        if (is_concrete_integer_kind(operation_kind)) {
             if (left->kind != CONST_VALUE_INT ||
                 right->kind != CONST_VALUE_INT ||
                 !integer_value_fits_type(
                     left->as.integer,
-                    common->kind
+                    operation_kind
                 ) ||
                 !integer_value_fits_type(
                     right->as.integer,
-                    common->kind
+                    operation_kind
                 )) {
                 semantic_error(
                     ctx,
@@ -1337,14 +1539,15 @@ static int eval_const_comparison(
             double left_value;
             double right_value;
 
-            if (!const_value_to_float_type(
+            if (!is_concrete_float_kind(operation_kind) ||
+                !const_value_to_float_type(
                     left,
-                    common->kind,
+                    operation_kind,
                     &left_value
                 ) ||
                 !const_value_to_float_type(
                     right,
-                    common->kind,
+                    operation_kind,
                     &right_value
                 )) {
                 semantic_error(
@@ -1450,8 +1653,7 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
             if (node->as.number.kind == NUMBER_LITERAL_FLOAT) {
                 out->kind = CONST_VALUE_FLOAT;
                 out->as.floating = node->as.number.value.floating;
-                out->type = new_type(ctx, TYPE_F64);
-                out->type->is_untyped = 1;
+                out->type = new_type(ctx, TYPE_UNTYPED_FLOAT);
             } else {
                 out->kind = CONST_VALUE_INT;
                 out->as.integer = integer_value_make(
@@ -1569,26 +1771,41 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                             operand.as.integer
                         );
 
-                    Type *result_type = operand.type;
+                    Type *result_type =
+                        const_value_default_type(
+                            ctx,
+                            &operand
+                        );
+
+                    TypeKind operation_kind;
 
                     /*
-                     * Untyped integer negation is typed from the
-                     * resulting mathematical value. This is what
-                     * permits the i64 minimum spelling.
+                     * Untyped negation chooses its provisional concrete
+                     * operation kind from the resulting mathematical value.
+                     * This preserves spellings such as the i64 minimum.
                      */
-                    if (!result_type || result_type->is_untyped) {
-                        result_type =
-                            untyped_integer_type_for_value(
+                    if (result_type &&
+                        result_type->kind == TYPE_UNTYPED_INT) {
+                        if (!default_integer_kind_for_value(
+                                value,
+                                &operation_kind)) {
+                            semantic_error(
                                 ctx,
-                                value
+                                node,
+                                "integer overflow in constant expression"
                             );
-                    }
 
-                    if (!result_type) {
+                            return 0;
+                        }
+                    } else if (result_type &&
+                               is_concrete_integer_kind(
+                                   result_type->kind)) {
+                        operation_kind = result_type->kind;
+                    } else {
                         semantic_error(
                             ctx,
                             node,
-                            "integer overflow in constant expression"
+                            "integer constant expression has no integer type"
                         );
 
                         return 0;
@@ -1598,6 +1815,7 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                         ctx,
                         node,
                         result_type,
+                        operation_kind,
                         value,
                         out
                     );
@@ -1610,10 +1828,26 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                             &operand
                         );
 
+                    TypeKind operation_kind;
+
+                    if (!default_numeric_kind_for_constant(
+                            &operand,
+                            &operation_kind) ||
+                        !is_concrete_float_kind(operation_kind)) {
+                        semantic_error(
+                            ctx,
+                            node,
+                            "floating-point constant expression has no floating-point type"
+                        );
+
+                        return 0;
+                    }
+
                     return float_constant_result(
                         ctx,
                         node,
                         result_type,
+                        operation_kind,
                         -operand.as.floating,
                         out
                     );
@@ -1784,7 +2018,15 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                         right_type
                     );
 
-                    if (!result_type) {
+                    TypeKind operation_kind;
+
+                    if (!result_type ||
+                        !constant_numeric_operation_kind(
+                            &left,
+                            &right,
+                            result_type,
+                            &operation_kind
+                        )) {
                         semantic_error(
                             ctx,
                             node,
@@ -1796,14 +2038,14 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
 
                     if (left.kind == CONST_VALUE_INT &&
                         right.kind == CONST_VALUE_INT &&
-                        is_integer_kind(result_type->kind)) {
+                        is_concrete_integer_kind(operation_kind)) {
                         if (!integer_value_fits_type(
                                 left.as.integer,
-                                result_type->kind
+                                operation_kind
                             ) ||
                             !integer_value_fits_type(
                                 right.as.integer,
-                                result_type->kind
+                                operation_kind
                             )) {
                             semantic_error(
                                 ctx,
@@ -1819,7 +2061,7 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                             integer_division_overflows(
                                 left.as.integer,
                                 right.as.integer,
-                                result_type->kind
+                                operation_kind
                             )) {
                             semantic_error(
                                 ctx,
@@ -1917,6 +2159,7 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                             ctx,
                             node,
                             result_type,
+                            operation_kind,
                             value,
                             out
                         );
@@ -1936,6 +2179,7 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                         ctx,
                         node,
                         result_type,
+                        operation_kind,
                         &left,
                         &right,
                         out
@@ -1962,6 +2206,45 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
 
             return 0;
     }
+}
+
+static Type *concretize_inferred_numeric_type(
+    SemanticContext *ctx,
+    Node *expression,
+    Type *type
+) {
+    if (!is_untyped_numeric_type(type))
+        return type;
+
+    if (!expression_is_compile_time_constant(ctx, expression)) {
+        semantic_error(
+            ctx,
+            expression,
+            "cannot infer a concrete type from a non-constant untyped expression"
+        );
+
+        return NULL;
+    }
+
+    ConstValue value;
+
+    if (!eval_const_expr(ctx, expression, &value))
+        return NULL;
+
+    Type *concrete = default_concrete_type_for_constant(
+        ctx,
+        &value
+    );
+
+    if (!concrete) {
+        semantic_error(
+            ctx,
+            expression,
+            "could not determine a default concrete numeric type"
+        );
+    }
+
+    return concrete;
 }
 
 static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
@@ -2249,7 +2532,7 @@ static int check_binary_constant_operands(
     };
 
     for (int i = 0; i < 2; i++) {
-        if (!operand_types[i]->is_untyped)
+        if (!is_untyped_numeric_type(operand_types[i]))
             continue;
 
         if (!check_constant_value_against_type(
@@ -2585,8 +2868,8 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     Type *result = common_numeric_type(left, right);
 
                     if (!result) {
-                        if (!left->is_untyped &&
-                            !right->is_untyped &&
+                        if (!is_untyped_numeric_type(left) &&
+                            !is_untyped_numeric_type(right) &&
                             !type_equal(left, right)) {
                                 semantic_error(ctx, node,
                                     "operands are different numeric types -- use an explicit cast");
@@ -3033,8 +3316,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             Type *type;
 
             if (node->as.number.kind == NUMBER_LITERAL_FLOAT) {
-                type = new_type(ctx, TYPE_F64);
-                type->is_untyped = 1;
+                type = new_type(ctx, TYPE_UNTYPED_FLOAT);
             } else {
                 type = untyped_integer_type_for_value(
                     ctx,
@@ -3655,7 +3937,7 @@ static int check_compound_assignment_statement(SemanticContext *ctx, Node *node)
         return 0;
     }
 
-    if (value_type->is_untyped &&
+    if (is_untyped_numeric_type(value_type) &&
         !check_constant_value_against_type(
             ctx,
             value_node,
@@ -3925,7 +4207,14 @@ static void check_var_decl(SemanticContext *ctx, Node *node)
             if (!init_type)
                 return;
 
-            type = init_type;
+            type = concretize_inferred_numeric_type(
+                ctx,
+                init,
+                init_type
+            );
+
+            if (!type)
+                return;
         }
     }
 
@@ -3985,9 +4274,23 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
             }
 
         } else {
-            type = check_value_expression(ctx,default_value);
+            Type *default_type =
+                check_value_expression(
+                    ctx,
+                    default_value
+                );
 
-            if (!type) return;
+            if (!default_type)
+                return;
+
+            type = concretize_inferred_numeric_type(
+                ctx,
+                default_value,
+                default_type
+            );
+
+            if (!type)
+                return;
         }
     }
 

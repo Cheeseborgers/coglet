@@ -118,6 +118,8 @@ static const char *type_kind_name(TypeKind kind)
         case TYPE_ENUM:     return "enum";
         case TYPE_FUNCTION: return "function";
         case TYPE_NAMED:    return "named";
+        case TYPE_UNTYPED_INT: return "untyped-int";
+        case TYPE_UNTYPED_FLOAT: return "untyped-float";
     }
 
     return "<unknown-type>";
@@ -858,7 +860,6 @@ static void dump_expression(void *context, Node *expression)
     const char *type_name     = "<missing>";
     const char *category_name = "<missing>";
     const char *symbol_name   = "<missing>";
-    const char *untyped_name  = "";
 
     if (info) {
         type_name = info->type
@@ -868,19 +869,15 @@ static void dump_expression(void *context, Node *expression)
             info->value_category
         );
         symbol_name = info->symbol ? "yes" : "no";
-        untyped_name = info->type && info->type->is_untyped
-            ? " untyped"
-            : "";
     }
 
     fprintf(
         dump->output,
-        "  %4d  line %-4d node=%-18s type=%-10s%-8s category=%-6s symbol=%s\n",
+        "  %4d  line %-4d node=%-18s type=%-18s category=%-6s symbol=%s\n",
         dump->count,
         expression->line,
         node_type_name(expression->type),
         type_name,
-        untyped_name,
         category_name,
         symbol_name
     );

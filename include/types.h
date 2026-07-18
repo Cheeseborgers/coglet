@@ -24,6 +24,13 @@ typedef enum {
     TYPE_F32,
     TYPE_F64,
 
+    /*
+    * Numeric constants that have not yet been fixed to a concrete
+    * storage type. Their exact value lives in ConstValue.
+    */
+    TYPE_UNTYPED_INT,
+    TYPE_UNTYPED_FLOAT,
+
     TYPE_POINTER,
     TYPE_ARRAY,
 
@@ -59,40 +66,22 @@ struct Type {
     TypeKind kind;
 
     /*
-     * True for numeric literals and untyped constant expressions that
-     * may adapt to a concrete numeric type.
-     */
-    int is_untyped;
-
-    /*
      * Pointer and array types.
      */
     Type *element;
     int array_size; /* -1 if unspecified */
 
-    /*
-    * Named types.
-    */
     StringView named_name;   // TYPE_NAMED
 
-    /*
-     * Struct types.
-     */
     StringView struct_name;  // TYPE_STRUCT
     StructField *fields;
     int field_count;
 
-    /*
-     * Function types.
-     */
-    Type **parameters;
+    Type **parameters;       // TYPE_FUNCTION
     int parameter_count;
     Type *return_type;
 
-    /*
-     * Enum types.
-     */
-    StringView enum_name;
+    StringView enum_name;    // TYPE_ENUM
     Type *enum_backing_type;
     EnumMember *enum_members;
     int enum_member_count;

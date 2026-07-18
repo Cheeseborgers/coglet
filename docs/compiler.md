@@ -49,7 +49,7 @@ compile_result_destroy(&result);
 After destruction, the source, AST, parser diagnostics, and semantic data must
 not be accessed.
 
-Failure states
+## Failure States
 
 A result may be destroyed after every driver return status.
 
@@ -63,7 +63,7 @@ such as when the source file could not be read.
 Parser and driver errors map to process exit code 2. Semantic errors map to
 exit code 1.
 
-Diagnostics
+## Diagnostics
 
 Parser diagnostics are accumulated by the parser and printed by the driver
 after parsing fails.
@@ -73,3 +73,23 @@ driver prints only the final semantic error-count summary.
 
 Callers must not print these diagnostics again.
 
+
+## Semantic-Information Verification
+
+`check_semantic_info` uses the same compiler-driver frontend pipeline and then verifies the semantic side table after a successful analysis.
+
+Normal verification:
+
+```sh
+check_semantic_info source.cog
+```
+
+Diagnostic source-order dump:
+
+```sh
+check_semantic_info --dump-semantic-info source.cog
+```
+
+The verifier checks completeness, duplicate and orphan entries, type/category invariants, symbol associations, and the rule that variables and parameters have concrete types.
+
+A program that fails parsing or semantic analysis is not required to have a complete semantic side table. With `--dump-semantic-info`, a partial table may be printed for diagnosis; it is not passed through the successful-program completeness verifier.

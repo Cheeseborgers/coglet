@@ -30,6 +30,38 @@ The current semantic rules reject stored value types containing `void`, includin
 
 A plain `void` return type remains valid for functions.
 
+
+## Numeric Literals and Unary Minus
+
+A minus sign is an operator, not part of a numeric token.
+
+```ebnf
+unary_expression =
+      "-" unary_expression
+    | "!" unary_expression
+    | "&" unary_expression
+    | "*" unary_expression
+    | primary_expression;
+```
+
+For example, `-2147483648` is parsed as unary negation applied to the positive literal `2147483648`. Numeric literals initially have adaptable `untyped-int` or `untyped-float` semantic types. Inferred mutable variables and parameters are concretized to default runtime types, while inferred compile-time constants may remain adaptable.
+
+## Raw Object Pointers
+
+Pointer types use postfix `*` in type syntax. Address-of and dereference use prefix unary operators:
+
+```c
+value: i32 = 10;
+pointer: i32* = &value;
+*pointer = 20;
+```
+
+`T*` currently means a raw, nullable pointer to mutable `T`. It carries no bounds, ownership, lifetime, non-null, or aliasing guarantee.
+
+Address-of requires a mutable lvalue. Dereference requires a pointer value and produces an lvalue. Postfix operators bind more tightly than prefix unary operators, so `*p.field` parses as `*(p.field)`, while `(*p).field` accesses a field through a pointer.
+
+Arrays do not decay implicitly to pointers. General pointer arithmetic, `void*`, and pointee const qualification are not yet supported. Literal zero remains the only implicit null-pointer initializer.
+
 ## Array Indexing
 
 ```ebnf
@@ -48,11 +80,12 @@ The index expression must produce an integer value.
 
 Constant indexes into fixed-size arrays are checked at compile time.
 
-Indexing is assignable only when the indexed base expression is assignable:
+Fixed-array indexing is assignable only when the indexed array expression is assignable. Pointer indexing always denotes the storage selected by the pointer value:
 
 ```c
-values[0] = 1;       // valid when values is mutable storage
-make_array()[0] = 1; // invalid: make_array() produces a temporary value
+values[0] = 1;              // valid when values is mutable storage
+make_array()[0] = 1;        // invalid: the array result is a temporary value
+get_pointer()[0] = 1;       // valid: the pointer value designates storage
 ```
 
 ## Array Literals
@@ -355,3 +388,41 @@ Case expressions must:
 At most one default clause is allowed.
 
 Enum switches may be recognized as exhaustive when every member is covered.
+
+## Enum Declarations and Closed Values
+
+A simplified enum form is:
+
+```ebnf
+enum_declaration =
+    identifier "::" "enum" ["(" integer_type ")"]
+    "{" {enum_member [","]} "}";
+
+enum_member =
+    identifier ["=" constant_integer_expression];
+```
+
+Enums are closed. The backing type constrains member representation, but only declared member values are valid values of the enum type.
+
+```c
+Color :: enum(u16) {
+    Red = 0,
+    Green = 1,
+    Blue = 2,
+}
+```
+
+A compile-time integer-to-enum cast must name a declared value. Runtime integer-to-enum conversion is currently rejected. Enum-to-integer conversion is allowed.
+
+A future representation annotation may use syntax such as:
+
+```c
+Color :: enum(u16) #repr_c {
+    Red = 0,
+    Green = 1,
+    Blue = 2,
+}
+```
+
+The annotation is not currently implemented and will concern ABI representation, not enum openness.
+

@@ -26,7 +26,7 @@ variable:
     category = lvalue
 
 numeric literal:
-    type = numeric type
+    type = untyped-int or untyped-float
     category = rvalue
 
 void-returning call:
@@ -120,6 +120,90 @@ This differs from mutation operations:
 - a void call remains an expression with type `void`
 - a mutation statement has no expression type
 - both have value category `none`
+
+
+## Numeric Literals, Inference, and Constants
+
+Integer and floating-point literals begin as adaptable numeric values:
+
+```text
+integer literal       -> untyped-int
+floating-point literal -> untyped-float
+```
+
+The exact integer value is retained independently of a concrete machine type. Negative values are parsed as unary negation applied to a positive literal:
+
+```text
+-2147483648
+
+unary '-'
+└── number 2147483648
+```
+
+This permits correct handling of signed minimum values.
+
+Mutable inferred storage receives a concrete default type:
+
+```c
+a := 1;                    // i32
+b := 2147483648;           // i64
+c := 9223372036854775808;  // u64
+d := 1.5;                  // f64
+```
+
+Inferred compile-time constants remain adaptable:
+
+```c
+A :: 255;  // untyped-int
+B :: 1.5;  // untyped-float
+
+small: u8 = A;
+wide: i64 = A;
+float_value: f32 = A;
+rounded: f32 = B;
+```
+
+Adaptation succeeds only when the exact value is representable in the destination type. Two different concrete numeric types do not implicitly convert; an explicit cast is required.
+
+## Raw Object Pointers
+
+Coglet supports raw object pointers as its low-level memory and future C-interoperability foundation.
+
+```c
+value: i32 = 10;
+pointer: i32* = &value;
+*pointer = 20;
+```
+
+The current pointer type `T*` is:
+
+- nullable
+- a pointer to mutable `T`
+- unchecked for lifetime, alignment, bounds, ownership, and aliasing
+- an rvalue when produced by address-of
+- a source of a `T` lvalue when dereferenced
+
+Address-of requires mutable assignable storage. Valid targets include mutable variables, assignable fields, assignable fixed-array indexes, dereference expressions, and pointer indexes. Constants, enum members, literals, arithmetic results, direct call results, and fields or indexes of temporary aggregate values cannot be addressed.
+
+```c
+x: i32 = 1;
+p: i32* = &x;       // valid
+q: i32* = &*p;      // valid
+*&x = 2;            // valid
+
+bad: i32* = &(1 + 2); // invalid
+```
+
+Dereferencing a non-pointer is invalid. Dereference produces an lvalue even when the pointer expression itself is an rvalue, because a temporary pointer value may still designate persistent storage:
+
+```c
+get_pointer()[0] = 1;
+*get_pointer() = 2;
+```
+
+Pointer indexing is currently an unchecked low-level operation. General pointer arithmetic operators remain unsupported, arrays do not decay implicitly to pointers, and unrelated pointer types do not implicitly convert. Literal zero remains the only implicit null-pointer initializer. `void*`, read-only pointee qualification, safe references, slices, ownership, borrowing, and lifetime checking remain future work.
+
+Raw pointers are not intended to become Coglet's only pointer-like abstraction. Future safe references and slices may use stronger source-language rules while retaining direct or wrapper-based C ABI compatibility.
 
 ## Arrays
 
@@ -309,7 +393,7 @@ A field expression is assignable only when its base expression is assignable.
 
 ## Enums
 
-Enums have integer backing types.
+Enums have integer backing types and are closed by default.
 
 ```c
 Color :: enum(u16) {
@@ -319,7 +403,7 @@ Color :: enum(u16) {
 }
 ```
 
-Members may use implicit or explicit integer constant values.
+Members may use implicit or explicit integer constant values. The backing type controls representation and range, but the valid values of `Color` are only the declared member values.
 
 Semantic analysis checks:
 
@@ -331,9 +415,18 @@ Semantic analysis checks:
 - unknown members
 - enum type compatibility
 
-Enum members are values and are not assignable.
+Enum members are values and are not assignable. Different enum types remain distinct even when their backing types match.
 
-Different enum types remain distinct even when their backing types match.
+Enum-to-integer casts are allowed. A compile-time integer-to-enum cast is allowed only when the value equals a declared member:
+
+```c
+GREEN :: cast(Color, 1); // valid
+BAD   :: cast(Color, 9); // invalid
+```
+
+Runtime integer-to-enum casts are currently rejected. A future checked conversion may validate the incoming value at runtime.
+
+A future `#repr_c` annotation is planned to make the backing representation and ABI contract explicit. `#repr_c` will not change closed-enum validity or switch exhaustiveness.
 
 ## Switch Statements
 
@@ -352,104 +445,64 @@ Semantic analysis checks:
 
 ## Casts
 
-Explicit casts currently support selected conversions among:
-
-- numeric types
-- integer and enum backing values
-- identical types
-- boolean to boolean
-
-Unsupported casts are rejected.
-
-Compile-time integer and enum casts are range-checked when the value is known.
-
-## Control Flow
-
-Supported control flow includes:
-
-- `if` / `else`
-- `while`
-- `for`
-- `switch`
-- `break`
-- `continue`
-- `return`
-- nested block scopes
-
-Conditions must produce boolean values.
-
-`break` and `continue` are valid only inside loops.
-
-Non-void functions must return on every reachable path recognized by the current return analysis.
-
-Statements after a definitely returning statement are diagnosed as unreachable.
-
-## Casts
-
 Explicit casts use the form:
 
 ```c
 cast(TargetType, expression)
 ```
 
-A cast whose operand is known at compile time is checked for representability
-in the destination type. If the value cannot be represented, the cast is a
-semantic error regardless of where the cast appears.
+Supported cast categories currently include:
 
-This applies in all expression contexts, including:
+- identical types
+- selected numeric conversions
+- enum-to-integer conversion
+- compile-time integer-to-enum conversion to a declared member
+- boolean to boolean
 
-* constant declarations
-* variable initializers
-* return expressions
-* function arguments
-* discarded expression statements
-
-Discarding a cast result does not skip semantic validation:
+A cast whose operand is known at compile time is checked for representability in the destination type in every expression context, including discarded expression statements:
 
 ```c
 test::() -> void {
-    cast(u8, 256); // invalid: 256 does not fit in u8
+    cast(u8, 256); // invalid even though the result is discarded
 }
 ```
-Integer-to-enum casts and enum-to-integer casts are checked against the enum's
-backing type when the value is known at compile time.
 
-Runtime narrowing-cast behavior is not yet specified. Coglet must make an
-explicit decision before relying on runtime narrowing as checked conversion,
-wrapping/truncating conversion, or rejection.
+For closed enums, fitting the backing type is necessary but not sufficient:
 
+```c
+Small :: enum(u8) { A, B }
+
+cast(Small, 1);   // valid: Small.B
+cast(Small, 255); // invalid: no declared member has value 255
+```
+
+Runtime integer-to-enum casts are rejected until checked runtime conversion exists. Runtime narrowing between numeric types remains intentionally unspecified; Coglet still needs to choose checked conversion, wrapping/truncating conversion, or rejection.
 
 ## Current Semantic Architecture
 
-Semantic analysis stores expression facts separately from the AST.
+Semantic analysis stores expression facts separately from the AST. The semantic-info verifier walks successful programs in source order and checks:
 
-This supports:
+- one semantic entry for every successful expression or mutation node
+- no duplicate or orphan side-table entries
+- correct lvalue, rvalue, and no-value categories
+- symbol/type consistency
+- concrete types for variables and parameters
+- distinct handling of mutation nodes and void-returning calls
 
-- lvalue checking
-- contextual value requirements
-- type propagation
-- symbol resolution
-- later lowering and code generation
-- semantic debugging and invariant testing
-
-A failed parent expression normally has no successful semantic fact, although child expressions that checked successfully may retain their own facts.
+The verifier can also print a deterministic source-order dump for debugging. Semantic tables from failed programs may be partial and are dumped only when explicitly requested.
 
 ## Future Direction
 
-Near-term semantic work includes:
+Backend work is deliberately deferred until the language's purpose, runtime model, and execution strategy are clearer. Near-term work should focus on language semantics and tests. Candidate areas include:
 
-- complete AST-wide invariant verification
-- deterministic source-order semantic dumps
-- failed-expression fact auditing
-- a clear enum-member symbol model
-
-Future language work may include:
-
-- slices
-- readonly byte views
-- a first-class string type
+- runtime narrowing-cast semantics
+- slices and readonly byte views
+- ownership, lifetime, and mutability rules
+- a later first-class string type
+- C ABI representation and a future `#repr_c` attribute
 - imports and modules
 - multi-file compilation
-- generics
 - standard library facilities
+- generics
 - self-hosting
+

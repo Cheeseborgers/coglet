@@ -12,7 +12,7 @@ The long-term objective is a compiler capable of compiling itself. Language desi
 
 - Build a complete, understandable compiler.
 - Keep language semantics explicit and predictable.
-- Maintain a clean separation between parsing, semantic analysis, and later lowering/code generation.
+- Maintain a clean separation between parsing, semantic analysis, runtime design, and any later backend work.
 - Reach a stable self-hosting implementation.
 - Add features incrementally without accumulating special-case behavior.
 
@@ -24,7 +24,7 @@ The long-term objective is a compiler capable of compiling itself. Language desi
 - Explicit control over memory and performance.
 - Familiar low-level semantics with cleaner syntax.
 - Correctness and simplicity before advanced features.
-- Semantic facts should be explicit enough to support later lowering, diagnostics, tooling, and code generation.
+- Semantic facts should be explicit enough to support diagnostics, testing, tooling, interpretation, and any later backend design.
 
 ## Current Language Features
 
@@ -44,6 +44,8 @@ Supported declaration behavior includes:
 - compile-time constants
 - contextual array and string initializers
 - rejection of `void` as a stored value type
+- concrete default types for inferred mutable numeric storage
+- adaptable compile-time numeric constants
 
 ### Functions
 
@@ -222,9 +224,12 @@ Supported enum behavior includes:
 - enum member access
 - enum comparisons for equality
 - enum switch cases and exhaustiveness analysis
-- explicit integer-to-enum and enum-to-integer casts where allowed
+- enum-to-integer casts
+- compile-time integer-to-enum casts when the value names a declared member
 
-Enums are strongly typed. Values of different enum types are not interchangeable.
+Enums are closed and strongly typed. A backing type defines representation and range, but it does not make every backing-type value a valid enum value. Values of different enum types are not interchangeable. Runtime integer-to-enum casts are currently rejected because checked runtime conversion has not yet been implemented.
+
+A future `#repr_c` annotation is planned for explicit ABI representation. It will not make an enum open.
 
 ### Control Flow
 
@@ -258,9 +263,13 @@ variable expression:
     type = variable type
     category = lvalue
 
-numeric expression:
-    type = numeric type
+numeric literal or adaptable constant:
+    type = untyped-int or untyped-float
     category = rvalue
+
+inferred mutable numeric variable:
+    type = concrete i32, i64, u64, or f64
+    category = lvalue
 
 void-returning call:
     type = void
@@ -287,34 +296,41 @@ Higher-level facilities may be added later, but they should not obscure ownershi
 
 ## Current Status
 
-The parser and semantic analyzer support a substantial core language.
+The parser and semantic analyzer support a substantial core language. The semantic-information verifier now walks successful programs in source order and checks table completeness, duplicate/orphan entries, value categories, symbol associations, and concrete variable/parameter types. An optional diagnostic flag prints the semantic table deterministically.
 
-Current compiler work is focused on:
+Recently completed work includes:
 
-- semantic-info invariant verification
-- deterministic semantic dumps
-- auditing failed-expression fact recording
-- clarifying enum-member semantic representation
-- preparing the semantic model for lowering and code generation
+- explicit `TYPE_UNTYPED_INT` and `TYPE_UNTYPED_FLOAT` kinds
+- concrete default typing for inferred mutable numeric variables and parameters
+- adaptable compile-time numeric constants
+- exact constant arithmetic and representability checks
+- complete semantic-info invariant verification
+- deterministic source-order semantic dumps
+- closed enum value sets
+- declared-member validation for constant integer-to-enum casts
+- rejection of runtime integer-to-enum casts until checked conversion exists
+
+Backend and code-generation work is intentionally deferred until the language's direction and runtime model are clearer.
 
 ## Roadmap
 
-Near-term work:
+Near-term work should remain language- and frontend-focused:
 
-1. Complete semantic side-table verification.
-2. Add deterministic source-order semantic dumps.
-3. Audit failed-expression paths.
-4. Clarify enum-member symbol semantics.
-5. Design and implement slices.
-6. Continue native code generation and ABI work.
+1. Document and test settled numeric and enum semantics.
+2. Decide runtime narrowing-cast behavior.
+3. Decide the next language feature based on intended use, with slices as a leading candidate.
+4. Design ownership, mutability, lifetime, and string-view rules before implementing slices.
+5. Plan attributes such as `#repr_c` together with target layout and C ABI work, not as syntax-only features.
 
-Later work:
+Later work may include:
 
 - imports and modules
 - multi-file compilation
 - package visibility
-- standard library
+- C interoperability and explicit representation attributes
+- a standard library
 - generics
+- interpretation or code generation once the execution strategy is chosen
 - self-hosting
 
 ## License

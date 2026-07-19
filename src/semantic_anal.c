@@ -1,6 +1,7 @@
 // src/semantic_anal.c
 #include "semantic_anal.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -19,6 +20,45 @@ static Type *new_type(SemanticContext *ctx, TypeKind kind)
     type->array_size = -1;
 
     return type;
+}
+
+static Type *builtin_type(SemanticContext *ctx, TypeKind kind) {
+    switch (kind) {
+        case TYPE_I8:  return ctx->type_i8;
+        case TYPE_I16: return ctx->type_i16;
+        case TYPE_I32: return ctx->type_i32;
+        case TYPE_I64: return ctx->type_i64;
+
+        case TYPE_U8:  return ctx->type_u8;
+        case TYPE_U16: return ctx->type_u16;
+        case TYPE_U32: return ctx->type_u32;
+        case TYPE_U64: return ctx->type_u64;
+
+        case TYPE_F32: return ctx->type_f32;
+        case TYPE_F64: return ctx->type_f64;
+
+        case TYPE_BOOL:return ctx->type_bool;
+        case TYPE_VOID:return ctx->type_void;
+        case TYPE_NULL:return ctx->type_null;
+        default:
+            return NULL;
+    }
+}
+
+static void assert_canonical_builtin_type(SemanticContext *ctx, Type *type) {
+
+#ifndef NDEBUG
+    if (!type)
+        return;
+
+    Type *canonical =
+        builtin_type(ctx, type->kind);
+
+    assert(!canonical || type == canonical);
+#else
+    (void)ctx;
+    (void)type;
+#endif
 }
 
 static void semantic_error_fmt(SemanticContext *ctx, const Node *node, const char *fmt, ...)
@@ -86,6 +126,8 @@ static void sem_record_expr_info(
 
     if (!node)
         return;
+
+    assert_canonical_builtin_type(ctx, type);
 
     SemExprInfo *info = sem_get_or_create_expr_info(ctx, node);
 
@@ -195,11 +237,10 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
 
     if (!type) return NULL;
 
-    switch (type->kind) {
-        case TYPE_BOOL: return ctx->type_bool;
-        case TYPE_VOID: return ctx->type_void;
-        default: break;
-    }
+    Type *canonical = builtin_type(ctx, type->kind);
+
+    if (canonical)
+        return canonical;
 
     if (type->kind == TYPE_NAMED) {
         Type *resolved =
@@ -321,6 +362,8 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
     switch (type->kind) {
         case TYPE_VOID: snprintf(buffer, buffer_size, "void"); return;
         case TYPE_BOOL: snprintf(buffer, buffer_size, "bool"); return;
+        case TYPE_NULL: snprintf(buffer, buffer_size, "null"); return;
+
         case TYPE_I8:   snprintf(buffer, buffer_size, "i8");   return;
         case TYPE_I16:  snprintf(buffer, buffer_size, "i16");  return;
         case TYPE_I32:  snprintf(buffer, buffer_size, "i32");  return;
@@ -396,39 +439,59 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
     snprintf(buffer, buffer_size, "<unknown>");
 }
 
-static int type_equal(Type *a, Type *b) {
+static int type_equal(Type *a, Type *b)
+{
+    /*
+     * Preserve the existing rule that a missing type is not equal to
+     * another missing type.
+     */
+    if (!a || !b)
+        return 0;
 
-    if (a == NULL || b == NULL) return 0;
+    /*
+     * Canonical scalar types and shared named semantic types normally
+     * finish here.
+     */
+    if (a == b)
+        return 1;
 
-    if (a->kind != b->kind) return 0;
+    if (a->kind != b->kind)
+        return 0;
 
     if (a->kind == TYPE_POINTER)
         return type_equal(a->element, b->element);
 
-    if (a->kind == TYPE_ARRAY)
+    if (a->kind == TYPE_ARRAY) {
         return a->array_size == b->array_size &&
                type_equal(a->element, b->element);
+    }
 
-    if (a->kind == TYPE_NAMED)
+    if (a->kind == TYPE_NAMED) {
         return names_equal(
             a->named_name.data,
             a->named_name.length,
             b->named_name.data,
-            b->named_name.length);
+            b->named_name.length
+        );
+    }
 
-    if (a->kind == TYPE_STRUCT)
+    if (a->kind == TYPE_STRUCT) {
         return names_equal(
             a->struct_name.data,
             a->struct_name.length,
             b->struct_name.data,
-            b->struct_name.length);
+            b->struct_name.length
+        );
+    }
 
-    if (a->kind == TYPE_ENUM)
+    if (a->kind == TYPE_ENUM) {
         return names_equal(
             a->enum_name.data,
             a->enum_name.length,
             b->enum_name.data,
-            b->enum_name.length);
+            b->enum_name.length
+        );
+    }
 
     if (a->kind == TYPE_FUNCTION) {
         if (a->parameter_count != b->parameter_count)
@@ -848,6 +911,19 @@ static int is_allowed_explicit_cast(Type *to, Type *from) {
     return 0;
 }
 
+static int is_null_type(const Type *type) { return type && type->kind == TYPE_NULL;}
+
+static int is_pointer_null_pair(const Type *left, const Type *right) {
+
+    if (!left || !right)return 0;
+
+    return
+        (left->kind == TYPE_POINTER &&
+         right->kind == TYPE_NULL) ||
+        (left->kind == TYPE_NULL &&
+         right->kind == TYPE_POINTER);
+}
+
 static int const_values_equal(ConstValue *a, ConstValue *b)
 {
     if (!a || !b) return 0;
@@ -866,6 +942,9 @@ static int const_values_equal(ConstValue *a, ConstValue *b)
 
         case CONST_VALUE_BOOL:
             return a->as.boolean == b->as.boolean;
+
+        case CONST_VALUE_NULL:
+            return 1;
     }
 
     return 0;
@@ -1052,6 +1131,20 @@ static int initializer_compatible(Type *declared, Type *init_type, Node *init_no
 
     if (type_equal(declared, init_type)) return 1;
 
+    /*
+    * A null literal contextually adapts to any raw pointer type.
+    *
+    * This is directional:
+    *
+    *     T* <- null
+    *
+    * TYPE_NULL is not globally equal to TYPE_POINTER.
+    */
+    if (declared->kind == TYPE_POINTER &&
+        is_null_type(init_type)) {
+        return 1;
+    }
+
     /* Integer literal zero is a null-pointer constant. */
     if (declared->kind == TYPE_POINTER &&
         is_int_literal_zero(init_node)) {
@@ -1132,17 +1225,38 @@ static Type *const_value_default_type(SemanticContext *ctx, const ConstValue *va
 
         case CONST_VALUE_BOOL:
             return ctx->type_bool;
+
+        case CONST_VALUE_NULL:
+            return ctx->type_null;
     }
 
     return NULL;
 }
 
-static Type *default_concrete_type_for_constant(SemanticContext *ctx, const ConstValue *value) {
-
+static Type *default_concrete_type_for_constant(
+    SemanticContext *ctx,
+    const ConstValue *value
+) {
     if (value->type &&
         !is_untyped_numeric_type(value->type)) {
-        return value->type;
-    }
+
+        /*
+         * Null deliberately has no default concrete pointer type.
+         */
+        if (is_null_type(value->type))
+            return NULL;
+
+        /*
+         * Preserve compound and named types, but normalize any concrete
+         * built-in scalar that reaches this function.
+         */
+        Type *canonical =
+            builtin_type(ctx, value->type->kind);
+
+        return canonical
+            ? canonical
+            : value->type;
+        }
 
     switch (value->kind) {
         case CONST_VALUE_INT:
@@ -1153,16 +1267,19 @@ static Type *default_concrete_type_for_constant(SemanticContext *ctx, const Cons
                     value->as.integer,
                     &kind)) {
                 return NULL;
-            }
+                    }
 
-            return new_type(ctx, kind);
+            return builtin_type(ctx, kind);
         }
 
         case CONST_VALUE_FLOAT:
-            return new_type(ctx, TYPE_F64);
+            return ctx->type_f64;
 
         case CONST_VALUE_BOOL:
             return ctx->type_bool;
+
+        case CONST_VALUE_NULL:
+            return NULL;
     }
 
     return NULL;
@@ -1369,19 +1486,29 @@ static int eval_float_binary_operation(
 
 
 static int eval_const_comparison(
-    SemanticContext *ctx, Node *node, const ConstValue *left, const ConstValue *right, ConstValue *out) {
-
-    Type *left_type  = const_value_default_type(ctx, left);
+    SemanticContext *ctx,
+    Node *node,
+    const ConstValue *left,
+    const ConstValue *right,
+    ConstValue *out
+) {
+    Type *left_type = const_value_default_type(ctx, left);
     Type *right_type = const_value_default_type(ctx, right);
 
     int comparison = 0;
 
-    if (is_numeric_type(left_type) && is_numeric_type(right_type)) {
+    if (is_numeric_type(left_type) &&
+        is_numeric_type(right_type)) {
 
-        Type *common = common_numeric_type(left_type, right_type);
+        Type *common = common_numeric_type(
+            left_type,
+            right_type
+        );
+
         TypeKind operation_kind;
 
-        if (!common || !constant_numeric_operation_kind(
+        if (!common ||
+            !constant_numeric_operation_kind(
                 left,
                 right,
                 common,
@@ -1412,11 +1539,13 @@ static int eval_const_comparison(
                 return 0;
             }
 
-            comparison = integer_value_compare(left->as.integer, right->as.integer);
-
+            comparison = integer_value_compare(
+                left->as.integer,
+                right->as.integer
+            );
         } else {
-
-            double right_value, left_value;
+            double left_value;
+            double right_value;
 
             if (!is_concrete_float_kind(operation_kind) ||
                 !const_value_to_float_type(
@@ -1430,7 +1559,7 @@ static int eval_const_comparison(
                     &right_value
                 )) {
 
-                semantic_error(ctx,node,
+                semantic_error(ctx, node,
                     "floating-point comparison operand does not fit comparison type");
 
                 return 0;
@@ -1438,11 +1567,13 @@ static int eval_const_comparison(
 
             comparison =
                 left_value < right_value
-                ? -1
-                : (left_value > right_value ? 1 : 0);
+                    ? -1
+                    : (left_value > right_value ? 1 : 0);
         }
-    } else if (left->kind == CONST_VALUE_BOOL &&
-               right->kind == CONST_VALUE_BOOL) {
+    } else if (
+        left->kind == CONST_VALUE_BOOL &&
+        right->kind == CONST_VALUE_BOOL
+    ) {
         if (node->as.binary.op != TOK_EQUAL_EQUAL &&
             node->as.binary.op != TOK_BANG_EQUAL) {
 
@@ -1454,23 +1585,61 @@ static int eval_const_comparison(
 
         comparison =
             left->as.boolean == right->as.boolean
-            ? 0
-            : (left->as.boolean ? 1 : -1);
-    } else if (left_type &&
-               right_type &&
-               left_type->kind == TYPE_ENUM &&
-               type_equal(left_type, right_type) &&
-               left->kind == CONST_VALUE_INT &&
-               right->kind == CONST_VALUE_INT &&
-               (node->as.binary.op == TOK_EQUAL_EQUAL ||
-                node->as.binary.op == TOK_BANG_EQUAL)) {
+                ? 0
+                : (left->as.boolean ? 1 : -1);
+    } else if (
+        left->kind == CONST_VALUE_NULL &&
+        right->kind == CONST_VALUE_NULL
+    ) {
+        /*
+         * Semantic checking has already ensured that the source
+         * comparison has a concrete pointer context.
+         *
+         * For example:
+         *
+         *     NONE: i32* : null;
+         *     IS_NONE :: NONE == null;
+         *
+         * Both operands evaluate to CONST_VALUE_NULL even though
+         * their semantic types are i32* and TYPE_NULL.
+         */
+        if (node->as.binary.op != TOK_EQUAL_EQUAL &&
+            node->as.binary.op != TOK_BANG_EQUAL) {
+
+            semantic_error(ctx, node,
+                "ordered comparison requires numeric constants");
+
+            return 0;
+        }
+
+        /*
+         * Every null pointer value is equal to every other null
+         * pointer value after type checking has approved the
+         * comparison.
+         */
+        comparison = 0;
+    } else if (
+        left_type &&
+        right_type &&
+        left_type->kind == TYPE_ENUM &&
+        type_equal(left_type, right_type) &&
+        left->kind == CONST_VALUE_INT &&
+        right->kind == CONST_VALUE_INT &&
+        (
+            node->as.binary.op == TOK_EQUAL_EQUAL ||
+            node->as.binary.op == TOK_BANG_EQUAL
+        )
+    ) {
         comparison = integer_value_compare(
             left->as.integer,
             right->as.integer
         );
     } else {
-        semantic_error(ctx, node,
-            "comparison operands are not compatible constants");
+        semantic_error(
+            ctx,
+            node,
+            "comparison operands are not compatible constants"
+        );
 
         return 0;
     }
@@ -1482,18 +1651,23 @@ static int eval_const_comparison(
         case TOK_EQUAL_EQUAL:
             out->as.boolean = comparison == 0;
             break;
+
         case TOK_BANG_EQUAL:
             out->as.boolean = comparison != 0;
             break;
+
         case TOK_LESS:
             out->as.boolean = comparison < 0;
             break;
+
         case TOK_LESS_EQUAL:
             out->as.boolean = comparison <= 0;
             break;
+
         case TOK_GREATER:
             out->as.boolean = comparison > 0;
             break;
+
         case TOK_GREATER_EQUAL:
             out->as.boolean = comparison >= 0;
             break;
@@ -1540,6 +1714,11 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
             out->kind = CONST_VALUE_BOOL;
             out->as.boolean = node->as.boolean.value;
             out->type = ctx->type_bool;
+            return 1;
+
+        case NODE_NULL:
+            out->kind = CONST_VALUE_NULL;
+            out->type = ctx->type_null;
             return 1;
 
         case NODE_CAST:
@@ -2016,16 +2195,27 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
     }
 }
 
-static Type *concretize_inferred_numeric_type(
-    SemanticContext *ctx,
-    Node *expression,
-    Type *type
-) {
+// TODO: rename this to 'concretize_inferred_type'
+static Type *concretize_inferred_numeric_type(SemanticContext *ctx, Node *expression, Type *type) {
+
+    /*
+     * Unlike an untyped numeric literal, null has no sensible
+     * default concrete type.
+     *
+     *     value := 10;    // can default to a concrete integer type
+     *     value := null;  // cannot determine the pointee type
+     */
+    if (is_null_type(type)) {
+        semantic_error(ctx, expression,
+            "cannot infer a concrete pointer type from null");
+
+        return NULL;
+    }
+
     if (!is_untyped_numeric_type(type))
         return type;
 
     if (!expression_is_compile_time_constant(ctx, expression)) {
-
         semantic_error(ctx, expression,
             "cannot infer a concrete type from a non-constant untyped expression");
 
@@ -2043,7 +2233,6 @@ static Type *concretize_inferred_numeric_type(
     );
 
     if (!concrete) {
-
         semantic_error(ctx, expression,
             "could not determine a default concrete numeric type");
     }
@@ -2348,12 +2537,13 @@ static int check_binary_constant_operands(
 }
 
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node) {
-    if (!node)
-        return 0;
+
+    if (!node) return 0;
 
     switch (node->type) {
         case NODE_NUMBER:
         case NODE_BOOL:
+        case NODE_NULL:
             return 1;
 
         case NODE_CAST:
@@ -2366,7 +2556,7 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
             if (node->as.unary.op != TOK_MINUS &&
                 node->as.unary.op != TOK_BANG) {
                 return 0;
-                }
+            }
 
             return expression_is_compile_time_constant(
                 ctx,
@@ -2773,18 +2963,45 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 case TOK_EQUAL_EQUAL:
                 case TOK_BANG_EQUAL:
                 {
+                    int left_is_null  = is_null_type(left);
+                    int right_is_null = is_null_type(right);
+
                     /*
-                     * Numeric equality follows the same compatibility rules
-                     * as numeric arithmetic.
-                     *
-                     * Examples:
-                     *     x: i64;
-                     *     x == 10;      // valid: 10 is an untyped literal
-                     *
-                     *     a: i32;
-                     *     b: i64;
-                     *     a == b;       // invalid: two different concrete types
+                     * TYPE_NULL equals TYPE_NULL structurally, but a comparison
+                     * needs a concrete pointer type to provide context.
                      */
+                    if (left_is_null && right_is_null) {
+                        semantic_error(ctx, node,
+                            "cannot compare null without a pointer type");
+
+                        return NULL;
+                    }
+
+                    /*
+                    * Exactly one null operand and one concrete pointer operand.
+                    */
+                    if (is_pointer_null_pair(left, right)) {
+                        sem_record_expr_info(
+                            ctx,
+                            node,
+                            ctx->type_bool,
+                            NULL,
+                            VALUE_CATEGORY_RVALUE
+                        );
+
+                        return ctx->type_bool;
+                    }
+
+                    /*
+                     * Any other null combination is invalid, including null == 0.
+                     */
+                    if (left_is_null || right_is_null) {
+                        semantic_error(ctx, node,
+                            "null may only be compared with a pointer");
+
+                        return NULL;
+                    }
+
                     if (is_numeric_type(left) && is_numeric_type(right)) {
                         Type *common = common_numeric_type(left, right);
 
@@ -2807,25 +3024,30 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                             return NULL;
                         }
 
-                        sem_record_expr_info(ctx, node, ctx->type_bool, NULL, VALUE_CATEGORY_RVALUE);
+                        sem_record_expr_info(
+                            ctx,
+                            node,
+                            ctx->type_bool,
+                            NULL,
+                            VALUE_CATEGORY_RVALUE
+                        );
+
                         return ctx->type_bool;
                     }
 
-                    /*
-                     * Non-numeric equality still requires exact type equality.
-                     *
-                     * Examples:
-                     *     true == false
-                     *     pointer_a == pointer_b
-                     *     struct_a == struct_b
-                     */
                     if (!type_equal(left, right)) {
-
                         semantic_error(ctx, node, "comparison type mismatch");
                         return NULL;
                     }
 
-                    sem_record_expr_info(ctx, node, ctx->type_bool, NULL, VALUE_CATEGORY_RVALUE);
+                    sem_record_expr_info(
+                        ctx,
+                        node,
+                        ctx->type_bool,
+                        NULL,
+                        VALUE_CATEGORY_RVALUE
+                    );
+
                     return ctx->type_bool;
                 }
 
@@ -3200,6 +3422,19 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return type;
         }
 
+        case NODE_NULL:
+        {
+            sem_record_expr_info(
+                ctx,
+                node,
+                ctx->type_null,
+                NULL,
+                VALUE_CATEGORY_RVALUE
+            );
+
+            return ctx->type_null;
+        }
+
         case NODE_STRING:
             semantic_error(ctx, node,
                 "string literal requires an expected byte array type");
@@ -3208,17 +3443,15 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_CHAR:
         {
-            Type *t = new_type(ctx, TYPE_U8);
-
             sem_record_expr_info(
                 ctx,
                 node,
-                t,
+                ctx->type_u8,
                 NULL,
                 VALUE_CATEGORY_RVALUE
             );
 
-            return t;
+            return ctx->type_u8;
         }
 
         case NODE_BOOL:
@@ -3411,6 +3644,7 @@ static void check_block(SemanticContext *ctx, Node *node) {
 }
 
 static void check_const_decl(SemanticContext *ctx, Node *node) {
+
     if (scope_find_local(
             ctx->current_scope,
             node->as.const_decl.name.data,
@@ -3484,13 +3718,21 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
         }
 
         value = converted;
+
     } else {
+        if (value_type->kind == TYPE_NULL) {
+            semantic_error(ctx, node->as.const_decl.value,
+                "cannot infer a concrete pointer type from null");
+
+            return;
+        }
+
         type = value.type
             ? value.type
             : const_value_default_type(ctx, &value);
 
         if (!type) {
-            semantic_error(ctx,node,
+            semantic_error(ctx, node,
                 "could not infer constant type");
 
             return;
@@ -3528,11 +3770,8 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
         is_switchable_type(switch_type);
 
     if (!switch_type_is_valid) {
-        semantic_error(
-            ctx,
-            node,
-            "switch expression must be integer, bool, or enum"
-        );
+        semantic_error(ctx, node,
+            "switch expression must be integer, bool, or enum");
     }
 
     typedef struct SeenCase {
@@ -3562,19 +3801,15 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
 
         if (case_node->as.switch_case.is_default) {
             if (seen_default) {
-                semantic_error(
-                    ctx,
-                    case_node,
-                    "duplicate default case"
-                );
+                semantic_error(ctx, case_node,
+                    "duplicate default case");
             }
 
             seen_default = 1;
 
             check_node(
                 ctx,
-                case_node->as.switch_case.body
-            );
+                case_node->as.switch_case.body);
 
             continue;
         }
@@ -3655,11 +3890,8 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
                     &seen_cases[j].value,
                     &converted_case
                 )) {
-                semantic_error(
-                    ctx,
-                    case_node,
-                    "duplicate switch case"
-                );
+                semantic_error(ctx, case_node,
+                    "duplicate switch case");
 
                 break;
             }
@@ -3728,31 +3960,22 @@ static int check_compound_assignment_statement(SemanticContext *ctx, Node *node)
             break;
 
         default:
-            semantic_error(
-                ctx,
-                node,
-                "unsupported compound assignment operator"
-            );
+            semantic_error(ctx, node,
+                "unsupported compound assignment operator");
 
-            return 0;
+        return 0;
     }
 
     if (!is_numeric_type(target_type)) {
-        semantic_error(
-            ctx,
-            node,
-            "compound assignment target must be numeric"
-        );
+        semantic_error(ctx, node,
+            "compound assignment target must be numeric");
 
         return 0;
     }
 
     if (!is_numeric_type(value_type)) {
-        semantic_error(
-            ctx,
-            node,
-            "compound assignment value must be numeric"
-        );
+        semantic_error(ctx, node,
+            "compound assignment value must be numeric");
 
         return 0;
     }
@@ -3760,27 +3983,20 @@ static int check_compound_assignment_statement(SemanticContext *ctx, Node *node)
     if (node->as.compound_assign.op == TOK_PERCENT_EQUAL &&
         (!is_integer_type(target_type) ||
          !is_integer_type(value_type))) {
-        semantic_error(
-            ctx,
-            node,
-            "modulo compound assignment operands must be integers"
-        );
+
+        semantic_error(ctx, node,
+            "modulo compound assignment operands must be integers");
 
         return 0;
     }
 
     Type *result_type =
-        common_numeric_type(
-            target_type,
-            value_type
-        );
+        common_numeric_type(target_type, value_type);
 
     if (!result_type) {
-        semantic_error(
-            ctx,
-            node,
-            "compound assignment operands have incompatible numeric types"
-        );
+
+        semantic_error(ctx, node,
+            "compound assignment operands have incompatible numeric types");
 
         return 0;
     }
@@ -3790,11 +4006,8 @@ static int check_compound_assignment_statement(SemanticContext *ctx, Node *node)
             result_type,
             value_node
         )) {
-        semantic_error(
-            ctx,
-            node,
-            "compound assignment result does not fit target type"
-        );
+        semantic_error(ctx, node,
+            "compound assignment result does not fit target type");
 
         return 0;
     }
@@ -4573,7 +4786,7 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
     } else {
 
         // Default enum backing type.
-        backing_type = new_type(ctx, TYPE_I32);
+        backing_type = ctx->type_i32;
     }
 
     if (!is_integer_kind(backing_type->kind)) {
@@ -4584,6 +4797,7 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
     }
 
     type->enum_backing_type = backing_type;
+    assert_canonical_builtin_type(ctx, backing_type);
 
     int count = node->as.enum_decl.members.count;
 
@@ -5179,16 +5393,24 @@ void semantic_check(Node *program, SemanticContext *ctx) {
 
     ctx->current_return_type = NULL;
 
-    ctx->type_i32  = new_type(ctx, TYPE_I32);
-    ctx->type_i64  = new_type(ctx, TYPE_I64);
-    ctx->type_u64  = new_type(ctx, TYPE_U64);
-    ctx->type_f32  = new_type(ctx, TYPE_F32);
-    ctx->type_f64  = new_type(ctx, TYPE_F64);
+    ctx->type_i8  = new_type(ctx, TYPE_I8);
+    ctx->type_i16 = new_type(ctx, TYPE_I16);
+    ctx->type_i32 = new_type(ctx, TYPE_I32);
+    ctx->type_i64 = new_type(ctx, TYPE_I64);
+
+    ctx->type_u8  = new_type(ctx, TYPE_U8);
+    ctx->type_u16 = new_type(ctx, TYPE_U16);
+    ctx->type_u32 = new_type(ctx, TYPE_U32);
+    ctx->type_u64 = new_type(ctx, TYPE_U64);
+
+    ctx->type_f32 = new_type(ctx, TYPE_F32);
+    ctx->type_f64 = new_type(ctx, TYPE_F64);
+
     ctx->type_bool = new_type(ctx, TYPE_BOOL);
     ctx->type_void = new_type(ctx, TYPE_VOID);
+    ctx->type_null = new_type(ctx, TYPE_NULL);
 
     ctx->current_scope = scope_new(ctx, NULL);
-
     ctx->expr_infos = NULL;
 
     check_node(ctx,  program);

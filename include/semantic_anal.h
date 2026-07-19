@@ -15,6 +15,7 @@ typedef enum {
     CONST_VALUE_INT,
     CONST_VALUE_FLOAT,
     CONST_VALUE_BOOL,
+    CONST_VALUE_NULL,
 } ConstValueKind;
 
 typedef struct ConstValue {
@@ -67,13 +68,22 @@ typedef struct {
     int loop_depth;
     int function_depth;
 
+    Type *type_i8;
+    Type *type_i16;
     Type *type_i32;
     Type *type_i64;
+
+    Type *type_u8;
+    Type *type_u16;
+    Type *type_u32;
     Type *type_u64;
+
     Type *type_f32;
     Type *type_f64;
+
     Type *type_bool;
     Type *type_void;
+    Type *type_null;
 
     Type *current_return_type;
 

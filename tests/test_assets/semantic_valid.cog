@@ -508,3 +508,55 @@ GOOD_RED :: cast(Color3, 0);
 GOOD_GREEN :: cast(Color3, 1);
 GOOD_BLUE :: cast(Color3, 2);
 
+DefaultBacking :: enum {
+    Zero,
+}
+
+noop::() -> void {
+}
+
+canonical_builtins::(
+    value_i8: i8,
+    value_i16: i16,
+    value_i32: i32,
+    value_i64: i64,
+
+    value_u8: u8,
+    value_u16: u16,
+    value_u32: u32,
+    value_u64: u64,
+
+    value_f32: f32,
+    value_f64: f64,
+
+    value_bool: bool
+) -> void {
+    copy_i8: i8 = value_i8;
+    copy_i16: i16 = value_i16;
+    copy_i32: i32 = value_i32;
+    copy_i64: i64 = value_i64;
+
+    copy_u8: u8 = value_u8;
+    copy_u16: u16 = value_u16;
+    copy_u32: u32 = value_u32;
+    copy_u64: u64 = value_u64;
+
+    copy_f32: f32 = value_f32;
+    copy_f64: f64 = value_f64;
+
+    copy_bool: bool = value_bool;
+    character: u8 = 'A';
+
+    pointer: i32* = null;
+    is_null: bool = pointer == null;
+
+    default_i32 := 1;
+    default_i64 := 2147483648;
+    default_u64 := 9223372036854775808;
+    default_f64 := 1.5;
+
+    enum_value: DefaultBacking = DefaultBacking.Zero;
+
+    noop();
+}
+

@@ -110,6 +110,8 @@ static void print_type(Type *t)
     switch (t->kind) {
         case TYPE_VOID: printf("void"); break;
         case TYPE_BOOL: printf("bool"); break;
+        case TYPE_NULL: printf("null"); break;
+
         case TYPE_I8:   printf("i8");   break;
         case TYPE_I16:  printf("i16");  break;
         case TYPE_I32:  printf("i32");  break;

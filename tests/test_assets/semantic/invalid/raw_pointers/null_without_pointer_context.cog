@@ -1,0 +1,3 @@
+test::() -> void {
+    result := null == null;
+}

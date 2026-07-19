@@ -24,3 +24,7 @@ Add logical and precedence coverage.
 Decide runtime numeric cast and overflow rules.
 Record bitwise operators as either implemented next or deliberately deferred.
 Then proceed to readonly raw pointers.
+
+
+/////////////////////////////////////////////////////////
+why is the test /semantic/invalid/raw_pointers/null_inference.cog

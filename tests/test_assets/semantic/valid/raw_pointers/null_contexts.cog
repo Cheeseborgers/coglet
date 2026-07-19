@@ -1,0 +1,19 @@
+identity::(pointer: i32*) -> i32* {
+    return pointer;
+}
+
+test_null_contexts::() -> i32* {
+    value: i32 = 10;
+
+    // Typed variable initialisation.
+    pointer: i32* = null;
+
+    // Assignment to an existing pointer.
+    pointer = null;
+
+    // Function argument with a known parameter type.
+    pointer = identity(null);
+
+    // Return expression with a known return type.
+    return null;
+}

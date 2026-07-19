@@ -119,6 +119,7 @@ static const char *type_kind_name(TypeKind kind)
         case TYPE_ENUM:     return "enum";
         case TYPE_FUNCTION: return "function";
         case TYPE_NAMED:    return "named";
+        case TYPE_NULL:     return "null";
         case TYPE_UNTYPED_INT: return "untyped-int";
         case TYPE_UNTYPED_FLOAT: return "untyped-float";
     }
@@ -134,6 +135,7 @@ static int node_is_expression(NodeType type)
         case NODE_STRING:
         case NODE_CHAR:
         case NODE_BOOL:
+        case NODE_NULL:
         case NODE_CAST:
         case NODE_UNARY:
         case NODE_BINARY:
@@ -404,6 +406,7 @@ static void walk_expression(ExpressionWalker *walker, Node *expression)
         case NODE_STRING:
         case NODE_CHAR:
         case NODE_BOOL:
+        case NODE_NULL:
         default:
             break;
     }

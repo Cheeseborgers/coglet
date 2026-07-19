@@ -31,6 +31,14 @@ typedef enum {
     TYPE_UNTYPED_INT,
     TYPE_UNTYPED_FLOAT,
 
+    /*
+    * Contextual null-pointer literal.
+    *
+    * This is an internal expression type, not a type users can write
+    * and not a concrete type suitable for inferred storage.
+    */
+    TYPE_NULL,
+
     TYPE_POINTER,
     TYPE_ARRAY,
 

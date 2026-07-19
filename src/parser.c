@@ -186,9 +186,6 @@ const char *token_debug_display_name(TokenType t)
         case TOK_CHAR:            return "character literal";
         case TOK_IDENT:           return "identifier";
 
-        case TOK_TRUE:            return "'true'";
-        case TOK_FALSE:           return "'false'";
-
         // Keywords
         case TOK_IF:              return "'if'";
         case TOK_ELSE:            return "'else'";
@@ -217,6 +214,10 @@ const char *token_debug_display_name(TokenType t)
         case TOK_U64:             return "'u64'";
         case TOK_F32:             return "'f32'";
         case TOK_F64:             return "'f64'";
+
+        case TOK_TRUE:            return "'true'";
+        case TOK_FALSE:           return "'false'";
+        case TOK_NULL:            return "'null'";
 
         // Operators
         case TOK_PLUS:            return "'+'";
@@ -429,6 +430,10 @@ static Node *parse_primary(Parser *p)
     if (match(p, TOK_FALSE)) {
         Token t = p->previous;
         return ast_new_bool(p->arena, 0, t.line);
+    }
+
+    if (match(p, TOK_NULL)) {
+        return ast_new_null(p->arena, p->previous.line);
     }
 
     if (match(p, TOK_LBRACKET)) {

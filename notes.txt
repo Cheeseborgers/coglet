@@ -1,11 +1,26 @@
-Recommended order
+Add a short roadmap item:
 
-My preferred sequence before code generation is:
+Core Operator and Numeric Semantics Hardening
 
-Frontend/test baseline and lexical diagnostics
-Exact integer literals and checked constants
-Type well-formedness and aggregate sizedness
-Complete semantic facts and declaration/member bindings
-Structured flow outcomes and real switch exhaustiveness
-Address-of, dereference, and pointer-derived storage
-Declaration-based type identity and target-layout queries
+Complete and document the existing expression core before further memory and C-interop features:
+
+define runtime integer overflow behavior
+define runtime division and remainder failure behavior
+define runtime narrowing-cast semantics
+restrict equality to explicitly comparable type categories
+define raw-pointer equality and null comparison
+confirm whether increment/decrement supports floating-point targets
+add dedicated logical-operator and precedence tests
+decide whether bitwise and shift operators belong in the current core
+document signed division and remainder semantics
+add semantic-info tests for representative unary and binary expressions
+My recommendation on sequence
+
+Do this next:
+
+Tighten equality categories.
+Add null-pointer comparison.
+Add logical and precedence coverage.
+Decide runtime numeric cast and overflow rules.
+Record bitwise operators as either implemented next or deliberately deferred.
+Then proceed to readonly raw pointers.

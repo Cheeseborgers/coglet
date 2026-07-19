@@ -12,6 +12,7 @@ typedef enum {
     NODE_STRING,
     NODE_CHAR,
     NODE_BOOL,
+    NODE_NULL,
     NODE_CAST,
 
     NODE_UNARY,        // <op> operand, e.g. -x
@@ -269,6 +270,7 @@ Node *ast_new_ident(Arena *arena, const char *start, int length, int line);
 Node *ast_new_compound_assign(Arena *arena, TokenType op, Node *target, Node *value, int line);
 Node *ast_new_string(Arena *arena, const char *start, int length, int line);
 Node *ast_new_char(Arena *arena, const char *start, int length, int line);
+Node *ast_new_null(Arena *arena, int line);
 Node *ast_new_bool(Arena *arena, int value, int line);
 Node *ast_new_cast(Arena *arena, Type *target_type, Node *expression, int line);
 Node *ast_new_unary(Arena *arena, TokenType op, Node *operand, int line);

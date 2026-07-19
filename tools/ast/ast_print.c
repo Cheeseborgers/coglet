@@ -63,6 +63,7 @@ static const char *token_type_str(TokenType t)
         case TOK_BOOL:         return "BOOL";
         case TOK_TRUE:         return "TRUE";
         case TOK_FALSE:        return "FALSE";
+        case TOK_NULL:         return "NULL";
 
         case TOK_IF:       return "IF";
         case TOK_ELSE:     return "ELSE";
@@ -184,6 +185,10 @@ static void print_node(Node *node)
 
         case NODE_BOOL:
             printf("%s", node->as.boolean.value ? "true" : "false");
+            break;
+
+        case NODE_NULL:
+            printf("null");
             break;
 
         case NODE_CAST:
@@ -608,6 +613,11 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_BOOL:
             indent(depth);
             printf("%s\n", node->as.boolean.value ? "true" : "false");
+            break;
+
+        case NODE_NULL:
+            indent(depth);
+            printf("null\n");
             break;
 
         case NODE_CAST:

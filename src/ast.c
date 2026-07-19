@@ -61,6 +61,10 @@ Node *ast_new_char(Arena *arena, const char *start, int length, int line) {
     return node;
 }
 
+Node *ast_new_null(Arena *arena, int line) {
+    return new_node(arena, NODE_NULL, line);
+}
+
 Node *ast_new_bool(Arena *arena, int value, int line) {
     Node *node = new_node(arena, NODE_BOOL, line);
     node->as.boolean.value = value;
@@ -679,6 +683,7 @@ Node *ast_clone(Arena *arena, const Node *node)
                 clone->as.array_literal.elements.capacity = 0;
             break;
 
+        case NODE_NULL:
         case NODE_BREAK:
         case NODE_CONTINUE:
             // no payload, line/type already copied

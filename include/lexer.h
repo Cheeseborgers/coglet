@@ -14,6 +14,7 @@ typedef enum {
     TOK_IDENT,          // foo
     TOK_TRUE,
     TOK_FALSE,
+    TOK_NULL,
 
     // keywords
     TOK_IF, TOK_ELSE, TOK_WHILE, TOK_FOR, TOK_RETURN,

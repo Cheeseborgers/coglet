@@ -1,0 +1,21 @@
+program
+  const_decl NONE: i32*
+    value:
+      null
+  func none -> i32*
+    body:
+      block
+        return
+          null
+  func test -> bool
+    params:
+      param_decl pointer: i32*
+    body:
+      block
+        (=)
+          pointer
+          null
+        return
+          (==)
+            pointer
+            null

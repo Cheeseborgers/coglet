@@ -1,0 +1,14 @@
+1 IDENT pointer
+1 COLON :
+1 I32 i32
+1 STAR *
+1 EQUAL =
+1 NULL null
+1 SEMICOLON ;
+2 IDENT is_null
+2 COLON_EQUAL :=
+2 IDENT pointer
+2 EQUAL_EQUAL ==
+2 NULL null
+2 SEMICOLON ;
+3 EOF

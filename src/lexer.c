@@ -144,26 +144,47 @@ static int skip_whitespace_and_comments(
 }
 
 static int is_digit(char c) { return c >= '0' && c <= '9'; }
-static int is_alpha(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
-}
+static int is_alpha(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
 
-typedef struct { const char *word; TokenType type; } Keyword;
+typedef struct {
+    const char *word;
+    TokenType type;
+} Keyword;
 
 static const Keyword keywords[] = {
-    {"if", TOK_IF}, {"else", TOK_ELSE}, {"while", TOK_WHILE},
-    {"for", TOK_FOR}, {"return", TOK_RETURN},
+    {"if", TOK_IF},
+    {"else", TOK_ELSE},
+    {"while", TOK_WHILE},
+    {"for", TOK_FOR},
+    {"return", TOK_RETURN},
     {"struct", TOK_STRUCT},
-    {"break", TOK_BREAK}, {"continue", TOK_CONTINUE}, {"enum", TOK_ENUM},
-    {"switch", TOK_SWITCH}, {"case", TOK_CASE}, {"default", TOK_DEFAULT},
-    {"void", TOK_VOID},  {"true", TOK_TRUE}, {"false", TOK_FALSE}, {"cast", TOK_CAST},
+    {"break", TOK_BREAK},
+    {"continue", TOK_CONTINUE},
+    {"enum", TOK_ENUM},
+    {"switch", TOK_SWITCH},
+    {"case", TOK_CASE},
+    {"default", TOK_DEFAULT},
+    {"void", TOK_VOID},
+    {"true", TOK_TRUE},
+    {"false", TOK_FALSE},
+    {"cast", TOK_CAST},
+    {"null", TOK_NULL},
 
-    {"i8", TOK_I8}, {"i16", TOK_I16}, {"i32", TOK_I32}, {"i64", TOK_I64},
-    {"u8", TOK_U8}, {"u16", TOK_U16}, {"u32", TOK_U32}, {"u64", TOK_U64},
-    {"f32", TOK_F32}, {"f64", TOK_F64},
+    {"i8", TOK_I8},
+    {"i16", TOK_I16},
+    {"i32", TOK_I32},
+    {"i64", TOK_I64},
+    {"u8", TOK_U8},
+    {"u16", TOK_U16},
+    {"u32", TOK_U32},
+    {"u64", TOK_U64},
+    {"f32", TOK_F32},
+    {"f64", TOK_F64},
     {"bool", TOK_BOOL},
-    {"int", TOK_INT_KW}, {"uint", TOK_UINT_KW},
+    {"int", TOK_INT_KW},
+    {"uint", TOK_UINT_KW},
 };
+
 #define NUM_KEYWORDS (sizeof(keywords) / sizeof(keywords[0]))
 
 static TokenType identifier_type(const char *start, int length) {
@@ -377,13 +398,12 @@ const char *token_type_name(TokenType type) {
         case TOK_EOF:   return "EOF";
         case TOK_ERROR: return "ERROR";
 
-        case TOK_NUMBER_INT:   return "NUMBER_INT";
-        case TOK_NUMBER_FLOAT: return "NUMBER_FLOAT";
         case TOK_STRING: return "STRING";
         case TOK_CHAR:   return "CHAR";
         case TOK_IDENT:  return "IDENT";
         case TOK_TRUE:   return "TRUE";
         case TOK_FALSE:  return "FALSE";
+        case TOK_NULL:   return "NULL";
 
         case TOK_IF:     return "IF";
         case TOK_ELSE:   return "ELSE";
@@ -404,6 +424,9 @@ const char *token_type_name(TokenType type) {
         case TOK_F64: return "F64";
         case TOK_INT_KW: return "INT_KW";
         case TOK_UINT_KW: return "UINT_KW";
+        case TOK_NUMBER_INT:   return "NUMBER_INT";
+        case TOK_NUMBER_FLOAT: return "NUMBER_FLOAT";
+
         case TOK_ENUM: return "ENUM";
         case TOK_VOID: return "VOID";
         case TOK_STRUCT: return "STRUCT";

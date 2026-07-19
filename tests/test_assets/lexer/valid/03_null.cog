@@ -1,0 +1,2 @@
+pointer: i32* = null;
+is_null := pointer == null;

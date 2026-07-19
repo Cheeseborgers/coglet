@@ -16,22 +16,9 @@ typedef enum CompileStatus {
 typedef struct CompileResult {
     CompileStatus status;
 
-    /*
-    * Borrowed from the caller and retained by parser/lexer state.
-    */
     const char *filename;
-
-    /*
-     * Owned source buffer returned by read_file().
-     */
     char *source;
 
-    /*
-     * Both arenas are owned by this result.
-     *
-     * AST, parser diagnostics, semantic types, symbols, scopes, and
-     * semantic expression information are backed by these arenas.
-     */
     Arena *arena;
     Arena *scratch;
 

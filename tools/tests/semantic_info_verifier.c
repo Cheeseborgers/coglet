@@ -61,6 +61,7 @@ static const char *node_type_name(NodeType type)
         case NODE_CHAR:              return "char";
         case NODE_BOOL:              return "bool";
         case NODE_CAST:              return "cast";
+        case NODE_NULL:              return "null";
         case NODE_UNARY:             return "unary";
         case NODE_BINARY:            return "binary";
         case NODE_INC_DEC:           return "inc_dec";
@@ -562,6 +563,7 @@ static void walk_node(ExpressionWalker *walker, Node *node)
         case NODE_STRING:
         case NODE_CHAR:
         case NODE_BOOL:
+        case NODE_NULL:
         case NODE_CAST:
         case NODE_UNARY:
         case NODE_BINARY:

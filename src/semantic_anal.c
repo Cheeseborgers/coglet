@@ -603,6 +603,48 @@ static int is_unsigned_integer_kind(
     }
 }
 
+static int is_signed_integer_kind(TypeKind kind)
+{
+    switch (kind) {
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+            return 1;
+
+        default:
+            return 0;
+    }
+}
+
+static int integer_kind_bit_width(TypeKind kind, unsigned *out_width) {
+
+    switch (kind) {
+        case TYPE_I8:
+        case TYPE_U8:
+            *out_width = 8;
+            return 1;
+
+        case TYPE_I16:
+        case TYPE_U16:
+            *out_width = 16;
+            return 1;
+
+        case TYPE_I32:
+        case TYPE_U32:
+            *out_width = 32;
+            return 1;
+
+        case TYPE_I64:
+        case TYPE_U64:
+            *out_width = 64;
+            return 1;
+
+        default:
+            return 0;
+    }
+}
+
 static int is_integer_kind(TypeKind kind) { return is_concrete_integer_kind(kind) || kind == TYPE_UNTYPED_INT;}
 static int is_concrete_float_kind(TypeKind kind) { return kind == TYPE_F32 || kind == TYPE_F64; }
 static int is_float_kind(TypeKind kind) { return is_concrete_float_kind(kind) || kind == TYPE_UNTYPED_FLOAT; }
@@ -690,6 +732,144 @@ static int integer_value_fits_type(IntegerValue value, TypeKind kind) {
         default:
             return 0;
     }
+}
+
+static uint64_t integer_width_mask(unsigned width)
+{
+    return width == 64
+        ? UINT64_MAX
+        : (UINT64_C(1) << width) - 1;
+}
+
+static int integer_value_to_bit_pattern(IntegerValue value, TypeKind kind, uint64_t *out_pattern) {
+
+    unsigned width;
+
+    if (!integer_kind_bit_width(kind, &width) ||
+        !integer_value_fits_type(value, kind)) {
+        return 0;
+    }
+
+    uint64_t mask = integer_width_mask(width);
+
+    if (value.is_negative) {
+        *out_pattern =
+            (~value.magnitude + UINT64_C(1)) & mask;
+    } else {
+        *out_pattern = value.magnitude & mask;
+    }
+
+    return 1;
+}
+
+static int integer_value_from_bit_pattern(uint64_t pattern, TypeKind kind, IntegerValue *out) {
+
+    unsigned width;
+
+    if (!integer_kind_bit_width(kind, &width))
+        return 0;
+
+    uint64_t mask = integer_width_mask(width);
+    pattern &= mask;
+
+    if (is_signed_integer_kind(kind)) {
+        uint64_t sign_bit =
+            UINT64_C(1) << (width - 1);
+
+        if ((pattern & sign_bit) != 0) {
+            uint64_t magnitude =
+                (~pattern + UINT64_C(1)) & mask;
+
+            *out = integer_value_make(
+                magnitude,
+                1
+            );
+
+            return 1;
+        }
+    }
+
+    *out = integer_value_make(
+        pattern,
+        0
+    );
+
+    return 1;
+}
+
+static int integer_value_bitwise_not(IntegerValue operand, TypeKind kind, IntegerValue *out) {
+
+    unsigned width;
+    uint64_t pattern;
+
+    if (!integer_kind_bit_width(kind, &width) ||
+        !integer_value_to_bit_pattern(
+            operand,
+            kind,
+            &pattern
+        )) {
+        return 0;
+    }
+
+    pattern =
+        (~pattern) & integer_width_mask(width);
+
+    return integer_value_from_bit_pattern(
+        pattern,
+        kind,
+        out
+    );
+}
+
+static int integer_values_bitwise(
+    IntegerValue left,
+    IntegerValue right,
+    TypeKind kind,
+    TokenType operation,
+    IntegerValue *out
+) {
+    uint64_t left_pattern;
+    uint64_t right_pattern;
+    uint64_t result_pattern;
+
+    if (!integer_value_to_bit_pattern(
+            left,
+            kind,
+            &left_pattern
+        ) ||
+        !integer_value_to_bit_pattern(
+            right,
+            kind,
+            &right_pattern
+        )) {
+        return 0;
+    }
+
+    switch (operation) {
+        case TOK_AND:
+            result_pattern =
+                left_pattern & right_pattern;
+            break;
+
+        case TOK_OR:
+            result_pattern =
+                left_pattern | right_pattern;
+            break;
+
+        case TOK_XOR:
+            result_pattern =
+                left_pattern ^ right_pattern;
+            break;
+
+        default:
+            return 0;
+    }
+
+    return integer_value_from_bit_pattern(
+        result_pattern,
+        kind,
+        out
+    );
 }
 
 static int default_integer_kind_for_value(IntegerValue value, TypeKind *out_kind) {
@@ -1142,6 +1322,35 @@ static Type *common_numeric_type(Type *a, Type *b)
 
         return a;
     }
+
+    if (!type_equal(a, b))
+        return NULL;
+
+    return a;
+}
+
+static Type *common_integer_type(Type *a, Type *b) {
+
+    if (!a || !b ||
+        !is_integer_type(a) ||
+        !is_integer_type(b)) {
+        return NULL;
+    }
+
+    int a_is_untyped =
+        a->kind == TYPE_UNTYPED_INT;
+
+    int b_is_untyped =
+        b->kind == TYPE_UNTYPED_INT;
+
+    if (a_is_untyped && !b_is_untyped)
+        return b;
+
+    if (b_is_untyped && !a_is_untyped)
+        return a;
+
+    if (a_is_untyped && b_is_untyped)
+        return a;
 
     if (!type_equal(a, b))
         return NULL;
@@ -1964,10 +2173,75 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                     );
                 }
 
-                semantic_error(ctx,node,
+                semantic_error(ctx, node,
                     "unary '-' requires a numeric constant");
 
                 return 0;
+            }
+
+            if (node->as.unary.op == TOK_TILDE) {
+                if (operand.kind != CONST_VALUE_INT) {
+                    semantic_error(ctx, node,
+                        "unary '~' requires an integer constant");
+
+                    return 0;
+                }
+
+                Type *result_type =
+                    const_value_default_type(
+                        ctx,
+                        &operand
+                    );
+
+                TypeKind operation_kind;
+
+                if (result_type &&
+                    is_concrete_integer_kind(
+                        result_type->kind
+                    )) {
+                    operation_kind =
+                        result_type->kind;
+                    } else if (
+                        result_type &&
+                        result_type->kind == TYPE_UNTYPED_INT
+                    ) {
+                        if (!default_integer_kind_for_value(
+                                operand.as.integer,
+                                &operation_kind
+                            )) {
+                            semantic_error(ctx, node,
+                                "integer constant expression has no integer operation type");
+
+                            return 0;
+                            }
+                    } else {
+                        semantic_error(ctx, node,
+                            "unary '~' requires an integer constant");
+
+                        return 0;
+                    }
+
+                IntegerValue value;
+
+                if (!integer_value_bitwise_not(
+                        operand.as.integer,
+                        operation_kind,
+                        &value
+                    )) {
+                    semantic_error(ctx, node,
+                        "integer constant operand does not fit operation type");
+
+                    return 0;
+                }
+
+                return integer_constant_result(
+                    ctx,
+                    node,
+                    result_type,
+                    operation_kind,
+                    value,
+                    out
+                );
             }
 
             if (node->as.unary.op == TOK_BANG) {
@@ -2007,7 +2281,6 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
             if (node->as.binary.op == TOK_AND_AND ||
                 node->as.binary.op == TOK_OR_OR) {
                 if (left.kind != CONST_VALUE_BOOL) {
-
                     semantic_error(ctx, node,
                         "operands must be boolean constants");
 
@@ -2041,7 +2314,6 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                 case TOK_OR_OR:
                     if (left.kind != CONST_VALUE_BOOL ||
                         right.kind != CONST_VALUE_BOOL) {
-
                         semantic_error(ctx, node,
                             "operands must be boolean constants");
 
@@ -2070,6 +2342,84 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                         &right,
                         out
                     );
+
+                case TOK_AND:
+                case TOK_OR:
+                case TOK_XOR:
+                {
+                    Type *left_type =
+                        const_value_default_type(ctx, &left);
+
+                    Type *right_type =
+                        const_value_default_type(ctx, &right);
+
+                    if (left.kind != CONST_VALUE_INT ||
+                        right.kind != CONST_VALUE_INT ||
+                        !is_integer_type(left_type) ||
+                        !is_integer_type(right_type)) {
+                        semantic_error(ctx, node,
+                            "bitwise operators require integer constants");
+
+                        return 0;
+                    }
+
+                    Type *result_type =
+                        common_integer_type(left_type, right_type);
+
+                    TypeKind operation_kind;
+
+                    if (!result_type ||
+                        !constant_numeric_operation_kind(
+                            &left,
+                            &right,
+                            result_type,
+                            &operation_kind
+                        ) ||
+                        !is_concrete_integer_kind(operation_kind)) {
+                        semantic_error(ctx, node,
+                            "constant operands have incompatible integer types");
+
+                        return 0;
+                    }
+
+                    if (!integer_value_fits_type(
+                            left.as.integer,
+                            operation_kind
+                        ) ||
+                        !integer_value_fits_type(
+                            right.as.integer,
+                            operation_kind
+                        )) {
+                        semantic_error(ctx, node,
+                            "integer constant operand does not fit operation type");
+
+                        return 0;
+                    }
+
+                    IntegerValue value;
+
+                    if (!integer_values_bitwise(
+                            left.as.integer,
+                            right.as.integer,
+                            operation_kind,
+                            node->as.binary.op,
+                            &value
+                        )) {
+                        semantic_error(ctx, node,
+                            "integer constant expression has no integer operation type");
+
+                        return 0;
+                    }
+
+                    return integer_constant_result(
+                        ctx,
+                        node,
+                        result_type,
+                        operation_kind,
+                        value,
+                        out
+                    );
+                }
 
                 case TOK_PLUS:
                 case TOK_MINUS:
@@ -2698,9 +3048,10 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
 
         case NODE_UNARY:
             if (node->as.unary.op != TOK_MINUS &&
-                node->as.unary.op != TOK_BANG) {
+                node->as.unary.op != TOK_BANG &&
+                node->as.unary.op != TOK_TILDE) {
                 return 0;
-            }
+                }
 
             return expression_is_compile_time_constant(
                 ctx,
@@ -3004,6 +3355,41 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     return result;
                 }
 
+                case TOK_TILDE:
+                {
+                    if (!is_integer_type(operand)) {
+                        semantic_error(ctx, node,
+                            "unary '~' requires integer operand");
+
+                        return NULL;
+                    }
+
+                    Type *result = operand;
+
+                    if (expression_is_compile_time_constant(ctx, node)) {
+
+                        ConstValue constant;
+
+                        if (!eval_const_expr(ctx, node, &constant)) {
+                            return NULL;
+                        }
+
+                        result = constant.type
+                            ? constant.type
+                            : const_value_default_type(ctx, &constant);
+                    }
+
+                    sem_record_expr_info(
+                        ctx,
+                        node,
+                        result,
+                        NULL,
+                        VALUE_CATEGORY_RVALUE
+                    );
+
+                    return result;
+                }
+
                 case TOK_BANG:
                 {
                     /* Logical-not implementation */
@@ -3115,6 +3501,58 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     return result;
                 }
 
+                case TOK_AND:
+                case TOK_OR:
+                case TOK_XOR:
+                {
+                    if (!is_integer_type(left)) {
+                        semantic_error(ctx, node,
+                            "left operand of bitwise operator must be integer");
+
+                        return NULL;
+                    }
+
+                    if (!is_integer_type(right)) {
+                        semantic_error(ctx, node,
+                            "right operand of bitwise operator must be integer");
+
+                        return NULL;
+                    }
+
+                    Type *result =
+                        common_integer_type(left, right);
+
+                    if (!result) {
+                        semantic_error(ctx, node,
+                            "bitwise operands have incompatible integer types -- use an explicit cast");
+
+                        return NULL;
+                    }
+
+                    if (!check_binary_constant_operands(
+                            ctx,
+                            node,
+                            left,
+                            right,
+                            result,
+                            "integer constant operand does not fit operation type",
+                            "bitwise operators do not accept floating-point operands",
+                            &result
+                        )) {
+                        return NULL;
+                        }
+
+                    sem_record_expr_info(
+                        ctx,
+                        node,
+                        result,
+                        NULL,
+                        VALUE_CATEGORY_RVALUE
+                    );
+
+                    return result;
+                }
+
                 // logical boolean operators
                 case TOK_AND_AND:
                 case TOK_OR_OR:
@@ -3134,7 +3572,6 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     sem_record_expr_info(ctx, node, ctx->type_bool, NULL, VALUE_CATEGORY_RVALUE);
                     return ctx->type_bool;
                 }
-
 
                 case TOK_EQUAL_EQUAL:
                 case TOK_BANG_EQUAL:
@@ -3455,11 +3892,8 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 return NULL;
 
             if (object->kind != TYPE_STRUCT) {
-                semantic_error(
-                    ctx,
-                    node,
-                    "field access requires a struct"
-                );
+                semantic_error(ctx, node,
+                    "field access requires a struct");
 
                 return NULL;
             }
@@ -3942,12 +4376,10 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
         value.type = type;
     }
 
-    Symbol *sym = arena_alloc(ctx->arena, sizeof(Symbol));
-    memset(sym, 0, sizeof(*sym));
-
-    sym->name = node->as.const_decl.name;
-    sym->kind = SYMBOL_CONSTANT;
-    sym->type = type;
+    Symbol *sym = arena_new(ctx->arena, Symbol);
+    sym->name   = node->as.const_decl.name;
+    sym->kind   = SYMBOL_CONSTANT;
+    sym->type   = type;
     sym->const_value = value;
 
     sym->next = ctx->current_scope->symbols;
@@ -4210,7 +4642,8 @@ static int check_inc_dec_statement(SemanticContext *ctx, Node *node) {
         return 0;
 
     if (!is_numeric_type(target_type)) {
-        semantic_error(ctx, node, "increment/decrement requires a numeric target");
+        semantic_error(ctx, node,
+            "increment/decrement requires a numeric target");
         return 0;
     }
 
@@ -4393,12 +4826,14 @@ static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *i
         return 0;
 
     if (initializer->type != NODE_ARRAY_LITERAL) {
-        semantic_error(ctx, initializer, "internal error: expected array literal");
+        semantic_error(ctx, initializer,
+            "internal error: expected array literal");
         return 0;
     }
 
     if (expected->kind != TYPE_ARRAY) {
-        semantic_error(ctx, initializer, "array literal can only initialize an array type");
+        semantic_error(ctx, initializer,
+            "array literal can only initialize an array type");
         return 0;
     }
 

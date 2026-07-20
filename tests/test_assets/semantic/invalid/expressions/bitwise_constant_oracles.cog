@@ -1,0 +1,84 @@
+NOT_U8_OK: bool :
+    ~cast(u8, 0) == cast(u8, 255);
+
+NOT_I8_OK: bool :
+    ~cast(i8, 0) == cast(i8, -1);
+
+AND_OK: bool :
+    (cast(u8, 240) & cast(u8, 15)) ==
+        cast(u8, 0);
+
+OR_OK: bool :
+    (cast(u8, 240) | cast(u8, 15)) ==
+        cast(u8, 255);
+
+XOR_OK: bool :
+    (cast(u8, 240) ^ cast(u8, 15)) ==
+        cast(u8, 255);
+
+SIGNED_PATTERN_OK: bool :
+    (cast(i8, -128) | cast(i8, 1)) ==
+        cast(i8, -127);
+
+UNTYPED_NOT_OK: bool :
+    ~0 == -1;
+
+check_not_u8::(value: bool) -> void {
+    switch value {
+        case NOT_U8_OK: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_not_i8::(value: bool) -> void {
+    switch value {
+        case NOT_I8_OK: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_and::(value: bool) -> void {
+    switch value {
+        case AND_OK: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_or::(value: bool) -> void {
+    switch value {
+        case OR_OK: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_xor::(value: bool) -> void {
+    switch value {
+        case XOR_OK: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_signed_pattern::(
+    value: bool
+) -> void {
+    switch value {
+        case SIGNED_PATTERN_OK: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_untyped_not::(
+    value: bool
+) -> void {
+    switch value {
+        case UNTYPED_NOT_OK: {}
+        case true: {}
+        default: {}
+    }
+}

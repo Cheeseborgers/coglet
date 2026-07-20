@@ -1,0 +1,4 @@
+semantic error at line 8: bitwise operands have incompatible integer types -- use an explicit cast
+semantic error at line 9: bitwise operands have incompatible integer types -- use an explicit cast
+semantic error at line 10: bitwise operands have incompatible integer types -- use an explicit cast
+3 semantic errors generated.

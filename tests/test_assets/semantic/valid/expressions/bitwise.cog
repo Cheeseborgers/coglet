@@ -1,0 +1,60 @@
+BITWISE_AND: u8 :
+    cast(u8, 240) & 15;
+
+BITWISE_OR: u8 :
+    cast(u8, 240) | 15;
+
+BITWISE_XOR: u8 :
+    cast(u8, 240) ^ 15;
+
+BITWISE_NOT_UNSIGNED: u8 :
+    ~cast(u8, 0);
+
+BITWISE_NOT_SIGNED: i8 :
+    ~cast(i8, 0);
+
+UNTYPED_NOT: i32 :
+    ~0;
+
+UNTYPED_BINARY: i32 :
+    240 & 15;
+
+SIGNED_PATTERN: i8 :
+    cast(i8, -128) | 1;
+
+bitwise_runtime::(
+    signed_value: i32,
+    signed_mask: i32,
+    unsigned_value: u32,
+    unsigned_mask: u32
+) -> void {
+    signed_and: i32 =
+        signed_value & signed_mask;
+
+    signed_or: i32 =
+        signed_value | signed_mask;
+
+    signed_xor: i32 =
+        signed_value ^ signed_mask;
+
+    signed_not: i32 =
+        ~signed_value;
+
+    unsigned_and: u32 =
+        unsigned_value & unsigned_mask;
+
+    unsigned_or: u32 =
+        unsigned_value | unsigned_mask;
+
+    unsigned_xor: u32 =
+        unsigned_value ^ unsigned_mask;
+
+    unsigned_not: u32 =
+        ~unsigned_value;
+
+    contextual_left: u32 =
+        255 & unsigned_value;
+
+    contextual_right: u32 =
+        unsigned_value | 255;
+}

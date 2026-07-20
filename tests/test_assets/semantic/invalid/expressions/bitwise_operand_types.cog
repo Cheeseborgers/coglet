@@ -1,0 +1,31 @@
+Kind:: enum(u8) {
+    One,
+}
+
+Pair:: struct {
+    value: i32;
+}
+
+bitwise_operand_types::() -> void {
+    integer: i32 = 1;
+    floating: f32 = 1.0;
+    boolean: bool = true;
+    enumeration: Kind = Kind.One;
+    pointer: i32* = &integer;
+    array: i32[2];
+    pair: Pair;
+
+    ~floating;
+    ~boolean;
+    ~enumeration;
+    ~pointer;
+    ~null;
+
+    integer & floating;
+    boolean | integer;
+    enumeration ^ enumeration;
+    pointer & pointer;
+    null | integer;
+    array ^ array;
+    pair & pair;
+}

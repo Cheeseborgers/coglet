@@ -1,0 +1,10 @@
+bitwise_literal_range::() -> void {
+    unsigned8: u8 = 1;
+    signed8: i8 = 1;
+
+    unsigned8 & 256;
+    256 | unsigned8;
+    unsigned8 ^ -1;
+    signed8 & 128;
+    -129 | signed8;
+}

@@ -1,0 +1,10 @@
+test_arithmetic_literal_range::(
+    value_u8: u8,
+    value_i8: i8
+) -> void {
+    value_u8 + 256;
+    value_u8 - 256;
+
+    value_i8 + 128;
+    value_i8 - 129;
+}

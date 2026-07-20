@@ -1,0 +1,30 @@
+Point::struct {
+    x: i32;
+}
+
+State::enum {
+    Ready,
+    Running,
+}
+
+take_point::(value: Point) -> void {
+}
+
+take_state::(value: State) -> void {
+}
+
+test_nominal_type_identity::() -> void {
+    first_point: Point = Point {
+        x = 1,
+    };
+
+    second_point: Point = first_point;
+    first_point = second_point;
+    take_point(first_point);
+
+    first_state: State = State.Ready;
+    second_state: State = first_state;
+
+    first_state = second_state;
+    take_state(first_state);
+}

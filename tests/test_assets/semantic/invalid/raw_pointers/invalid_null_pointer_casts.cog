@@ -1,0 +1,6 @@
+test_invalid_null_pointer_casts::() -> void {
+    pointer: i32* = cast(i32*, 0);
+    integer: i32 = cast(i32, null);
+    boolean: bool = cast(bool, null);
+    floating: f64 = cast(f64, null);
+}

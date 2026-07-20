@@ -9,7 +9,7 @@ main::() -> void {
     same_pointer: i32* = &*pointer;
     *&value = 30;
 
-    null_pointer: i32* = 0;
+    null_pointer: i32* = null;
 
     same_pointer;
     null_pointer;

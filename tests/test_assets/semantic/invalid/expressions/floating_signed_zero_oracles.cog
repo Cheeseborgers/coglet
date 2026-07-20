@@ -1,0 +1,50 @@
+POSITIVE_ZERO :: 0.0;
+NEGATIVE_ZERO :: -0.0;
+
+ZEROS_ARE_EQUAL: bool :
+    POSITIVE_ZERO == NEGATIVE_ZERO;
+
+POSITIVE_OVER_POSITIVE_ZERO :: 1.0 / POSITIVE_ZERO;
+POSITIVE_OVER_NEGATIVE_ZERO :: 1.0 / NEGATIVE_ZERO;
+NEGATIVE_OVER_NEGATIVE_ZERO :: -1.0 / NEGATIVE_ZERO;
+
+POSITIVE_RESULT: bool :
+    POSITIVE_OVER_POSITIVE_ZERO > 0.0;
+
+NEGATIVE_RESULT: bool :
+    POSITIVE_OVER_NEGATIVE_ZERO < 0.0;
+
+DOUBLE_NEGATIVE_RESULT: bool :
+    NEGATIVE_OVER_NEGATIVE_ZERO > 0.0;
+
+check_zeros_equal::(value: bool) -> void {
+    switch value {
+        case ZEROS_ARE_EQUAL: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_positive_result::(value: bool) -> void {
+    switch value {
+        case POSITIVE_RESULT: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_negative_result::(value: bool) -> void {
+    switch value {
+        case NEGATIVE_RESULT: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_double_negative_result::(value: bool) -> void {
+    switch value {
+        case DOUBLE_NEGATIVE_RESULT: {}
+        case true: {}
+        default: {}
+    }
+}

@@ -1,0 +1,19 @@
+test_valid_negation::(
+    value_i8: i8,
+    value_i16: i16,
+    value_i32: i32,
+    value_i64: i64,
+    value_f32: f32,
+    value_f64: f64
+) -> void {
+    -value_i8;
+    -value_i16;
+    -value_i32;
+    -value_i64;
+
+    -value_f32;
+    -value_f64;
+
+    -1;
+    -1.5;
+}

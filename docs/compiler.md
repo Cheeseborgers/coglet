@@ -55,10 +55,10 @@ A result may be destroyed after every driver return status.
 
 * COMPILE_STATUS_OK: parsing and semantic analysis succeeded.
 * COMPILE_STATUS_SEMANTIC_ERROR: parsing succeeded; semantic state may be
-partial.
+  partial.
 * COMPILE_STATUS_PARSE_ERROR: parsing failed; semantic analysis was not run.
 * COMPILE_STATUS_DRIVER_ERROR: the frontend pipeline could not be started,
-such as when the source file could not be read.
+  such as when the source file could not be read.
 
 Parser and driver errors map to process exit code 2. Semantic errors map to
 exit code 1.
@@ -72,6 +72,74 @@ Semantic diagnostics are printed immediately during semantic analysis. The
 driver prints only the final semantic error-count summary.
 
 Callers must not print these diagnostics again.
+
+
+## Semantic Type Identity
+
+Semantic analysis owns one canonical `Type *` for each concrete built-in
+scalar and contextual built-in type:
+
+```text
+i8 i16 i32 i64
+u8 u16 u32 u64
+f32 f64
+bool void null
+```
+
+Parsed scalar types are resolved to these shared instances. Pointer, array,
+function, struct, enum, and untyped numeric types are not represented by one
+generic canonical object because their structure or declaration identity
+matters.
+
+Type equality begins with pointer identity. Built-in scalars then compare by
+kind, while pointers, arrays, and function types compare recursively.
+
+Structs and enums are nominal: the semantic `Type *` allocated for the
+declaration is its identity. Two different declarations remain different even
+when they have the same source-level name, fields, members, or backing type.
+
+The equality switch is exhaustive. A newly introduced `TypeKind` must define
+its own equality rule rather than silently inheriting equality from a matching
+kind.
+
+Debug semantic-expression recording asserts that concrete built-in scalar
+types use their canonical instances.
+
+## Compile-Time Constant Evaluation
+
+Integer constants use an exact sign-and-magnitude representation with a
+`uint64_t` magnitude. Constant arithmetic selects a concrete provisional
+operation kind, verifies operand representability, performs the mathematical
+operation, and checks the result against both the operation type and any
+untyped-integer domain limits.
+
+Known integer division and remainder by zero are diagnosed both for fully
+constant expressions and when only the divisor is compile-time known.
+Compound `/=` and `%=` use the same check.
+
+Floating constants are stored as host `double` values, but `f32` operations
+are performed at `float` precision before being retained in the constant
+value. Constant evaluation preserves IEEE-754 infinity, NaN, and signed zero
+for both `f32` and `f64`.
+
+Floating comparisons use the host floating comparison operators directly.
+They are not reduced to a three-way comparison because NaN is unordered:
+
+```text
+NaN == NaN  -> false
+NaN != NaN  -> true
+NaN < x     -> false
+NaN <= x    -> false
+NaN > x     -> false
+NaN >= x    -> false
+```
+
+Integer conversion rejects non-finite floating values. Checked conversion to
+`f32` also rejects a finite value outside the finite `f32` range.
+
+The compiler itself must not be built with floating-point options such as
+`-ffast-math` that discard IEEE-754 NaN, infinity, signed-zero, or comparison
+semantics relied on by constant evaluation.
 
 
 ## Semantic-Information Verification

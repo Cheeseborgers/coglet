@@ -771,6 +771,85 @@ static int verify_pointer_unary_info(Verifier *verifier, Node *expression, SemEx
     return valid;
 }
 
+static int verify_null_cast_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
+
+    if (expression->type != NODE_CAST)
+        return 1;
+
+    Node *source =
+        expression->as.cast_expr.expression;
+
+    if (!source || source->type != NODE_NULL)
+        return 1;
+
+    SemExprInfo *source_info =
+        semantic_get_expr_info(
+            verifier->sem,
+            source
+        );
+
+    if (!source_info || !source_info->type) {
+        verifier_error(
+            verifier,
+            expression,
+            "null cast operand has no semantic type"
+        );
+
+        return 0;
+    }
+
+    int valid = 1;
+
+    /*
+     * The literal itself retains its contextual pseudo-type. The cast
+     * expression carries the concrete pointer type.
+     */
+    if (source_info->type != verifier->sem->type_null) {
+        verifier_error(
+            verifier,
+            source,
+            "null cast operand does not use the canonical null type"
+        );
+
+        valid = 0;
+    }
+
+    if (source_info->value_category !=
+        VALUE_CATEGORY_RVALUE) {
+        verifier_error(
+            verifier,
+            source,
+            "null cast operand is not an rvalue"
+        );
+
+        valid = 0;
+        }
+
+    if (!info->type ||
+        info->type->kind != TYPE_POINTER) {
+        verifier_error(
+            verifier,
+            expression,
+            "null cast result is not a concrete pointer type"
+        );
+
+        valid = 0;
+        }
+
+    if (info->value_category !=
+        VALUE_CATEGORY_RVALUE) {
+        verifier_error(
+            verifier,
+            expression,
+            "null cast result is not an rvalue"
+        );
+
+        valid = 0;
+        }
+
+    return valid;
+}
+
 static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
 
     int valid = 1;
@@ -857,6 +936,10 @@ static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *
     }
 
     if (!verify_pointer_unary_info(verifier, expression, info)) {
+        valid = 0;
+    }
+
+    if (!verify_null_cast_info(verifier, expression, info)) {
         valid = 0;
     }
 

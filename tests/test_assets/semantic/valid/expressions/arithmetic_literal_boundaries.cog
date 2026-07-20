@@ -1,0 +1,10 @@
+test_arithmetic_literal_boundaries::(
+    value_u8: u8,
+    value_i8: i8
+) -> void {
+    value_u8 + 0;
+    value_u8 - 255;
+
+    value_i8 + 127;
+    value_i8 - (-128);
+}

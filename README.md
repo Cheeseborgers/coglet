@@ -68,7 +68,7 @@ Supported features include:
 
 ### Types
 
-Primitive types:
+Primitive and built-in types:
 
 - `bool`
 - `i8`, `i16`, `i32`, `i64`
@@ -76,12 +76,15 @@ Primitive types:
 - `f32`, `f64`
 - `void`
 
+`null` is a dedicated contextual pointer literal. It is not integer zero and is
+not a user-declarable storage type.
+
 Compound and declared types:
 
-- pointers
+- raw nullable object pointers
 - fixed-size arrays
-- structs
-- enums
+- nominal structs
+- nominal enums
 - function types
 
 `void` is valid as a function return type, but not as a variable, constant, parameter, struct field, pointer element, or array element type in the current language.
@@ -90,7 +93,7 @@ Compound and declared types:
 
 Supported expression forms include:
 
-- numeric, boolean, character, and contextual string literals
+- numeric, boolean, character, `null`, and contextual string literals
 - identifiers
 - arithmetic operators
 - equality and ordered comparisons
@@ -144,6 +147,34 @@ x := does_nothing();
 takes_i32(does_nothing());
 return does_nothing();
 does_nothing() + 1;
+```
+
+### Raw Object Pointers
+
+```c
+value: i32 = 10;
+pointer: i32* = &value;
+
+*pointer = 20;
+pointer[0] = 30;
+pointer = null;
+```
+
+`T*` is a raw, nullable, non-owning pointer to mutable `T`. Dereference and
+pointer indexing produce lvalues. Pointer operations are unchecked for
+lifetime, bounds, ownership, and dangling values.
+
+`null` is the only source-level null-pointer value:
+
+```c
+pointer: i32* = null; // valid
+pointer: i32* = 0;    // invalid
+```
+
+An explicit `null`-to-pointer cast may provide a concrete pointer type:
+
+```c
+typed_null := cast(i32*, null);
 ```
 
 ### Arrays
@@ -206,6 +237,10 @@ p := Point {
 
 Semantic analysis validates field names, duplicates, missing fields, and field initializer types.
 
+Structs are nominal types: two separate struct declarations are distinct even
+when they have identical fields or the same source-level name in different
+scopes.
+
 ### Enums
 
 ```c
@@ -227,9 +262,36 @@ Supported enum behavior includes:
 - enum-to-integer casts
 - compile-time integer-to-enum casts when the value names a declared member
 
-Enums are closed and strongly typed. A backing type defines representation and range, but it does not make every backing-type value a valid enum value. Values of different enum types are not interchangeable. Runtime integer-to-enum casts are currently rejected because checked runtime conversion has not yet been implemented.
+Enums are closed, strongly typed, and nominal. A backing type defines
+representation and range, but it does not make every backing-type value a
+valid enum value. Separate enum declarations remain distinct even when they
+share a backing type, members, or a shadowed source-level name. Runtime
+integer-to-enum casts are currently rejected because checked runtime
+conversion has not yet been implemented.
 
 A future `#repr_c` annotation is planned for explicit ABI representation. It will not make an enum open.
+
+### Numeric Semantics
+
+Coglet keeps concrete numeric conversions explicit. Untyped literals adapt to
+a concrete operation or destination type only when their exact value fits.
+
+Compile-time integer arithmetic is range checked. Known integer division or
+remainder by zero is rejected, including in compound assignments. Unary
+negation is not defined for typed unsigned integers, while ordinary unsigned
+subtraction remains a valid runtime operation.
+
+`f32` and `f64` constant evaluation follows IEEE-754 behavior, including
+infinity, NaN, and signed zero:
+
+```c
+1.0 / 0.0;   // positive infinity
+-1.0 / 0.0;  // negative infinity
+0.0 / 0.0;   // NaN
+```
+
+NaN compares unequal to itself, and ordered comparisons involving NaN are
+false.
 
 ### Control Flow
 
@@ -300,6 +362,12 @@ The parser and semantic analyzer support a substantial core language. The semant
 
 Recently completed work includes:
 
+- canonical shared semantic types for built-in scalars
+- dedicated `null` semantics with no integer-zero pointer conversion
+- nominal declaration identity for structs and enums
+- restricted equality and ordered-comparison operand categories
+- checked known integer zero-divisor diagnostics
+- IEEE-754 constant behavior for `f32` and `f64`
 - explicit `TYPE_UNTYPED_INT` and `TYPE_UNTYPED_FLOAT` kinds
 - concrete default typing for inferred mutable numeric variables and parameters
 - adaptable compile-time numeric constants
@@ -316,11 +384,11 @@ Backend and code-generation work is intentionally deferred until the language's 
 
 Near-term work should remain language- and frontend-focused:
 
-1. Document and test settled numeric and enum semantics.
-2. Decide runtime narrowing-cast behavior.
-3. Decide the next language feature based on intended use, with slices as a leading candidate.
-4. Design ownership, mutability, lifetime, and string-view rules before implementing slices.
-5. Plan attributes such as `#repr_c` together with target layout and C ABI work, not as syntax-only features.
+1. Decide whether bitwise and shift operators are required for the first systems-programming core.
+2. Decide runtime integer overflow and narrowing-cast behavior.
+3. Design a small readonly raw-pointer mechanism without introducing borrowing or lifetime checking.
+4. Plan opaque raw pointers and explicit C ABI types.
+5. Design slices and pointer-length views after the raw-pointer mutability rules are settled.
 
 Later work may include:
 

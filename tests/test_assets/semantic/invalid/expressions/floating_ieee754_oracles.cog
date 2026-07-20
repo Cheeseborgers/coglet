@@ -1,0 +1,69 @@
+POSITIVE_INFINITY :: 1.0 / 0.0;
+NEGATIVE_INFINITY :: -1.0 / 0.0;
+NOT_A_NUMBER :: 0.0 / 0.0;
+
+POSITIVE_INFINITY_GT_ZERO: bool :
+    POSITIVE_INFINITY > 0.0;
+
+NEGATIVE_INFINITY_LT_ZERO: bool :
+    NEGATIVE_INFINITY < 0.0;
+
+POSITIVE_INFINITY_EQUALS_ITSELF: bool :
+    POSITIVE_INFINITY == POSITIVE_INFINITY;
+
+NAN_EQUALS_ITSELF: bool :
+    NOT_A_NUMBER == NOT_A_NUMBER;
+
+NAN_NOT_EQUALS_ITSELF: bool :
+    NOT_A_NUMBER != NOT_A_NUMBER;
+
+NAN_LESS_THAN_ZERO: bool :
+    NOT_A_NUMBER < 0.0;
+
+check_positive_infinity_gt_zero::(value: bool) -> void {
+    switch value {
+        case POSITIVE_INFINITY_GT_ZERO: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_negative_infinity_lt_zero::(value: bool) -> void {
+    switch value {
+        case NEGATIVE_INFINITY_LT_ZERO: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_positive_infinity_equals_itself::(value: bool) -> void {
+    switch value {
+        case POSITIVE_INFINITY_EQUALS_ITSELF: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_nan_equals_itself::(value: bool) -> void {
+    switch value {
+        case NAN_EQUALS_ITSELF: {}
+        case false: {}
+        default: {}
+    }
+}
+
+check_nan_not_equals_itself::(value: bool) -> void {
+    switch value {
+        case NAN_NOT_EQUALS_ITSELF: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_nan_less_than_zero::(value: bool) -> void {
+    switch value {
+        case NAN_LESS_THAN_ZERO: {}
+        case false: {}
+        default: {}
+    }
+}

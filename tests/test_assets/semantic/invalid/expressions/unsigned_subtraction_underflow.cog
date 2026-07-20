@@ -1,0 +1,4 @@
+U8_UNDERFLOW  :: cast(u8, 0)  - cast(u8, 1);
+U16_UNDERFLOW :: cast(u16, 0) - cast(u16, 1);
+U32_UNDERFLOW :: cast(u32, 0) - cast(u32, 1);
+U64_UNDERFLOW :: cast(u64, 0) - cast(u64, 1);

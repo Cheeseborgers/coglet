@@ -1,0 +1,66 @@
+POSITIVE_ZERO_F32: f32 : cast(f32, 0.0);
+NEGATIVE_ZERO_F32: f32 : cast(f32, -0.0);
+
+POSITIVE_INFINITY_F32: f32 :
+    cast(f32, 1.0) / POSITIVE_ZERO_F32;
+
+NEGATIVE_INFINITY_F32: f32 :
+    cast(f32, 1.0) / NEGATIVE_ZERO_F32;
+
+NAN_F32: f32 :
+    POSITIVE_ZERO_F32 / POSITIVE_ZERO_F32;
+
+POSITIVE_INFINITY_IS_POSITIVE: bool :
+    POSITIVE_INFINITY_F32 > cast(f32, 0.0);
+
+NEGATIVE_INFINITY_IS_NEGATIVE: bool :
+    NEGATIVE_INFINITY_F32 < cast(f32, 0.0);
+
+NAN_EQUALS_ITSELF_F32: bool :
+    NAN_F32 == NAN_F32;
+
+NAN_NOT_EQUALS_ITSELF_F32: bool :
+    NAN_F32 != NAN_F32;
+
+SIGNED_ZEROS_EQUAL_F32: bool :
+    POSITIVE_ZERO_F32 == NEGATIVE_ZERO_F32;
+
+check_positive_infinity_f32::(value: bool) -> void {
+    switch value {
+        case POSITIVE_INFINITY_IS_POSITIVE: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_negative_infinity_f32::(value: bool) -> void {
+    switch value {
+        case NEGATIVE_INFINITY_IS_NEGATIVE: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_nan_equal_f32::(value: bool) -> void {
+    switch value {
+        case NAN_EQUALS_ITSELF_F32: {}
+        case false: {}
+        default: {}
+    }
+}
+
+check_nan_not_equal_f32::(value: bool) -> void {
+    switch value {
+        case NAN_NOT_EQUALS_ITSELF_F32: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_signed_zeros_equal_f32::(value: bool) -> void {
+    switch value {
+        case SIGNED_ZEROS_EQUAL_F32: {}
+        case true: {}
+        default: {}
+    }
+}

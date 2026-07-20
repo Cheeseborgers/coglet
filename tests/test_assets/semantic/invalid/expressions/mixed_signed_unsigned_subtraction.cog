@@ -1,0 +1,10 @@
+test_mixed_signed_unsigned_subtraction::(
+    signed_value: i32,
+    unsigned_value: u32
+) -> void {
+    signed_value - unsigned_value;
+    unsigned_value - signed_value;
+
+    signed_value -= unsigned_value;
+    unsigned_value -= signed_value;
+}

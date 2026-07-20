@@ -1,0 +1,11 @@
+test_unsigned_negation::(
+    value_u8: u8,
+    value_u16: u16,
+    value_u32: u32,
+    value_u64: u64
+) -> void {
+    -value_u8;
+    -value_u16;
+    -value_u32;
+    -value_u64;
+}

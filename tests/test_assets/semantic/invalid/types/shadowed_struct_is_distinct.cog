@@ -1,0 +1,19 @@
+Point::struct {
+    x: i32;
+}
+
+test_shadowed_struct::() -> void {
+    outer: Point = Point {
+        x = 1,
+    };
+
+    Point::struct {
+        x: i32;
+    }
+
+    inner: Point = Point {
+        x = 2,
+    };
+
+    outer = inner;
+}

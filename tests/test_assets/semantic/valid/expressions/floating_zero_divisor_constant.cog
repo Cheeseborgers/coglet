@@ -1,0 +1,12 @@
+POSITIVE_INFINITY_F64: f64 : 1.0 / 0.0;
+NEGATIVE_INFINITY_F64: f64 : -1.0 / 0.0;
+NAN_F64: f64 : 0.0 / 0.0;
+
+POSITIVE_INFINITY_F32: f32 :
+    cast(f32, 1.0) / cast(f32, 0.0);
+
+NEGATIVE_INFINITY_F32: f32 :
+    cast(f32, -1.0) / cast(f32, 0.0);
+
+NAN_F32: f32 :
+    cast(f32, 0.0) / cast(f32, 0.0);

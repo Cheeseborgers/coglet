@@ -12,8 +12,8 @@ Implemented areas include:
 
 - lexical scopes, symbol lookup, and shadowing
 - explicit and inferred variables, parameters, functions, and constants
-- primitive numeric and boolean types
-- raw object pointers, fixed arrays, structs, enums, and function types
+- canonical primitive numeric and boolean semantic types
+- raw object pointers with dedicated `null`, fixed arrays, nominal structs, nominal enums, and function types
 - arithmetic, comparisons, logic, calls, fields, indexes, casts, and aggregate initializers
 - contextual fixed-array and null-terminated `u8` string literals
 - assignment, compound assignment, and increment/decrement as statement-only mutations
@@ -21,11 +21,36 @@ Implemented areas include:
 - `if`, `while`, `for`, `switch`, `break`, `continue`, and `return`
 - return-path and unreachable-statement analysis
 - compile-time constant evaluation with exact signed-magnitude integers
-- checked constant arithmetic, division/remainder diagnostics, and numeric representability checks
+- checked constant integer arithmetic, known zero-divisor diagnostics, and numeric representability checks
 - constant array-index bounds checking
+- IEEE-754 constant behavior for `f32` and `f64`, including infinity, NaN, and signed zero
 - deterministic semantic-information verification and dumps
 
 ## Recently Completed
+
+### Semantic Type and Numeric Hardening
+
+The existing frontend semantics have been hardened without adding backend or
+runtime execution work.
+
+Completed areas include:
+
+- canonical shared semantic instances for concrete built-in scalar types
+- exhaustive structural type equality with declaration identity for structs and enums
+- dedicated `null` semantics with no integer-zero pointer conversion
+- direct diagnostics for `*null` and integer zero in pointer contexts
+- explicit `null`-to-pointer casts
+- equality restricted to supported value categories
+- numeric-only ordered comparisons
+- rejection of typed unsigned unary negation
+- checked compile-time integer overflow and underflow
+- shared known integer zero-divisor checks for binary and compound assignment
+- IEEE-754 constant behavior for `f32` and `f64`
+- correct unordered NaN comparisons and signed-zero handling
+- expanded valid, invalid, constant-oracle, snapshot, and semantic-info coverage
+
+Runtime integer overflow, narrowing-cast behavior, and explicit wrapping
+operations remain design decisions rather than implied semantics.
 
 ### Raw Object Pointers
 
@@ -45,7 +70,8 @@ Current rules:
 - variables, assignable fields, assignable array indexes, dereferences, and pointer indexes may be addressed
 - pointer indexing remains an unchecked low-level operation
 - pointer arithmetic operators, array-to-pointer decay, `void*`, pointee const qualification, and lifetime checking remain unsupported
-- literal zero remains the only implicit null-pointer initializer
+- `null` is the only source-level null-pointer value; integer zero is rejected in pointer contexts
+- `null` may contextually adapt to a concrete pointer type or be explicitly cast to one
 
 Raw pointers are intentionally the C-interop and unsafe-memory foundation, not the final abstraction for ordinary safe Coglet APIs. Future work may add non-null references, mutable and readonly slices, read-only raw pointers, opaque pointers, and checked or unsafe conversions without changing the basic `T*` representation.
 
@@ -86,19 +112,67 @@ This makes enum switch exhaustiveness sound. A future `#repr_c` attribute is pla
 
 ## Immediate Design Work
 
-### 1. Runtime Numeric Cast Semantics
+### 1. Bitwise and Shift Operators
 
-Compile-time casts are range-checked. Runtime narrowing still needs a deliberate rule:
+Decide whether the first systems-programming core requires:
 
-- checked conversion
-- wrapping/truncating conversion
-- rejection unless a distinct explicit operation is used
+- bitwise `&`, `|`, `^`, and `~`
+- left and right shifts
+- integer-only operand rules
+- shift-count range rules
+- signed right-shift behavior
+- compile-time overflow and invalid-shift diagnostics
+- compound forms such as `&=`, `|=`, `^=`, `<<=`, and `>>=`
 
-This should be settled before a runtime or backend depends on cast behavior.
+The semantic rules should be written and tested before adding parser and lexer
+surface area.
 
-### 2. Choose the Next Language Feature by Intended Use
+### 2. Runtime Integer Arithmetic and Numeric Casts
 
-Slices remain a strong candidate, but implementation should wait until these rules are designed:
+Compile-time integer operations and casts are checked. Runtime behavior still
+needs deliberate rules for:
+
+- overflow and underflow
+- signed division overflow
+- narrowing conversion
+- checked versus wrapping operations
+- whether wrapping requires distinct syntax or built-ins
+
+No backend should assume C-style wrapping or undefined behavior before this is
+settled.
+
+### 3. Readonly and Opaque Raw Pointers
+
+Design a small const-correctness mechanism without conflating:
+
+- immutable bindings
+- non-reassignable pointer variables
+- readonly pointees
+- deep immutability
+- compile-time constants
+- safe references or lifetime-checked borrows
+
+A future readonly raw pointer should remain nullable, non-owning, unchecked,
+and potentially dangling. Opaque raw pointers should be considered separately
+for future `void*`-style interoperation.
+
+### 4. C Interoperability Design
+
+Plan, but do not yet implement syntax-only ABI promises. Relevant future work
+includes:
+
+- external declarations
+- target-aware primitive ABI types
+- C-compatible struct layout
+- opaque pointer conversion rules
+- enum backing representation
+- `#repr_c` or an equivalent general representation attribute
+- mapping C null pointers to Coglet `null`
+
+### 5. Slices and Pointer-Length Views
+
+Slices remain a strong candidate after raw-pointer mutability and ABI rules
+are clearer. Their design must settle:
 
 - mutable versus readonly slices
 - pointer-and-length versus pointer-length-capacity layout
@@ -107,18 +181,8 @@ Slices remain a strong candidate, but implementation should wait until these rul
 - lifetime of temporary arrays and literals
 - null termination and visible length
 
-A first-class `string` type should wait until slice, ownership, mutability, encoding, and C interop rules are clearer.
-
-### 3. C Interoperability Design
-
-Plan, but do not yet implement syntax-only ABI promises. Relevant future work includes:
-
-- `extern` functions
-- target-aware primitive ABI types
-- C-compatible struct layout
-- enum backing representation
-- `#repr_c` or an equivalent general representation attribute
-- checked conversion for values entering closed enums from C
+A first-class `string` type should wait until slice, ownership, mutability,
+encoding, and C interoperability rules are clearer.
 
 ## Later Frontend Work
 

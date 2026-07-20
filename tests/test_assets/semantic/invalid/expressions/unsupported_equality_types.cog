@@ -1,0 +1,31 @@
+Point::struct {
+    x: i32;
+    y: i32;
+}
+
+first::() -> void {
+}
+
+second::() -> void {
+}
+
+test_unsupported_equality::() -> void {
+    left_point: Point = Point {
+        x = 1,
+        y = 2,
+    };
+
+    right_point: Point = Point {
+        x = 1,
+        y = 2,
+    };
+
+    left_point == right_point;
+
+    left_array: i32[2] = [1, 2];
+    right_array: i32[2] = [1, 2];
+
+    left_array == right_array;
+
+    first == second;
+}

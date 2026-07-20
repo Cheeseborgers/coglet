@@ -91,9 +91,6 @@ static void semantic_error_name(
     ctx->error_count++;
 }
 
-// ============================================================
-// sematic expression helpers
-// ============================================================
 static SemExprInfo *sem_find_expr_info(SemanticContext *ctx, Node *node) {
 
     for (SemExprInfo *info = ctx->expr_infos; info; info = info->next) {
@@ -212,10 +209,12 @@ static void scope_define(SemanticContext *ctx, StringView name, SymbolKind kind,
 
     Symbol *sym = arena_alloc(ctx->arena, sizeof(Symbol));
 
-    sym->name = name;
-    sym->kind = kind;
-    sym->type = type;
-    sym->next = ctx->current_scope->symbols;
+    *sym = (Symbol){
+        .name = name,
+        .kind = kind,
+        .type = type,
+        .next = ctx->current_scope->symbols,
+    };
 
     ctx->current_scope->symbols = sym;
 }
@@ -317,7 +316,7 @@ static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t le
 static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value);
 static Type *check_value_expression(SemanticContext *ctx, Node *node);
 static Type *check_cast_expression(SemanticContext *ctx, Node *node);
-static Type *concretize_inferred_numeric_type(SemanticContext *ctx, Node *expression, Type *type);
+static Type *concretize_inferred_type(SemanticContext *ctx, Node *expression, Type *type);
 
 static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
@@ -412,7 +411,7 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
         case TYPE_POINTER: {
             char element[128];
             format_type_name(type->element, element, sizeof(element));
-            snprintf(buffer, buffer_size, "*%s", element);
+            snprintf(buffer, buffer_size, "%s*", element);
             return;
         }
 
@@ -424,12 +423,12 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
                 snprintf(
                     buffer,
                     buffer_size,
-                    "[%d]%s",
-                    type->array_size,
-                    element
+                    "%s[%d]",
+                    element,
+                    type->array_size
                 );
             } else {
-                snprintf(buffer, buffer_size, "[]%s", element);
+                snprintf(buffer, buffer_size, "%s[]", element);
             }
 
             return;
@@ -439,18 +438,18 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
     snprintf(buffer, buffer_size, "<unknown>");
 }
 
-static int type_equal(Type *a, Type *b)
-{
+static int type_equal(const Type *a, const Type *b) {
+
     /*
-     * Preserve the existing rule that a missing type is not equal to
-     * another missing type.
+     * A missing type is not a semantic type, including when both
+     * arguments are NULL.
      */
     if (!a || !b)
         return 0;
 
     /*
-     * Canonical scalar types and shared named semantic types normally
-     * finish here.
+     * Canonical built-ins and nominal struct/enum declarations
+     * normally finish here.
      */
     if (a == b)
         return 1;
@@ -458,54 +457,104 @@ static int type_equal(Type *a, Type *b)
     if (a->kind != b->kind)
         return 0;
 
-    if (a->kind == TYPE_POINTER)
-        return type_equal(a->element, b->element);
+    switch (a->kind) {
+        /*
+         * These types have no additional identity-bearing fields.
+         * Once their kinds match, they are equal.
+         */
+        case TYPE_VOID:
+        case TYPE_BOOL:
 
-    if (a->kind == TYPE_ARRAY) {
-        return a->array_size == b->array_size &&
-               type_equal(a->element, b->element);
-    }
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
 
-    if (a->kind == TYPE_NAMED) {
-        return names_equal(
-            a->named_name.data,
-            a->named_name.length,
-            b->named_name.data,
-            b->named_name.length
-        );
-    }
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
 
-    if (a->kind == TYPE_STRUCT) {
-        return names_equal(
-            a->struct_name.data,
-            a->struct_name.length,
-            b->struct_name.data,
-            b->struct_name.length
-        );
-    }
+        case TYPE_F32:
+        case TYPE_F64:
 
-    if (a->kind == TYPE_ENUM) {
-        return names_equal(
-            a->enum_name.data,
-            a->enum_name.length,
-            b->enum_name.data,
-            b->enum_name.length
-        );
-    }
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
 
-    if (a->kind == TYPE_FUNCTION) {
-        if (a->parameter_count != b->parameter_count)
-            return 0;
+        case TYPE_NULL:
+            return 1;
 
-        for (int i = 0; i < a->parameter_count; i++) {
-            if (!type_equal(a->parameters[i], b->parameters[i]))
+        /*
+         * Compound structural types.
+         */
+        case TYPE_POINTER:
+            return type_equal(
+                a->element,
+                b->element
+            );
+
+        case TYPE_ARRAY:
+            return a->array_size == b->array_size &&
+                   type_equal(
+                       a->element,
+                       b->element
+                   );
+
+        case TYPE_FUNCTION:
+            if (a->parameter_count !=
+                b->parameter_count) {
                 return 0;
-        }
+            }
 
-        return type_equal(a->return_type, b->return_type);
+            for (int i = 0;
+                 i < a->parameter_count;
+                 i++) {
+                if (!type_equal(
+                        a->parameters[i],
+                        b->parameters[i]
+                    )) {
+                    return 0;
+                }
+            }
+
+            return type_equal(
+                a->return_type,
+                b->return_type
+            );
+
+        /*
+         * Parsed named types may be compared before resolution in
+         * defensive or diagnostic paths. At this stage their source
+         * names are the only available identity.
+         */
+        case TYPE_NAMED:
+            return names_equal(
+                a->named_name.data,
+                a->named_name.length,
+                b->named_name.data,
+                b->named_name.length
+            );
+
+        /*
+         * Structs and enums are nominal.
+         *
+         * Equal declaration identities were already accepted by the
+         * `a == b` fast path. Reaching these cases means the objects
+         * came from different declarations.
+         */
+        case TYPE_STRUCT:
+        case TYPE_ENUM:
+            return 0;
     }
 
-    return 1;
+    /*
+     * Do not silently consider a newly introduced TypeKind equal.
+     *
+     * Keeping the switch without a default also allows compiler
+     * warnings such as -Wswitch to report newly added enum members.
+     */
+    assert(!"unhandled TypeKind in type_equal");
+    return 0;
 }
 
 static int invalid_value_type(Type *type) { return contains_void_type(type); }
@@ -539,33 +588,26 @@ static int is_concrete_integer_kind(TypeKind kind)
     }
 }
 
-static int is_untyped_integer_kind(TypeKind kind) { return kind == TYPE_UNTYPED_INT; }
+static int is_unsigned_integer_kind(
+    TypeKind kind
+) {
+    switch (kind) {
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+            return 1;
 
-static int is_integer_kind(TypeKind kind)
-{
-    return is_concrete_integer_kind(kind) ||
-           is_untyped_integer_kind(kind);
+        default:
+            return 0;
+    }
 }
 
+static int is_integer_kind(TypeKind kind) { return is_concrete_integer_kind(kind) || kind == TYPE_UNTYPED_INT;}
 static int is_concrete_float_kind(TypeKind kind) { return kind == TYPE_F32 || kind == TYPE_F64; }
-static int is_untyped_float_kind(TypeKind kind)  { return kind == TYPE_UNTYPED_FLOAT; }
-
-static int is_float_kind(TypeKind kind)
-{
-    return is_concrete_float_kind(kind) ||
-           is_untyped_float_kind(kind);
-}
-
-static int is_untyped_numeric_kind(TypeKind kind)
-{
-    return is_untyped_integer_kind(kind) ||
-           is_untyped_float_kind(kind);
-}
-
-static int is_untyped_numeric_type(const Type *type)
-{
-    return type && is_untyped_numeric_kind(type->kind);
-}
+static int is_float_kind(TypeKind kind) { return is_concrete_float_kind(kind) || kind == TYPE_UNTYPED_FLOAT; }
+static int is_untyped_numeric_kind(TypeKind kind) { return kind == TYPE_UNTYPED_INT || kind == TYPE_UNTYPED_FLOAT; }
+static int is_untyped_numeric_type(const Type *type) { return type && is_untyped_numeric_kind(type->kind); }
 
 static IntegerValue integer_value_make(uint64_t magnitude, int is_negative) {
 
@@ -576,7 +618,6 @@ static IntegerValue integer_value_make(uint64_t magnitude, int is_negative) {
 }
 
 static IntegerValue integer_value_negated(IntegerValue value) {
-
     return integer_value_make(value.magnitude, !value.is_negative);
 }
 
@@ -686,9 +727,7 @@ static double integer_value_to_double(IntegerValue value)
 {
     double result = (double)value.magnitude;
 
-    return value.is_negative
-        ? -result
-        : result;
+    return value.is_negative ? -result : result;
 }
 
 static int double_to_integer_value(double value, IntegerValue *out) {
@@ -706,30 +745,36 @@ static int double_to_integer_value(double value, IntegerValue *out) {
     if (magnitude >= 18446744073709551616.0)
         return 0;
 
-    *out = integer_value_make(
-        (uint64_t)magnitude,
-        is_negative
-    );
+    *out = integer_value_make((uint64_t)magnitude, is_negative);
 
     return 1;
 }
 
 static int round_float_for_type(double value, TypeKind kind, double *out) {
 
-    if (!isfinite(value)) return 0;
-
     if (kind == TYPE_UNTYPED_FLOAT)
         kind = TYPE_F64;
 
     if (kind == TYPE_F32) {
-        if (value > FLT_MAX || value < -FLT_MAX)
+        /*
+         * Finite values must fit in the finite f32 range.
+         *
+         * Infinity and NaN are representable IEEE-754 values and
+         * remain infinity or NaN when converted to f32.
+         */
+        if (isfinite(value) && (value > FLT_MAX || value < -FLT_MAX)) {
             return 0;
+        }
 
         *out = (double)(float)value;
         return 1;
     }
 
     if (kind == TYPE_F64) {
+        /*
+         * `value` is already represented as a C double. This includes
+         * finite values, infinities, NaNs, and signed zero.
+         */
         *out = value;
         return 1;
     }
@@ -737,11 +782,8 @@ static int round_float_for_type(double value, TypeKind kind, double *out) {
     return 0;
 }
 
-static int integer_value_add(
-    IntegerValue left,
-    IntegerValue right,
-    IntegerValue *out
-) {
+static int integer_value_add(IntegerValue left, IntegerValue right, IntegerValue *out) {
+
     if (left.is_negative == right.is_negative) {
         if (UINT64_MAX - left.magnitude < right.magnitude)
             return 0;
@@ -769,11 +811,8 @@ static int integer_value_add(
     return 1;
 }
 
-static int integer_value_subtract(
-    IntegerValue left,
-    IntegerValue right,
-    IntegerValue *out
-) {
+static int integer_value_subtract(IntegerValue left, IntegerValue right, IntegerValue *out) {
+
     return integer_value_add(
         left,
         integer_value_negated(right),
@@ -781,11 +820,8 @@ static int integer_value_subtract(
     );
 }
 
-static int integer_value_multiply(
-    IntegerValue left,
-    IntegerValue right,
-    IntegerValue *out
-) {
+static int integer_value_multiply(IntegerValue left, IntegerValue right, IntegerValue *out) {
+
     if (left.magnitude != 0 &&
         right.magnitude > UINT64_MAX / left.magnitude) {
         return 0;
@@ -799,10 +835,8 @@ static int integer_value_multiply(
     return 1;
 }
 
-static int signed_integer_min_magnitude(
-    TypeKind kind,
-    uint64_t *out
-) {
+static int signed_integer_min_magnitude(TypeKind kind, uint64_t *out) {
+
     switch (kind) {
         case TYPE_I8:
             *out = UINT64_C(1) << 7;
@@ -825,10 +859,7 @@ static int signed_integer_min_magnitude(
     }
 }
 
-static int integer_division_overflows(
-    IntegerValue left,
-    IntegerValue right,
-    TypeKind result_kind) {
+static int integer_division_overflows(IntegerValue left, IntegerValue right, TypeKind result_kind) {
 
     uint64_t minimum_magnitude;
 
@@ -847,17 +878,23 @@ static int is_integer_type(Type *t)  { return t && is_integer_kind(t->kind); }
 static int is_numeric_type(Type *t)  { return t && (is_integer_kind(t->kind) || is_float_kind(t->kind)); }
 static int is_bool_type(Type *t)     { return t && t->kind == TYPE_BOOL; }
 static int is_enum_type(Type *type)  { return type && type->kind == TYPE_ENUM; }
+static int is_null_type(const Type *type) { return type && type->kind == TYPE_NULL;}
 static int is_bool_cast_pair(Type *to, Type *from)       { return is_bool_type(to) && is_bool_type(from); }
 static int is_numeric_cast_pair(Type *to, Type *from)    { return is_numeric_type(to) && is_numeric_type(from); }
 static int is_enum_to_integer_cast(Type *to, Type *from) { return is_integer_kind(to->kind) && is_enum_type(from);}
 static int is_integer_to_enum_cast(Type *to, Type *from) { return is_enum_type(to) && is_integer_kind(from->kind); }
 static int is_literal_true(Node *node) { return node && node->type == NODE_BOOL && node->as.boolean.value; }
 
-static int is_int_literal_zero(Node *node) {
-    return node &&
-           node->type == NODE_NUMBER &&
-           node->as.number.kind == NUMBER_LITERAL_INTEGER &&
-           node->as.number.value.integer == 0;
+static int is_equality_comparable_type(const Type *type) {
+
+    if (!type) return 0;
+
+    /* Null comparisons already have their own contextual handling */
+    return is_integer_kind(type->kind) ||
+           is_float_kind(type->kind) ||
+           type->kind == TYPE_BOOL ||
+           type->kind == TYPE_ENUM ||
+           type->kind == TYPE_POINTER;
 }
 
 static int is_switchable_type(Type *type) {
@@ -869,6 +906,9 @@ static int is_switchable_type(Type *type) {
            type->kind == TYPE_ENUM;
 }
 
+static int is_null_to_pointer_cast(Type *to, Type *from) {
+    return to && to->kind == TYPE_POINTER && is_null_type(from);
+}
 
 static int is_allowed_explicit_cast(Type *to, Type *from) {
 
@@ -878,6 +918,17 @@ static int is_allowed_explicit_cast(Type *to, Type *from) {
      * Casting a type to itself is always allowed.
      */
     if (type_equal(to, from))
+        return 1;
+
+    /*
+     * A null literal may be given an explicit concrete pointer type:
+     *
+     *     cast(i32*, null)
+     *
+     * The reverse conversion is not allowed, and integers do not
+     * implicitly or explicitly become pointers through this rule.
+     */
+    if (is_null_to_pointer_cast(to, from))
         return 1;
 
     /*
@@ -911,11 +962,9 @@ static int is_allowed_explicit_cast(Type *to, Type *from) {
     return 0;
 }
 
-static int is_null_type(const Type *type) { return type && type->kind == TYPE_NULL;}
-
 static int is_pointer_null_pair(const Type *left, const Type *right) {
 
-    if (!left || !right)return 0;
+    if (!left || !right) return 0;
 
     return
         (left->kind == TYPE_POINTER &&
@@ -1100,56 +1149,50 @@ static Type *common_numeric_type(Type *a, Type *b)
     return a;
 }
 
+static int is_integer_zero_to_pointer(const Type *expected, const Node *value) {
+    return expected &&
+           expected->kind == TYPE_POINTER &&
+           value &&
+           value->type == NODE_NUMBER &&
+           value->as.number.kind == NUMBER_LITERAL_INTEGER &&
+           value->as.number.value.integer == 0;
+}
+
 /**
- * Determines whether a value of one type may be used to initialize an object
- * of another type.
+ * Determines whether a value of one type may be used where another type is
+ * expected.
  *
  * Current compatibility rules:
- *   - Exact type matches are always accepted.
- *   - The integer literal 0 is treated as a null pointer constant and may
- *     initialize any pointer type.
- *   - An UNTYPED numeric literal (or constant expression) adapts to any
- *     compatible declared numeric kind: an untyped int can initialize any
- *     integer or float type, and an untyped float can initialize any float
+ *   - Exact type matches are accepted.
+ *   - A null literal contextually adapts to any raw pointer type.
+ *   - An untyped integer may adapt to a concrete integer or floating-point
  *     type.
- *   - Two CONCRETE types (e.g. two variables, or a variable and a declared
- *     type) must match exactly. There is no implicit narrowing/widening
- *     between named numeric types -- use an explicit cast.
+ *   - An untyped floating-point value may adapt to a concrete floating-point
+ *     type.
+ *   - Concrete numeric types do not implicitly widen or narrow.
  *
- * @param declared  The declared type of the object being initialized.
- * @param init_type The type of the initializer expression.
- * @param init_node The initializer AST node, used to recognize special cases
- *                  such as the integer literal 0 for null pointer
- *                  initialization.
- *
- * @return 1 if the initializer is considered compatible with the declared
- *         type under the current rules, otherwise 0.
+ * Integer zero is not a null-pointer constant. The only source-level null
+ * pointer value is `null`.
  */
-static int initializer_compatible(Type *declared, Type *init_type, Node *init_node) {
+static int initializer_compatible(Type *declared, Type *init_type) {
 
-    if (!declared || !init_type) return 1;
+    if (!declared || !init_type)
+        return 1;
 
-    if (type_equal(declared, init_type)) return 1;
+    if (type_equal(declared, init_type))
+        return 1;
 
     /*
-    * A null literal contextually adapts to any raw pointer type.
-    *
-    * This is directional:
-    *
-    *     T* <- null
-    *
-    * TYPE_NULL is not globally equal to TYPE_POINTER.
-    */
+     * A null literal contextually adapts to any raw pointer type:
+     *
+     *     T* <- null
+     *
+     * TYPE_NULL is not globally equal to TYPE_POINTER.
+     */
     if (declared->kind == TYPE_POINTER &&
         is_null_type(init_type)) {
         return 1;
-    }
-
-    /* Integer literal zero is a null-pointer constant. */
-    if (declared->kind == TYPE_POINTER &&
-        is_int_literal_zero(init_node)) {
-        return 1;
-    }
+        }
 
     if (init_type->kind == TYPE_UNTYPED_INT) {
         return is_concrete_integer_kind(declared->kind) ||
@@ -1361,8 +1404,8 @@ static int eval_float_binary_operation(
     TypeKind operation_kind,
     const ConstValue *left,
     const ConstValue *right,
-    ConstValue *out)
-{
+    ConstValue *out
+) {
     if (!result_type ||
         !is_float_kind(result_type->kind) ||
         !is_concrete_float_kind(operation_kind)) {
@@ -1376,16 +1419,8 @@ static int eval_float_binary_operation(
     double left_value;
     double right_value;
 
-    if (!const_value_to_float_type(
-            left,
-            operation_kind,
-            &left_value
-        ) ||
-        !const_value_to_float_type(
-            right,
-            operation_kind,
-            &right_value
-        )) {
+    if (!const_value_to_float_type(left,  operation_kind, &left_value) ||
+        !const_value_to_float_type(right, operation_kind, &right_value)) {
 
         semantic_error(ctx, node,
             "floating-point constant operand does not fit operation type");
@@ -1393,8 +1428,11 @@ static int eval_float_binary_operation(
         return 0;
     }
 
+    /*
+     * Perform f32 operations at f32 precision rather than calculating
+     * them as f64 and rounding afterward.
+     */
     if (operation_kind == TYPE_F32) {
-
         float left_f  = (float)left_value;
         float right_f = (float)right_value;
         float result_f;
@@ -1413,14 +1451,12 @@ static int eval_float_binary_operation(
                 break;
 
             case TOK_SLASH:
-                if (right_f == 0.0f) {
-
-                    semantic_error(ctx, node,
-                        "division by zero in constant expression");
-
-                    return 0;
-                }
-
+                /*
+                 * IEEE-754 defines floating-point division by zero:
+                 *
+                 *     nonzero / zero -> signed infinity
+                 *     zero / zero    -> NaN
+                 */
                 result_f = left_f / right_f;
                 break;
 
@@ -1428,19 +1464,14 @@ static int eval_float_binary_operation(
                 return 0;
         }
 
-        if (!isfinite(result_f)) {
-
-            semantic_error(ctx, node,
-                "floating-point overflow in constant expression");
-
-            return 0;
-        }
-
-        out->kind = CONST_VALUE_FLOAT;
-        out->as.floating = (double)result_f;
-        out->type = result_type;
-
-        return 1;
+        return float_constant_result(
+            ctx,
+            node,
+            result_type,
+            operation_kind,
+            (double)result_f,
+            out
+        );
     }
 
     double result;
@@ -1459,14 +1490,6 @@ static int eval_float_binary_operation(
             break;
 
         case TOK_SLASH:
-            if (right_value == 0.0) {
-
-                semantic_error(ctx, node,
-                    "division by zero in constant expression");
-
-                return 0;
-            }
-
             result = left_value / right_value;
             break;
 
@@ -1483,7 +1506,6 @@ static int eval_float_binary_operation(
         out
     );
 }
-
 
 static int eval_const_comparison(
     SemanticContext *ctx,
@@ -1543,7 +1565,7 @@ static int eval_const_comparison(
                 left->as.integer,
                 right->as.integer
             );
-        } else {
+                } else {
             double left_value;
             double right_value;
 
@@ -1559,16 +1581,66 @@ static int eval_const_comparison(
                     &right_value
                 )) {
 
-                semantic_error(ctx, node,
-                    "floating-point comparison operand does not fit comparison type");
+                semantic_error(
+                    ctx,
+                    node,
+                    "floating-point comparison operand does not fit comparison type"
+                );
 
                 return 0;
             }
 
-            comparison =
-                left_value < right_value
-                    ? -1
-                    : (left_value > right_value ? 1 : 0);
+            /*
+             * Floating-point comparisons must use the IEEE-754
+             * operators directly.
+             *
+             * A three-way comparison cannot represent the unordered
+             * NaN case:
+             *
+             *     NaN == NaN  -> false
+             *     NaN != NaN  -> true
+             *
+             * All ordered comparisons involving NaN are false.
+             */
+            out->kind = CONST_VALUE_BOOL;
+            out->type = ctx->type_bool;
+
+            switch (node->as.binary.op) {
+                case TOK_EQUAL_EQUAL:
+                    out->as.boolean =
+                        left_value == right_value;
+                    break;
+
+                case TOK_BANG_EQUAL:
+                    out->as.boolean =
+                        left_value != right_value;
+                    break;
+
+                case TOK_LESS:
+                    out->as.boolean =
+                        left_value < right_value;
+                    break;
+
+                case TOK_LESS_EQUAL:
+                    out->as.boolean =
+                        left_value <= right_value;
+                    break;
+
+                case TOK_GREATER:
+                    out->as.boolean =
+                        left_value > right_value;
+                    break;
+
+                case TOK_GREATER_EQUAL:
+                    out->as.boolean =
+                        left_value >= right_value;
+                    break;
+
+                default:
+                    return 0;
+            }
+
+            return 1;
         }
     } else if (
         left->kind == CONST_VALUE_BOOL &&
@@ -1635,11 +1707,8 @@ static int eval_const_comparison(
             right->as.integer
         );
     } else {
-        semantic_error(
-            ctx,
-            node,
-            "comparison operands are not compatible constants"
-        );
+        semantic_error(ctx, node,
+            "comparison operands are not compatible constants");
 
         return 0;
     }
@@ -1808,11 +1877,24 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
             if (node->as.unary.op == TOK_MINUS) {
                 if (operand.kind == CONST_VALUE_INT) {
 
-                    IntegerValue value =
-                        integer_value_negated(operand.as.integer);
-
                     Type *result_type =
                         const_value_default_type(ctx, &operand);
+
+                    /*
+                     * Typed unsigned constants follow the same rule as ordinary
+                     * unsigned expressions. Coglet has not defined wrapping unary
+                     * negation for unsigned integers.
+                     */
+                    if (result_type &&
+                        is_unsigned_integer_kind(result_type->kind)) {
+                        semantic_error(ctx, node,
+                            "unary '-' cannot be applied to an unsigned value");
+
+                        return 0;
+                    }
+
+                    IntegerValue value =
+                        integer_value_negated(operand.as.integer);
 
                     TypeKind operation_kind;
 
@@ -2195,8 +2277,7 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
     }
 }
 
-// TODO: rename this to 'concretize_inferred_type'
-static Type *concretize_inferred_numeric_type(SemanticContext *ctx, Node *expression, Type *type) {
+static Type *concretize_inferred_type(SemanticContext *ctx, Node *expression, Type *type) {
 
     /*
      * Unlike an untyped numeric literal, null has no sensible
@@ -2277,6 +2358,22 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
 
     memset(out, 0, sizeof(*out));
     out->type = target_type;
+
+    /*
+    * A null-to-pointer cast remains a null constant, but carries
+    * the concrete destination pointer type.
+    */
+    if (target_type->kind == TYPE_POINTER) {
+        if (value.kind != CONST_VALUE_NULL) {
+            semantic_error(ctx, node,
+                "pointer cast requires a null constant");
+
+            return 0;
+        }
+
+        out->kind = CONST_VALUE_NULL;
+        return 1;
+    }
 
     if (target_type->kind == TYPE_ENUM) {
         if (value.kind != CONST_VALUE_INT) {
@@ -2536,6 +2633,53 @@ static int check_binary_constant_operands(
     return 1;
 }
 
+static int check_known_integer_zero_divisor(
+    SemanticContext *ctx,
+    TokenType operation,
+    Node *divisor,
+    Type *operation_type
+) {
+    if (!divisor || !operation_type)
+        return 1;
+
+    int is_division =
+        operation == TOK_SLASH ||
+        operation == TOK_SLASH_EQUAL;
+
+    int is_remainder =
+        operation == TOK_PERCENT ||
+        operation == TOK_PERCENT_EQUAL;
+
+    if (!is_division && !is_remainder)
+        return 1;
+
+    /*
+     * Floating-point division by zero is a separate language-design
+     * decision. This rule currently applies only to integer operations.
+     */
+    if (!is_integer_kind(operation_type->kind))
+        return 1;
+
+    if (!expression_is_compile_time_constant(ctx, divisor))
+        return 1;
+
+    ConstValue value;
+
+    if (!eval_const_expr(ctx, divisor, &value)) {
+        return 0;
+    }
+
+    if (value.kind != CONST_VALUE_INT ||
+        value.as.integer.magnitude != 0) {
+        return 1;
+    }
+
+    semantic_error(ctx, divisor,
+        is_division ? "division by zero" : "remainder by zero");
+
+    return 0;
+}
+
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node) {
 
     if (!node) return 0;
@@ -2779,7 +2923,18 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
                 case TOK_STAR:
                 {
-                    /* Dereference implementation */
+                    /*
+                     * TYPE_NULL has no pointee type by itself. Although null can
+                     * contextually adapt to a concrete pointer type, dereference
+                     * provides no context from which to determine that type.
+                     */
+                    if (is_null_type(operand)) {
+                        semantic_error(ctx, node,
+                            "cannot dereference null");
+
+                        return NULL;
+                    }
+
                     if (operand->kind != TYPE_POINTER) {
                         semantic_error(ctx, node,
                             "unary '*' requires a pointer operand");
@@ -2800,11 +2955,25 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
                 case TOK_MINUS:
                 {
-                    /* Numeric-negation implementation */
-                    if (!is_numeric_type(operand)) {
 
+                    /*
+                     * Numeric negation is defined for signed integers,
+                     * floating-point values, and untyped numeric literals.
+                     */
+                    if (!is_numeric_type(operand)) {
                         semantic_error(ctx, node,
                             "unary '-' requires numeric operand");
+
+                        return NULL;
+                    }
+
+                    /*
+                     * NOTE: Coglet does not currently define wrapping or modular unary
+                     * negation for unsigned integers.
+                     */
+                    if (is_unsigned_integer_kind(operand->kind)) {
+                        semantic_error(ctx, node,
+                            "unary '-' cannot be applied to an unsigned value");
 
                         return NULL;
                     }
@@ -2821,8 +2990,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                             ? constant.type
                             : const_value_default_type(
                                 ctx,
-                                &constant
-                            );
+                                &constant);
                     }
 
                     sem_record_expr_info(
@@ -2935,6 +3103,14 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
+                    if (!check_known_integer_zero_divisor(
+                            ctx,
+                            node->as.binary.op,
+                            node->as.binary.right,
+                            result)) {
+                        return NULL;
+                    }
+
                     sem_record_expr_info(ctx, node, result, NULL, VALUE_CATEGORY_RVALUE);
                     return result;
                 }
@@ -3035,10 +3211,33 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return ctx->type_bool;
                     }
 
+                    /*
+                    * Non-numeric operands must first have the same semantic type.
+                    *
+                    * This preserves diagnostics such as comparing two different enum
+                    * types or pointers with different pointee types.
+                    */
                     if (!type_equal(left, right)) {
-                        semantic_error(ctx, node, "comparison type mismatch");
+                        semantic_error(ctx, node,
+                            "comparison type mismatch");
+
                         return NULL;
                     }
+
+                    /*
+                     * Structural type equality does not imply that the language defines
+                     * an equality operation for that type.
+                     *
+                     * Arrays, structs, and functions may be structurally equal types,
+                     * but Coglet does not currently define value equality for them.
+                     */
+                    if (!is_equality_comparable_type(left) ||
+                        !is_equality_comparable_type(right)) {
+                        semantic_error(ctx, node,
+                            "type does not support equality comparison");
+
+                        return NULL;
+                        }
 
                     sem_record_expr_info(
                         ctx,
@@ -3058,7 +3257,6 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 case TOK_GREATER_EQUAL:
                 {
                     if (!is_numeric_type(left) || !is_numeric_type(right)) {
-
                         semantic_error(ctx, node,
                             "ordered comparison requires numeric operands");
 
@@ -3692,17 +3890,20 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
             return;
         }
 
-        if (!initializer_compatible(
-                type,
-                value_type,
-                node->as.const_decl.value
-            )) {
-            semantic_error(ctx, node,
-                "constant value does not match declared type");
+        if (!initializer_compatible(type, value_type)) {
+            if (is_integer_zero_to_pointer(
+                    type,
+                    node->as.const_decl.value
+                )) {
+                semantic_error(ctx, node->as.const_decl.value,
+                    "integer zero is not a pointer; use null");
+                } else {
+                    semantic_error(ctx, node,
+                        "constant value does not match declared type");
+                }
 
             return;
-        }
-
+    }
         ConstValue converted;
 
         if (!coerce_constant_to_type(
@@ -3756,10 +3957,7 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
 static void check_switch_statement(SemanticContext *ctx, Node *node) {
 
     Type *switch_type =
-        check_value_expression(
-            ctx,
-            node->as.switch_stmt.expression
-        );
+        check_value_expression(ctx, node->as.switch_stmt.expression);
 
     if (!switch_type)
         return;
@@ -3807,9 +4005,7 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
 
             seen_default = 1;
 
-            check_node(
-                ctx,
-                case_node->as.switch_case.body);
+            check_node(ctx, case_node->as.switch_case.body);
 
             continue;
         }
@@ -3818,35 +4014,18 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
             case_node->as.switch_case.value;
 
         Type *case_type =
-            check_value_expression(
-                ctx,
-                case_value_node
-            );
+            check_value_expression(ctx, case_value_node);
 
         if (!switch_type_is_valid || !case_type) {
-            check_node(
-                ctx,
-                case_node->as.switch_case.body
-            );
-
+            check_node(ctx, case_node->as.switch_case.body);
             continue;
         }
 
-        if (!initializer_compatible(
-                switch_type,
-                case_type,
-                case_value_node
-            )) {
-            semantic_error(
-                ctx,
-                case_node,
-                "switch case type does not match switch expression type"
-            );
+        if (!initializer_compatible(switch_type, case_type)) {
+            semantic_error(ctx, case_node,
+                "switch case type does not match switch expression type");
 
-            check_node(
-                ctx,
-                case_node->as.switch_case.body
-            );
+            check_node(ctx, case_node->as.switch_case.body);
 
             continue;
         }
@@ -3858,10 +4037,7 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
                 case_value_node,
                 &case_value
             )) {
-            check_node(
-                ctx,
-                case_node->as.switch_case.body
-            );
+            check_node(ctx, case_node->as.switch_case.body);
 
             continue;
         }
@@ -3877,19 +4053,13 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
                 "switch case value does not fit switch expression type",
                 &converted_case
             )) {
-            check_node(
-                ctx,
-                case_node->as.switch_case.body
-            );
+            check_node(ctx, case_node->as.switch_case.body);
 
             continue;
         }
 
         for (int j = 0; j < seen_case_count; j++) {
-            if (const_values_equal(
-                    &seen_cases[j].value,
-                    &converted_case
-                )) {
+            if (const_values_equal(&seen_cases[j].value, &converted_case)) {
                 semantic_error(ctx, case_node,
                     "duplicate switch case");
 
@@ -3994,18 +4164,13 @@ static int check_compound_assignment_statement(SemanticContext *ctx, Node *node)
         common_numeric_type(target_type, value_type);
 
     if (!result_type) {
-
         semantic_error(ctx, node,
             "compound assignment operands have incompatible numeric types");
 
         return 0;
     }
 
-    if (!initializer_compatible(
-            target_type,
-            result_type,
-            value_node
-        )) {
+    if (!initializer_compatible(target_type, result_type)) {
         semantic_error(ctx, node,
             "compound assignment result does not fit target type");
 
@@ -4023,8 +4188,15 @@ static int check_compound_assignment_statement(SemanticContext *ctx, Node *node)
         return 0;
     }
 
-    sem_record_no_value(ctx, node);
+    if (!check_known_integer_zero_divisor(
+        ctx,
+        node->as.compound_assign.op,
+        value_node,
+        result_type)) {
+        return 0;
+    }
 
+    sem_record_no_value(ctx, node);
     return 1;
 }
 
@@ -4124,13 +4296,14 @@ static int check_initializer_against_type(SemanticContext *ctx, Type *expected, 
     if (!actual)
         return 0;
 
-    if (!initializer_compatible(
-            expected,
-            actual,
-            initializer)) {
-
-        semantic_error(ctx, initializer,
-            "initializer type does not match declared type");
+    if (!initializer_compatible(expected, actual)) {
+        if (is_integer_zero_to_pointer(expected, initializer)) {
+            semantic_error(ctx, initializer,
+                "integer zero is not a pointer; use null");
+            } else {
+                semantic_error(ctx, initializer,
+                    "initializer type does not match declared type");
+            }
 
         return 0;
     }
@@ -4166,14 +4339,29 @@ static int check_argument_against_parameter(SemanticContext *ctx, Type *expected
 
     if (!actual) return 0;
 
-    if (!initializer_compatible(expected, actual, argument)) {
+    if (!initializer_compatible(expected, actual)) {
+        if (is_integer_zero_to_pointer(expected, argument)) {
+            semantic_error(ctx, argument,
+                "integer zero is not a pointer; use null");
+
+            return 0;
+        }
 
         const int name_buffer_size = 128;
         char expected_name[name_buffer_size];
         char actual_name[name_buffer_size];
 
-        format_type_name(expected, expected_name, sizeof(expected_name));
-        format_type_name(actual, actual_name, sizeof(actual_name));
+        format_type_name(
+            expected,
+            expected_name,
+            sizeof(expected_name)
+        );
+
+        format_type_name(
+            actual,
+            actual_name,
+            sizeof(actual_name)
+        );
 
         semantic_error_fmt(
             ctx,
@@ -4191,16 +4379,16 @@ static int check_argument_against_parameter(SemanticContext *ctx, Type *expected
         argument,
         expected,
         "integer argument does not fit parameter type",
-        "floating-point argument does not fit parameter type"
-    )) {
+        "floating-point argument does not fit parameter type")) {
+
         return 0;
     }
 
     return 1;
 }
 
-static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer
-) {
+static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer) {
+
     if (!expected || !initializer)
         return 0;
 
@@ -4235,8 +4423,8 @@ static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *i
     return 1;
 }
 
-static void check_var_decl(SemanticContext *ctx, Node *node)
-{
+static void check_var_decl(SemanticContext *ctx, Node *node) {
+
     if (scope_find_local(ctx->current_scope, node->as.var_decl.name.data, node->as.var_decl.name.length)) {
         semantic_error_name(
             ctx, node,
@@ -4282,7 +4470,7 @@ static void check_var_decl(SemanticContext *ctx, Node *node)
             if (!init_type)
                 return;
 
-            type = concretize_inferred_numeric_type(
+            type = concretize_inferred_type(
                 ctx,
                 init,
                 init_type
@@ -4358,7 +4546,7 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
             if (!default_type)
                 return;
 
-            type = concretize_inferred_numeric_type(
+            type = concretize_inferred_type(
                 ctx,
                 default_value,
                 default_type

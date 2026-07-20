@@ -165,6 +165,111 @@ rounded: f32 = B;
 
 Adaptation succeeds only when the exact value is representable in the destination type. Two different concrete numeric types do not implicitly convert; an explicit cast is required.
 
+## Numeric Arithmetic and Comparisons
+
+Concrete numeric operands must have the same type unless one operand is an
+adaptable untyped literal or constant. The adaptable value must fit the
+concrete operation type.
+
+```c
+value: u8 = 10;
+
+value + 1;    // valid: 1 adapts to u8
+value + 256;  // invalid: 256 does not fit u8
+
+signed: i32 = 1;
+unsigned: u32 = 1;
+
+signed + unsigned; // invalid: use an explicit cast
+```
+
+Compile-time integer arithmetic is exact and range checked. A result outside
+the operation type is an error, including unsigned underflow.
+
+Typed unsigned integers do not support unary negation:
+
+```c
+value: u32 = 1;
+
+-value; // invalid
+```
+
+Binary subtraction on unsigned values remains a valid runtime operation:
+
+```c
+difference: u32 = left - right;
+difference -= right;
+```
+
+The frontend currently establishes that these runtime expressions are well
+typed. Runtime overflow and underflow behavior has not yet been selected.
+
+The remainder operator `%` is integer-only.
+
+A statically known zero divisor is rejected for integer division and
+remainder, including compound assignment:
+
+```c
+value / 0;   // invalid
+value % 0;   // invalid
+value /= 0;  // invalid
+value %= 0;  // invalid
+```
+
+This rule also applies when zero is produced by a named constant, cast, or
+other compile-time constant expression.
+
+Equality is currently defined for:
+
+- numeric values with compatible types
+- `bool`
+- values of the same enum declaration
+- pointers with the same pointee type
+- a pointer and `null`
+
+Value equality is not currently defined for structs, arrays, or functions.
+
+Ordered comparisons (`<`, `<=`, `>`, and `>=`) require numeric operands.
+Boolean, enum, pointer, null, struct, array, and function values do not support
+ordered comparison.
+
+### Floating-point semantics
+
+`f32` and `f64` constant arithmetic follows IEEE-754 behavior. Floating-point
+division by zero is not an integer-style semantic error:
+
+```c
+1.0 / 0.0;   // positive infinity
+-1.0 / 0.0;  // negative infinity
+0.0 / 0.0;   // NaN
+```
+
+Signed zero is preserved:
+
+```c
+0.0 == -0.0; // true
+1.0 / -0.0;  // negative infinity
+```
+
+NaN is unordered:
+
+```c
+NAN_VALUE :: 0.0 / 0.0;
+
+NAN_VALUE == NAN_VALUE; // false
+NAN_VALUE != NAN_VALUE; // true
+
+NAN_VALUE < 0.0;  // false
+NAN_VALUE <= 0.0; // false
+NAN_VALUE > 0.0;  // false
+NAN_VALUE >= 0.0; // false
+```
+
+Both the `f32` and `f64` constant-evaluation paths preserve infinity, NaN, and
+signed zero. Explicit conversion of NaN or infinity to an integer is invalid.
+A finite value that does not fit the destination floating-point type is also
+rejected during checked constant conversion.
+
 ## Raw Object Pointers
 
 Coglet supports raw object pointers as its low-level memory and future C-interoperability foundation.
@@ -201,7 +306,76 @@ get_pointer()[0] = 1;
 *get_pointer() = 2;
 ```
 
-Pointer indexing is currently an unchecked low-level operation. General pointer arithmetic operators remain unsupported, arrays do not decay implicitly to pointers, and unrelated pointer types do not implicitly convert. Literal zero remains the only implicit null-pointer initializer. `void*`, read-only pointee qualification, safe references, slices, ownership, borrowing, and lifetime checking remain future work.
+Pointer indexing is currently an unchecked low-level operation. General pointer
+arithmetic operators remain unsupported, arrays do not decay implicitly to
+pointers, and unrelated pointer types do not implicitly convert.
+
+### Null pointers
+
+`null` is Coglet's dedicated null-pointer literal. It is not integer zero, and
+integer `0` is not accepted where a pointer is required.
+
+```c
+pointer: i32* = null;
+pointer = null;
+
+takes_pointer(null);
+return null;
+
+pointer == null;
+null != pointer;
+```
+
+`null` has a contextual pseudo-type rather than a concrete storage type. A
+surrounding pointer type must determine its concrete pointer type.
+
+Invalid:
+
+```c
+pointer := null;
+NONE :: null;
+
+pointer: i32* = 0;
+pointer = 0;
+takes_pointer(0);
+
+null == null;
+null == 0;
+null < pointer;
+null + 1;
+
+*null;
+```
+
+A typed pointer constant may use `null`:
+
+```c
+NONE: i32* : null;
+NONE_IS_NULL :: NONE == null;
+```
+
+An explicit cast may supply the missing concrete pointer type:
+
+```c
+pointer := cast(i32*, null);
+```
+
+The reverse direction is not supported, and integer values do not become
+pointers through casts:
+
+```c
+cast(i32*, 0);    // invalid
+cast(i32, null);  // invalid
+cast(u64, null);  // invalid
+cast(bool, null); // invalid
+```
+
+At a future C interoperability boundary, Coglet `null` will represent a C null
+pointer. Coglet does not need to adopt C's source-language rule that integer
+zero may act as a null-pointer constant.
+
+`void*`, read-only pointee qualification, safe references, slices, ownership,
+borrowing, and lifetime checking remain future work.
 
 Raw pointers are not intended to become Coglet's only pointer-like abstraction. Future safe references and slices may use stronger source-language rules while retaining direct or wrapper-based C ABI compatibility.
 
@@ -391,6 +565,48 @@ Semantic analysis checks:
 
 A field expression is assignable only when its base expression is assignable.
 
+### Nominal type identity
+
+Structs and enums are nominal types. Their identity comes from the specific
+declaration that created them, not from their fields, members, backing types,
+or source-level spelling.
+
+```c
+First :: struct {
+    value: i32;
+}
+
+Second :: struct {
+    value: i32;
+}
+```
+
+`First` and `Second` are different types even though their fields match.
+
+The same rule applies to shadowed declarations:
+
+```c
+Point :: struct {
+    x: i32;
+}
+
+test::() -> void {
+    outer: Point = Point { x = 1 };
+
+    Point :: struct {
+        x: i32;
+    }
+
+    inner: Point = Point { x = 2 };
+
+    outer = inner; // invalid: different Point declarations
+}
+```
+
+Enum declarations follow the same declaration-identity rule. Values from
+different enum declarations are never interchangeable merely because their
+members or backing types match.
+
 ## Enums
 
 Enums have integer backing types and are closed by default.
@@ -457,7 +673,17 @@ Supported cast categories currently include:
 - selected numeric conversions
 - enum-to-integer conversion
 - compile-time integer-to-enum conversion to a declared member
+- `null` to a concrete raw-pointer type
 - boolean to boolean
+
+A `null` cast may provide a concrete pointer type:
+
+```c
+typed_null := cast(i32*, null);
+```
+
+Integer-to-pointer, pointer-to-integer, and null-to-non-pointer casts are not
+currently supported.
 
 A cast whose operand is known at compile time is checked for representability in the destination type in every expression context, including discarded expression statements:
 
@@ -495,7 +721,9 @@ The verifier can also print a deterministic source-order dump for debugging. Sem
 
 Backend work is deliberately deferred until the language's purpose, runtime model, and execution strategy are clearer. Near-term work should focus on language semantics and tests. Candidate areas include:
 
-- runtime narrowing-cast semantics
+- bitwise and shift operator semantics
+- runtime integer overflow and narrowing-cast semantics
+- readonly and opaque raw-pointer variants
 - slices and readonly byte views
 - ownership, lifetime, and mutability rules
 - a later first-class string type

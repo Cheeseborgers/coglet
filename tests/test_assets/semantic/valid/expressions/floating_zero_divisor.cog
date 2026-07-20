@@ -1,0 +1,10 @@
+test_floating_zero_divisor::(
+    value_f32: f32,
+    value_f64: f64
+) -> void {
+    value_f32 / cast(f32, 0.0);
+    value_f64 / 0.0;
+
+    value_f32 /= cast(f32, 0.0);
+    value_f64 /= 0.0;
+}

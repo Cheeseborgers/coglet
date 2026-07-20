@@ -1,0 +1,5 @@
+semantic error at line 1: integer overflow in constant expression
+semantic error at line 2: integer overflow in constant expression
+semantic error at line 3: integer overflow in constant expression
+semantic error at line 4: integer overflow in constant expression
+4 semantic errors generated.

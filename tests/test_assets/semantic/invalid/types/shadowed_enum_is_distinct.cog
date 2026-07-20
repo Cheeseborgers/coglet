@@ -1,0 +1,15 @@
+State::enum {
+    Ready,
+}
+
+test_shadowed_enum::() -> void {
+    outer: State = State.Ready;
+
+    State::enum {
+        Ready,
+    }
+
+    inner: State = State.Ready;
+
+    outer = inner;
+}

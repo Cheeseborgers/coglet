@@ -1,0 +1,14 @@
+NULL_I32 :: cast(i32*, null);
+
+identity::(pointer: i32*) -> i32* {
+    return pointer;
+}
+
+test_null_pointer_cast::() -> i32* {
+    pointer := cast(i32*, null);
+
+    pointer = NULL_I32;
+    pointer = identity(cast(i32*, null));
+
+    return cast(i32*, null);
+}

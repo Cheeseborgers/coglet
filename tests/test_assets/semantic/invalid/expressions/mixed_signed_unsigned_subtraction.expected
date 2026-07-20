@@ -1,0 +1,5 @@
+semantic error at line 5: operands are different numeric types -- use an explicit cast
+semantic error at line 6: operands are different numeric types -- use an explicit cast
+semantic error at line 8: compound assignment operands have incompatible numeric types
+semantic error at line 9: compound assignment operands have incompatible numeric types
+4 semantic errors generated.

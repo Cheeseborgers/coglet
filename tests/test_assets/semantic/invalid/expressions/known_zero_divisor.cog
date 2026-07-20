@@ -1,0 +1,17 @@
+ZERO :: 0;
+
+test_known_zero_divisor::(
+    integer: i32
+) -> void {
+    integer / 0;
+    integer % 0;
+
+    integer / ZERO;
+    integer % ZERO;
+
+    integer / cast(i32, 0);
+    integer % cast(i32, 0);
+
+    integer / (1 - 1);
+    integer % (1 - 1);
+}

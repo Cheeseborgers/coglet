@@ -1,0 +1,25 @@
+State::enum {
+    Ready,
+    Running,
+    Finished,
+}
+
+test_equality_comparable_types::(
+    left_pointer: i32*,
+    right_pointer: i32*
+) -> void {
+    1 == 2;
+    1.0 != 2.0;
+
+    true == false;
+    true != true;
+
+    State.Ready == State.Running;
+    State.Running != State.Finished;
+
+    left_pointer == right_pointer;
+    left_pointer != right_pointer;
+
+    left_pointer == null;
+    null != right_pointer;
+}

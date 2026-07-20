@@ -1,0 +1,22 @@
+operators::(
+    a: i32,
+    b: i32,
+    c: i32,
+    d: i32,
+    flags: i32,
+    mask: i32
+) {
+    precedence := a | b ^ c & d;
+    shifts := a + b << c * d;
+    comparison := flags & mask == 0;
+    logical := a && b | c || d;
+    left_shift := a << b >> c;
+    left_and := a & b & c;
+    complement := ~a;
+
+    a &= b;
+    a |= b;
+    a ^= b;
+    a <<= b;
+    a >>= b;
+}

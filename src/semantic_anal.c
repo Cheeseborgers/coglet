@@ -999,7 +999,7 @@ static int const_values_equal(ConstValue *a, ConstValue *b)
     return 0;
 }
 
-static int numeric_promotion_rank(TypeKind kind) {
+static int default_numeric_operation_rank(TypeKind kind) {
 
     switch(kind)
     {
@@ -1085,8 +1085,8 @@ static int constant_numeric_operation_kind(
         return 0;
     }
 
-    int left_rank  = numeric_promotion_rank(left_kind);
-    int right_rank = numeric_promotion_rank(right_kind);
+    int left_rank  = default_numeric_operation_rank(left_kind);
+    int right_rank = default_numeric_operation_rank(right_kind);
 
     if (!left_rank || !right_rank)
         return 0;

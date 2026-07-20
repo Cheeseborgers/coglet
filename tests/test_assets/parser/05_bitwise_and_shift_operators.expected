@@ -1,0 +1,88 @@
+program
+  func operators -> void
+    params:
+      param_decl a: i32
+      param_decl b: i32
+      param_decl c: i32
+      param_decl d: i32
+      param_decl flags: i32
+      param_decl mask: i32
+    body:
+      block
+        var_decl precedence: <inferred>
+          init:
+            (|)
+              a
+              (^)
+                b
+                (&)
+                  c
+                  d
+        var_decl shifts: <inferred>
+          init:
+            (<<)
+              (+)
+                a
+                b
+              (*)
+                c
+                d
+        var_decl comparison: <inferred>
+          init:
+            (==)
+              (&)
+                flags
+                mask
+              0
+        var_decl logical: <inferred>
+          init:
+            (||)
+              (&&)
+                a
+                (|)
+                  b
+                  c
+              d
+        var_decl left_shift: <inferred>
+          init:
+            (>>)
+              (<<)
+                a
+                b
+              c
+        var_decl left_and: <inferred>
+          init:
+            (&)
+              (&)
+                a
+                b
+              c
+        var_decl complement: <inferred>
+          init:
+            (~)
+              a
+        compound_assign &=
+          target:
+            a
+          value:
+            b
+        compound_assign |=
+          target:
+            a
+          value:
+            b
+        compound_assign ^=
+          target:
+            a
+          value:
+            b
+        compound_assign <<=
+          target:
+            a
+          value:
+            b
+        compound_assign >>=
+          target:
+            a
+          value:
+            b

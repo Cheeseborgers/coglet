@@ -2,12 +2,11 @@
 
 #include <assert.h>
 #include <string.h>
-#include <ctype.h>
 
 #include "utils/utils.h"
 
 void lexer_init(Lexer *lx, const char *filename, const char *source) {
-    assert(filename); // TODO: Add better asserts
+    assert(filename);
 
     lx->filename = filename;
     lx->source_start = source;
@@ -85,11 +84,8 @@ static Token error_token(
 // Line comments and block comments never produce tokens.
 // 1 = whitespace/comments skipped successfully
 // 0 = lexical error was produced
-// TODO: return a status here and emit error?
-static int skip_whitespace_and_comments(
-    Lexer *lx,
-    Token *error
-) {
+static int skip_whitespace_and_comments(Lexer *lx, Token *error) {
+
     for (;;) {
         char c = peek(lx);
 
@@ -330,149 +326,756 @@ Token lexer_next(Lexer *lx) {
     int start_line    = lx->line;
     int start_column  = lx->column;
 
-    if (is_at_end(lx)) return make_token(TOK_EOF, start, 0, start_line, start_column);
+    if (is_at_end(lx)) {
+        return make_token(
+            TOK_EOF,
+            start,
+            0,
+            start_line,
+            start_column
+        );
+    }
 
     char c = advance(lx);
 
-    if (is_alpha(c)) return scan_identifier(lx, start, start_line, start_column);
-    if (is_digit(c)) return scan_number(lx, start, start_line, start_column);
-    if (c == '"') return scan_string(lx, start, start_line, start_column);
-    if (c == '\'') return scan_char(lx, start, start_line, start_column);
+    if (is_alpha(c)) {
+        return scan_identifier(
+            lx,
+            start,
+            start_line,
+            start_column
+        );
+    }
+
+    if (is_digit(c)) {
+        return scan_number(
+            lx,
+            start,
+            start_line,
+            start_column
+        );
+    }
+
+    if (c == '"') {
+        return scan_string(
+            lx,
+            start,
+            start_line,
+            start_column
+        );
+    }
+
+    if (c == '\'') {
+        return scan_char(
+            lx,
+            start,
+            start_line,
+            start_column
+        );
+    }
 
     switch (c) {
-        case '(': return make_token(TOK_LPAREN, start, 1, start_line, start_column);
-        case ')': return make_token(TOK_RPAREN, start, 1, start_line, start_column);
-        case '{': return make_token(TOK_LBRACE, start, 1, start_line, start_column);
-        case '}': return make_token(TOK_RBRACE, start, 1, start_line, start_column);
-        case '[': return make_token(TOK_LBRACKET, start, 1, start_line, start_column);
-        case ']': return make_token(TOK_RBRACKET, start, 1, start_line, start_column);
-        case ';': return make_token(TOK_SEMICOLON, start, 1, start_line, start_column);
-        case ',': return make_token(TOK_COMMA, start, 1, start_line, start_column);
-        case '.': return make_token(TOK_DOT, start, 1, start_line, start_column);
+        case '(':
+            return make_token(
+                TOK_LPAREN,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case ')':
+            return make_token(
+                TOK_RPAREN,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case '{':
+            return make_token(
+                TOK_LBRACE,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case '}':
+            return make_token(
+                TOK_RBRACE,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case '[':
+            return make_token(
+                TOK_LBRACKET,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case ']':
+            return make_token(
+                TOK_RBRACKET,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case ';':
+            return make_token(
+                TOK_SEMICOLON,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case ',':
+            return make_token(
+                TOK_COMMA,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case '.':
+            return make_token(
+                TOK_DOT,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '+':
-            if (match(lx, '+')) return make_token(TOK_PLUS_PLUS, start, 2, start_line, start_column);
-            if (match(lx, '=')) return make_token(TOK_PLUS_EQUAL, start, 2, start_line, start_column);
-            return make_token(TOK_PLUS, start, 1, start_line, start_column);
+            if (match(lx, '+')) {
+                return make_token(
+                    TOK_PLUS_PLUS,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_PLUS_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_PLUS,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '-':
-            if (match(lx, '-')) return make_token(TOK_MINUS_MINUS, start, 2, start_line, start_column);
-            if (match(lx, '=')) return make_token(TOK_MINUS_EQUAL, start, 2, start_line, start_column);
-            if (match(lx, '>')) return make_token(TOK_ARROW, start, 2, start_line, start_column);
-            return make_token(TOK_MINUS, start, 1, start_line, start_column);
+            if (match(lx, '-')) {
+                return make_token(
+                    TOK_MINUS_MINUS,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_MINUS_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            if (match(lx, '>')) {
+                return make_token(
+                    TOK_ARROW,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_MINUS,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '*':
-            if (match(lx, '=')) return make_token(TOK_STAR_EQUAL, start, 2, start_line, start_column);
-            return make_token(TOK_STAR, start, 1, start_line, start_column);
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_STAR_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_STAR,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '/':
-            if (match(lx, '=')) return make_token(TOK_SLASH_EQUAL, start, 2, start_line, start_column);
-            return make_token(TOK_SLASH, start, 1, start_line, start_column);
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_SLASH_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_SLASH,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '%':
-            if (match(lx, '=')) return make_token(TOK_PERCENT_EQUAL, start, 2, start_line, start_column);
-            return make_token(TOK_PERCENT, start, 1, start_line, start_column);
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_PERCENT_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_PERCENT,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case ':':
-            if (match(lx, ':')) return make_token(TOK_COLON_COLON, start, 2, start_line, start_column);
-            if (match(lx, '=')) return make_token(TOK_COLON_EQUAL, start, 2, start_line, start_column);
-            return make_token(TOK_COLON, start, 1, start_line, start_column);
+            if (match(lx, ':')) {
+                return make_token(
+                    TOK_COLON_COLON,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_COLON_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_COLON,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '=':
-            if (match(lx, '=')) return make_token(TOK_EQUAL_EQUAL, start, 2, start_line, start_column);
-            return make_token(TOK_EQUAL, start, 1, start_line, start_column);
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_EQUAL_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_EQUAL,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '!':
-            if (match(lx, '=')) return make_token(TOK_BANG_EQUAL, start, 2, start_line, start_column);
-            return make_token(TOK_BANG, start, 1, start_line, start_column);
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_BANG_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_BANG,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '<':
-            if (match(lx, '=')) return make_token(TOK_LESS_EQUAL, start, 2, start_line, start_column);
-            return make_token(TOK_LESS, start, 1, start_line, start_column);
+            if (match(lx, '<')) {
+                if (match(lx, '=')) {
+                    return make_token(
+                        TOK_SHIFT_LEFT_EQUAL,
+                        start,
+                        3,
+                        start_line,
+                        start_column
+                    );
+                }
+
+                return make_token(
+                    TOK_SHIFT_LEFT,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_LESS_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_LESS,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '>':
-            if (match(lx, '=')) return make_token(TOK_GREATER_EQUAL, start, 2, start_line, start_column);
-            return make_token(TOK_GREATER, start, 1, start_line, start_column);
+            if (match(lx, '>')) {
+                if (match(lx, '=')) {
+                    return make_token(
+                        TOK_SHIFT_RIGHT_EQUAL,
+                        start,
+                        3,
+                        start_line,
+                        start_column
+                    );
+                }
+
+                return make_token(
+                    TOK_SHIFT_RIGHT,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_GREATER_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_GREATER,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '&':
-            if (match(lx, '&')) return make_token(TOK_AND_AND, start, 2, start_line, start_column);
-            return make_token(TOK_AND, start, 1, start_line, start_column);
+            if (match(lx, '&')) {
+                return make_token(
+                    TOK_AND_AND,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_AND_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_AND,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
         case '|':
-            if (match(lx, '|')) return make_token(TOK_OR_OR, start, 2, start_line, start_column);
-            return make_token(TOK_OR, start, 1, start_line, start_column);
-        default: return error_token(lx, start, 1, start_line, start_column, "unexpected character");
+            if (match(lx, '|')) {
+                return make_token(
+                    TOK_OR_OR,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_OR_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_OR,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case '^':
+            if (match(lx, '=')) {
+                return make_token(
+                    TOK_XOR_EQUAL,
+                    start,
+                    2,
+                    start_line,
+                    start_column
+                );
+            }
+
+            return make_token(
+                TOK_XOR,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case '~':
+            return make_token(
+                TOK_TILDE,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        default:
+            return error_token(
+                lx,
+                start,
+                1,
+                start_line,
+                start_column,
+                "unexpected character"
+            );
     }
 }
 
 const char *token_type_name(TokenType type) {
+
     switch (type) {
-        case TOK_EOF:   return "EOF";
-        case TOK_ERROR: return "ERROR";
+        case TOK_EOF:
+            return "EOF";
 
-        case TOK_STRING: return "STRING";
-        case TOK_CHAR:   return "CHAR";
-        case TOK_IDENT:  return "IDENT";
-        case TOK_TRUE:   return "TRUE";
-        case TOK_FALSE:  return "FALSE";
-        case TOK_NULL:   return "NULL";
+        case TOK_ERROR:
+            return "ERROR";
 
-        case TOK_IF:     return "IF";
-        case TOK_ELSE:   return "ELSE";
-        case TOK_WHILE:  return "WHILE";
-        case TOK_FOR:    return "FOR";
-        case TOK_RETURN: return "RETURN";
-        case TOK_BOOL:   return "BOOL";
+        case TOK_NUMBER_INT:
+            return "NUMBER_INT";
 
-        case TOK_I8:  return "I8";
-        case TOK_I16: return "I16";
-        case TOK_I32: return "I32";
-        case TOK_I64: return "I64";
-        case TOK_U8:  return "U8";
-        case TOK_U16: return "U16";
-        case TOK_U32: return "U32";
-        case TOK_U64: return "U64";
-        case TOK_F32: return "F32";
-        case TOK_F64: return "F64";
-        case TOK_INT_KW: return "INT_KW";
-        case TOK_UINT_KW: return "UINT_KW";
-        case TOK_NUMBER_INT:   return "NUMBER_INT";
-        case TOK_NUMBER_FLOAT: return "NUMBER_FLOAT";
+        case TOK_NUMBER_FLOAT:
+            return "NUMBER_FLOAT";
 
-        case TOK_ENUM: return "ENUM";
-        case TOK_VOID: return "VOID";
-        case TOK_STRUCT: return "STRUCT";
-        case TOK_BREAK: return "BREAK";
-        case TOK_CONTINUE: return "CONTINUE";
-        case TOK_SWITCH: return "SWITCH";
-        case TOK_CASE: return "CASE";
-        case TOK_DEFAULT: return "DEFAULT";
-        case TOK_CAST:   return "CAST";
-        case TOK_PLUS: return "PLUS";
-        case TOK_MINUS: return "MINUS";
-        case TOK_STAR: return "STAR";
-        case TOK_SLASH: return "SLASH";
-        case TOK_PERCENT: return "PERCENT";
-        case TOK_PERCENT_EQUAL: return "PERCENT_EQUAL";
-        case TOK_PLUS_PLUS: return "PLUS_PLUS";
-        case TOK_MINUS_MINUS: return "MINUS_MINUS";
-        case TOK_PLUS_EQUAL: return "PLUS_EQUAL";
-        case TOK_MINUS_EQUAL: return "MINUS_EQUAL";
-        case TOK_STAR_EQUAL: return "STAR_EQUAL";
-        case TOK_SLASH_EQUAL: return "SLASH_EQUAL";
-        case TOK_EQUAL: return "EQUAL";
-        case TOK_EQUAL_EQUAL: return "EQUAL_EQUAL";
-        case TOK_BANG: return "BANG";
-        case TOK_BANG_EQUAL: return "BANG_EQUAL";
-        case TOK_LESS: return "LESS";
-        case TOK_LESS_EQUAL: return "LESS_EQUAL";
-        case TOK_GREATER: return "GREATER";
-        case TOK_GREATER_EQUAL: return "GREATER_EQUAL";
-        case TOK_AND_AND: return "AND_AND";
-        case TOK_OR_OR: return "OR_OR";
-        case TOK_AND: return "AND";
-        case TOK_OR: return "OR";
-        case TOK_LPAREN: return "LPAREN";
-        case TOK_RPAREN: return "RPAREN";
-        case TOK_LBRACE: return "LBRACE";
-        case TOK_RBRACE: return "RBRACE";
-        case TOK_LBRACKET: return "LBRACKET";
-        case TOK_RBRACKET: return "RBRACKET";
-        case TOK_SEMICOLON: return "SEMICOLON";
-        case TOK_COMMA: return "COMMA";
-        case TOK_DOT: return "DOT";
-        case TOK_ARROW: return "ARROW";
-        case TOK_COLON: return "COLON";
-        case TOK_COLON_COLON: return "COLON_COLON";
-        case TOK_COLON_EQUAL: return "COLON_EQUAL";
-        default: return "UNKNOWN";
+        case TOK_STRING:
+            return "STRING";
+
+        case TOK_CHAR:
+            return "CHAR";
+
+        case TOK_IDENT:
+            return "IDENT";
+
+        case TOK_TRUE:
+            return "TRUE";
+
+        case TOK_FALSE:
+            return "FALSE";
+
+        case TOK_NULL:
+            return "NULL";
+
+        case TOK_IF:
+            return "IF";
+
+        case TOK_ELSE:
+            return "ELSE";
+
+        case TOK_WHILE:
+            return "WHILE";
+
+        case TOK_FOR:
+            return "FOR";
+
+        case TOK_RETURN:
+            return "RETURN";
+
+        case TOK_VOID:
+            return "VOID";
+
+        case TOK_STRUCT:
+            return "STRUCT";
+
+        case TOK_BREAK:
+            return "BREAK";
+
+        case TOK_CONTINUE:
+            return "CONTINUE";
+
+        case TOK_ENUM:
+            return "ENUM";
+
+        case TOK_SWITCH:
+            return "SWITCH";
+
+        case TOK_CASE:
+            return "CASE";
+
+        case TOK_DEFAULT:
+            return "DEFAULT";
+
+        case TOK_CAST:
+            return "CAST";
+
+        case TOK_I8:
+            return "I8";
+
+        case TOK_I16:
+            return "I16";
+
+        case TOK_I32:
+            return "I32";
+
+        case TOK_I64:
+            return "I64";
+
+        case TOK_U8:
+            return "U8";
+
+        case TOK_U16:
+            return "U16";
+
+        case TOK_U32:
+            return "U32";
+
+        case TOK_U64:
+            return "U64";
+
+        case TOK_F32:
+            return "F32";
+
+        case TOK_F64:
+            return "F64";
+
+        case TOK_BOOL:
+            return "BOOL";
+
+        case TOK_INT_KW:
+            return "INT_KW";
+
+        case TOK_UINT_KW:
+            return "UINT_KW";
+
+        case TOK_PLUS:
+            return "PLUS";
+
+        case TOK_MINUS:
+            return "MINUS";
+
+        case TOK_STAR:
+            return "STAR";
+
+        case TOK_SLASH:
+            return "SLASH";
+
+        case TOK_PERCENT:
+            return "PERCENT";
+
+        case TOK_PLUS_PLUS:
+            return "PLUS_PLUS";
+
+        case TOK_MINUS_MINUS:
+            return "MINUS_MINUS";
+
+        case TOK_PLUS_EQUAL:
+            return "PLUS_EQUAL";
+
+        case TOK_MINUS_EQUAL:
+            return "MINUS_EQUAL";
+
+        case TOK_STAR_EQUAL:
+            return "STAR_EQUAL";
+
+        case TOK_SLASH_EQUAL:
+            return "SLASH_EQUAL";
+
+        case TOK_PERCENT_EQUAL:
+            return "PERCENT_EQUAL";
+
+        case TOK_EQUAL:
+            return "EQUAL";
+
+        case TOK_EQUAL_EQUAL:
+            return "EQUAL_EQUAL";
+
+        case TOK_BANG:
+            return "BANG";
+
+        case TOK_BANG_EQUAL:
+            return "BANG_EQUAL";
+
+        case TOK_LESS:
+            return "LESS";
+
+        case TOK_LESS_EQUAL:
+            return "LESS_EQUAL";
+
+        case TOK_GREATER:
+            return "GREATER";
+
+        case TOK_GREATER_EQUAL:
+            return "GREATER_EQUAL";
+
+        case TOK_SHIFT_LEFT:
+            return "SHIFT_LEFT";
+
+        case TOK_SHIFT_RIGHT:
+            return "SHIFT_RIGHT";
+
+        case TOK_SHIFT_LEFT_EQUAL:
+            return "SHIFT_LEFT_EQUAL";
+
+        case TOK_SHIFT_RIGHT_EQUAL:
+            return "SHIFT_RIGHT_EQUAL";
+
+        case TOK_AND_AND:
+            return "AND_AND";
+
+        case TOK_OR_OR:
+            return "OR_OR";
+
+        case TOK_AND:
+            return "AND";
+
+        case TOK_OR:
+            return "OR";
+
+        case TOK_XOR:
+            return "XOR";
+
+        case TOK_TILDE:
+            return "TILDE";
+
+        case TOK_AND_EQUAL:
+            return "AND_EQUAL";
+
+        case TOK_OR_EQUAL:
+            return "OR_EQUAL";
+
+        case TOK_XOR_EQUAL:
+            return "XOR_EQUAL";
+
+        case TOK_LPAREN:
+            return "LPAREN";
+
+        case TOK_RPAREN:
+            return "RPAREN";
+
+        case TOK_LBRACE:
+            return "LBRACE";
+
+        case TOK_RBRACE:
+            return "RBRACE";
+
+        case TOK_LBRACKET:
+            return "LBRACKET";
+
+        case TOK_RBRACKET:
+            return "RBRACKET";
+
+        case TOK_SEMICOLON:
+            return "SEMICOLON";
+
+        case TOK_COMMA:
+            return "COMMA";
+
+        case TOK_DOT:
+            return "DOT";
+
+        case TOK_ARROW:
+            return "ARROW";
+
+        case TOK_COLON:
+            return "COLON";
+
+        case TOK_COLON_COLON:
+            return "COLON_COLON";
+
+        case TOK_COLON_EQUAL:
+            return "COLON_EQUAL";
     }
+
+    return "UNKNOWN";
 }

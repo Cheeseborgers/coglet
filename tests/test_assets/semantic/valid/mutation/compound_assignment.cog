@@ -1,4 +1,4 @@
-ompound_assignment_valid::() -> void {
+compound_assignment_valid::() -> void {
     x: i32 = 1;
 
     x += 2;

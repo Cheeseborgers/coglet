@@ -64,23 +64,26 @@ static void add_diagnostic(Parser *p, Token token, const char *message);
 
 typedef enum {
     PREC_NONE = 0,
-    PREC_OR,
-    PREC_AND,
+    PREC_LOGICAL_OR,
+    PREC_LOGICAL_AND,
     PREC_EQUALITY,
     PREC_COMPARISON,
-    PREC_TERM,     // + -
-    PREC_FACTOR,   // * / %
+    PREC_BITWISE_OR,
+    PREC_BITWISE_XOR,
+    PREC_BITWISE_AND,
+    PREC_SHIFT,
+    PREC_TERM,      // + -
+    PREC_FACTOR,    // * / %
 } Precedence;
 
-// simple precedence table
-static int get_precedence(TokenType t)
+static int get_precedence(TokenType type)
 {
-    switch (t) {
+    switch (type) {
         case TOK_OR_OR:
-            return PREC_OR;
+            return PREC_LOGICAL_OR;
 
         case TOK_AND_AND:
-            return PREC_AND;
+            return PREC_LOGICAL_AND;
 
         case TOK_EQUAL_EQUAL:
         case TOK_BANG_EQUAL:
@@ -91,6 +94,19 @@ static int get_precedence(TokenType t)
         case TOK_GREATER:
         case TOK_GREATER_EQUAL:
             return PREC_COMPARISON;
+
+        case TOK_OR:
+            return PREC_BITWISE_OR;
+
+        case TOK_XOR:
+            return PREC_BITWISE_XOR;
+
+        case TOK_AND:
+            return PREC_BITWISE_AND;
+
+        case TOK_SHIFT_LEFT:
+        case TOK_SHIFT_RIGHT:
+            return PREC_SHIFT;
 
         case TOK_PLUS:
         case TOK_MINUS:
@@ -171,105 +187,269 @@ static void synchronize(Parser *p)
     }
 }
 
-const char *token_debug_display_name(TokenType t)
+const char *token_debug_display_name(TokenType type)
 {
-    switch (t)
-    {
+    switch (type) {
         // Special
-        case TOK_EOF:             return "end of file";
-        case TOK_ERROR:           return "invalid token";
+        case TOK_EOF:
+            return "end of file";
+
+        case TOK_ERROR:
+            return "invalid token";
 
         // Literals
-        case TOK_NUMBER_INT:      return "integer";
-        case TOK_NUMBER_FLOAT:    return "floating-point number";
-        case TOK_STRING:          return "string literal";
-        case TOK_CHAR:            return "character literal";
-        case TOK_IDENT:           return "identifier";
+        case TOK_NUMBER_INT:
+            return "integer";
+
+        case TOK_NUMBER_FLOAT:
+            return "floating-point number";
+
+        case TOK_STRING:
+            return "string literal";
+
+        case TOK_CHAR:
+            return "character literal";
+
+        case TOK_IDENT:
+            return "identifier";
+
+        case TOK_TRUE:
+            return "'true'";
+
+        case TOK_FALSE:
+            return "'false'";
+
+        case TOK_NULL:
+            return "'null'";
 
         // Keywords
-        case TOK_IF:              return "'if'";
-        case TOK_ELSE:            return "'else'";
-        case TOK_WHILE:           return "'while'";
-        case TOK_FOR:             return "'for'";
-        case TOK_RETURN:          return "'return'";
-        case TOK_VOID:            return "'void'";
-        case TOK_STRUCT:          return "'struct'";
-        case TOK_ENUM:            return "'enum'";
-        case TOK_BREAK:           return "'break'";
-        case TOK_CONTINUE:        return "'continue'";
-        case TOK_SWITCH:          return "'switch'";
-        case TOK_CASE:            return "'case'";
-        case TOK_DEFAULT:         return "'default'";
-        case TOK_BOOL:            return "'bool'";
-        case TOK_CAST:            return "'cast'";
-        case TOK_INT_KW:          return "'int'";
-        case TOK_UINT_KW:         return "'uint'";
-        case TOK_I8:              return "'i8'";
-        case TOK_I16:             return "'i16'";
-        case TOK_I32:             return "'i32'";
-        case TOK_I64:             return "'i64'";
-        case TOK_U8:              return "'u8'";
-        case TOK_U16:             return "'u16'";
-        case TOK_U32:             return "'u32'";
-        case TOK_U64:             return "'u64'";
-        case TOK_F32:             return "'f32'";
-        case TOK_F64:             return "'f64'";
+        case TOK_IF:
+            return "'if'";
 
-        case TOK_TRUE:            return "'true'";
-        case TOK_FALSE:           return "'false'";
-        case TOK_NULL:            return "'null'";
+        case TOK_ELSE:
+            return "'else'";
 
-        // Operators
-        case TOK_PLUS:            return "'+'";
-        case TOK_MINUS:           return "'-'";
-        case TOK_STAR:            return "'*'";
-        case TOK_SLASH:           return "'/'";
-        case TOK_PERCENT:         return "'%'";
+        case TOK_WHILE:
+            return "'while'";
 
-        case TOK_PLUS_PLUS:       return "'++'";
-        case TOK_MINUS_MINUS:     return "'--'";
+        case TOK_FOR:
+            return "'for'";
 
-        case TOK_PLUS_EQUAL:      return "'+='";
-        case TOK_MINUS_EQUAL:     return "'-='";
-        case TOK_STAR_EQUAL:      return "'*='";
-        case TOK_SLASH_EQUAL:     return "'/='";
-        case TOK_PERCENT_EQUAL:   return "'%='";
+        case TOK_RETURN:
+            return "'return'";
 
-        case TOK_EQUAL:           return "'='";
-        case TOK_EQUAL_EQUAL:     return "'=='";
+        case TOK_VOID:
+            return "'void'";
 
-        case TOK_BANG:            return "'!'";
-        case TOK_BANG_EQUAL:      return "'!='";
+        case TOK_STRUCT:
+            return "'struct'";
 
-        case TOK_LESS:            return "'<'";
-        case TOK_LESS_EQUAL:      return "'<='";
-        case TOK_GREATER:         return "'>'";
-        case TOK_GREATER_EQUAL:   return "'>='";
+        case TOK_ENUM:
+            return "'enum'";
 
-        case TOK_AND_AND:         return "'&&'";
-        case TOK_OR_OR:           return "'||'";
+        case TOK_BREAK:
+            return "'break'";
 
-        case TOK_AND:             return "'&'";
-        case TOK_OR:              return "'|'";
+        case TOK_CONTINUE:
+            return "'continue'";
+
+        case TOK_SWITCH:
+            return "'switch'";
+
+        case TOK_CASE:
+            return "'case'";
+
+        case TOK_DEFAULT:
+            return "'default'";
+
+        case TOK_CAST:
+            return "'cast'";
+
+        // Types
+        case TOK_BOOL:
+            return "'bool'";
+
+        case TOK_INT_KW:
+            return "'int'";
+
+        case TOK_UINT_KW:
+            return "'uint'";
+
+        case TOK_I8:
+            return "'i8'";
+
+        case TOK_I16:
+            return "'i16'";
+
+        case TOK_I32:
+            return "'i32'";
+
+        case TOK_I64:
+            return "'i64'";
+
+        case TOK_U8:
+            return "'u8'";
+
+        case TOK_U16:
+            return "'u16'";
+
+        case TOK_U32:
+            return "'u32'";
+
+        case TOK_U64:
+            return "'u64'";
+
+        case TOK_F32:
+            return "'f32'";
+
+        case TOK_F64:
+            return "'f64'";
+
+        // Arithmetic operators
+        case TOK_PLUS:
+            return "'+'";
+
+        case TOK_MINUS:
+            return "'-'";
+
+        case TOK_STAR:
+            return "'*'";
+
+        case TOK_SLASH:
+            return "'/'";
+
+        case TOK_PERCENT:
+            return "'%'";
+
+        case TOK_PLUS_PLUS:
+            return "'++'";
+
+        case TOK_MINUS_MINUS:
+            return "'--'";
+
+        // Compound assignment
+        case TOK_PLUS_EQUAL:
+            return "'+='";
+
+        case TOK_MINUS_EQUAL:
+            return "'-='";
+
+        case TOK_STAR_EQUAL:
+            return "'*='";
+
+        case TOK_SLASH_EQUAL:
+            return "'/='";
+
+        case TOK_PERCENT_EQUAL:
+            return "'%='";
+
+        case TOK_AND_EQUAL:
+            return "'&='";
+
+        case TOK_OR_EQUAL:
+            return "'|='";
+
+        case TOK_XOR_EQUAL:
+            return "'^='";
+
+        case TOK_SHIFT_LEFT_EQUAL:
+            return "'<<='";
+
+        case TOK_SHIFT_RIGHT_EQUAL:
+            return "'>>='";
+
+        // Equality and comparison
+        case TOK_EQUAL:
+            return "'='";
+
+        case TOK_EQUAL_EQUAL:
+            return "'=='";
+
+        case TOK_BANG:
+            return "'!'";
+
+        case TOK_BANG_EQUAL:
+            return "'!='";
+
+        case TOK_LESS:
+            return "'<'";
+
+        case TOK_LESS_EQUAL:
+            return "'<='";
+
+        case TOK_GREATER:
+            return "'>'";
+
+        case TOK_GREATER_EQUAL:
+            return "'>='";
+
+        // Logical, bitwise, and shift operators
+        case TOK_AND_AND:
+            return "'&&'";
+
+        case TOK_OR_OR:
+            return "'||'";
+
+        case TOK_AND:
+            return "'&'";
+
+        case TOK_OR:
+            return "'|'";
+
+        case TOK_XOR:
+            return "'^'";
+
+        case TOK_TILDE:
+            return "'~'";
+
+        case TOK_SHIFT_LEFT:
+            return "'<<'";
+
+        case TOK_SHIFT_RIGHT:
+            return "'>>'";
 
         // Punctuation
-        case TOK_LPAREN:          return "'('";
-        case TOK_RPAREN:          return "')'";
-        case TOK_LBRACE:          return "'{'";
-        case TOK_RBRACE:          return "'}'";
-        case TOK_LBRACKET:        return "'['";
-        case TOK_RBRACKET:        return "']'";
-        case TOK_SEMICOLON:       return "';'";
-        case TOK_COMMA:           return "','";
-        case TOK_DOT:             return "'.'";
-        case TOK_ARROW:           return "'->'";
-        case TOK_COLON:           return "':'";
-        case TOK_COLON_COLON:     return "'::'";
-        case TOK_COLON_EQUAL:     return "':='";
+        case TOK_LPAREN:
+            return "'('";
 
-        default:
-            return "<unknown token>";
+        case TOK_RPAREN:
+            return "')'";
+
+        case TOK_LBRACE:
+            return "'{'";
+
+        case TOK_RBRACE:
+            return "'}'";
+
+        case TOK_LBRACKET:
+            return "'['";
+
+        case TOK_RBRACKET:
+            return "']'";
+
+        case TOK_SEMICOLON:
+            return "';'";
+
+        case TOK_COMMA:
+            return "','";
+
+        case TOK_DOT:
+            return "'.'";
+
+        case TOK_ARROW:
+            return "'->'";
+
+        case TOK_COLON:
+            return "':'";
+
+        case TOK_COLON_COLON:
+            return "'::'";
+
+        case TOK_COLON_EQUAL:
+            return "':='";
     }
+
+    return "<unknown token>";
 }
 
 static void add_diagnostic(Parser *p, Token token, const char *message) {
@@ -518,6 +698,7 @@ static Node *parse_unary(Parser *p)
         check(p, TOK_MINUS_MINUS) ||
         check(p, TOK_MINUS) ||
         check(p, TOK_BANG) ||
+        check(p, TOK_TILDE) ||
         check(p, TOK_AND) ||
         check(p, TOK_STAR)) {
         Token op = p->current;
@@ -595,12 +776,16 @@ static Node *parse_assignment_from(Parser *p, Node *left)
     TokenType op = p->current.type;
 
     if (op != TOK_EQUAL &&
-        op != TOK_PLUS_EQUAL &&
-        op != TOK_MINUS_EQUAL &&
-        op != TOK_STAR_EQUAL &&
-        op != TOK_SLASH_EQUAL &&
-        op != TOK_PERCENT_EQUAL)
-    {
+      op != TOK_PLUS_EQUAL &&
+      op != TOK_MINUS_EQUAL &&
+      op != TOK_STAR_EQUAL &&
+      op != TOK_SLASH_EQUAL &&
+      op != TOK_PERCENT_EQUAL &&
+      op != TOK_AND_EQUAL &&
+      op != TOK_OR_EQUAL &&
+      op != TOK_XOR_EQUAL &&
+      op != TOK_SHIFT_LEFT_EQUAL &&
+      op != TOK_SHIFT_RIGHT_EQUAL) {
         return left;
     }
 
@@ -634,7 +819,7 @@ static Node *parse_assignment_from(Parser *p, Node *left)
     );
 }
 
-static Node *parse_assignment(Parser *p) { return parse_assignment_from(p, parse_binary(p, PREC_OR)); }
+static Node *parse_assignment(Parser *p) { return parse_assignment_from(p, parse_binary(p, PREC_LOGICAL_OR)); }
 
 // ===================== types =====================
 
@@ -1277,46 +1462,72 @@ static Node *parse_decl_after_name(Parser *p, Token name) {
 // init clause, and parse_program all call instead of dispatching on
 // a leading type keyword (there isn't one anymore -- declarations
 // are name-first).
-// Entry point for both declarations and identifier-led expression
-// statements. This is what parse_statement, parse_for_statement's
-// init clause, and parse_program all call instead of dispatching on
-// a leading type keyword (there isn't one anymore -- declarations
-// are name-first).
-static Node *parse_decl_or_expr_statement(Parser *p) {
-
+static Node *parse_decl_or_expr_statement(Parser *p)
+{
     if (check(p, TOK_IDENT)) {
-
         Token name = p->current;
-        advance(p);   // consume the identifier -- shared prefix either way
+        advance(p);
 
-        if (match(p, TOK_COLON_EQUAL)) return finish_inferred_var_decl(p, name);
-        if (match(p, TOK_COLON_COLON)) return parse_decl_after_name(p, name);
-        if (match(p, TOK_COLON))       return finish_typed_decl(p, name);
-
-        // Not a declaration -- resume ordinary expression parsing from
-        // this identifier, then finish out as an expression statement.
-        Node *base = NULL;
-
-        if (check(p, TOK_LBRACE) && !p->suppress_struct_init) {
-            base = finish_struct_init(p, name);
-        } else {
-            base = ast_new_ident(p->arena, name.start, name.length, name.line);
+        if (match(p, TOK_COLON_EQUAL)) {
+            return finish_inferred_var_decl(p, name);
         }
 
-        Node *postfixed = parse_postfix_from(p, base);
-        Node *bin       = parse_binary_from(p, postfixed, PREC_OR);
-        Node *full      = parse_assignment_from(p, bin);
+        if (match(p, TOK_COLON_COLON)) {
+            return parse_decl_after_name(p, name);
+        }
+
+        if (match(p, TOK_COLON)) {
+            return finish_typed_decl(p, name);
+        }
+
+        Node *base = NULL;
+
+        if (check(p, TOK_LBRACE) &&
+            !p->suppress_struct_init) {
+            base = finish_struct_init(
+                p,
+                name
+            );
+            } else {
+                base = ast_new_ident(
+                    p->arena,
+                    name.start,
+                    name.length,
+                    name.line
+                );
+            }
+
+        Node *postfixed = parse_postfix_from(
+            p,
+            base
+        );
+
+        Node *binary = parse_binary_from(
+            p,
+            postfixed,
+            PREC_LOGICAL_OR
+        );
+
+        Node *full = parse_assignment_from(
+            p,
+            binary
+        );
 
         if (!consume(p, TOK_SEMICOLON)) {
             synchronize(p);
-            return ast_new_error(p->arena, p->current);
+            return ast_new_error(
+                p->arena,
+                p->current
+            );
         }
-        return ast_new_expr_stmt(p->arena, full, name.line);
+
+        return ast_new_expr_stmt(
+            p->arena,
+            full,
+            name.line
+        );
     }
 
-    // Doesn't start with an identifier at all (e.g. a number, string,
-    // parenthesized expression, or unary op) -- ordinary expression
-    // statement, no declaration possible.
     return parse_expr_statement(p);
 }
 

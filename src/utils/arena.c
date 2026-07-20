@@ -70,6 +70,13 @@ void *arena_alloc(Arena *arena, size_t size) {
     return ptr;
 }
 
+void *arena_zalloc(Arena *arena, size_t size)
+{
+    void *ptr = arena_alloc(arena, size);
+    memset(ptr, 0, size);
+    return ptr;
+}
+
 void arena_destroy(Arena *arena) {
 
     ArenaBlock *block = arena->first;
@@ -133,4 +140,3 @@ char *arena_strdup_len(Arena *arena, const char *s, size_t len) {
     copy[len] = '\0';
     return copy;
 }
-

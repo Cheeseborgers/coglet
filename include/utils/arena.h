@@ -120,6 +120,18 @@ Arena *arena_create(size_t block_size);
 void *arena_alloc(Arena *arena, size_t size);
 
 /*
+ * Allocates size bytes from the arena and zeros the memory.
+ *
+ * Memory is:
+ *      - suitably aligned
+ *      - uninitialised
+ *      - valid until arena_reset_to() or arena_destroy()
+ *
+ * Never returns NULL. The program exits on allocation failure.
+ */
+void *arena_zalloc(Arena *arena, size_t size);
+
+/*
  * Destroys the arena and frees every allocation made through it.
  *
  * Every pointer obtained from arena_alloc() becomes invalid.
@@ -154,5 +166,7 @@ size_t arena_remaining(const Arena *arena);
 
 
 char *arena_strdup_len(Arena *arena, const char *s, size_t len);
+
+#define arena_new(arena, T) ((T *)arena_zalloc((arena), sizeof(T)))
 
 #endif

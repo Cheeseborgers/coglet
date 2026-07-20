@@ -233,6 +233,118 @@ Ordered comparisons (`<`, `<=`, `>`, and `>=`) require numeric operands.
 Boolean, enum, pointer, null, struct, array, and function values do not support
 ordered comparison.
 
+## Bitwise and Shift Operators
+
+Coglet supports integer bit manipulation with:
+
+```c
+left & right;
+left | right;
+left ^ right;
+~value;
+left << count;
+left >> count;
+```
+
+All bitwise and shift operands must be integers. Enums remain nominal values
+and require an explicit cast to an integer type before bit manipulation.
+
+For `&`, `|`, and `^`, two concrete operands must have exactly the same integer
+type. An adaptable untyped integer literal or constant may take the other
+operand's concrete type only when its exact value fits. `~` returns the same
+type as its operand.
+
+Signed bitwise operations are defined using the type's fixed-width two's-
+complement bit pattern. This definition is independent of the host C
+implementation.
+
+### Shift typing and count rules
+
+The left operand alone determines the result type, signedness, and bit width.
+The count may have any integer type:
+
+```c
+value: u32 = 1;
+small_count: u8 = 3;
+wide_count: i64 = 3;
+
+value << small_count; // u32
+value >> wide_count;  // u32
+```
+
+A statically known count must satisfy:
+
+```text
+0 <= count < left_operand_bit_width
+```
+
+Negative counts and counts equal to or greater than the width are errors.
+Unknown runtime counts are accepted by the frontend; a future execution layer
+must enforce the same range rather than masking the count modulo the width.
+
+An untyped left operand uses its ordinary default integer width. Therefore
+`1 << count` uses `i32`; an explicitly wider operation starts with a cast such
+as `cast(u64, 1) << count`.
+
+### Shift result semantics
+
+Left shift is a fixed-width bit-pattern operation. Zero bits enter from the
+right and bits shifted beyond the width are discarded:
+
+```c
+cast(u8, 128) << 1; // u8 value 0
+cast(i8, 64) << 1;  // i8 value -128
+```
+
+This defined truncation applies specifically to shift operations. It does not
+settle general runtime overflow behavior for arithmetic operators.
+
+Unsigned right shift fills with zero. Signed right shift is arithmetic and
+sign-extending:
+
+```c
+cast(u8, 128) >> 1; // 64
+cast(i8, -3) >> 1;  // -2
+```
+
+### Precedence
+
+Coglet deliberately avoids C's bitwise/comparison precedence trap. Bitwise
+operators bind more tightly than equality and ordered comparisons:
+
+```c
+flags & mask == 0;
+```
+
+is parsed as:
+
+```c
+(flags & mask) == 0;
+```
+
+From lower to higher precedence, the relevant binary groups are:
+
+```text
+||, &&, equality, ordered comparison, |, ^, &, shifts, addition, multiplication
+```
+
+### Compound bitwise and shift assignment
+
+The statement-only forms are:
+
+```c
+value &= mask;
+value |= bits;
+value ^= toggle;
+value <<= count;
+value >>= count;
+```
+
+For `&=`, `|=`, and `^=`, the target is the operation type. A concrete right
+operand must match it exactly; an untyped integer constant may adapt when it
+fits. For `<<=` and `>>=`, the target determines the width while the count may
+have any integer type. Known counts use the same range rule as ordinary shifts.
+
 ### Floating-point semantics
 
 `f32` and `f64` constant arithmetic follows IEEE-754 behavior. Floating-point
@@ -721,7 +833,6 @@ The verifier can also print a deterministic source-order dump for debugging. Sem
 
 Backend work is deliberately deferred until the language's purpose, runtime model, and execution strategy are clearer. Near-term work should focus on language semantics and tests. Candidate areas include:
 
-- bitwise and shift operator semantics
 - runtime integer overflow and narrowing-cast semantics
 - readonly and opaque raw-pointer variants
 - slices and readonly byte views

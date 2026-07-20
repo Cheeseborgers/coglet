@@ -117,6 +117,21 @@ Known integer division and remainder by zero are diagnosed both for fully
 constant expressions and when only the divisor is compile-time known.
 Compound `/=` and `%=` use the same check.
 
+Integer bitwise constant evaluation converts exact sign-and-magnitude values
+to an explicitly sized unsigned bit pattern, performs `~`, `&`, `|`, or `^`,
+and converts the result back. Signed behavior is therefore defined by Coglet's
+fixed-width two's-complement model rather than host signed-integer operations.
+
+Shift constant evaluation also operates on the width-limited unsigned bit
+pattern. Left shift discards high bits, unsigned right shift zero-fills, and
+signed right shift adds an explicit sign fill. The evaluator never relies on
+host right shift of a negative signed integer.
+
+Statically known shift counts are rejected when negative or greater than or
+equal to the left operand's width. The same helper is shared by ordinary
+shifts and `<<=`/`>>=`. Unknown runtime counts remain a future execution-layer
+check.
+
 Floating constants are stored as host `double` values, but `f32` operations
 are performed at `float` precision before being retained in the constant
 value. Constant evaluation preserves IEEE-754 infinity, NaN, and signed zero

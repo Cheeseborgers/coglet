@@ -14,9 +14,9 @@ Implemented areas include:
 - explicit and inferred variables, parameters, functions, and constants
 - canonical primitive numeric and boolean semantic types
 - raw object pointers with dedicated `null`, fixed arrays, nominal structs, nominal enums, and function types
-- arithmetic, comparisons, logic, calls, fields, indexes, casts, and aggregate initializers
+- arithmetic, bitwise operations, shifts, comparisons, logic, calls, fields, indexes, casts, and aggregate initializers
 - contextual fixed-array and null-terminated `u8` string literals
-- assignment, compound assignment, and increment/decrement as statement-only mutations
+- assignment, arithmetic/bitwise/shift compound assignment, and increment/decrement as statement-only mutations
 - lvalue/rvalue/no-value tracking
 - `if`, `while`, `for`, `switch`, `break`, `continue`, and `return`
 - return-path and unreachable-statement analysis
@@ -110,24 +110,31 @@ Current cast rules:
 
 This makes enum switch exhaustiveness sound. A future `#repr_c` attribute is planned for explicit C ABI representation; it will not make enums open.
 
+### Bitwise and Shift Operators
+
+Coglet now supports the integer bit-manipulation core:
+
+- unary `~`
+- binary `&`, `|`, and `^`
+- `<<` and `>>`
+- `&=`, `|=`, `^=`, `<<=`, and `>>=`
+- integer-only operand checking
+- contextual untyped integer adaptation
+- exact concrete type matching for binary bitwise operations
+- left-operand result typing for shifts
+- statically known shift-count range diagnostics
+- fixed-width truncating left shift
+- zero-filling unsigned right shift
+- arithmetic signed right shift
+- compile-time evaluation using explicit width-limited bit patterns
+- lexer, parser, semantic, diagnostic, constant-oracle, and semantic-info tests
+
+Coglet intentionally gives bitwise operators higher precedence than equality
+and ordered comparison, so `flags & mask == 0` means `(flags & mask) == 0`.
+
 ## Immediate Design Work
 
-### 1. Bitwise and Shift Operators
-
-Decide whether the first systems-programming core requires:
-
-- bitwise `&`, `|`, `^`, and `~`
-- left and right shifts
-- integer-only operand rules
-- shift-count range rules
-- signed right-shift behavior
-- compile-time overflow and invalid-shift diagnostics
-- compound forms such as `&=`, `|=`, `^=`, `<<=`, and `>>=`
-
-The semantic rules should be written and tested before adding parser and lexer
-surface area.
-
-### 2. Runtime Integer Arithmetic and Numeric Casts
+### 1. Runtime Integer Arithmetic and Numeric Casts
 
 Compile-time integer operations and casts are checked. Runtime behavior still
 needs deliberate rules for:
@@ -141,7 +148,7 @@ needs deliberate rules for:
 No backend should assume C-style wrapping or undefined behavior before this is
 settled.
 
-### 3. Readonly and Opaque Raw Pointers
+### 2. Readonly and Opaque Raw Pointers
 
 Design a small const-correctness mechanism without conflating:
 
@@ -156,7 +163,7 @@ A future readonly raw pointer should remain nullable, non-owning, unchecked,
 and potentially dangling. Opaque raw pointers should be considered separately
 for future `void*`-style interoperation.
 
-### 4. C Interoperability Design
+### 3. C Interoperability Design
 
 Plan, but do not yet implement syntax-only ABI promises. Relevant future work
 includes:
@@ -169,7 +176,7 @@ includes:
 - `#repr_c` or an equivalent general representation attribute
 - mapping C null pointers to Coglet `null`
 
-### 5. Slices and Pointer-Length Views
+### 4. Slices and Pointer-Length Views
 
 Slices remain a strong candidate after raw-pointer mutability and ABI rules
 are clearer. Their design must settle:

@@ -96,9 +96,11 @@ Supported expression forms include:
 - numeric, boolean, character, `null`, and contextual string literals
 - identifiers
 - arithmetic operators
+- bitwise operators (`&`, `|`, `^`, `~`)
+- shift operators (`<<`, `>>`)
 - equality and ordered comparisons
 - logical operators (`&&`, `||`)
-- unary negation and logical negation
+- unary negation, logical negation, and bitwise complement
 - function calls
 - field access
 - array and pointer indexing
@@ -113,6 +115,8 @@ Assignment, compound assignment, and increment/decrement are statement-only oper
 ```c
 x = 1;
 x += 1;
+x &= mask;
+x <<= count;
 x++;
 ```
 
@@ -293,6 +297,26 @@ infinity, NaN, and signed zero:
 NaN compares unequal to itself, and ordered comparisons involving NaN are
 false.
 
+Bitwise operators are integer-only. Concrete operands for `&`, `|`, and `^`
+must have the same type unless one operand is an adaptable untyped integer
+constant that fits the concrete type. Signed bitwise operations use a defined
+fixed-width two's-complement representation.
+
+For shifts, the left operand determines the result type and bit width. The
+count may have any integer type, but a statically known count must satisfy
+`0 <= count < bit_width`. Left shift is a fixed-width bit-pattern operation:
+bits shifted beyond the width are discarded. Unsigned right shift zero-fills,
+while signed right shift is arithmetic and sign-extending.
+
+Coglet intentionally gives bitwise operators higher precedence than equality
+and ordered comparisons. Therefore:
+
+```c
+flags & mask == 0;
+```
+
+parses as `(flags & mask) == 0`, avoiding C's surprising precedence rule.
+
 ### Control Flow
 
 Supported control flow includes:
@@ -367,6 +391,9 @@ Recently completed work includes:
 - nominal declaration identity for structs and enums
 - restricted equality and ordered-comparison operand categories
 - checked known integer zero-divisor diagnostics
+- integer-only bitwise and shift operators with defined fixed-width semantics
+- bitwise and shift compound assignments
+- checked statically known shift counts
 - IEEE-754 constant behavior for `f32` and `f64`
 - explicit `TYPE_UNTYPED_INT` and `TYPE_UNTYPED_FLOAT` kinds
 - concrete default typing for inferred mutable numeric variables and parameters
@@ -384,11 +411,10 @@ Backend and code-generation work is intentionally deferred until the language's 
 
 Near-term work should remain language- and frontend-focused:
 
-1. Decide whether bitwise and shift operators are required for the first systems-programming core.
-2. Decide runtime integer overflow and narrowing-cast behavior.
-3. Design a small readonly raw-pointer mechanism without introducing borrowing or lifetime checking.
-4. Plan opaque raw pointers and explicit C ABI types.
-5. Design slices and pointer-length views after the raw-pointer mutability rules are settled.
+1. Decide runtime integer overflow and narrowing-cast behavior.
+2. Design a small readonly raw-pointer mechanism without introducing borrowing or lifetime checking.
+3. Plan opaque raw pointers and explicit C ABI types.
+4. Design slices and pointer-length views after the raw-pointer mutability rules are settled.
 
 Later work may include:
 

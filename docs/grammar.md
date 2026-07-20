@@ -39,6 +39,7 @@ A minus sign is an operator, not part of a numeric token.
 unary_expression =
       "-" unary_expression
     | "!" unary_expression
+    | "~" unary_expression
     | "&" unary_expression
     | "*" unary_expression
     | primary_expression;
@@ -60,7 +61,7 @@ pointer: i32* = &value;
 
 Address-of requires a mutable lvalue. Dereference requires a pointer value and produces an lvalue. Postfix operators bind more tightly than prefix unary operators, so `*p.field` parses as `*(p.field)`, while `(*p).field` accesses a field through a pointer.
 
-Arrays do not decay implicitly to pointers. General pointer arithmetic, `void*`, and pointee const qualification are not yet supported.
+Arrays do not decay implicitly to pointers. General pointer arithmetic, `void*`, and pointee const qualification are not yet supported. `null` is the only source-level null-pointer value. Integer zero does not implicitly or explicitly become a pointer.
 
 ## Array Indexing
 
@@ -224,6 +225,73 @@ takes_i32(does_nothing());
 does_nothing() + 1;
 ```
 
+## Operator Precedence and Associativity
+
+Binary operators are left-associative. Assignment and compound assignment are
+right-associative and remain statement-only.
+
+From lowest to highest precedence:
+
+```text
+||
+&&
+== !=
+< <= > >=
+|
+^
+&
+<< >>
++ -
+* / %
+unary: - ! ~ & *
+postfix: call, field access, indexing
+```
+
+This ordering deliberately differs from C. Bitwise operators bind more tightly
+than comparisons, so:
+
+```c
+flags & mask == 0;
+```
+
+parses as:
+
+```c
+(flags & mask) == 0;
+```
+
+The same `&` token is unary address-of in prefix position and binary bitwise
+AND between value expressions.
+
+## Bitwise and Shift Expressions
+
+```ebnf
+bitwise_expression =
+      expression "&" expression
+    | expression "|" expression
+    | expression "^" expression
+    | "~" unary_expression;
+
+shift_expression =
+      expression "<<" expression
+    | expression ">>" expression;
+```
+
+Bitwise operators are integer-only. For `&`, `|`, and `^`, concrete operand
+types must match exactly unless one operand is an adaptable untyped integer
+constant that fits the concrete type. `~` preserves the operand type.
+
+For shifts, the left operand determines the result type and operation width.
+The right operand may have any integer type. A compile-time-known count must
+satisfy:
+
+```text
+0 <= count < left_operand_bit_width
+```
+
+Left shift discards bits shifted beyond the fixed width. Unsigned right shift
+zero-fills. Signed right shift is arithmetic and sign-extending.
+
 ## Assignment
 
 ```ebnf
@@ -271,7 +339,9 @@ compound_assignment_statement =
     assignable compound_assignment_operator expression;
 
 compound_assignment_operator =
-    "+=" | "-=" | "*=" | "/=" | "%=";
+      "+=" | "-=" | "*=" | "/=" | "%="
+    | "&=" | "|=" | "^="
+    | "<<=" | ">>=";
 ```
 
 Examples:
@@ -282,15 +352,24 @@ x -= 1;
 x *= 2;
 x /= 2;
 x %= 2;
+x &= mask;
+x |= bits;
+x ^= toggle;
+x <<= count;
+x >>= count;
 values[0] += 1;
 ```
 
 Rules:
 
 - the left-hand side must denote assignable storage
-- both operands must be numeric
-- concrete numeric operand types must be compatible
+- arithmetic compound assignments require numeric operands
+- concrete arithmetic operand types must be compatible
 - `%=` requires integer operands
+- `&=`, `|=`, and `^=` require integer operands; a concrete right operand must match the target type exactly
+- an untyped integer right operand may adapt when its exact value fits the target type
+- `<<=` and `>>=` require an integer target and an integer count; the count type does not need to match the target type
+- a statically known shift count must satisfy `0 <= count < target_bit_width`
 - the right-hand side is a normal value expression, not a contextual initializer
 - compound assignment is statement-only and produces no value
 

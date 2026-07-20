@@ -1,0 +1,10 @@
+NEGATIVE_COUNT :: -1;
+
+shift_negative_count::() -> void {
+    value: i32 = 1;
+
+    value << -1;
+    value >> NEGATIVE_COUNT;
+    value << cast(i8, -1);
+    value >> (1 - 2);
+}

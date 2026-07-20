@@ -1,0 +1,66 @@
+LEFT_U8_ZERO: bool :
+    (cast(u8, 128) << 1) == cast(u8, 0);
+
+LEFT_I8_SIGN: bool :
+    (cast(i8, 64) << 1) == cast(i8, -128);
+
+RIGHT_U8: bool :
+    (cast(u8, 128) >> 1) == cast(u8, 64);
+
+RIGHT_I8_NEGATIVE: bool :
+    (cast(i8, -3) >> 1) == cast(i8, -2);
+
+RIGHT_I8_MIN: bool :
+    (cast(i8, -128) >> 7) == cast(i8, -1);
+
+LEFT_U64_HIGH_BIT: bool :
+    (cast(u64, 1) << 63) ==
+        cast(u64, 9223372036854775808);
+
+check_left_u8::(value: bool) -> void {
+    switch value {
+        case LEFT_U8_ZERO: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_left_i8::(value: bool) -> void {
+    switch value {
+        case LEFT_I8_SIGN: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_right_u8::(value: bool) -> void {
+    switch value {
+        case RIGHT_U8: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_right_i8_negative::(value: bool) -> void {
+    switch value {
+        case RIGHT_I8_NEGATIVE: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_right_i8_min::(value: bool) -> void {
+    switch value {
+        case RIGHT_I8_MIN: {}
+        case true: {}
+        default: {}
+    }
+}
+
+check_left_u64::(value: bool) -> void {
+    switch value {
+        case LEFT_U64_HIGH_BIT: {}
+        case true: {}
+        default: {}
+    }
+}

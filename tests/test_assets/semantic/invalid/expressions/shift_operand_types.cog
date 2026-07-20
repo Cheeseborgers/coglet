@@ -1,0 +1,28 @@
+Kind:: enum(u8) {
+    One,
+}
+
+Pair:: struct {
+    value: i32;
+}
+
+shift_operand_types::() -> void {
+    integer: i32 = 1;
+    floating: f32 = 1.0;
+    boolean: bool = true;
+    enumeration: Kind = Kind.One;
+    pointer: i32* = &integer;
+    array: i32[2];
+    pair: Pair;
+
+    floating << 1;
+    integer << floating;
+    boolean >> 1;
+    integer >> boolean;
+    enumeration << 1;
+    integer << enumeration;
+    pointer >> 1;
+    null << 1;
+    array >> 1;
+    pair << 1;
+}

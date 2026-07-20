@@ -320,6 +320,7 @@ static Type *concretize_inferred_type(SemanticContext *ctx, Node *expression, Ty
 
 static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
+static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out);
 static int check_string_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 
 // ============================================================
@@ -444,18 +445,15 @@ static int type_equal(const Type *a, const Type *b) {
      * A missing type is not a semantic type, including when both
      * arguments are NULL.
      */
-    if (!a || !b)
-        return 0;
+    if (!a || !b) return 0;
 
     /*
      * Canonical built-ins and nominal struct/enum declarations
      * normally finish here.
      */
-    if (a == b)
-        return 1;
+    if (a == b) return 1;
 
-    if (a->kind != b->kind)
-        return 0;
+    if (a->kind != b->kind) return 0;
 
     switch (a->kind) {
         /*
@@ -559,19 +557,17 @@ static int type_equal(const Type *a, const Type *b) {
 
 static int invalid_value_type(Type *type) { return contains_void_type(type); }
 
-static int invalid_return_type(Type *type)
-{
-    if (!type)
-        return 0;
+static int invalid_return_type(Type *type) {
 
-    if (type->kind == TYPE_VOID)
-        return 0;
+    if (!type) return 0;
+
+    if (type->kind == TYPE_VOID) return 0;
 
     return contains_void_type(type);
 }
 
-static int is_concrete_integer_kind(TypeKind kind)
-{
+static int is_concrete_integer_kind(TypeKind kind) {
+
     switch (kind) {
         case TYPE_I8:
         case TYPE_I16:
@@ -588,9 +584,8 @@ static int is_concrete_integer_kind(TypeKind kind)
     }
 }
 
-static int is_unsigned_integer_kind(
-    TypeKind kind
-) {
+static int is_unsigned_integer_kind(TypeKind kind) {
+
     switch (kind) {
         case TYPE_U8:
         case TYPE_U16:
@@ -859,6 +854,92 @@ static int integer_values_bitwise(
         case TOK_XOR:
             result_pattern =
                 left_pattern ^ right_pattern;
+            break;
+
+        default:
+            return 0;
+    }
+
+    return integer_value_from_bit_pattern(
+        result_pattern,
+        kind,
+        out
+    );
+}
+
+typedef enum {
+    SHIFT_COUNT_VALID,
+    SHIFT_COUNT_NEGATIVE,
+    SHIFT_COUNT_OUT_OF_RANGE,
+} ShiftCountStatus;
+
+static ShiftCountStatus classify_shift_count(IntegerValue value, unsigned bit_width, unsigned *out_count) {
+    if (value.is_negative)
+        return SHIFT_COUNT_NEGATIVE;
+
+    if (value.magnitude >= bit_width)
+        return SHIFT_COUNT_OUT_OF_RANGE;
+
+    *out_count = (unsigned)value.magnitude;
+    return SHIFT_COUNT_VALID;
+}
+
+static int integer_value_shift(
+    IntegerValue operand,
+    TypeKind kind,
+    TokenType operation,
+    unsigned count,
+    IntegerValue *out
+) {
+    unsigned width;
+    uint64_t pattern;
+
+    if (!integer_kind_bit_width(kind, &width) ||
+        count >= width ||
+        !integer_value_to_bit_pattern(
+            operand,
+            kind,
+            &pattern
+        )) {
+        return 0;
+    }
+
+    uint64_t mask = integer_width_mask(width);
+    uint64_t result_pattern;
+
+    switch (operation) {
+        case TOK_SHIFT_LEFT:
+            /*
+             * Left shift is a fixed-width bit-pattern operation.
+             * Bits shifted beyond the type width are discarded.
+             */
+            result_pattern = (pattern << count) & mask;
+            break;
+
+        case TOK_SHIFT_RIGHT:
+            /*
+             * Begin with a logical shift performed on the unsigned
+             * representation.
+             */
+            result_pattern = pattern >> count;
+
+            /*
+             * Signed right shift is explicitly arithmetic.
+             *
+             * Do not rely on the host C implementation's behavior
+             * when shifting a negative signed integer.
+             */
+            if (count != 0 &&
+                is_signed_integer_kind(kind)) {
+                uint64_t sign_bit = UINT64_C(1) << (width - 1);
+
+                if ((pattern & sign_bit) != 0) {
+                    uint64_t sign_fill = mask ^ (mask >> count);
+
+                    result_pattern |= sign_fill;
+                }
+            }
+
             break;
 
         default:
@@ -1519,7 +1600,7 @@ static Type *default_concrete_type_for_constant(
                     value->as.integer,
                     &kind)) {
                 return NULL;
-                    }
+            }
 
             return builtin_type(ctx, kind);
         }
@@ -1743,8 +1824,7 @@ static int eval_const_comparison(
                 left,
                 right,
                 common,
-                &operation_kind
-            )) {
+                &operation_kind)) {
 
             semantic_error(ctx, node,
                 "comparison operands have incompatible numeric types");
@@ -1757,12 +1837,10 @@ static int eval_const_comparison(
                 right->kind != CONST_VALUE_INT ||
                 !integer_value_fits_type(
                     left->as.integer,
-                    operation_kind
-                ) ||
+                    operation_kind) ||
                 !integer_value_fits_type(
                     right->as.integer,
-                    operation_kind
-                )) {
+                    operation_kind)) {
 
                 semantic_error(ctx, node,
                     "integer constant operand does not fit comparison type");
@@ -1782,19 +1860,15 @@ static int eval_const_comparison(
                 !const_value_to_float_type(
                     left,
                     operation_kind,
-                    &left_value
-                ) ||
+                    &left_value) ||
                 !const_value_to_float_type(
                     right,
                     operation_kind,
                     &right_value
                 )) {
 
-                semantic_error(
-                    ctx,
-                    node,
-                    "floating-point comparison operand does not fit comparison type"
-                );
+                semantic_error(ctx, node,
+                    "floating-point comparison operand does not fit comparison type");
 
                 return 0;
             }
@@ -2199,8 +2273,7 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                     is_concrete_integer_kind(
                         result_type->kind
                     )) {
-                    operation_kind =
-                        result_type->kind;
+                        operation_kind = result_type->kind;
                     } else if (
                         result_type &&
                         result_type->kind == TYPE_UNTYPED_INT
@@ -2415,6 +2488,119 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                         ctx,
                         node,
                         result_type,
+                        operation_kind,
+                        value,
+                        out
+                    );
+                }
+
+                case TOK_SHIFT_LEFT:
+                case TOK_SHIFT_RIGHT:
+                {
+                    Type *left_type =
+                        const_value_default_type(ctx, &left);
+
+                    Type *right_type =
+                        const_value_default_type(ctx, &right);
+
+                    if (left.kind != CONST_VALUE_INT || !is_integer_type(left_type)) {
+                        semantic_error(ctx, node,
+                            "left operand of shift must be an integer constant");
+
+                        return 0;
+                    }
+
+                    if (right.kind != CONST_VALUE_INT || !is_integer_type(right_type)) {
+                        semantic_error(ctx, node,
+                            "right operand of shift must be an integer constant");
+
+                        return 0;
+                    }
+
+                    /*
+                     * The left operand alone determines the shift width and
+                     * signedness.
+                     */
+                    TypeKind operation_kind;
+
+                    if (is_concrete_integer_kind(left_type->kind)) {
+                        operation_kind = left_type->kind;
+                    } else if (
+                        left_type->kind == TYPE_UNTYPED_INT &&
+                        default_integer_kind_for_value(
+                            left.as.integer,
+                            &operation_kind
+                        )
+                    ) {
+                        /*
+                         * An untyped left operand uses its ordinary default integer
+                         * width. For example, `1 << count` uses i32.
+                         */
+                    } else {
+                        semantic_error(ctx, node,
+                            "shift expression has no integer operation type");
+
+                        return 0;
+                    }
+
+                    if (!integer_value_fits_type(left.as.integer, operation_kind)) {
+                        semantic_error(ctx, node,
+                            "left operand does not fit shift operation type");
+
+                        return 0;
+                    }
+
+                    unsigned width;
+
+                    if (!integer_kind_bit_width(operation_kind, &width)) {
+                        semantic_error(ctx, node,
+                            "shift expression has no integer operation type");
+
+                        return 0;
+                    }
+
+                    unsigned count;
+
+                    ShiftCountStatus count_status =
+                        classify_shift_count(right.as.integer, width, &count);
+
+                    if (count_status == SHIFT_COUNT_NEGATIVE) {
+                        semantic_error(ctx, node->as.binary.right,
+                            "shift count cannot be negative");
+
+                        return 0;
+                    }
+
+                    if (count_status == SHIFT_COUNT_OUT_OF_RANGE) {
+                        semantic_error(ctx, node->as.binary.right,
+                            "shift count must be less than left operand bit width");
+
+                        return 0;
+                    }
+
+                    IntegerValue value;
+
+                    if (!integer_value_shift(
+                            left.as.integer,
+                            operation_kind,
+                            node->as.binary.op,
+                            count,
+                            &value
+                        )) {
+                        semantic_error(ctx, node,
+                            "could not evaluate integer shift");
+
+                        return 0;
+                    }
+
+                    /*
+                     * Preserve an untyped result when the left operand was untyped,
+                     * while still evaluating with a concrete provisional width.
+                     */
+                    return integer_constant_result(
+                        ctx,
+                        node,
+                        left_type,
                         operation_kind,
                         value,
                         out
@@ -3030,6 +3216,59 @@ static int check_known_integer_zero_divisor(
     return 0;
 }
 
+static int check_known_shift_count(SemanticContext *ctx, Node *count_node, Type *left_type) {
+
+    if (!count_node || !left_type) return 1;
+
+    unsigned width;
+
+    if (!integer_kind_bit_width(left_type->kind, &width)) {
+        return 1;
+    }
+
+    /*
+     * Unknown runtime counts are accepted by the frontend. A future
+     * execution layer must enforce the same range rule dynamically.
+     */
+    if (!expression_is_compile_time_constant(ctx, count_node)) {
+        return 1;
+    }
+
+    ConstValue count;
+
+    if (!eval_const_expr(ctx, count_node, &count)) {
+        return 0;
+    }
+
+    if (count.kind != CONST_VALUE_INT) {
+        semantic_error(ctx, count_node,
+            "shift count must be integer");
+
+        return 0;
+    }
+
+    unsigned ignored_count;
+
+    ShiftCountStatus status =
+        classify_shift_count(count.as.integer, width, &ignored_count);
+
+    if (status == SHIFT_COUNT_NEGATIVE) {
+        semantic_error(ctx, count_node,
+            "shift count cannot be negative");
+
+        return 0;
+    }
+
+    if (status == SHIFT_COUNT_OUT_OF_RANGE) {
+        semantic_error(ctx,count_node,
+            "shift count must be less than left operand bit width");
+
+        return 0;
+    }
+
+    return 1;
+}
+
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node) {
 
     if (!node) return 0;
@@ -3540,7 +3779,98 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                             &result
                         )) {
                         return NULL;
+                    }
+
+                    sem_record_expr_info(
+                        ctx,
+                        node,
+                        result,
+                        NULL,
+                        VALUE_CATEGORY_RVALUE
+                    );
+
+                    return result;
+                }
+
+                case TOK_SHIFT_LEFT:
+                case TOK_SHIFT_RIGHT:
+                {
+                    if (!is_integer_type(left)) {
+                        semantic_error(ctx, node,
+                            "left operand of shift operator must be integer");
+
+                        return NULL;
+                    }
+
+                    if (!is_integer_type(right)) {
+                        semantic_error(ctx, node,
+                            "right operand of shift operator must be integer");
+
+                        return NULL;
+                    }
+
+                    /*
+                     * Fully constant shifts are evaluated here. The evaluator selects
+                     * the left operand's operation width and validates the count.
+                     */
+                    if (expression_is_compile_time_constant(ctx, node)) {
+                        ConstValue constant;
+
+                        if (!eval_const_expr(ctx, node, &constant)) {
+                            return NULL;
                         }
+
+                        Type *result = constant.type
+                            ? constant.type
+                            : const_value_default_type(
+                                ctx,
+                                &constant
+                            );
+
+                        sem_record_expr_info(
+                            ctx,
+                            node,
+                            result,
+                            NULL,
+                            VALUE_CATEGORY_RVALUE
+                        );
+
+                        return result;
+                    }
+
+                    /*
+                     * The result type is always determined by the left operand.
+                     *
+                     * A nonconstant expression such as `1 << runtime_count` cannot
+                     * retain an untyped runtime result, so the left constant receives
+                     * its ordinary concrete default type.
+                     */
+                    Type *result = left;
+
+                    if (left->kind == TYPE_UNTYPED_INT) {
+                        ConstValue left_constant;
+
+                        if (!eval_const_expr(ctx, node->as.binary.left, &left_constant)) {
+                            return NULL;
+                        }
+
+                        result = default_concrete_type_for_constant(ctx, &left_constant);
+                    }
+
+                    if (!result ||
+                        !is_concrete_integer_kind(result->kind)) {
+                        semantic_error(ctx, node,
+                            "could not determine shift result type");
+
+                        return NULL;
+                    }
+
+                    if (!check_known_shift_count(
+                            ctx,
+                            node->as.binary.right,
+                            result)) {
+                        return NULL;
+                    }
 
                     sem_record_expr_info(
                         ctx,
@@ -3674,7 +4004,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                             "type does not support equality comparison");
 
                         return NULL;
-                        }
+                    }
 
                     sem_record_expr_info(
                         ctx,
@@ -3790,8 +4120,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     ok = 0;
             }
 
-            if (!ok)
-                return NULL;
+            if (!ok) return NULL;
 
             ValueCategory category =
                 callee->return_type->kind == TYPE_VOID
@@ -3813,8 +4142,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         {
             Type *type = check_cast_expression(ctx, node);
 
-            if (!type)
-                return NULL;
+            if (!type) return NULL;
 
             sem_record_expr_info(
                 ctx,
@@ -3851,8 +4179,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 if (sym &&
                     sym->kind == SYMBOL_TYPE &&
                     sym->type &&
-                    sym->type->kind == TYPE_ENUM)
-                {
+                    sym->type->kind == TYPE_ENUM) {
 
                     EnumMember *member =
                         find_enum_member(
@@ -3862,14 +4189,15 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
                     if (!member) {
                         semantic_error_name(
-                            ctx, node,
+                            ctx,
+                            node,
                             "unknown enum member",
                             node->as.field.name.data,
-                            node->as.field.name.length
-                        );
+                            node->as.field.name.length);
 
                         return NULL;
-                }
+                    }
+
                     sem_record_expr_info(
                         ctx,
                         node,
@@ -3888,8 +4216,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
              */
             Type *object = check_value_expression(ctx, node->as.field.object);
 
-            if (!object)
-                return NULL;
+            if (!object) return NULL;
 
             if (object->kind != TYPE_STRUCT) {
                 semantic_error(ctx, node,
@@ -3938,13 +4265,11 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         {
             Type *object = check_value_expression(ctx, node->as.index.object);
 
-            if (!object)
-                return NULL;
+            if (!object) return NULL;
 
             Type *index = check_value_expression(ctx, node->as.index.index);
 
-            if (!index)
-                return NULL;
+            if (!index) return NULL;
 
             if (!is_integer_kind(index->kind)) {
 
@@ -4671,8 +4996,7 @@ static Type *check_value_expression(SemanticContext *ctx, Node *node
 ) {
     Type *type = check_expression(ctx, node);
 
-    if (!type)
-        return NULL;
+    if (!type) return NULL;
 
     SemExprInfo *info = sem_find_expr_info(ctx, node);
 
@@ -5120,8 +5444,7 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
         Node *param      = func->as.func_decl.params.items[i];
         Type *param_type = resolve_type(ctx, param->as.param_decl.var_type, param);
 
-        if (!param_type)
-            return NULL;
+        if (!param_type) return NULL;
 
         if (contains_void_type(param_type)) {
 
@@ -5136,8 +5459,7 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
 
     type->return_type = resolve_type(ctx, func->as.func_decl.return_type, func);
 
-    if (!type->return_type)
-        return NULL;
+    if (!type->return_type) return NULL;
 
 
     if (invalid_return_type(type->return_type)) {
@@ -5368,10 +5690,8 @@ static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t le
 
 static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value) {
 
-    if (!enum_type ||
-        enum_type->kind != TYPE_ENUM) {
+    if (!enum_type || enum_type->kind != TYPE_ENUM)
         return NULL;
-        }
 
     for (int i = 0;
          i < enum_type->enum_member_count;
@@ -5554,8 +5874,7 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
         source_expression
     );
 
-    if (!source_type)
-        return NULL;
+    if (!source_type) return NULL;
 
     if (!is_allowed_explicit_cast(
             target_type,
@@ -5598,11 +5917,7 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
 
         ConstValue ignored;
 
-        if (!eval_const_cast(
-                ctx,
-                node,
-                &ignored
-            )) {
+        if (!eval_const_cast(ctx, node, &ignored)) {
             return NULL;
         }
 
@@ -5627,11 +5942,7 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
     if (source_is_constant) {
         ConstValue ignored;
 
-        if (!eval_const_cast(
-                ctx,
-                node,
-                &ignored
-            )) {
+        if (!eval_const_cast(ctx, node, &ignored)) {
             return NULL;
         }
     }

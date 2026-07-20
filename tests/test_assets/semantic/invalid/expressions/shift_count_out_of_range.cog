@@ -1,0 +1,13 @@
+shift_count_out_of_range::() -> void {
+    value_i8: i8 = 1;
+    value_u8: u8 = 1;
+    value_i32: i32 = 1;
+
+    value_i8 << 8;
+    value_u8 >> 9;
+    value_i32 << 32;
+    value_i32 >> (16 + 16);
+    cast(i64, 1) << 64;
+    cast(u64, 1) >> 18446744073709551615;
+    1 << 32;
+}

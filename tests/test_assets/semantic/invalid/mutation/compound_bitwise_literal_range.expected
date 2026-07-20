@@ -1,0 +1,5 @@
+semantic error at line 5: integer constant operand does not fit compound assignment type
+semantic error at line 6: integer constant operand does not fit compound assignment type
+semantic error at line 7: integer constant operand does not fit compound assignment type
+semantic error at line 8: integer constant operand does not fit compound assignment type
+4 semantic errors generated.

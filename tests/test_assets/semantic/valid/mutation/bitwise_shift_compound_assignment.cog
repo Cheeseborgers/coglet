@@ -1,0 +1,43 @@
+BitBox :: struct {
+    bits: u32;
+}
+
+identity_pointer::(pointer: u32*) -> u32* {
+    return pointer;
+}
+
+SHIFT_BY :: 1;
+
+bitwise_shift_compound_assignment::(
+    runtime_count: u8
+) -> void {
+    unsigned_value: u32 = 240;
+    signed_value: i32 = -8;
+    wide_count: i64 = 1;
+
+    unsigned_value &= 255;
+    unsigned_value |= 15;
+    unsigned_value ^= 170;
+
+    signed_value &= -1;
+    signed_value |= 1;
+    signed_value ^= 3;
+
+    unsigned_value <<= SHIFT_BY;
+    unsigned_value >>= runtime_count;
+    signed_value <<= wide_count;
+    signed_value >>= (2 - 1);
+
+    box := BitBox {
+        bits = 15,
+    };
+
+    values: u32[2] = [1, 8];
+    pointer: u32* = &values[0];
+
+    box.bits &= 7;
+    values[0] |= 8;
+    *pointer ^= 1;
+    pointer[0] <<= runtime_count;
+    identity_pointer(&values[1])[0] >>= 1;
+}

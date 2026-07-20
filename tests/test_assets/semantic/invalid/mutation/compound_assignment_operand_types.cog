@@ -1,0 +1,33 @@
+Kind :: enum(u8) {
+    One,
+}
+
+compound_assignment_operand_types::() -> void {
+    integer: i32 = 1;
+    floating: f32 = 1.0;
+    boolean: bool = true;
+    enumeration: Kind = Kind.One;
+    pointer: i32* = &integer;
+
+    floating &= 1;
+    boolean |= 1;
+    enumeration ^= 1;
+    pointer &= 1;
+
+    integer &= floating;
+    integer |= boolean;
+    integer ^= enumeration;
+    integer &= pointer;
+    integer |= null;
+
+    floating <<= 1;
+    boolean >>= 1;
+    enumeration <<= 1;
+    pointer >>= 1;
+
+    integer <<= floating;
+    integer >>= boolean;
+    integer <<= enumeration;
+    integer >>= pointer;
+    integer <<= null;
+}

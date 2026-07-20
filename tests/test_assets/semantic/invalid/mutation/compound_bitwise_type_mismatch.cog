@@ -1,0 +1,11 @@
+compound_bitwise_type_mismatch::() -> void {
+    signed32: i32 = 1;
+    signed64: i64 = 1;
+    unsigned32: u32 = 1;
+    signed8: i8 = 1;
+    unsigned8: u8 = 1;
+
+    signed32 &= signed64;
+    signed32 |= unsigned32;
+    signed8 ^= unsigned8;
+}

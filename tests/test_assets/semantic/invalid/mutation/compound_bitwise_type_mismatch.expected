@@ -1,0 +1,4 @@
+semantic error at line 8: bitwise compound assignment operands have incompatible integer types -- use an explicit cast
+semantic error at line 9: bitwise compound assignment operands have incompatible integer types -- use an explicit cast
+semantic error at line 10: bitwise compound assignment operands have incompatible integer types -- use an explicit cast
+3 semantic errors generated.

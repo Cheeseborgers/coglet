@@ -4849,7 +4849,7 @@ static int check_assignment_statement(SemanticContext *ctx, Node *node) {
     return 1;
 }
 
-static int check_compound_assignment_statement(SemanticContext *ctx, Node *node) {
+static int check_compound_assignment_statement(SemanticContext *ctx,Node *node) {
 
     Node *target_node =
         node->as.compound_assign.target;
@@ -4857,11 +4857,13 @@ static int check_compound_assignment_statement(SemanticContext *ctx, Node *node)
     Node *value_node =
         node->as.compound_assign.value;
 
+    TokenType operation =
+        node->as.compound_assign.op;
+
     Type *target_type =
         check_expression(ctx, target_node);
 
-    if (!target_type)
-        return 0;
+    if (!target_type) return 0;
 
     if (!require_lvalue(
             ctx,
@@ -4875,82 +4877,165 @@ static int check_compound_assignment_statement(SemanticContext *ctx, Node *node)
     Type *value_type =
         check_value_expression(ctx, value_node);
 
-    if (!value_type)
-        return 0;
+    if (!value_type) return 0;
 
-    switch (node->as.compound_assign.op) {
+    switch (operation) {
+        /*
+         * Arithmetic compound assignments preserve their existing
+         * numeric compatibility and constant-range rules.
+         */
         case TOK_PLUS_EQUAL:
         case TOK_MINUS_EQUAL:
         case TOK_STAR_EQUAL:
         case TOK_SLASH_EQUAL:
         case TOK_PERCENT_EQUAL:
+        {
+            if (!is_numeric_type(target_type)) {
+                semantic_error(ctx, node,
+                    "compound assignment target must be numeric");
+
+                return 0;
+            }
+
+            if (!is_numeric_type(value_type)) {
+                semantic_error(ctx, node,
+                    "compound assignment value must be numeric");
+
+                return 0;
+            }
+
+            if (operation == TOK_PERCENT_EQUAL &&
+                (!is_integer_type(target_type) ||
+                 !is_integer_type(value_type))) {
+                semantic_error(ctx, node,
+                    "modulo compound assignment operands must be integers");
+
+                return 0;
+            }
+
+            Type *result_type =
+                common_numeric_type(target_type, value_type);
+
+            if (!result_type) {
+                semantic_error(ctx, node,
+                    "compound assignment operands have incompatible numeric types");
+
+                return 0;
+            }
+
+            if (!initializer_compatible(target_type, result_type)) {
+                semantic_error(ctx, node,
+                    "compound assignment result does not fit target type");
+
+                return 0;
+            }
+
+            if (is_untyped_numeric_type(value_type) &&
+                !check_constant_value_against_type(
+                    ctx,
+                    value_node,
+                    target_type,
+                    "integer constant operand does not fit compound assignment type",
+                    "floating-point constant operand does not fit compound assignment type"
+                )) {
+                return 0;
+            }
+
+            if (!check_known_integer_zero_divisor(
+                    ctx,
+                    operation,
+                    value_node,
+                    result_type
+                )) {
+                return 0;
+            }
+
             break;
+        }
+
+        /*
+         * Bitwise compound assignments use the target type as the
+         * operation type.
+         *
+         * Concrete integer operands must match exactly. An untyped
+         * integer constant may adapt when its exact value fits the
+         * target type.
+         */
+        case TOK_AND_EQUAL:
+        case TOK_OR_EQUAL:
+        case TOK_XOR_EQUAL:
+        {
+            if (!is_integer_type(target_type)) {
+                semantic_error(ctx, node,
+                    "bitwise compound assignment target must be integer");
+
+                return 0;
+            }
+
+            if (!is_integer_type(value_type)) {
+                semantic_error(ctx, node,
+                    "bitwise compound assignment value must be integer");
+
+                return 0;
+            }
+
+            Type *result_type =
+                common_integer_type(target_type, value_type);
+
+            if (!result_type) {
+                semantic_error(ctx, node,
+                    "bitwise compound assignment operands have incompatible integer types -- use an explicit cast");
+
+                return 0;
+            }
+
+            if (value_type->kind == TYPE_UNTYPED_INT &&
+                !check_constant_value_against_type(
+                    ctx,
+                    value_node,
+                    target_type,
+                    "integer constant operand does not fit compound assignment type",
+                    "bitwise compound assignment does not accept floating-point constants"
+                )) {
+                return 0;
+            }
+
+            break;
+        }
+
+        /*
+         * Shift compound assignments use the target's width and
+         * signedness. The count may have any integer type.
+         */
+        case TOK_SHIFT_LEFT_EQUAL:
+        case TOK_SHIFT_RIGHT_EQUAL:
+        {
+            if (!is_integer_type(target_type)) {
+                semantic_error(ctx, node,
+                    "shift compound assignment target must be integer");
+
+                return 0;
+            }
+
+            if (!is_integer_type(value_type)) {
+                semantic_error(ctx, node,
+                    "shift compound assignment count must be integer");
+
+                return 0;
+            }
+
+            if (!check_known_shift_count(ctx, value_node, target_type)) {
+                return 0;
+            }
+
+            break;
+        }
 
         default:
-            semantic_error(ctx, node,
+            semantic_error(ctx,node,
                 "unsupported compound assignment operator");
 
-        return 0;
-    }
-
-    if (!is_numeric_type(target_type)) {
-        semantic_error(ctx, node,
-            "compound assignment target must be numeric");
-
-        return 0;
-    }
-
-    if (!is_numeric_type(value_type)) {
-        semantic_error(ctx, node,
-            "compound assignment value must be numeric");
-
-        return 0;
-    }
-
-    if (node->as.compound_assign.op == TOK_PERCENT_EQUAL &&
-        (!is_integer_type(target_type) ||
-         !is_integer_type(value_type))) {
-
-        semantic_error(ctx, node,
-            "modulo compound assignment operands must be integers");
-
-        return 0;
-    }
-
-    Type *result_type =
-        common_numeric_type(target_type, value_type);
-
-    if (!result_type) {
-        semantic_error(ctx, node,
-            "compound assignment operands have incompatible numeric types");
-
-        return 0;
-    }
-
-    if (!initializer_compatible(target_type, result_type)) {
-        semantic_error(ctx, node,
-            "compound assignment result does not fit target type");
-
-        return 0;
-    }
-
-    if (is_untyped_numeric_type(value_type) &&
-        !check_constant_value_against_type(
-            ctx,
-            value_node,
-            target_type,
-            "integer constant operand does not fit compound assignment type",
-            "floating-point constant operand does not fit compound assignment type"
-        )) {
-        return 0;
-    }
-
-    if (!check_known_integer_zero_divisor(
-        ctx,
-        node->as.compound_assign.op,
-        value_node,
-        result_type)) {
-        return 0;
+            return 0;
     }
 
     sem_record_no_value(ctx, node);

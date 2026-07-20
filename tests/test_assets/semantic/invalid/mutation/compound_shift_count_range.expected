@@ -1,0 +1,9 @@
+semantic error at line 7: shift count cannot be negative
+semantic error at line 8: shift count cannot be negative
+semantic error at line 9: shift count cannot be negative
+semantic error at line 10: shift count cannot be negative
+semantic error at line 12: shift count must be less than left operand bit width
+semantic error at line 13: shift count must be less than left operand bit width
+semantic error at line 14: shift count must be less than left operand bit width
+semantic error at line 15: shift count must be less than left operand bit width
+8 semantic errors generated.

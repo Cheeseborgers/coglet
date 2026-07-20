@@ -1,0 +1,19 @@
+semantic error at line 12: bitwise compound assignment target must be integer
+semantic error at line 13: bitwise compound assignment target must be integer
+semantic error at line 14: bitwise compound assignment target must be integer
+semantic error at line 15: bitwise compound assignment target must be integer
+semantic error at line 17: bitwise compound assignment value must be integer
+semantic error at line 18: bitwise compound assignment value must be integer
+semantic error at line 19: bitwise compound assignment value must be integer
+semantic error at line 20: bitwise compound assignment value must be integer
+semantic error at line 21: bitwise compound assignment value must be integer
+semantic error at line 23: shift compound assignment target must be integer
+semantic error at line 24: shift compound assignment target must be integer
+semantic error at line 25: shift compound assignment target must be integer
+semantic error at line 26: shift compound assignment target must be integer
+semantic error at line 28: shift compound assignment count must be integer
+semantic error at line 29: shift compound assignment count must be integer
+semantic error at line 30: shift compound assignment count must be integer
+semantic error at line 31: shift compound assignment count must be integer
+semantic error at line 32: shift compound assignment count must be integer
+18 semantic errors generated.

@@ -1,0 +1,44 @@
+initialized_before_while_remains_initialized::(
+    condition: bool
+) -> i32 {
+    value: i32 = 10;
+
+    while condition {
+        value = 20;
+    }
+
+    return value;
+}
+
+initialized_before_for_remains_initialized::(
+    condition: bool
+) -> i32 {
+    value: i32 = 30;
+
+    for condition {
+        value = 40;
+    }
+
+    return value;
+}
+
+for_post_uses_body_state::(
+    condition: bool
+) -> void {
+    value: i32;
+
+    for condition : value += 1 {
+        value = 0;
+    }
+}
+
+read_after_assignment_inside_while::(
+    condition: bool
+) -> void {
+    value: i32;
+
+    while condition {
+        value = 50;
+        value;
+    }
+}

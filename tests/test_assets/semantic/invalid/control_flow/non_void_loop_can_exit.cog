@@ -1,0 +1,17 @@
+loop_can_break::(
+    should_break: bool
+) -> i32 {
+    while true {
+        if should_break {
+            break;
+        }
+    }
+}
+
+conditional_loop_may_not_execute::(
+    condition: bool
+) -> i32 {
+    while condition {
+        return 10;
+    }
+}

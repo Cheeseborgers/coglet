@@ -1,0 +1,4 @@
+semantic error at line 10: variable 'value' may be uninitialized
+semantic error at line 22: variable 'value' may be uninitialized
+semantic error at line 30: variable 'value' may be uninitialized
+3 semantic errors generated.

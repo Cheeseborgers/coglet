@@ -1,0 +1,26 @@
+for_continue_path_missing_initialization::(
+    condition, skip: bool
+) -> void {
+    value: i32;
+
+    for condition : value += 1 {
+        if skip {
+            continue;
+        }
+
+        value = 10;
+    }
+}
+
+break_initialization_not_available_after_loop::(
+    condition: bool
+) -> i32 {
+    value: i32;
+
+    while condition {
+        value = 20;
+        break;
+    }
+
+    return value;
+}

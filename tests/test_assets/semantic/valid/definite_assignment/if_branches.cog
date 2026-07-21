@@ -1,0 +1,51 @@
+both_branches_initialize::(condition: bool) -> i32 {
+    value: i32;
+
+    if condition {
+        value = 10;
+    } else {
+        value = 20;
+    }
+
+    return value;
+}
+
+else_returns::(condition: bool) -> i32 {
+    value: i32;
+
+    if condition {
+        value = 30;
+    } else {
+        return 40;
+    }
+
+    return value;
+}
+
+then_returns::(condition: bool) -> i32 {
+    value: i32;
+
+    if condition {
+        return 50;
+    } else {
+        value = 60;
+    }
+
+    return value;
+}
+
+nested_if_initializes::(outer, inner: bool) -> i32 {
+    value: i32;
+
+    if outer {
+        if inner {
+            value = 70;
+        } else {
+            value = 80;
+        }
+    } else {
+        value = 90;
+    }
+
+    return value;
+}

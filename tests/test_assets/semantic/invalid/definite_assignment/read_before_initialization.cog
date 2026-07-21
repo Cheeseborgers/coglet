@@ -1,0 +1,17 @@
+consume::(value: i32) -> void {
+}
+
+return_read::() -> i32 {
+    value: i32;
+    return value;
+}
+
+argument_read::() -> void {
+    value: i32;
+    consume(value);
+}
+
+discarded_read::() -> void {
+    value: i32;
+    value;
+}

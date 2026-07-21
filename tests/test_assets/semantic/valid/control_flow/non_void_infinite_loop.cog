@@ -1,0 +1,16 @@
+infinite_while_satisfies_return_rule::() -> i32 {
+    while true {
+    }
+}
+
+infinite_continue_loop_satisfies_return_rule::() -> i32 {
+    while true {
+        continue;
+    }
+}
+
+return_inside_infinite_loop::() -> i32 {
+    while true {
+        return 10;
+    }
+}

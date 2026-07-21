@@ -2,7 +2,6 @@ does_nothing::() -> void {
 }
 
 test::() -> void {
-    values: i32[3];
-
+    values: i32[3] = [0, 0, 0];
     value := values[does_nothing()];
 }

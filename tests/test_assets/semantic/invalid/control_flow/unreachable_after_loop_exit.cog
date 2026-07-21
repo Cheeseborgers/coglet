@@ -1,0 +1,24 @@
+unreachable_after_break::(
+    condition: bool
+) -> void {
+    while condition {
+        break;
+        value := 1;
+    }
+}
+
+unreachable_after_continue::(
+    condition: bool
+) -> void {
+    while condition {
+        continue;
+        value := 2;
+    }
+}
+
+unreachable_after_infinite_while::() -> void {
+    while true {
+    }
+
+    value := 3;
+}

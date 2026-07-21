@@ -1,0 +1,3 @@
+semantic error at line 1: non-void function may not return a value
+semantic error at line 11: non-void function may not return a value
+2 semantic errors generated.

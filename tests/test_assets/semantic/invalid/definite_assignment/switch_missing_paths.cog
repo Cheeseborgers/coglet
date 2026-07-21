@@ -1,0 +1,67 @@
+Color :: enum(u8) {
+    Red,
+    Green,
+    Blue,
+}
+
+non_exhaustive_integer::(
+    selector: i32
+) -> i32 {
+    value: i32;
+
+    switch selector {
+        case 0:
+            value = 10;
+    }
+
+    return value;
+}
+
+non_exhaustive_enum::(
+    color: Color
+) -> i32 {
+    value: i32;
+
+    switch color {
+        case Color.Red:
+            value = 20;
+
+        case Color.Green:
+            value = 30;
+    }
+
+    return value;
+}
+
+exhaustive_branch_missing::(
+    condition: bool
+) -> i32 {
+    value: i32;
+
+    switch condition {
+        case true:
+            value = 40;
+
+        case false:
+            condition;
+    }
+
+    return value;
+}
+
+case_bodies_are_independent::(
+    selector: i32
+) -> void {
+    value: i32;
+
+    switch selector {
+        case 0:
+            value = 50;
+
+        case 1:
+            value += 1;
+
+        default:
+            value = 60;
+    }
+}

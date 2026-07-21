@@ -1,0 +1,18 @@
+Point :: struct {
+    x: i32;
+}
+
+field_assignment::() -> void {
+    point: Point;
+    point.x = 1;
+}
+
+element_assignment::() -> void {
+    values: i32[2];
+    values[0] = 1;
+}
+
+address_of_uninitialized::() -> void {
+    value: i32;
+    pointer: i32* = &value;
+}

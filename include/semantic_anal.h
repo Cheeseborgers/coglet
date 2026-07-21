@@ -12,6 +12,15 @@ typedef enum {
 } SymbolKind;
 
 typedef enum {
+    VARIABLE_STORAGE_NONE,
+    VARIABLE_STORAGE_GLOBAL,
+    VARIABLE_STORAGE_LOCAL,
+    VARIABLE_STORAGE_PARAMETER,
+} VariableStorage;
+
+#define INVALID_VARIABLE_ID ((size_t)-1)
+
+typedef enum {
     CONST_VALUE_INT,
     CONST_VALUE_FLOAT,
     CONST_VALUE_BOOL,
@@ -50,13 +59,32 @@ typedef struct Symbol {
 
     Type *type;
 
+    VariableStorage variable_storage;
+    size_t variable_id;
+
     struct Symbol *next;
 } Symbol;
 
 typedef struct Scope {
     Symbol *symbols;
+
+    /*
+     * Number of flow-state slots that were active when this scope
+     * was entered. Scope exit restores the flow state to this mark.
+     */
+    size_t flow_count_mark;
+
     struct Scope *parent;
 } Scope;
+
+typedef struct {
+    unsigned char *initialized;
+    size_t count;
+    size_t capacity;
+    int reachable;
+} FlowState;
+
+typedef struct LoopFlowContext LoopFlowContext;
 
 typedef struct {
     Arena *arena;
@@ -65,8 +93,13 @@ typedef struct {
     int error_count;
 
     Scope *current_scope;
+
     int loop_depth;
+    LoopFlowContext *current_loop;
+
     int function_depth;
+    size_t next_variable_id;
+    FlowState flow;
 
     Type *type_i8;
     Type *type_i16;

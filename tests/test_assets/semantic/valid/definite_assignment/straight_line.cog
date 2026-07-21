@@ -1,0 +1,52 @@
+Point :: struct {
+    x: i32;
+}
+
+parameter_read::(value: i32) -> i32 {
+    return value;
+}
+
+initialized_declaration::() -> i32 {
+    value: i32 = 10;
+    return value;
+}
+
+plain_assignment_initializes::() -> i32 {
+    value: i32;
+    value = 20;
+    return value;
+}
+
+whole_struct_assignment_initializes::() -> i32 {
+    point: Point;
+
+    point = Point {
+        x = 30,
+    };
+
+    return point.x;
+}
+
+whole_array_assignment_initializes::() -> i32 {
+    values: i32[2];
+    values = [40, 50];
+
+    return values[0];
+}
+
+unused_uninitialized_local_is_valid::() -> void {
+    value: i32;
+}
+
+shadowed_variables_have_distinct_state::() -> i32 {
+    value: i32;
+    value = 1;
+
+    {
+        value: i32;
+        value = 2;
+        value;
+    }
+
+    return value;
+}

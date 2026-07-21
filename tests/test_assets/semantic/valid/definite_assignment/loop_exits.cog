@@ -1,0 +1,58 @@
+for_continue_reaches_post_on_all_paths::(
+    condition, skip: bool
+) -> void {
+    value: i32;
+
+    for condition : value += 1 {
+        if skip {
+            value = 10;
+            continue;
+        }
+
+        value = 20;
+    }
+}
+
+break_does_not_reach_for_post::(
+    condition, stop: bool
+) -> void {
+    value: i32;
+
+    for condition : value += 1 {
+        if stop {
+            break;
+        }
+
+        value = 30;
+    }
+}
+
+continue_branch_does_not_weaken_continuing_branch::(
+    condition, skip: bool
+) -> void {
+    value: i32;
+
+    while condition {
+        if skip {
+            continue;
+        } else {
+            value = 40;
+        }
+
+        value += 1;
+    }
+}
+
+nested_continue_targets_nearest_loop::(
+    outer, inner: bool
+) -> void {
+    value: i32;
+
+    for outer : value += 1 {
+        while inner {
+            continue;
+        }
+
+        value = 50;
+    }
+}

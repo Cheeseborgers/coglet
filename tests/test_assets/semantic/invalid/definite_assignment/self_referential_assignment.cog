@@ -1,0 +1,4 @@
+self_referential_assignment::() -> void {
+    value: i32;
+    value = value + 1;
+}

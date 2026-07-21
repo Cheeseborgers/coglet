@@ -11,10 +11,21 @@
 #include "string_decode.h"
 #include "utils/utils.h"
 
+struct LoopFlowContext {
+    size_t active_variable_count;
+
+    FlowState break_flow;
+    int has_break_flow;
+
+    FlowState continue_flow;
+    int has_continue_flow;
+
+    LoopFlowContext *parent;
+};
+
 static Type *new_type(SemanticContext *ctx, TypeKind kind)
 {
-    Type *type = arena_alloc(ctx->arena, sizeof(Type));
-    memset(type, 0, sizeof(*type));
+    Type *type = arena_new(ctx->arena, Type);
 
     type->kind       = kind;
     type->array_size = -1;
@@ -48,11 +59,9 @@ static Type *builtin_type(SemanticContext *ctx, TypeKind kind) {
 static void assert_canonical_builtin_type(SemanticContext *ctx, Type *type) {
 
 #ifndef NDEBUG
-    if (!type)
-        return;
+    if (!type) return;
 
-    Type *canonical =
-        builtin_type(ctx, type->kind);
+    Type *canonical = builtin_type(ctx, type->kind);
 
     assert(!canonical || type == canonical);
 #else
@@ -153,19 +162,348 @@ static int require_lvalue(SemanticContext *ctx, Node *owner, Node *target, const
 }
 
 // ============================================================
+// definite-assignment flow state
+// ============================================================
+
+static void flow_init(FlowState *state) {
+    *state = (FlowState){
+        .reachable = 1,
+    };
+}
+
+static void flow_reserve(SemanticContext *ctx, FlowState *state, size_t minimum_capacity) {
+
+    if (state->capacity >= minimum_capacity)
+        return;
+
+    size_t new_capacity = state->capacity ? state->capacity : 8;
+
+    while (new_capacity < minimum_capacity) {
+
+        if (new_capacity > ((size_t)-1) / 2) {
+            new_capacity = minimum_capacity;
+            break;
+        }
+
+        new_capacity *= 2;
+    }
+
+    unsigned char *initialized = arena_zalloc(ctx->arena, new_capacity);
+
+    if (state->initialized) {
+        memcpy(initialized, state->initialized, state->count);
+    }
+
+    state->initialized = initialized;
+    state->capacity    = new_capacity;
+}
+
+static void flow_set_variable_count(FlowState *state, size_t count) {
+
+    assert(count <= state->count);
+
+    if (count == state->count)
+        return;
+
+    memset(state->initialized + count, 0, state->count - count);
+
+    state->count = count;
+}
+
+/*records path-dependent initialization state.*/
+static void flow_register_variable(SemanticContext *ctx, size_t variable_id, int initialized) {
+
+    FlowState *state      = &ctx->flow;
+    size_t required_count = variable_id + 1;
+
+    flow_reserve(ctx, state, required_count);
+
+    state->initialized[variable_id] =
+        initialized ? 1 : 0;
+
+    if (state->count < required_count)
+        state->count = required_count;
+}
+
+static int symbol_has_flow_state(const Symbol *symbol) {
+
+    if (!symbol) return 0;
+
+    if (symbol->kind != SYMBOL_VARIABLE)
+        return 0;
+
+    switch (symbol->variable_storage) {
+        case VARIABLE_STORAGE_LOCAL:
+        case VARIABLE_STORAGE_PARAMETER:
+
+            assert(symbol->variable_id != INVALID_VARIABLE_ID);
+
+            return 1;
+
+        case VARIABLE_STORAGE_GLOBAL:
+        case VARIABLE_STORAGE_NONE:
+            return 0;
+    }
+
+    assert(0 && "unhandled variable storage classification");
+
+    return 0;
+}
+
+static void flow_mark_variable_initialized(SemanticContext *ctx, const Symbol *symbol) {
+
+    /*Only parameters and function-local variables have flow-state slots.*/
+    if (!symbol_has_flow_state(symbol)) return;
+
+    assert(symbol->variable_id < ctx->flow.count);
+
+    ctx->flow.initialized[symbol->variable_id] = 1;
+}
+
+static int flow_variable_is_initialized(const SemanticContext *ctx,const Symbol *symbol) {
+
+    if (!symbol_has_flow_state(symbol))
+        return 1;
+
+    assert(symbol->variable_id < ctx->flow.count);
+
+    return ctx->flow.initialized[symbol->variable_id] != 0;
+}
+
+static FlowState flow_clone(SemanticContext *ctx, const FlowState *source) {
+
+    FlowState clone;
+
+    flow_init(&clone);
+    flow_reserve(ctx, &clone, source->count);
+
+    if (source->count > 0)
+        memcpy(clone.initialized, source->initialized, source->count);
+
+    clone.count = source->count;
+    clone.reachable = source->reachable;
+
+    return clone;
+}
+
+static FlowState flow_merge_continuing_paths(
+    SemanticContext *ctx,
+    const FlowState *left,
+    const FlowState *right,
+    size_t active_variable_count) {
+
+    assert(active_variable_count <= left->count);
+    assert(active_variable_count <= right->count);
+
+    if (!left->reachable && !right->reachable) {
+        FlowState result =
+            flow_clone(ctx, left);
+
+        flow_set_variable_count(&result, active_variable_count);
+
+        result.reachable = 0;
+
+        return result;
+    }
+
+    if (left->reachable && !right->reachable) {
+        FlowState result =
+            flow_clone(ctx, left);
+
+        flow_set_variable_count(&result, active_variable_count);
+
+        return result;
+    }
+
+    if (!left->reachable && right->reachable) {
+        FlowState result =
+            flow_clone(ctx, right);
+
+        flow_set_variable_count(&result, active_variable_count);
+
+        return result;
+    }
+
+    FlowState result =
+        flow_clone(ctx, left);
+
+    flow_set_variable_count(&result, active_variable_count);
+
+    for (size_t i = 0; i < active_variable_count; i++) {
+        result.initialized[i] = left->initialized[i] && right->initialized[i];
+    }
+
+    result.reachable = 1;
+
+    return result;
+}
+
+static void flow_accumulate_reachable_path(
+    SemanticContext *ctx,
+    FlowState *accumulator,
+    int *has_accumulator,
+    const FlowState *path,
+    size_t active_variable_count
+) {
+    assert(accumulator);
+    assert(has_accumulator);
+    assert(path);
+    assert(active_variable_count <= path->count);
+
+    if (!path->reachable)
+        return;
+
+    if (!*has_accumulator) {
+        *accumulator =
+            flow_clone(ctx, path);
+
+        flow_set_variable_count(
+            accumulator,
+            active_variable_count
+        );
+
+        *has_accumulator = 1;
+        return;
+    }
+
+    *accumulator =
+        flow_merge_continuing_paths(
+            ctx,
+            accumulator,
+            path,
+            active_variable_count
+        );
+}
+
+static void loop_record_break(SemanticContext *ctx) {
+    LoopFlowContext *loop =
+        ctx->current_loop;
+
+    assert(loop);
+
+    flow_accumulate_reachable_path(
+        ctx,
+        &loop->break_flow,
+        &loop->has_break_flow,
+        &ctx->flow,
+        loop->active_variable_count
+    );
+
+    ctx->flow.reachable = 0;
+}
+
+static void loop_record_continue(SemanticContext *ctx) {
+
+    LoopFlowContext *loop =
+        ctx->current_loop;
+
+    assert(loop);
+
+    flow_accumulate_reachable_path(
+        ctx,
+        &loop->continue_flow,
+        &loop->has_continue_flow,
+        &ctx->flow,
+        loop->active_variable_count
+    );
+
+    ctx->flow.reachable = 0;
+}
+
+static FlowState loop_iteration_flow(
+    SemanticContext *ctx,
+    const LoopFlowContext *loop,
+    const FlowState *body_flow
+) {
+    FlowState result =
+        flow_clone(ctx, body_flow);
+
+    flow_set_variable_count(
+        &result,
+        loop->active_variable_count
+    );
+
+    if (loop->has_continue_flow) {
+        result =
+            flow_merge_continuing_paths(
+                ctx,
+                &result,
+                &loop->continue_flow,
+                loop->active_variable_count
+            );
+    }
+
+    return result;
+}
+
+static FlowState loop_conservative_exit_flow(
+    SemanticContext *ctx,
+    const LoopFlowContext *loop,
+    const FlowState *incoming
+) {
+    /*
+     * The condition may be false before the first iteration, so the
+     * unchanged incoming state is always a possible loop exit in the
+     * initial conservative model.
+     */
+    FlowState result =
+        flow_clone(ctx, incoming);
+
+    /*
+     * Break paths are also possible loop exits. Intersecting them
+     * with the zero-iteration path cannot establish initialization
+     * that was absent before the loop.
+     */
+    if (loop->has_break_flow) {
+        result =
+            flow_merge_continuing_paths(
+                ctx,
+                &result,
+                &loop->break_flow,
+                loop->active_variable_count
+            );
+    }
+
+    return result;
+}
+
+// ============================================================
 // scope management
 // ============================================================
 
 static Scope *scope_new(SemanticContext *ctx, Scope *parent) {
 
-    Scope *scope = arena_alloc(ctx->arena, sizeof(Scope));
-    scope->symbols = NULL;
-    scope->parent = parent;
+    Scope *scope   = arena_new(ctx->arena, Scope);
+
+    *scope = (Scope){
+        .symbols = NULL,
+        .flow_count_mark = ctx->flow.count,
+        .parent = parent,
+    };
+
     return scope;
 }
 
 static void scope_push(SemanticContext *ctx) { ctx->current_scope = scope_new(ctx, ctx->current_scope); }
-static void scope_pop(SemanticContext *ctx)  { ctx->current_scope = ctx->current_scope->parent; }
+
+static void scope_pop(SemanticContext *ctx) {
+
+    Scope *scope = ctx->current_scope;
+
+    /*
+    * The root scope created by semantic_check() should never be popped. Only scopes created by:
+    * function-body checking and block checking are popped.
+    */
+    assert(scope);
+    assert(scope->parent);
+
+    flow_set_variable_count(
+        &ctx->flow,
+        scope->flow_count_mark
+    );
+
+    ctx->current_scope = scope->parent;
+}
 
 // ============================================================
 // symbols
@@ -179,7 +517,8 @@ static Type *find_struct_field(const Type *struct_type, const char *name, size_t
     for(int i = 0; i < struct_type->field_count; i++) {
 
         StructField *field = &struct_type->fields[i];
-        if(names_equal(field->name.data, field->name.length, name, length)) return field->type;
+        if(names_equal(field->name.data, field->name.length, name, length))
+            return field->type;
     }
 
     return NULL;
@@ -189,7 +528,8 @@ static Type *find_struct_field(const Type *struct_type, const char *name, size_t
 static Symbol *scope_find_local(const Scope *scope, const char *name, size_t length) {
 
     for(Symbol *sym = scope->symbols; sym; sym = sym->next)
-        if(names_equal(sym->name.data, sym->name.length, name, length)) return sym;
+        if(names_equal(sym->name.data, sym->name.length, name, length))
+            return sym;
 
     return NULL;
 }
@@ -205,18 +545,48 @@ static Symbol *scope_lookup(Scope *scope, const char *name, size_t length) {
     return NULL;
 }
 
-static void scope_define(SemanticContext *ctx, StringView name, SymbolKind kind, Type *type) {
+static Symbol *scope_define(SemanticContext *ctx, StringView name, SymbolKind kind, Type *type) {
 
-    Symbol *sym = arena_alloc(ctx->arena, sizeof(Symbol));
+    Symbol *sym = arena_new(ctx->arena, Symbol);
 
     *sym = (Symbol){
         .name = name,
         .kind = kind,
         .type = type,
+        .variable_storage = VARIABLE_STORAGE_NONE,
+        .variable_id      = INVALID_VARIABLE_ID,
         .next = ctx->current_scope->symbols,
     };
 
     ctx->current_scope->symbols = sym;
+
+    return sym;
+}
+
+/*assigns declaration metadata and a stable ID*/
+static void classify_variable_symbol(SemanticContext *ctx, Symbol *symbol, VariableStorage storage) {
+
+    assert(symbol);
+    assert(symbol->kind == SYMBOL_VARIABLE);
+
+    symbol->variable_storage = storage;
+
+    switch (storage) {
+        case VARIABLE_STORAGE_GLOBAL:
+            symbol->variable_id = INVALID_VARIABLE_ID;
+            break;
+
+        case VARIABLE_STORAGE_LOCAL:
+        case VARIABLE_STORAGE_PARAMETER:
+            symbol->variable_id =
+                ctx->next_variable_id++;
+
+            break;
+
+        case VARIABLE_STORAGE_NONE:
+            assert(0 && "variable symbol requires a storage classification");
+            break;
+    }
 }
 
 static Type *lookup_type(SemanticContext *ctx, const char *name, size_t length) {
@@ -289,19 +659,19 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
 // ============================================================
 // forward declarations
 // ============================================================
-static int node_definitely_returns(Node *node);
-static int block_definitely_returns(Node *node);
-static int switch_definitely_returns(Node *node);
+static int switch_is_exhaustive(Node *node);
 static int enum_switch_is_exhaustive(Node *node, Type *switch_type);
 
 static void check_node(SemanticContext *ctx, Node *node);
 static int  declare_struct_shell(SemanticContext *ctx, Node *node);
 static void fill_struct_fields(SemanticContext *ctx, Node *node);
 static int  declare_function_signature(SemanticContext *ctx, Node *node);
-static void check_unreachable_in_block(SemanticContext *ctx, Node *block);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
+static void check_if_statement(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
+static void check_while_statement(SemanticContext *ctx, Node *node);
+static void check_for_statement(SemanticContext *ctx, Node *node);
 static int check_statement_expression(SemanticContext *ctx, Node *node);
 static int check_assignment_statement(SemanticContext *ctx, Node *node);
 static int check_compound_assignment_statement(SemanticContext *ctx, Node *node);
@@ -3418,6 +3788,99 @@ static int check_string_initializer(SemanticContext *ctx,Type *expected,Node *in
     return 1;
 }
 
+typedef enum {
+    IDENTIFIER_USE_READ,
+    IDENTIFIER_USE_WRITE_TARGET,
+} IdentifierUse;
+
+static Type *check_identifier_expression(SemanticContext *ctx, Node *node,IdentifierUse use) {
+    assert(node);
+    assert(node->type == NODE_IDENT);
+
+    Symbol *sym =
+        scope_lookup(
+            ctx->current_scope,
+            node->as.ident.data,
+            node->as.ident.length
+        );
+
+    if (!sym) {
+        semantic_error_name(
+            ctx,
+            node,
+            "undefined identifier",
+            node->as.ident.data,
+            node->as.ident.length
+        );
+
+        return NULL;
+    }
+
+    /*
+     * Type names are not values.
+     *
+     * Valid:
+     *     Color.Red
+     *
+     * Invalid:
+     *     x: Color = Color;
+     */
+    if (sym->kind == SYMBOL_TYPE) {
+        semantic_error_name(
+            ctx,
+            node,
+            "type name cannot be used as a value",
+            node->as.ident.data,
+            node->as.ident.length
+        );
+
+        return NULL;
+    }
+
+    ValueCategory category =
+        VALUE_CATEGORY_RVALUE;
+
+    if (sym->kind == SYMBOL_VARIABLE)
+        category = VALUE_CATEGORY_LVALUE;
+
+    /*
+     * Symbol resolution, type, and value category remain valid
+     * semantic facts even if flow analysis rejects this use.
+     */
+    sem_record_expr_info(
+        ctx,
+        node,
+        sym->type,
+        sym,
+        category
+    );
+
+    switch (use) {
+        case IDENTIFIER_USE_READ:
+            if (!flow_variable_is_initialized(
+                    ctx,
+                    sym
+                )) {
+                semantic_error_fmt(
+                    ctx,
+                    node,
+                    "variable '%.*s' may be uninitialized",
+                    (int)node->as.ident.length,
+                    node->as.ident.data
+                );
+
+                return NULL;
+                }
+
+            break;
+
+        case IDENTIFIER_USE_WRITE_TARGET:
+            break;
+    }
+
+    return sym->type;
+}
+
 static Type *check_expression(SemanticContext *ctx, Node *node) {
 
     if (!node) return NULL;
@@ -3425,57 +3888,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
     switch(node->type)
     {
         case NODE_IDENT:
-        {
-            Symbol *sym =
-                scope_lookup(
-                    ctx->current_scope,
-                    node->as.ident.data,
-                    node->as.ident.length
-                );
-
-            if (!sym) {
-                semantic_error_name(
-                    ctx, node,
-                    "undefined identifier",
-                    node->as.ident.data,
-                    node->as.ident.length
-                );
-
-                return NULL;
-            }
-
-            /*
-             * Type names are not values.
-             *
-             * Valid:
-             *     Color.Red
-             *
-             * Invalid:
-             *     x: Color = Color;
-             */
-            if (sym->kind == SYMBOL_TYPE) {
-                semantic_error_name(
-                    ctx, node,
-                    "type name cannot be used as a value",
-                    node->as.ident.data,
-                    node->as.ident.length
-                );
-
-                return NULL;
-            }
-
-            ValueCategory category = VALUE_CATEGORY_RVALUE;
-
-            if (sym->kind == SYMBOL_VARIABLE)
-                category = VALUE_CATEGORY_LVALUE;
-
-            sem_record_expr_info(
-                ctx, node,
-                sym->type, sym,
-                category);
-
-            return sym->type;
-        }
+            return check_identifier_expression(ctx, node, IDENTIFIER_USE_READ);
 
         case NODE_UNARY:
         {
@@ -4592,10 +5005,33 @@ static void check_block(SemanticContext *ctx, Node *node) {
 
     scope_push(ctx);
 
-    for(int i=0; i < node->as.block.statements.count; i++)
-        check_node(ctx, node->as.block.statements.items[i]);
+    /*
+     * If this entire block was already unreachable from its parent,
+     * the parent reports the block statement itself. Do not cascade
+     * an unreachable diagnostic onto every child statement.
+     */
+    int diagnose_local_unreachable =
+        ctx->flow.reachable;
 
-    check_unreachable_in_block(ctx, node);
+    for (int i = 0; i < node->as.block.statements.count; i++) {
+        Node *statement =
+            node->as.block.statements.items[i];
+
+        if (diagnose_local_unreachable &&
+            !ctx->flow.reachable) {
+            semantic_error(ctx, statement,
+                "unreachable statement");
+        }
+
+        /*
+         * Continue semantic checking even when the statement is
+         * unreachable so useful nested diagnostics are retained.
+         *
+         * Flow operations preserve reachable == 0 once the current
+         * path has stopped.
+         */
+        check_node(ctx, statement);
+    }
 
     scope_pop(ctx);
 }
@@ -4701,14 +5137,13 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
         value.type = type;
     }
 
-    Symbol *sym = arena_new(ctx->arena, Symbol);
-    sym->name   = node->as.const_decl.name;
-    sym->kind   = SYMBOL_CONSTANT;
-    sym->type   = type;
-    sym->const_value = value;
+    Symbol *sym = scope_define(
+        ctx,
+        node->as.const_decl.name,
+        SYMBOL_CONSTANT,
+        type);
 
-    sym->next = ctx->current_scope->symbols;
-    ctx->current_scope->symbols = sym;
+    sym->const_value = value;
 }
 
 static void check_switch_statement(SemanticContext *ctx, Node *node) {
@@ -4719,7 +5154,8 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
     if (!switch_type)
         return;
 
-    node->as.switch_stmt.resolved_type = switch_type;
+    node->as.switch_stmt.resolved_type =
+        switch_type;
 
     int switch_type_is_valid =
         is_switchable_type(switch_type);
@@ -4738,21 +5174,46 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
 
     SeenCase *seen_cases =
         case_count > 0
-        ? arena_alloc(
-            ctx->arena,
-            sizeof(SeenCase) * case_count
-        )
-        : NULL;
+            ? arena_alloc(
+                ctx->arena,
+                sizeof(SeenCase) * case_count
+            )
+            : NULL;
 
     int seen_case_count = 0;
-    int seen_default = 0;
+    int seen_default    = 0;
+
+    /*
+     * Every case begins from the state that exists after evaluating
+     * the switch expression.
+     */
+    FlowState incoming =
+        flow_clone(ctx, &ctx->flow);
+
+    size_t active_variable_count =
+        incoming.count;
+
+    FlowState merged_case_flow =
+        (FlowState){0};
+
+    int has_case_flow = 0;
 
     for (int i = 0; i < case_count; i++) {
         Node *case_node =
             node->as.switch_stmt.cases.items[i];
 
-        if (case_node->type != NODE_SWITCH_CASE)
+        if (!case_node ||
+            case_node->type != NODE_SWITCH_CASE) {
             continue;
+        }
+
+        /*
+         * Cases do not execute sequentially and Coglet switches do
+         * not fall through. Reset to the common incoming state before
+         * checking each case label and body.
+         */
+        ctx->flow =
+            flow_clone(ctx, &incoming);
 
         if (case_node->as.switch_case.is_default) {
             if (seen_default) {
@@ -4761,89 +5222,187 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
             }
 
             seen_default = 1;
+        } else {
+            Node *case_value_node =
+                case_node->as.switch_case.value;
 
-            check_node(ctx, case_node->as.switch_case.body);
+            Type *case_type =
+                check_value_expression(ctx, case_value_node);
 
-            continue;
-        }
+            if (switch_type_is_valid &&
+                case_type) {
+                if (!initializer_compatible(switch_type, case_type)) {
+                    semantic_error(ctx, case_node,
+                        "switch case type does not match switch expression type");
+                } else {
+                    ConstValue case_value;
 
-        Node *case_value_node =
-            case_node->as.switch_case.value;
+                    if (eval_const_expr(ctx, case_value_node, &case_value)) {
 
-        Type *case_type =
-            check_value_expression(ctx, case_value_node);
+                        ConstValue converted_case;
 
-        if (!switch_type_is_valid || !case_type) {
-            check_node(ctx, case_node->as.switch_case.body);
-            continue;
-        }
+                        if (coerce_constant_to_type(
+                                ctx,
+                                case_value_node,
+                                &case_value,
+                                switch_type,
+                                "switch case value does not fit switch expression type",
+                                "switch case value does not fit switch expression type",
+                                &converted_case
+                            )) {
 
-        if (!initializer_compatible(switch_type, case_type)) {
-            semantic_error(ctx, case_node,
-                "switch case type does not match switch expression type");
+                            for (int j = 0; j < seen_case_count; j++) {
+                                if (const_values_equal(&seen_cases[j].value, &converted_case)) {
+                                    semantic_error(ctx, case_node,
+                                        "duplicate switch case");
 
-            check_node(ctx, case_node->as.switch_case.body);
+                                    break;
+                                }
+                            }
 
-            continue;
-        }
+                            seen_cases[seen_case_count].value = converted_case;
 
-        ConstValue case_value;
-
-        if (!eval_const_expr(
-                ctx,
-                case_value_node,
-                &case_value
-            )) {
-            check_node(ctx, case_node->as.switch_case.body);
-
-            continue;
-        }
-
-        ConstValue converted_case;
-
-        if (!coerce_constant_to_type(
-                ctx,
-                case_value_node,
-                &case_value,
-                switch_type,
-                "switch case value does not fit switch expression type",
-                "switch case value does not fit switch expression type",
-                &converted_case
-            )) {
-            check_node(ctx, case_node->as.switch_case.body);
-
-            continue;
-        }
-
-        for (int j = 0; j < seen_case_count; j++) {
-            if (const_values_equal(&seen_cases[j].value, &converted_case)) {
-                semantic_error(ctx, case_node,
-                    "duplicate switch case");
-
-                break;
+                            seen_case_count++;
+                        }
+                    }
+                }
             }
         }
 
-        seen_cases[seen_case_count].value = converted_case;
-
-        seen_case_count++;
-
         check_node(ctx, case_node->as.switch_case.body);
+
+        FlowState case_flow = ctx->flow;
+
+        if (!has_case_flow) {
+            merged_case_flow =
+                flow_clone(ctx, &case_flow);
+
+            flow_set_variable_count(
+                &merged_case_flow,
+                active_variable_count
+            );
+
+            has_case_flow = 1;
+        } else {
+            merged_case_flow =
+                flow_merge_continuing_paths(
+                    ctx,
+                    &merged_case_flow,
+                    &case_flow,
+                    active_variable_count
+                );
+        }
     }
+
+    /*
+     * An empty switch has no executable case and therefore leaves
+     * the incoming state unchanged.
+     */
+    if (!has_case_flow) {
+        ctx->flow = incoming;
+        return;
+    }
+
+    if (switch_is_exhaustive(node)) {
+        ctx->flow = merged_case_flow;
+        return;
+    }
+
+    /*
+     * A non-exhaustive switch has an implicit path on which no case
+     * matches. That path retains the incoming initialization state.
+     */
+    ctx->flow =
+        flow_merge_continuing_paths(
+            ctx,
+            &merged_case_flow,
+            &incoming,
+            active_variable_count
+        );
+}
+
+static Type *check_assignment_target_expression(SemanticContext *ctx, Node *target) {
+
+    assert(target);
+
+    /*
+     * A direct variable assignment is a write-only use of the
+     * identifier:
+     *
+     *     value = 10;
+     *
+     * Other target forms must evaluate their component expressions:
+     *
+     *     value.field = 10;
+     *     value[index] = 10;
+     *     *pointer = 10;
+     *
+     * Those expressions remain ordinary reads of their bases,
+     * indexes, or pointers.
+     */
+    if (target->type == NODE_IDENT)
+        return check_identifier_expression(ctx, target, IDENTIFIER_USE_WRITE_TARGET);
+
+    return check_expression(ctx, target);
+}
+
+static Symbol *direct_assignment_target_symbol(SemanticContext *ctx, Node *target) {
+
+    assert(target);
+
+    if (target->type != NODE_IDENT)
+        return NULL;
+
+    SemExprInfo *info =
+        sem_find_expr_info(ctx, target);
+
+    if (!info)
+        return NULL;
+
+    if (!info->symbol)
+        return NULL;
+
+    if (info->symbol->kind != SYMBOL_VARIABLE)
+        return NULL;
+
+    return info->symbol;
 }
 
 static int check_assignment_statement(SemanticContext *ctx, Node *node) {
-    Node *target_node = node->as.assign.target;
-    Node *value_node  = node->as.assign.value;
 
-    Type *target_type = check_expression(ctx, target_node);
-    if (!target_type) return 0;
+    Node *target_node =
+        node->as.assign.target;
 
-    if (!require_lvalue(ctx, node, target_node, "assignment target is not assignable"))
+    Node *value_node =
+        node->as.assign.value;
+
+    Type *target_type =
+        check_assignment_target_expression(ctx, target_node);
+
+    if (!target_type)
         return 0;
 
-    if (!check_initializer_against_type(ctx, target_type, value_node))
+    if (!require_lvalue(
+            ctx,
+            node,
+            target_node,
+            "assignment target is not assignable"
+        )) {
         return 0;
+    }
+
+    if (!check_initializer_against_type(
+            ctx,
+            target_type,
+            value_node
+        )) {
+        return 0;
+    }
+
+    Symbol *target_symbol =
+        direct_assignment_target_symbol(ctx, target_node);
+
+    flow_mark_variable_initialized(ctx, target_symbol);
 
     sem_record_no_value(ctx, node);
     return 1;
@@ -4869,8 +5428,7 @@ static int check_compound_assignment_statement(SemanticContext *ctx,Node *node) 
             ctx,
             node,
             target_node,
-            "compound assignment target is not assignable"
-        )) {
+            "compound assignment target is not assignable")) {
         return 0;
     }
 
@@ -4881,9 +5439,9 @@ static int check_compound_assignment_statement(SemanticContext *ctx,Node *node) 
 
     switch (operation) {
         /*
-         * Arithmetic compound assignments preserve their existing
-         * numeric compatibility and constant-range rules.
-         */
+        * Arithmetic compound assignments preserve their existing
+        * numeric compatibility and constant-range rules.
+        */
         case TOK_PLUS_EQUAL:
         case TOK_MINUS_EQUAL:
         case TOK_STAR_EQUAL:
@@ -5308,20 +5866,18 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
         if (type) {
             if (!check_initializer_against_type(ctx, type, init))
                 return;
+
         } else {
             Type *init_type = check_value_expression(ctx, init);
 
-            if (!init_type)
-                return;
+            if (!init_type) return;
 
             type = concretize_inferred_type(
                 ctx,
                 init,
-                init_type
-            );
+                init_type);
 
-            if (!type)
-                return;
+            if (!type) return;
         }
     }
 
@@ -5335,10 +5891,31 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
         return;
     }
 
-    scope_define(ctx, node->as.var_decl.name, SYMBOL_VARIABLE, type);
+    VariableStorage storage =
+        ctx->function_depth > 0
+            ? VARIABLE_STORAGE_LOCAL
+            : VARIABLE_STORAGE_GLOBAL;
+
+    Symbol *symbol = scope_define(
+        ctx,
+        node->as.var_decl.name,
+        SYMBOL_VARIABLE,
+        type);
+
+    classify_variable_symbol(ctx, symbol, storage);
+
+
+    if (storage == VARIABLE_STORAGE_LOCAL) {
+        flow_register_variable(
+            ctx,
+            symbol->variable_id,
+            init != NULL
+        );
+    }
 }
 
 static void check_param_decl(SemanticContext *ctx, Node *node) {
+
     if (scope_find_local(
             ctx->current_scope,
             node->as.param_decl.name.data,
@@ -5415,12 +5992,21 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
         return;
     }
 
-    scope_define(
+    Symbol *symbol = scope_define(
         ctx,
         node->as.param_decl.name,
         SYMBOL_VARIABLE,
-        type
-    );
+        type);
+
+    classify_variable_symbol(
+        ctx,
+        symbol,
+        VARIABLE_STORAGE_PARAMETER);
+
+    flow_register_variable(
+        ctx,
+        symbol->variable_id,
+        1);
 }
 
 static void check_program(SemanticContext *ctx, Node *node)
@@ -5490,24 +6076,179 @@ static void check_program(SemanticContext *ctx, Node *node)
     }
 }
 
-static void check_if(SemanticContext *ctx, Node *node) {
+static void check_if_statement(SemanticContext *ctx, Node *node) {
 
-    Type *cond = check_value_expression(ctx, node->as.if_stmt.condition);
+    Type *cond =
+        check_value_expression(ctx, node->as.if_stmt.condition);
 
     /*
-   * A NULL type means check_expression already reported an error.
-   * Only report a boolean-type error when a valid type was returned.
-   */
+     * A NULL type means expression checking already reported an
+     * error. Only report the Boolean error for a valid type.
+     */
     if (cond && !is_bool_type(cond)) {
-
         semantic_error(ctx, node->as.if_stmt.condition,
             "if condition must be a boolean expression");
     }
 
+    /*
+     * Both branches begin with exactly the state that exists after
+     * checking the condition.
+     */
+    FlowState incoming =
+        flow_clone(ctx, &ctx->flow);
+
+    size_t active_variable_count =
+        incoming.count;
+
+    /*
+     * Then branch.
+     */
+    ctx->flow =
+        flow_clone(ctx, &incoming);
+
     check_node(ctx, node->as.if_stmt.then_branch);
 
-    if(node->as.if_stmt.else_branch)
+    FlowState then_flow = ctx->flow;
+
+    /*
+     * Else branch.
+     *
+     * When there is no explicit else, the false path performs no
+     * statements and therefore retains the incoming state.
+     */
+    ctx->flow =
+        flow_clone(ctx, &incoming);
+
+    if (node->as.if_stmt.else_branch) {
         check_node(ctx, node->as.if_stmt.else_branch);
+    }
+
+    FlowState else_flow = ctx->flow;
+
+    ctx->flow =
+        flow_merge_continuing_paths(
+            ctx,
+            &then_flow,
+            &else_flow,
+            active_variable_count
+        );
+}
+
+static void check_while_statement(SemanticContext *ctx, Node *node) {
+
+    Type *condition_type =
+        check_value_expression(ctx, node->as.while_stmt.condition);
+
+    if (condition_type && !is_bool_type(condition_type)) {
+        semantic_error(ctx,node->as.while_stmt.condition,
+            "while condition must be a boolean expression");
+    }
+
+    FlowState incoming =
+        flow_clone(ctx, &ctx->flow);
+
+    LoopFlowContext loop = {
+        .active_variable_count = incoming.count,
+        .parent = ctx->current_loop,
+    };
+
+    ctx->current_loop = &loop;
+    ctx->flow = flow_clone(ctx, &incoming);
+
+    ctx->loop_depth++;
+
+    check_node(ctx, node->as.while_stmt.body);
+
+    ctx->loop_depth--;
+    ctx->current_loop = loop.parent;
+
+    /*
+    * A literal-true loop cannot reach its following statement unless
+    * some reachable path executes break.
+    *
+    * Body fallthrough and continue both begin another iteration.
+    * Return leaves the function rather than the loop.
+    */
+    if (is_literal_true(node->as.while_stmt.condition) && !loop.has_break_flow) {
+        ctx->flow = flow_clone(ctx, &incoming);
+
+        ctx->flow.reachable = 0;
+        return;
+    }
+
+    ctx->flow =
+        loop_conservative_exit_flow(
+            ctx,
+            &loop,
+            &incoming);
+}
+
+static void check_for_statement(SemanticContext *ctx, Node *node) {
+
+    int condition_is_always_true =
+        !node->as.for_stmt.condition ||
+        is_literal_true(node->as.for_stmt.condition);
+
+    if (node->as.for_stmt.condition) {
+        Type *condition_type =
+            check_value_expression(ctx, node->as.for_stmt.condition);
+
+        if (condition_type && !is_bool_type(condition_type)) {
+            semantic_error(ctx, node->as.for_stmt.condition,
+                "for condition must be a boolean expression");
+        }
+    }
+
+    FlowState incoming =
+        flow_clone(ctx, &ctx->flow);
+
+    LoopFlowContext loop = {
+        .active_variable_count = incoming.count,
+        .parent = ctx->current_loop,
+    };
+
+    ctx->current_loop = &loop;
+    ctx->flow = flow_clone(ctx, &incoming);
+
+    ctx->loop_depth++;
+
+    check_node(ctx, node->as.for_stmt.body);
+
+    FlowState body_flow = ctx->flow;
+
+    /*
+     * Both ordinary body fallthrough and continue to execute the post
+     * expression. Break and return paths do not.
+     */
+    ctx->flow =
+        loop_iteration_flow(
+            ctx,
+            &loop,
+            &body_flow
+        );
+
+    if (node->as.for_stmt.post) {
+        check_statement_expression(
+            ctx,
+            node->as.for_stmt.post
+        );
+    }
+
+    ctx->loop_depth--;
+    ctx->current_loop = loop.parent;
+
+    if (condition_is_always_true && !loop.has_break_flow) {
+        ctx->flow = flow_clone(ctx, &incoming);
+
+        ctx->flow.reachable = 0;
+        return;
+    }
+
+    ctx->flow =
+        loop_conservative_exit_flow(
+            ctx,
+            &loop,
+            &incoming);
 }
 
 // Check functions -------------------------------------------
@@ -5586,48 +6327,35 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
     return 1;
 }
 
-static void check_unreachable_in_block(SemanticContext *ctx, Node *block) {
-
-    if (!block || block->type != NODE_BLOCK)
-        return;
-
-    int unreachable = 0;
-
-    for (int i = 0; i < block->as.block.statements.count; i++) {
-
-        Node *stmt = block->as.block.statements.items[i];
-
-        if (unreachable) {
-            semantic_error(ctx, stmt,
-                "unreachable statement");
-
-            /*
-             * Keep checking children so you still catch useful nested
-             * errors inside unreachable code.
-             */
-        }
-
-        if (node_definitely_returns(stmt))
-            unreachable = 1;
-         }
-}
-
 static void check_function_body(SemanticContext *ctx, Node *node)
 {
-    Type *func_type = node->as.func_decl.resolved_type;
+    Type *func_type =
+        node->as.func_decl.resolved_type;
 
     if (!func_type || func_type->kind != TYPE_FUNCTION)
         return;
+
+    size_t saved_next_variable_id =
+        ctx->next_variable_id;
+
+    FlowState saved_flow = ctx->flow;
+
+    ctx->next_variable_id = 0;
+    flow_init(&ctx->flow);
 
     scope_push(ctx);
 
     for (int i = 0; i < node->as.func_decl.params.count; i++)
         check_param_decl(ctx, node->as.func_decl.params.items[i]);
 
-    int saved_loop_depth    = ctx->loop_depth;
-    Type *saved_return_type = ctx->current_return_type;
+    int saved_loop_depth        = ctx->loop_depth;
+
+    LoopFlowContext *saved_loop = ctx->current_loop;
+
+    Type *saved_return_type     = ctx->current_return_type;
 
     ctx->loop_depth = 0;
+    ctx->current_loop = NULL;
     ctx->current_return_type = func_type->return_type;
 
     ctx->function_depth++;
@@ -5635,22 +6363,38 @@ static void check_function_body(SemanticContext *ctx, Node *node)
     check_node(ctx, node->as.func_decl.body);
 
     /*
-     * After normal semantic checking, enforce that non-void functions
-     * cannot fall off the end.
-     */
+    * A non-void function is invalid only when normal control flow can
+    * reach the end of its body.
+    *
+    * This accepts both:
+    *
+    *     return value;
+    *
+    * and provably non-terminating control flow such as:
+    *
+    *     while true {
+    *     }
+    */
     if (func_type->return_type &&
         func_type->return_type->kind != TYPE_VOID &&
-        !node_definitely_returns(node->as.func_decl.body)) {
-
-        semantic_error(ctx, node,
-            "non-void function may not return a value");
+        ctx->flow.reachable) {
+        semantic_error(
+            ctx,
+            node,
+            "non-void function may not return a value"
+        );
     }
 
     ctx->function_depth--;
     ctx->current_return_type = saved_return_type;
     ctx->loop_depth          = saved_loop_depth;
+    ctx->current_loop        = saved_loop;
 
     scope_pop(ctx);
+
+    ctx->next_variable_id = saved_next_variable_id;
+
+    ctx->flow = saved_flow;
 }
 
 static void check_function(SemanticContext *ctx, Node *node)
@@ -5935,8 +6679,7 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
     Type *target_type = resolve_type(
         ctx,
         node->as.cast_expr.target_type,
-        node
-    );
+        node);
 
     if (!target_type) {
         semantic_error(ctx, node,
@@ -5954,17 +6697,12 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
 
     Node *source_expression = node->as.cast_expr.expression;
 
-    Type *source_type = check_value_expression(
-        ctx,
-        source_expression
-    );
+    Type *source_type =
+        check_value_expression(ctx, source_expression);
 
     if (!source_type) return NULL;
 
-    if (!is_allowed_explicit_cast(
-            target_type,
-            source_type
-        )) {
+    if (!is_allowed_explicit_cast(target_type, source_type)) {
         semantic_error(ctx, node,
             "invalid explicit cast");
 
@@ -5972,10 +6710,7 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
     }
 
     int source_is_constant =
-        expression_is_compile_time_constant(
-            ctx,
-            source_expression
-        );
+        expression_is_compile_time_constant(ctx, source_expression);
 
     /*
      * Closed enums may only be constructed from declared member values.
@@ -6035,34 +6770,6 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
     return target_type;
 }
 
-static int block_definitely_returns(Node *node)
-{
-    if (!node || node->type != NODE_BLOCK)
-        return 0;
-
-    /*
-     * A block definitely returns if execution cannot reach the end
-     * of the block.
-     *
-     * For now, this means one of its statements definitely returns.
-     *
-     * Example:
-     *     {
-     *         return 1;
-     *         x = 2; // unreachable later, but not checked yet
-     *     }
-     */
-    for (int i = 0; i < node->as.block.statements.count; i++) {
-
-        Node *stmt = node->as.block.statements.items[i];
-
-        if (node_definitely_returns(stmt))
-            return 1;
-    }
-
-    return 0;
-}
-
 static int enum_switch_is_exhaustive(Node *node, Type *switch_type) {
 
     if (!node ||
@@ -6073,9 +6780,10 @@ static int enum_switch_is_exhaustive(Node *node, Type *switch_type) {
     }
 
     /*
-     * Empty enums cannot be exhaustively switched over by cases.
-     * A default case is still handled separately by switch_definitely_returns().
-     */
+    * Empty enums cannot be exhaustively switched over by explicit
+    * cases. A default case is handled separately by
+    * switch_is_exhaustive().
+    */
     if (switch_type->enum_member_count <= 0)
         return 0;
 
@@ -6151,50 +6859,49 @@ static int enum_switch_is_exhaustive(Node *node, Type *switch_type) {
     return 1;
 }
 
-static int switch_definitely_returns(Node *node)
+static int switch_is_exhaustive(Node *node)
 {
     if (!node || node->type != NODE_SWITCH)
+        return 0;
+
+    if (node->as.switch_stmt.cases.count == 0)
         return 0;
 
     int has_default = 0;
     int has_true    = 0;
     int has_false   = 0;
 
-    Type *switch_type = node->as.switch_stmt.resolved_type;
-
-    if (node->as.switch_stmt.cases.count == 0)
-        return 0;
+    Type *switch_type =
+        node->as.switch_stmt.resolved_type;
 
     for (int i = 0; i < node->as.switch_stmt.cases.count; i++) {
 
-        Node *case_node = node->as.switch_stmt.cases.items[i];
+        Node *case_node =
+            node->as.switch_stmt.cases.items[i];
 
-        if (!case_node || case_node->type != NODE_SWITCH_CASE)
-            return 0;
+        if (!case_node || case_node->type != NODE_SWITCH_CASE) {
+            continue;
+            }
 
         if (case_node->as.switch_case.is_default) {
             has_default = 1;
-        } else {
-            Node *value = case_node->as.switch_case.value;
-
-            /*
-             * Bool switches are exhaustive when both literal cases exist.
-             */
-            if (value && value->type == NODE_BOOL) {
-                if (value->as.boolean.value)
-                    has_true = 1;
-                else
-                    has_false = 1;
-            }
+            continue;
         }
 
+        Node *value =
+            case_node->as.switch_case.value;
+
         /*
-         * Coglet switch has no fallthrough, so every case body must
-         * definitely return for the switch as a whole to definitely return.
+         * A Boolean switch is exhaustive when both literal
+         * values are covered.
          */
-        if (!node_definitely_returns(case_node->as.switch_case.body))
-            return 0;
-    }
+        if (value && value->type == NODE_BOOL) {
+            if (value->as.boolean.value)
+                has_true = 1;
+            else
+                has_false = 1;
+        }
+         }
 
     if (has_default)
         return 1;
@@ -6202,61 +6909,11 @@ static int switch_definitely_returns(Node *node)
     if (has_true && has_false)
         return 1;
 
-    if (enum_switch_is_exhaustive(node, switch_type))
+    if (enum_switch_is_exhaustive(node, switch_type)) {
         return 1;
+    }
 
     return 0;
-}
-
-static int node_definitely_returns(Node *node)
-{
-    if (!node)
-        return 0;
-
-    switch (node->type) {
-        case NODE_RETURN:
-            return 1;
-
-        case NODE_BLOCK:
-            return block_definitely_returns(node);
-
-        case NODE_IF:
-            /*
-             * An if only definitely returns if both branches exist and
-             * both definitely return.
-             */
-            if (!node->as.if_stmt.else_branch)
-                return 0;
-
-            return node_definitely_returns(node->as.if_stmt.then_branch) &&
-                   node_definitely_returns(node->as.if_stmt.else_branch);
-
-        case NODE_SWITCH:
-            return switch_definitely_returns(node);
-
-        case NODE_WHILE:
-            /*
-             * Only an obviously infinite while loop can definitely return.
-             *
-             * while true {
-             *     return 1;
-             * }
-             *
-             * while condition {
-             *     return 1;
-             * }
-             *
-             * The second one is not definitely returning, because the loop may
-             * execute zero times.
-             */
-            if (!is_literal_true(node->as.while_stmt.condition))
-                return 0;
-
-            return node_definitely_returns(node->as.while_stmt.body);
-
-        default:
-            return 0;
-    }
 }
 
 // ============================================================
@@ -6266,15 +6923,17 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
     if(!node) return;
 
-    switch(node->type) {
-
-        case NODE_BLOCK:           check_block(ctx,node);      break;
-        case NODE_PROGRAM:         check_program(ctx,node);    break;
-        case NODE_VAR_DECL:        check_var_decl(ctx,node);   break;
-        case NODE_FUNC_PARAM_DECL: check_param_decl(ctx,node); break;
-        case NODE_FUNC_DECL:       check_function(ctx,node);   break;
-        case NODE_IF:              check_if(ctx,node);         break;
-        case NODE_CONST_DECL:      check_const_decl(ctx,node); break;
+    switch(node->type)
+    {
+        case NODE_BLOCK:           check_block(ctx,node);            break;
+        case NODE_PROGRAM:         check_program(ctx,node);          break;
+        case NODE_VAR_DECL:        check_var_decl(ctx,node);         break;
+        case NODE_FUNC_PARAM_DECL: check_param_decl(ctx,node);       break;
+        case NODE_FUNC_DECL:       check_function(ctx,node);         break;
+        case NODE_IF:              check_if_statement(ctx,node);     break;
+        case NODE_FOR:             check_for_statement(ctx, node);   break;
+        case NODE_WHILE:           check_while_statement(ctx, node); break;
+        case NODE_CONST_DECL:      check_const_decl(ctx,node);       break;
         case NODE_EXPR_STMT:       check_statement_expression(ctx, node->as.expr_stmt.expr); break;
 
         case NODE_STRUCT_DECL: {
@@ -6289,36 +6948,30 @@ static void check_node(SemanticContext *ctx,Node *node) {
             break;
         }
 
-        case NODE_WHILE: {
-
-            Type *cond = check_value_expression(ctx, node->as.while_stmt.condition);
-
-            if (cond && !is_bool_type(cond)) {
-                semantic_error(ctx,node->as.while_stmt.condition,
-                    "while condition must be a boolean expression");
-            }
-
-            ctx->loop_depth++;
-            check_node(ctx, node->as.while_stmt.body);
-            ctx->loop_depth--;
-
-            break;
-        }
-
         case NODE_BREAK:
             if (ctx->loop_depth <= 0) {
                 semantic_error(ctx, node,
                     "break statement not inside loop");
+
+                break;
             }
+
+            assert(ctx->current_loop);
+
+            loop_record_break(ctx);
             break;
 
         case NODE_CONTINUE:
-
             if (ctx->loop_depth <= 0) {
                 semantic_error(ctx, node,
                     "continue statement not inside loop");
+
+                break;
             }
 
+            assert(ctx->current_loop);
+
+            loop_record_continue(ctx);
             break;
 
         case NODE_SWITCH:
@@ -6337,32 +6990,19 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
             break;
 
-        case NODE_FOR: {
-            if (node->as.for_stmt.condition) {
-                Type *cond = check_value_expression(ctx, node->as.for_stmt.condition);
-
-                if (cond && !is_bool_type(cond)) {
-                    semantic_error(ctx, node->as.for_stmt.condition,
-                        "for condition must be a boolean expression");
-                }
-            }
-
-            if (node->as.for_stmt.post)
-                check_statement_expression(ctx, node->as.for_stmt.post);
-
-            ctx->loop_depth++;
-            check_node(ctx, node->as.for_stmt.body);
-            ctx->loop_depth--;
-
-            break;
-        }
-
         case NODE_RETURN: {
             if (ctx->function_depth == 0) {
                 semantic_error(ctx, node,
                     "return outside function");
                 break;
             }
+
+            /*
+             * A return statement prevents this control-flow path from
+             * reaching later statements, even when the return itself has
+             * a type or value error.
+             */
+            ctx->flow.reachable = 0;
 
             Type *expected = ctx->current_return_type;
             Node *value    = node->as.return_stmt.value;
@@ -6405,10 +7045,13 @@ static void check_node(SemanticContext *ctx,Node *node) {
 // ============================================================
 void semantic_check(Node *program, SemanticContext *ctx) {
 
-    ctx->had_error      = 0;
-    ctx->loop_depth     = 0;
-    ctx->function_depth = 0;
-    ctx->error_count    = 0;
+    ctx->had_error        = 0;
+    ctx->loop_depth       = 0;
+    ctx->function_depth   = 0;
+    ctx->error_count      = 0;
+    ctx->next_variable_id = 0;
+
+    flow_init(&ctx->flow);
 
     ctx->current_return_type = NULL;
 

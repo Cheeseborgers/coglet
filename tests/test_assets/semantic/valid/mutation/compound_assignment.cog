@@ -26,7 +26,7 @@ compound_assignment_float::() -> void {
 }
 
 compound_assignment_array_index::() -> void {
-    values: i32[3];
+    values: i32[3] = [1, 1, 1];
 
     values[0] += 1;
     values[1] -= 1;

@@ -1,0 +1,72 @@
+Color :: enum(u8) {
+    Red,
+    Green,
+    Blue,
+}
+
+exhaustive_bool_switch::(
+    condition: bool
+) -> i32 {
+    value: i32;
+
+    switch condition {
+        case true:
+            value = 10;
+
+        case false:
+            value = 20;
+    }
+
+    return value;
+}
+
+exhaustive_enum_switch::(
+    color: Color
+) -> i32 {
+    value: i32;
+
+    switch color {
+        case Color.Red:
+            value = 30;
+
+        case Color.Green:
+            value = 40;
+
+        case Color.Blue:
+            value = 50;
+    }
+
+    return value;
+}
+
+default_makes_switch_exhaustive::(
+    selector: i32
+) -> i32 {
+    value: i32;
+
+    switch selector {
+        case 0:
+            value = 60;
+
+        default:
+            value = 70;
+    }
+
+    return value;
+}
+
+returning_case_does_not_weaken_merge::(
+    condition: bool
+) -> i32 {
+    value: i32;
+
+    switch condition {
+        case true:
+            value = 80;
+
+        case false:
+            return 90;
+    }
+
+    return value;
+}

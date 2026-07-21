@@ -1,0 +1,4 @@
+semantic error at line 7: variable 'point' may be uninitialized
+semantic error at line 12: variable 'values' may be uninitialized
+semantic error at line 17: variable 'value' may be uninitialized
+3 semantic errors generated.

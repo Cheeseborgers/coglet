@@ -12,8 +12,8 @@ bitwise_operand_types::() -> void {
     boolean: bool = true;
     enumeration: Kind = Kind.One;
     pointer: i32* = &integer;
-    array: i32[2];
-    pair: Pair;
+    array: i32[2] = [1, 2];
+    pair: Pair = Pair { value = 1, };
 
     ~floating;
     ~boolean;

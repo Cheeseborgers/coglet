@@ -8,7 +8,7 @@
 void lexer_init(Lexer *lx, const char *filename, const char *source) {
     assert(filename);
 
-    lx->filename = filename;
+    lx->filename     = filename;
     lx->source_start = source;
     lx->current = source;
     lx->line = 1;
@@ -164,6 +164,7 @@ static const Keyword keywords[] = {
     {"true", TOK_TRUE},
     {"false", TOK_FALSE},
     {"cast", TOK_CAST},
+    {"truncate", TOK_TRUNCATE},
     {"null", TOK_NULL},
 
     {"i8", TOK_I8},
@@ -898,6 +899,9 @@ const char *token_type_name(TokenType type) {
 
         case TOK_CAST:
             return "CAST";
+
+        case TOK_TRUNCATE:
+            return "TRUNCATE";
 
         case TOK_I8:
             return "I8";

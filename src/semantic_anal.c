@@ -791,16 +791,19 @@ static void fill_enum_members(SemanticContext *ctx,Node *node);
 static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
 static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value);
 static Type *check_value_expression(SemanticContext *ctx, Node *node);
-static Type *check_cast_expression(SemanticContext *ctx, Node *node);
+static Type *check_checked_cast_expression(SemanticContext *ctx, Node *node);
 static Type *concretize_inferred_type(SemanticContext *ctx, Node *expression, Type *type);
 static int switch_case_values_are_exhaustive(
     Type *switch_type, const ConstValue *case_values, int case_value_count, int has_default);
 
-static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
+static int eval_const_checked_cast(SemanticContext *ctx, Node *node, ConstValue *out);
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
 static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out);
 static int check_string_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 static int eval_const_builtin_call(SemanticContext *ctx, Node *call, ConstValue *out);
+static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
+static int expression_is_compile_time_constant(SemanticContext *ctx,Node *node);
+static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out);
 
 // ============================================================
 // expressions
@@ -1291,6 +1294,37 @@ static int integer_value_from_bit_pattern(uint64_t pattern, TypeKind kind, Integ
     return 1;
 }
 
+/*
+ * Converts an exact mathematical integer to the low N bits of the
+ * target integer type.
+ *
+ * Unlike integer_value_to_bit_pattern(), the source value does not
+ * need to fit the destination type. Truncation is explicitly modulo
+ * 2^N.
+ */
+static int truncate_integer_value(IntegerValue value, TypeKind target_kind, IntegerValue *out) {
+
+    assert(out);
+
+    unsigned width;
+
+    if (!integer_kind_bit_width(target_kind, &width))
+        return 0;
+
+    uint64_t mask    = integer_width_mask(width);
+    uint64_t pattern = value.magnitude & mask;
+
+    if (value.is_negative) {
+        pattern = (UINT64_C(0) - pattern) & mask;
+    }
+
+    return integer_value_from_bit_pattern(
+        pattern,
+        target_kind,
+        out
+    );
+}
+
 static int integer_value_bitwise_not(IntegerValue operand, TypeKind kind, IntegerValue *out) {
 
     unsigned width;
@@ -1491,7 +1525,7 @@ static int evaluate_wrapping_integer_binary(
         return 0;
     }
 
-    uint64_t result_pattern;
+    uint64_t result_pattern = 0;
 
     switch (builtin_kind) {
         case BUILTIN_WRAPPING_ADD:
@@ -3721,7 +3755,7 @@ static Type *concretize_inferred_type(SemanticContext *ctx, Node *expression, Ty
     return concrete;
 }
 
-static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
+static int eval_const_checked_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
 
     ConstValue value;
 
@@ -3930,6 +3964,92 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
         "invalid constant cast");
 
     return 0;
+}
+
+static int eval_const_truncating_cast(SemanticContext *ctx,Node *node,ConstValue *out) {
+
+    assert(node);
+    assert(node->type == NODE_CAST);
+    assert(node->as.cast_expr.kind == CAST_TRUNCATING);
+
+    ConstValue value;
+
+    if (!eval_const_expr(
+            ctx,
+            node->as.cast_expr.expression,
+            &value
+        )) {
+        return 0;
+        }
+
+    Type *target_type =
+        resolve_type(
+            ctx,
+            node->as.cast_expr.target_type,
+            node
+        );
+
+    if (!target_type)
+        return 0;
+
+    if (!is_concrete_integer_kind(target_type->kind)) {
+        semantic_error(ctx, node,
+            "truncate target must be a concrete integer type");
+
+        return 0;
+    }
+
+    if (value.kind != CONST_VALUE_INT) {
+        semantic_error(ctx, node,
+            "truncate source must be an integer");
+
+        return 0;
+    }
+
+    IntegerValue result;
+
+    if (!truncate_integer_value(
+            value.as.integer,
+            target_type->kind,
+            &result
+        )) {
+        semantic_error(ctx, node,
+            "could not evaluate truncating integer conversion");
+
+        return 0;
+    }
+
+    memset(out, 0, sizeof(*out));
+
+    out->kind       = CONST_VALUE_INT;
+    out->as.integer = result;
+    out->type       = target_type;
+
+    return 1;
+}
+
+static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
+
+    assert(node);
+    assert(node->type == NODE_CAST);
+
+    switch (node->as.cast_expr.kind) {
+        case CAST_CHECKED:
+            return eval_const_checked_cast(
+                ctx,
+                node,
+                out
+            );
+
+        case CAST_TRUNCATING:
+            return eval_const_truncating_cast(
+                ctx,
+                node,
+                out
+            );
+    }
+
+    UNREACHABLE("CastKind");
 }
 
 static int coerce_constant_to_type(
@@ -4968,6 +5088,95 @@ static int eval_const_builtin_call(SemanticContext *ctx, Node *call, ConstValue 
     UNREACHABLE("BuiltinKind");
 }
 
+static Type *check_truncating_cast_expression(SemanticContext *ctx, Node *node) {
+
+    assert(node);
+    assert(node->type == NODE_CAST);
+    assert(node->as.cast_expr.kind == CAST_TRUNCATING);
+
+    Type *target_type =
+        resolve_type(ctx, node->as.cast_expr.target_type, node);
+
+    if (!target_type) {
+        semantic_error(
+            ctx,
+            node,
+            "could not resolve truncate target type"
+        );
+
+        return NULL;
+    }
+
+    if (!is_concrete_integer_kind(target_type->kind)) {
+        semantic_error(ctx, node,
+            "truncate target must be a concrete integer type");
+
+        return NULL;
+    }
+
+    Node *source_expression =
+        node->as.cast_expr.expression;
+
+    Type *source_type =
+        check_value_expression(ctx, source_expression);
+
+    if (!source_type)
+        return NULL;
+
+    /*
+     * Untyped integer constants are accepted:
+     *
+     *     truncate(u8, 256)
+     *
+     * Runtime expressions always have a concrete integer type.
+     */
+    if (!is_integer_kind(source_type->kind)) {
+        semantic_error(ctx, node,
+            "truncate source must be an integer");
+
+        return NULL;
+    }
+
+    /*
+     * Evaluate known values even when the result is discarded.
+     * This verifies the evaluator and preserves the general rule
+     * that compile-time-known conversions are checked immediately.
+     *
+     * Truncation itself cannot fail because of range.
+     */
+    if (expression_is_compile_time_constant(ctx, source_expression)) {
+        ConstValue ignored;
+
+        if (!eval_const_cast(ctx, node, &ignored))
+            return NULL;
+
+    }
+
+    return target_type;
+}
+
+static Type *check_cast_expression(SemanticContext *ctx,Node *node) {
+
+    assert(node);
+    assert(node->type == NODE_CAST);
+
+    switch (node->as.cast_expr.kind) {
+        case CAST_CHECKED:
+            return check_checked_cast_expression(
+                ctx,
+                node
+            );
+
+        case CAST_TRUNCATING:
+            return check_truncating_cast_expression(
+                ctx,
+                node
+            );
+    }
+
+    UNREACHABLE("CastKind");
+}
+
 static Type *check_expression(SemanticContext *ctx, Node *node) {
 
     if (!node) return NULL;
@@ -5650,9 +5859,14 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_CAST:
         {
-            Type *type = check_cast_expression(ctx, node);
+            Type *type =
+                check_cast_expression(
+                    ctx,
+                    node
+                );
 
-            if (!type) return NULL;
+            if (!type)
+                return NULL;
 
             sem_record_expr_info(
                 ctx,
@@ -7798,7 +8012,11 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
     }
 }
 
-static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
+static Type *check_checked_cast_expression(SemanticContext *ctx, Node *node) {
+
+    assert(node);
+    assert(node->type == NODE_CAST);
+    assert(node->as.cast_expr.kind == CAST_CHECKED);
 
     Type *target_type = resolve_type(
         ctx,
@@ -7839,7 +8057,7 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
     /*
      * Closed enums may only be constructed from declared member values.
      *
-     * For a compile-time integer, eval_const_cast() can prove that:
+     * For a compile-time integer, eval_const_checked_cast() can prove that:
      *
      *   1. the integer fits the enum backing type;
      *   2. the integer equals a declared enum member value.
@@ -7859,7 +8077,7 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
 
         ConstValue ignored;
 
-        if (!eval_const_cast(ctx, node, &ignored)) {
+        if (!eval_const_checked_cast(ctx, node, &ignored)) {
             return NULL;
         }
 
@@ -7877,14 +8095,14 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
      *   cast(f32, very_large_value)
      *   cast(u16, SomeEnum.Member)
      *
-     * Constant declarations also reach eval_const_cast() through
+     * Constant declarations also reach eval_const_checked_cast() through
      * eval_const_expr(), but ordinary expression statements and nested
      * expression contexts need the same validation.
      */
     if (source_is_constant) {
         ConstValue ignored;
 
-        if (!eval_const_cast(ctx, node, &ignored)) {
+        if (!eval_const_checked_cast(ctx, node, &ignored)) {
             return NULL;
         }
     }
@@ -7896,8 +8114,8 @@ static int switch_case_values_are_exhaustive(
     Type *switch_type,
     const ConstValue *case_values,
     int case_value_count,
-    int has_default
-) {
+    int has_default) {
+
     /*
      * A default case covers every runtime value regardless of the
      * switch expression's type.

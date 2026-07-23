@@ -71,10 +71,12 @@ Node *ast_new_bool(Arena *arena, int value, int line) {
     return node;
 }
 
-Node *ast_new_cast(Arena *arena, Type *target_type, Node *expression, int line) {
+Node *ast_new_cast(Arena *arena, CastKind kind, Type *target_type, Node *expression, int line) {
     Node *node = new_node(arena, NODE_CAST, line);
+    node->as.cast_expr.kind = kind;
     node->as.cast_expr.target_type = target_type;
     node->as.cast_expr.expression  = expression;
+
     return node;
 }
 
@@ -391,14 +393,13 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.compound_assign.value  = ast_clone(arena, node->as.compound_assign.value);
             break;
 
-        case NODE_CAST:
-            clone->as.cast_expr.target_type =
-                node->as.cast_expr.target_type;
+            case NODE_CAST:
+                clone->as.cast_expr.kind        = node->as.cast_expr.kind;
+                clone->as.cast_expr.target_type = node->as.cast_expr.target_type;
+                clone->as.cast_expr.expression =
+                    ast_clone(arena, node->as.cast_expr.expression);
 
-            clone->as.cast_expr.expression =
-                ast_clone(arena, node->as.cast_expr.expression);
-
-            break;
+                break;
 
         case NODE_IF:
             clone->as.if_stmt.condition =

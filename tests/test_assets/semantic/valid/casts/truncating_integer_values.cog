@@ -1,0 +1,52 @@
+U8Zero :: enum(u8) {
+    Expected = 0,
+}
+
+U8Maximum :: enum(u8) {
+    Expected = 255,
+}
+
+I8NegativeOne :: enum(i8) {
+    Expected = -1,
+}
+
+I8Minimum :: enum(i8) {
+    Expected = -128,
+}
+
+U16Maximum :: enum(u16) {
+    Expected = 65535,
+}
+
+TRUNCATE_256_TO_U8 ::
+    cast(
+        U8Zero,
+        truncate(u8, 256)
+    );
+
+TRUNCATE_NEGATIVE_ONE_TO_U8 ::
+    cast(
+        U8Maximum,
+        truncate(u8, -1)
+    );
+
+TRUNCATE_255_TO_I8 ::
+    cast(
+        I8NegativeOne,
+        truncate(i8, 255)
+    );
+
+TRUNCATE_128_TO_I8 ::
+    cast(
+        I8Minimum,
+        truncate(i8, 128)
+    );
+
+TRUNCATE_NEGATIVE_I8_TO_U16 ::
+    cast(
+        U16Maximum,
+        truncate(
+            u16,
+            cast(i8, -1)
+        )
+    );

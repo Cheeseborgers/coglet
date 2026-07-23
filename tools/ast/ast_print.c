@@ -1,11 +1,26 @@
 #include "ast_print.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <inttypes.h>
 
 #include "types.h"
 #include "utils/utils.h"
+
+static const char *cast_kind_name(CastKind kind)
+{
+    switch (kind) {
+        case CAST_CHECKED:
+            return "cast";
+
+        case CAST_TRUNCATING:
+            return "truncate";
+    }
+
+    assert(0 && "unhandled CastKind");
+    return "<invalid-cast>";
+}
 
 static const char *token_type_str(TokenType type)
 {
@@ -221,6 +236,9 @@ static const char *token_type_str(TokenType type)
         case TOK_CAST:
             return "CAST";
 
+        case TOK_TRUNCATE:
+            return "TRUNCATE";
+
         // Types
         case TOK_BOOL:
             return "BOOL";
@@ -366,7 +384,7 @@ static void print_node(Node *node)
             break;
 
         case NODE_CAST:
-            printf("(cast ");
+            printf("(%s ",cast_kind_name(node->as.cast_expr.kind));
             print_type(node->as.cast_expr.target_type);
             printf(" ");
             print_node(node->as.cast_expr.expression);
@@ -796,8 +814,7 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_CAST:
             indent(depth);
-            printf("cast\n");
-
+            printf("%s\n",cast_kind_name(node->as.cast_expr.kind));
             indent(depth + 1);
             printf("target type:\n");
 
@@ -808,10 +825,7 @@ static void print_node_pretty(Node *node, int depth)
             indent(depth + 1);
             printf("expression:\n");
 
-            print_node_pretty(
-                node->as.cast_expr.expression,
-                depth + 2
-            );
+            print_node_pretty(node->as.cast_expr.expression,depth + 2);
 
             break;
 

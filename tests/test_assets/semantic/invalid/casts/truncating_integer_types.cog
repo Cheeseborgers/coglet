@@ -1,0 +1,9 @@
+bad_truncations::(
+    floating: f64,
+    pointer: i32*
+) -> void {
+    truncate(f32, 1);
+    truncate(u8, floating);
+    truncate(u8, pointer);
+    truncate(bool, 1);
+}

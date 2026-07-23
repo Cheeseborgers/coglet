@@ -6,6 +6,22 @@
 #include "utils/arena.h"
 #include "utils/string_view.h"
 
+typedef enum CastKind {
+    /*
+     * Value-preserving checked conversion:
+     *
+     *     cast(TargetType, expression)
+     */
+    CAST_CHECKED,
+
+    /*
+     * Fixed-width low-bit integer conversion:
+     *
+     *     truncate(TargetType, expression)
+     */
+    CAST_TRUNCATING,
+} CastKind;
+
 typedef enum {
     NODE_NUMBER,       // a literal like 3 or 3.14
     NODE_IDENT,
@@ -91,6 +107,7 @@ struct Node {
         } boolean;
 
         struct {
+            CastKind kind;
             Type *target_type;
             Node *expression;
         } cast_expr;
@@ -272,7 +289,7 @@ Node *ast_new_string(Arena *arena, const char *start, int length, int line);
 Node *ast_new_char(Arena *arena, const char *start, int length, int line);
 Node *ast_new_null(Arena *arena, int line);
 Node *ast_new_bool(Arena *arena, int value, int line);
-Node *ast_new_cast(Arena *arena, Type *target_type, Node *expression, int line);
+Node *ast_new_cast(Arena *arena, CastKind kind, Type *target_type, Node *expression, int line);
 Node *ast_new_unary(Arena *arena, TokenType op, Node *operand, int line);
 Node *ast_new_inc_dec(Arena *arena, TokenType op, Node *target, int is_prefix, int line);
 Node *ast_new_binary(Arena *arena, TokenType op, Node *left, Node *right, int line);

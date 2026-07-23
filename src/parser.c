@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,7 +46,7 @@ static Node *parse_return_statement(Parser *p);
 static Node *parse_while_statement(Parser *p);
 static Node *parse_for_statement(Parser *p);
 
-static Node *parse_cast_expression(Parser *p);
+static Node *parse_conversion_expression(Parser *p);
 static Node *parse_array_literal(Parser *p);
 
 static int parse_decimal_u64(Token token, uint64_t *out);
@@ -264,6 +265,9 @@ const char *token_debug_display_name(TokenType type)
 
         case TOK_CAST:
             return "'cast'";
+
+        case TOK_TRUNCATE:
+            return "'truncate'";
 
         // Types
         case TOK_BOOL:
@@ -578,16 +582,21 @@ static Node *parse_primary(Parser *p)
         return ast_new_char(p->arena, t.start + 1, t.length - 2, t.line);
     }
 
-    // before identifiers so cast is treated as a keyword expression, not a normal name.
-    if (check(p, TOK_CAST)) {
-        return parse_cast_expression(p);
+    /*
+    * Conversion keywords are parsed before identifiers because their
+    * first argument is a type rather than an ordinary expression.
+    */
+    if (check(p, TOK_CAST) || check(p, TOK_TRUNCATE)) {
+        return parse_conversion_expression(p);
     }
 
     if (match(p, TOK_IDENT)) {
+
         Token t = p->previous;
         if (check(p, TOK_LBRACE) && !p->suppress_struct_init) {
             return finish_struct_init(p, t);
         }
+
         return ast_new_ident(p->arena, t.start, t.length, t.line);
     }
 
@@ -1635,33 +1644,56 @@ static Node *parse_block(Parser *p) {
 static Node *parse_expression(Parser *p) { return parse_assignment(p); }
 
 // ===================== casts ================================
-static Node *parse_cast_expression(Parser *p)
-{
+static Node *parse_conversion_expression(Parser *p) {
+
     Token keyword = p->current;
 
-    consume(p, TOK_CAST);
+    CastKind kind;
+
+    switch (keyword.type) {
+        case TOK_CAST:
+            kind = CAST_CHECKED;
+            break;
+
+        case TOK_TRUNCATE:
+            kind = CAST_TRUNCATING;
+            break;
+
+        default:
+            assert(0 && "conversion parser called without conversion token");
+            return ast_new_error(p->arena, keyword);
+    }
+
+    advance(p);
 
     if (!consume(p, TOK_LPAREN)) {
         synchronize(p);
-        return ast_new_error(p->arena, p->current);
+
+        return ast_new_error(p->arena,p->current);
     }
 
     Type *target_type = parse_type(p);
 
     if (!consume(p, TOK_COMMA)) {
         synchronize(p);
-        return ast_new_error(p->arena, p->current);
+
+        return ast_new_error(p->arena,p->current);
     }
 
     Node *expression = parse_assignment(p);
 
     if (!consume(p, TOK_RPAREN)) {
         synchronize(p);
-        return ast_new_error(p->arena, p->current);
+
+        return ast_new_error(
+            p->arena,
+            p->current
+        );
     }
 
     return ast_new_cast(
         p->arena,
+        kind,
         target_type,
         expression,
         keyword.line
@@ -1669,6 +1701,7 @@ static Node *parse_cast_expression(Parser *p)
 }
 
 static Node *parse_array_literal(Parser *p) {
+
     Token open = p->previous;
 
     Node *array = ast_new_array_literal(p->arena, open.line);

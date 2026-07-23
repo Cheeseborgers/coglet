@@ -1,0 +1,7 @@
+semantic error at line 6: wrong number of arguments to builtin 'wrapping_add': expected 2, got 1
+semantic error at line 7: builtin 'wrapping_add' requires arguments of the same integer type
+semantic error at line 8: builtin 'wrapping_add' requires concrete integer arguments
+semantic error at line 9: wrong number of arguments to builtin 'wrapping_neg': expected 1, got 0
+semantic error at line 10: wrong number of arguments to builtin 'wrapping_neg': expected 1, got 2
+semantic error at line 11: builtin 'wrapping_add' requires concrete integer arguments
+6 semantic errors generated.

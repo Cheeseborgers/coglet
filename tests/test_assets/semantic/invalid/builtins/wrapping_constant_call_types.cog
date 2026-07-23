@@ -1,0 +1,4 @@
+BAD_COUNT :: wrapping_add(cast(u8, 1));
+BAD_UNTYPED :: wrapping_add(1, 2);
+BAD_MISMATCH :: wrapping_add(cast(u8, 1), cast(u16, 2));
+BAD_FLOAT :: wrapping_neg(cast(f32, 1.0));

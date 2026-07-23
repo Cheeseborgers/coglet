@@ -326,20 +326,31 @@ conversion has not yet been implemented.
 
 A future `#repr_c` annotation is planned for explicit ABI representation. It will not make an enum open.
 
-### Numeric Semantics
+## Numeric Semantics
 
 Coglet keeps concrete numeric conversions explicit. Untyped literals adapt to
 a concrete operation or destination type only when their exact value fits.
 
-Compile-time integer arithmetic is range checked. Known integer division or
-remainder by zero is rejected, including in compound assignments. Unary
-negation is not defined for typed unsigned integers, while ordinary unsigned
-subtraction remains a valid runtime operation.
+Ordinary signed and unsigned integer arithmetic is checked. Addition,
+subtraction, multiplication, signed negation, increment/decrement, and their
+compound forms require a representable result.
 
-`f32` and `f64` constant evaluation follows IEEE-754 behavior, including
-infinity, NaN, and signed zero:
+A known failure is a compile-time error. A runtime-dependent failure traps.
+These rules are identical in debug and release builds, and unsigned arithmetic
+does not wrap implicitly.
 
-```c
+Integer division truncates toward zero, and remainder has the sign of the
+dividend. Division or remainder by zero traps. Signed minimum divided or
+remaindered by -1 also traps.
+
+Numeric cast is checked. Integer conversions must fit the destination.
+Floating-point-to-integer conversion rejects NaN and infinity, truncates toward
+zero, and then checks the destination range.
+
+f32 and f64 follow IEEE-754 binary32 and binary64 behavior, including
+infinity, NaN, signed zero, and round-to-nearest with ties to even:
+
+```
 1.0 / 0.0;   // positive infinity
 -1.0 / 0.0;  // negative infinity
 0.0 / 0.0;   // NaN
@@ -353,20 +364,26 @@ must have the same type unless one operand is an adaptable untyped integer
 constant that fits the concrete type. Signed bitwise operations use a defined
 fixed-width two's-complement representation.
 
-For shifts, the left operand determines the result type and bit width. The
-count may have any integer type, but a statically known count must satisfy
-`0 <= count < bit_width`. Left shift is a fixed-width bit-pattern operation:
-bits shifted beyond the width are discarded. Unsigned right shift zero-fills,
-while signed right shift is arithmetic and sign-extending.
+For shifts, the left operand determines the result type and bit width. Every
+count must satisfy `0 <= count < bit_width`. A known invalid count is a
+compile-time error, while a runtime-dependent invalid count traps. Counts are
+never masked.
+
+Left shift is a fixed-width bit-pattern operation: bits shifted beyond the
+width are discarded. Unsigned right shift zero-fills, while signed right shift
+is arithmetic and sign-extending.
 
 Coglet intentionally gives bitwise operators higher precedence than equality
 and ordered comparisons. Therefore:
 
-```c
+```
 flags & mask == 0;
 ```
 
-parses as `(flags & mask) == 0`, avoiding C's surprising precedence rule.
+parses as `(flags & mask)` == 0, avoiding C's surprising precedence rule.
+
+Explicit wrapping arithmetic and truncating integer conversion are planned as
+separate built-in operations.
 
 ### Control Flow
 
@@ -474,6 +491,7 @@ Recently completed work includes:
 - concrete default typing for inferred mutable numeric variables and parameters
 - adaptable compile-time numeric constants
 - exact constant arithmetic and representability checks
+- build-mode-independent checked runtime scalar semantics
 - complete semantic-info invariant verification
 - deterministic source-order semantic dumps
 - closed enum value sets
@@ -487,17 +505,18 @@ Recently completed work includes:
 - unified reachability for returns, unreachable statements, and function fallthrough
 - rejection of unsupported nested-function captures
 
-Backend and code-generation work is intentionally deferred until the language's direction and runtime model are clearer.
+Backend and code-generation work remains intentionally deferred until the
+execution strategy and enough remaining language and runtime decisions are
+stable.
 
 ## Roadmap
 
 Near-term work should remain language- and frontend-focused:
 
-1. Decide runtime integer overflow and narrowing-cast behavior.
-2. Design a small readonly raw-pointer mechanism without introducing borrowing or lifetime checking.
-3. Plan opaque raw pointers and explicit C ABI types.
+1. Audit the frontend against the checked runtime scalar contract and add explicit wrapping and truncating built-ins. 
+2. Design a small readonly raw-pointer mechanism without introducing borrowing or lifetime checking. 
+3. Plan opaque raw pointers and explicit C ABI types. 
 4. Design slices and pointer-length views after the raw-pointer mutability rules are settled.
-
 Later work may include:
 
 - imports and modules

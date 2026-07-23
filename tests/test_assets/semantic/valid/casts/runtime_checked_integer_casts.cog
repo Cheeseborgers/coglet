@@ -1,0 +1,41 @@
+runtime_checked_integer_casts::(
+    signed_wide: i64,
+    signed_narrow: i8,
+    unsigned_wide: u64,
+    unsigned_narrow: u8
+) -> void {
+    /*
+     * These casts are valid frontend expressions even though some
+     * runtime values cannot be represented by the destination.
+     *
+     * A future execution layer must trap for those values.
+     */
+
+    signed_to_narrow_signed: i8 =
+        cast(i8, signed_wide);
+
+    signed_to_unsigned: u8 =
+        cast(u8, signed_wide);
+
+    unsigned_to_signed: i8 =
+        cast(i8, unsigned_wide);
+
+    unsigned_to_wider_signed: i64 =
+        cast(i64, unsigned_wide);
+
+    signed_to_unsigned_wide: u64 =
+        cast(u64, signed_wide);
+
+    /*
+     * These widening conversions are always representable, but use
+     * the same checked-cast language operation.
+     */
+    narrow_signed_to_wide_signed: i64 =
+        cast(i64, signed_narrow);
+
+    narrow_unsigned_to_wide_unsigned: u64 =
+        cast(u64, unsigned_narrow);
+
+    narrow_unsigned_to_wide_signed: i64 =
+        cast(i64, unsigned_narrow);
+}

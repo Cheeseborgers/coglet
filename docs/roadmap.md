@@ -106,8 +106,17 @@ Completed areas include:
 - correct unordered NaN comparisons and signed-zero handling
 - expanded valid, invalid, constant-oracle, snapshot, and semantic-info coverage
 
-Runtime integer overflow, narrowing-cast behavior, and explicit wrapping
-operations remain design decisions rather than implied semantics.
+The language-level runtime scalar contract is now selected:
+
+- ordinary signed and unsigned integer arithmetic is checked;
+- known failures are compile-time diagnostics;
+- runtime-dependent failures trap;
+- numeric cast is checked;
+- semantics do not change between debug and release builds;
+- shifts retain their existing fixed-width bit-pattern rules.
+
+Explicit wrapping arithmetic and truncating integer conversion remain separate
+frontend features rather than implicit behavior.
 
 ### Raw Object Pointers
 
@@ -203,19 +212,39 @@ The definite-assignment and unified-reachability milestone is complete.
 The following items are candidate frontend design areas rather than a committed implementation sequence. 
 Code generation remains deferred.
 
-### 1. Runtime Integer Arithmetic and Numeric Casts
+1. Explicit Scalar Alternatives
 
-Compile-time integer operations and casts are checked. Runtime behavior still
-needs deliberate rules for:
+The ordinary runtime scalar model is now settled. Signed and unsigned
+arithmetic and numeric cast are checked in every build mode, while known
+failures are diagnosed during semantic analysis.
 
-- overflow and underflow
-- signed division overflow
-- narrowing conversion
-- checked versus wrapping operations
-- whether wrapping requires distinct syntax or built-ins
+The next scalar milestone is to audit the existing frontend against that
+contract and then add a small explicit alternative family.
 
-No backend should assume C-style wrapping or undefined behavior before this is
-settled.
+Initial work should cover:
+
+- verifying that constant evaluation and runtime-dependent typing use the same
+representability rules;
+- focused tests for known-invalid and runtime-dependent operations;
+- a central builtin identity and exhaustive builtin semantic dispatcher;
+- wrapping addition;
+- wrapping subtraction;
+- wrapping multiplication;
+- wrapping negation;
+- explicit truncating integer conversion.
+
+Wrapping operations use fixed-width modulo arithmetic and never trap because
+of arithmetic overflow. Truncating conversion explicitly discards bits or
+performs the corresponding fixed-width conversion.
+
+The exact source spelling should be selected during builtin design. These
+operations must not be implemented through scattered string comparisons or by
+changing the behavior of ordinary operators and cast.
+
+Saturating arithmetic and checked operations that return a success result
+remain deferred until Coglet has concrete use cases and suitable result types.
+
+No code generation or runtime implementation is required for this milestone.
 
 ### 2. Readonly and Opaque Raw Pointers
 

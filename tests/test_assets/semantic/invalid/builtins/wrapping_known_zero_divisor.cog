@@ -1,0 +1,6 @@
+test::(value: i32) -> void {
+    value / wrapping_sub(
+        cast(i32, 1),
+        cast(i32, 1)
+    );
+}

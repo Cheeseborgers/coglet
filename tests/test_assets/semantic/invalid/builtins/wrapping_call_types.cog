@@ -1,0 +1,12 @@
+bad_wrapping_calls::(
+    signed_small: i8,
+    signed_wide: i16,
+    floating: f32
+) -> void {
+    wrapping_add(signed_small);
+    wrapping_add(signed_small, signed_wide);
+    wrapping_add(floating, floating);
+    wrapping_neg();
+    wrapping_neg(signed_small, signed_small);
+    wrapping_add(1, 2);
+}

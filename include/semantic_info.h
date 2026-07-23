@@ -14,8 +14,11 @@
  *     the node produces a value.
  *
  * type == NULL and category == NONE:
- *     the node was successfully checked but deliberately
- *     produces no value, such as a mutation statement.
+ *     the node was successfully checked but deliberately produces
+ *     no value, such as:
+ *
+ *     - assignment and other mutation statements;
+ *     - a compiler builtin identifier used as a resolved call target.
  */
 
 typedef struct Type Type;

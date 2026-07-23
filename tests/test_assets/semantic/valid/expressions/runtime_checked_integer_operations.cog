@@ -1,0 +1,71 @@
+runtime_checked_integer_operations::(
+    signed_left: i8,
+    signed_right: i8,
+    unsigned_left: u8,
+    unsigned_right: u8
+) -> void {
+    /*
+     * These operations may overflow for some runtime inputs.
+     * They remain valid frontend expressions because ordinary
+     * arithmetic traps at runtime rather than being rejected
+     * solely from its operand types.
+     */
+    signed_add: i8 =
+        signed_left + signed_right;
+
+    signed_subtract: i8 =
+        signed_left - signed_right;
+
+    signed_multiply: i8 =
+        signed_left * signed_right;
+
+    signed_negate: i8 =
+        -signed_left;
+
+    unsigned_add: u8 =
+        unsigned_left + unsigned_right;
+
+    unsigned_subtract: u8 =
+        unsigned_left - unsigned_right;
+
+    unsigned_multiply: u8 =
+        unsigned_left * unsigned_right;
+
+    /*
+     * The divisor may be zero, and signed_left may be the signed
+     * minimum while signed_right is -1. Those are runtime checks.
+     */
+    signed_divide: i8 =
+        signed_left / signed_right;
+
+    signed_remainder: i8 =
+        signed_left % signed_right;
+
+    unsigned_divide: u8 =
+        unsigned_left / unsigned_right;
+
+    unsigned_remainder: u8 =
+        unsigned_left % unsigned_right;
+
+    signed_value: i8 =
+        signed_left;
+
+    signed_value += signed_right;
+    signed_value -= signed_right;
+    signed_value *= signed_right;
+    signed_value /= signed_right;
+    signed_value %= signed_right;
+    signed_value++;
+    signed_value--;
+
+    unsigned_value: u8 =
+        unsigned_left;
+
+    unsigned_value += unsigned_right;
+    unsigned_value -= unsigned_right;
+    unsigned_value *= unsigned_right;
+    unsigned_value /= unsigned_right;
+    unsigned_value %= unsigned_right;
+    unsigned_value++;
+    unsigned_value--;
+}

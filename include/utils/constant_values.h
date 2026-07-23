@@ -1,0 +1,27 @@
+#ifndef COGLET_CONSTANT_VALUES_H
+#define COGLET_CONSTANT_VALUES_H
+
+#include <stdint.h>
+#include <limits.h>
+#include <float.h>
+
+#define COGLET_I8_MIN   INT8_MIN
+#define COGLET_I8_MAX   INT8_MAX
+#define COGLET_U8_MAX   UINT8_MAX
+
+#define COGLET_I16_MIN  INT16_MIN
+#define COGLET_I16_MAX  INT16_MAX
+#define COGLET_U16_MAX  UINT16_MAX
+
+#define COGLET_I32_MIN  INT32_MIN
+#define COGLET_I32_MAX  INT32_MAX
+#define COGLET_U32_MAX  UINT32_MAX
+
+#define COGLET_I64_MIN  INT64_MIN
+#define COGLET_I64_MAX  INT64_MAX
+#define COGLET_U64_MAX  UINT64_MAX
+
+#define COGLET_F32_MAX  FLT_MAX
+#define COGLET_F64_MAX  DBL_MAX
+
+#endif

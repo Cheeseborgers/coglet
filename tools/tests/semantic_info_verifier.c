@@ -40,7 +40,6 @@ typedef struct DumpContext {
     int count;
 } DumpContext;
 
-// TODO: move these type printers out
 static const char *value_category_name(ValueCategory category)
 {
     switch (category) {
@@ -854,6 +853,37 @@ static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *
 
     int valid = 1;
 
+    /*
+    * Builtin identifiers are resolved call targets rather than
+     * first-class function values.
+    */
+    if (expression->type == NODE_IDENT &&
+        info->symbol &&
+        info->symbol->kind == SYMBOL_BUILTIN) {
+
+        if (info->type != NULL) {
+            verifier_error(
+                verifier,
+                expression,
+                "builtin callee identifier unexpectedly has a type"
+            );
+
+            valid = 0;
+        }
+
+        if (info->value_category != VALUE_CATEGORY_NONE) {
+            verifier_error(
+                verifier,
+                expression,
+                "builtin callee identifier has a value category"
+            );
+
+            valid = 0;
+        }
+
+        return valid;
+    }
+
     if (!info->type) {
         verifier_error(
             verifier,
@@ -895,44 +925,39 @@ static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *
     */
     if (info->value_category == VALUE_CATEGORY_LVALUE &&
         !node_can_be_lvalue(expression)) {
-        verifier_error(
-            verifier,
-            expression,
-            "node kind cannot produce an lvalue"
-        );
+        verifier_error(verifier, expression,
+            "node kind cannot produce an lvalue");
         valid = 0;
     }
 
     if (expression->type == NODE_IDENT) {
         if (!info->symbol) {
-            verifier_error(
-                verifier,
-                expression,
-                "resolved identifier has no symbol"
-            );
+            verifier_error(verifier, expression,
+                "resolved identifier has no symbol");
             valid = 0;
         } else if (info->symbol->type != info->type) {
-            verifier_error(
-                verifier,
-                expression,
-                "identifier type does not match its symbol type"
-            );
+            verifier_error(verifier, expression,
+                "identifier type does not match its symbol type");
             valid = 0;
         }
     } else if (info->symbol) {
+
         int is_enum_member =
             expression->type == NODE_FIELD &&
             info->symbol->kind == SYMBOL_TYPE &&
             info->type->kind == TYPE_ENUM;
 
-        if (!is_enum_member) {
-            verifier_error(
-                verifier,
-                expression,
-                "only identifiers and enum member expressions may carry symbols"
-            );
+        int is_builtin_call =
+            expression->type == NODE_CALL &&
+            info->symbol->kind == SYMBOL_BUILTIN;
+
+        if (!is_enum_member &&
+            !is_builtin_call) {
+            verifier_error(verifier, expression,
+                "only identifiers, enum members, and builtin calls may carry symbols");
+
             valid = 0;
-        }
+            }
     }
 
     if (!verify_pointer_unary_info(verifier, expression, info)) {
@@ -951,29 +976,19 @@ static void verify_expression_info(Verifier *verifier, Node *expression) {
     SemExprInfo *info = semantic_get_expr_info(verifier->sem, expression);
 
     if (!info) {
-        verifier_error(
-            verifier,
-            expression,
-            "successfully checked expression has no SemExprInfo"
-        );
+        verifier_error(verifier, expression,
+            "successfully checked expression has no SemExprInfo");
         return;
     }
 
     if (info->node != expression) {
-        verifier_error(
-            verifier,
-            expression,
-            "SemExprInfo points to a different AST node"
-        );
+        verifier_error(verifier, expression,
+            "SemExprInfo points to a different AST node");
         return;
     }
 
     if (node_is_mutation(expression->type)) {
-        verify_mutation_info(
-            verifier,
-            expression,
-            info
-        );
+        verify_mutation_info(verifier, expression, info);
         return;
     }
 

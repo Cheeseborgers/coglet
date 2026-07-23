@@ -1,0 +1,39 @@
+runtime_float_target_casts::(
+    signed_value: i64,
+    unsigned_value: u64,
+    narrow_float: f32,
+    wide_float: f64
+) -> void {
+    /*
+     * Integer-to-floating-point casts permit precision loss.
+     * Every value of Coglet's current integer types is within the
+     * finite range of both f32 and f64.
+     */
+    signed_to_f32: f32 =
+        cast(f32, signed_value);
+
+    unsigned_to_f32: f32 =
+        cast(f32, unsigned_value);
+
+    signed_to_f64: f64 =
+        cast(f64, signed_value);
+
+    unsigned_to_f64: f64 =
+        cast(f64, unsigned_value);
+
+    /*
+     * f32-to-f64 is exact.
+     */
+    narrow_to_wide: f64 =
+        cast(f64, narrow_float);
+
+    /*
+     * A finite f64 value outside the finite f32 range causes a
+     * runtime trap. The expression remains valid frontend code
+     * because the actual value is runtime-dependent.
+     *
+     * NaN and infinity remain representable f32 values.
+     */
+    wide_to_narrow: f32 =
+        cast(f32, wide_float);
+}

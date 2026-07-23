@@ -1,0 +1,89 @@
+U8Zero :: enum(u8) {
+    Expected = 0,
+}
+
+U8Maximum :: enum(u8) {
+    Expected = 255,
+}
+
+U8OneFortyFour :: enum(u8) {
+    Expected = 144,
+}
+
+I8Minimum :: enum(i8) {
+    Expected = -128,
+}
+
+I8Maximum :: enum(i8) {
+    Expected = 127,
+}
+
+U8_ADD_WRAP ::
+    cast(
+        U8Zero,
+        wrapping_add(
+            cast(u8, 255),
+            cast(u8, 1)
+        )
+    );
+
+U8_SUB_WRAP ::
+    cast(
+        U8Maximum,
+        wrapping_sub(
+            cast(u8, 0),
+            cast(u8, 1)
+        )
+    );
+
+U8_MUL_WRAP ::
+    cast(
+        U8OneFortyFour,
+        wrapping_mul(
+            cast(u8, 20),
+            cast(u8, 20)
+        )
+    );
+
+U8_NEG_WRAP ::
+    cast(
+        U8Maximum,
+        wrapping_neg(
+            cast(u8, 1)
+        )
+    );
+
+I8_ADD_WRAP ::
+    cast(
+        I8Minimum,
+        wrapping_add(
+            cast(i8, 127),
+            cast(i8, 1)
+        )
+    );
+
+I8_SUB_WRAP ::
+    cast(
+        I8Maximum,
+        wrapping_sub(
+            cast(i8, -128),
+            cast(i8, 1)
+        )
+    );
+
+I8_MUL_WRAP ::
+    cast(
+        I8Minimum,
+        wrapping_mul(
+            cast(i8, 64),
+            cast(i8, 2)
+        )
+    );
+
+I8_NEG_MIN ::
+    cast(
+        I8Minimum,
+        wrapping_neg(
+            cast(i8, -128)
+        )
+    );

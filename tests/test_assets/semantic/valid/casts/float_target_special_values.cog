@@ -1,0 +1,29 @@
+POSITIVE_INFINITY_F32 ::
+    cast(f32, 1.0 / 0.0);
+
+NEGATIVE_INFINITY_F32 ::
+    cast(f32, -1.0 / 0.0);
+
+NAN_F32 ::
+    cast(f32, 0.0 / 0.0);
+
+NEGATIVE_ZERO_F32 ::
+    cast(f32, -0.0);
+
+FINITE_F64_TO_F32 ::
+    cast(f32, cast(f64, 1.5));
+
+F32_TO_F64 ::
+    cast(f64, cast(f32, 1.5));
+
+U64_MAX_TO_F32 ::
+    cast(
+        f32,
+        cast(u64, 18446744073709551615)
+    );
+
+U64_MAX_TO_F64 ::
+    cast(
+        f64,
+        cast(u64, 18446744073709551615)
+    );

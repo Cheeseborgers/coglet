@@ -9,6 +9,7 @@
 #include <math.h>
 
 #include "string_decode.h"
+#include "utils/constant_values.h"
 #include "utils/utils.h"
 
 struct LoopFlowContext {
@@ -34,6 +35,7 @@ static Type *new_type(SemanticContext *ctx, TypeKind kind)
 }
 
 static Type *builtin_type(SemanticContext *ctx, TypeKind kind) {
+
     switch (kind) {
         case TYPE_I8:  return ctx->type_i8;
         case TYPE_I16: return ctx->type_i16;
@@ -130,8 +132,7 @@ static SemExprInfo *sem_get_or_create_expr_info(SemanticContext *ctx, Node *node
 static void sem_record_expr_info(
     SemanticContext *ctx, Node *node, Type *type, Symbol *symbol, ValueCategory category) {
 
-    if (!node)
-        return;
+    if (!node) return;
 
     assert_canonical_builtin_type(ctx, type);
 
@@ -227,15 +228,8 @@ static int symbol_has_flow_state(const Symbol *symbol) {
     switch (symbol->variable_storage) {
         case VARIABLE_STORAGE_LOCAL:
         case VARIABLE_STORAGE_PARAMETER:
-            assert(
-                symbol->flow_owner_id !=
-                INVALID_FLOW_OWNER_ID
-            );
-
-            assert(
-                symbol->variable_id !=
-                INVALID_VARIABLE_ID
-            );
+            assert(symbol->flow_owner_id != INVALID_FLOW_OWNER_ID);
+            assert(symbol->variable_id != INVALID_VARIABLE_ID);
 
             return 1;
 
@@ -244,18 +238,13 @@ static int symbol_has_flow_state(const Symbol *symbol) {
             return 0;
     }
 
-    assert(
-        0 &&
-        "unhandled variable storage classification"
-    );
+    assert(0 && "unhandled variable storage classification");
 
     return 0;
 }
 
-static int symbol_belongs_to_flow(
-    const Symbol *symbol,
-    const FlowState *state
-) {
+static int symbol_belongs_to_flow(const Symbol *symbol, const FlowState *state) {
+
     assert(symbol);
     assert(state);
     assert(symbol_has_flow_state(symbol));
@@ -267,28 +256,16 @@ static int symbol_belongs_to_flow(
  * Records the initial path-dependent state of a newly declared
  * local variable or parameter.
  */
-static void flow_register_variable(
-    SemanticContext *ctx,
-    const Symbol *symbol,
-    int initialized
-) {
+static void flow_register_variable(SemanticContext *ctx, const Symbol *symbol, int initialized) {
+
     assert(symbol_has_flow_state(symbol));
     assert(symbol_belongs_to_flow(symbol, &ctx->flow));
 
-    FlowState *state =
-        &ctx->flow;
+    FlowState *state      = &ctx->flow;
+    size_t variable_id    = symbol->variable_id;
+    size_t required_count = variable_id + 1;
 
-    size_t variable_id =
-        symbol->variable_id;
-
-    size_t required_count =
-        variable_id + 1;
-
-    flow_reserve(
-        ctx,
-        state,
-        required_count
-    );
+    flow_reserve(ctx, state, required_count);
 
     state->initialized[variable_id] =
         initialized ? 1 : 0;
@@ -297,10 +274,8 @@ static void flow_register_variable(
         state->count = required_count;
 }
 
-static void flow_mark_variable_initialized(
-    SemanticContext *ctx,
-    const Symbol *symbol
-) {
+static void flow_mark_variable_initialized(SemanticContext *ctx, const Symbol *symbol) {
+
     /*
      * Only parameters and function-local variables have
      * flow-state slots.
@@ -308,45 +283,21 @@ static void flow_mark_variable_initialized(
     if (!symbol_has_flow_state(symbol))
         return;
 
-    assert(
-        symbol_belongs_to_flow(
-            symbol,
-            &ctx->flow
-        )
-    );
+    assert(symbol_belongs_to_flow(symbol, &ctx->flow));
+    assert(symbol->variable_id < ctx->flow.count);
 
-    assert(
-        symbol->variable_id <
-        ctx->flow.count
-    );
-
-    ctx->flow.initialized[
-        symbol->variable_id
-    ] = 1;
+    ctx->flow.initialized[symbol->variable_id] = 1;
 }
 
-static int flow_variable_is_initialized(
-    const SemanticContext *ctx,
-    const Symbol *symbol
-) {
+static int flow_variable_is_initialized(const SemanticContext *ctx, const Symbol *symbol) {
+
     if (!symbol_has_flow_state(symbol))
         return 1;
 
-    assert(
-        symbol_belongs_to_flow(
-            symbol,
-            &ctx->flow
-        )
-    );
+    assert(symbol_belongs_to_flow(symbol, &ctx->flow));
+    assert(symbol->variable_id < ctx->flow.count);
 
-    assert(
-        symbol->variable_id <
-        ctx->flow.count
-    );
-
-    return ctx->flow.initialized[
-        symbol->variable_id
-    ] != 0;
+    return ctx->flow.initialized[symbol->variable_id] != 0;
 }
 
 static FlowState flow_clone(SemanticContext *ctx, const FlowState *source) {
@@ -378,9 +329,8 @@ static FlowState flow_merge_continuing_paths(
     assert(active_variable_count <= right->count);
 
     if (!left->reachable && !right->reachable) {
-        FlowState result =
-            flow_clone(ctx, left);
 
+        FlowState result = flow_clone(ctx, left);
         flow_truncate_to(&result, active_variable_count);
 
         result.reachable = 0;
@@ -389,26 +339,22 @@ static FlowState flow_merge_continuing_paths(
     }
 
     if (left->reachable && !right->reachable) {
-        FlowState result =
-            flow_clone(ctx, left);
 
+        FlowState result = flow_clone(ctx, left);
         flow_truncate_to(&result, active_variable_count);
 
         return result;
     }
 
     if (!left->reachable && right->reachable) {
-        FlowState result =
-            flow_clone(ctx, right);
 
+        FlowState result = flow_clone(ctx, right);
         flow_truncate_to(&result, active_variable_count);
 
         return result;
     }
 
-    FlowState result =
-        flow_clone(ctx, left);
-
+    FlowState result = flow_clone(ctx, left);
     flow_truncate_to(&result, active_variable_count);
 
     for (size_t i = 0; i < active_variable_count; i++) {
@@ -439,8 +385,7 @@ static void flow_accumulate_reachable_path(
         return;
 
     if (!*has_accumulator) {
-        *accumulator =
-            flow_clone(ctx, path);
+        *accumulator = flow_clone(ctx, path);
 
         flow_truncate_to(accumulator, active_variable_count);
 
@@ -476,8 +421,7 @@ static void loop_record_break(SemanticContext *ctx) {
 
 static void loop_record_continue(SemanticContext *ctx) {
 
-    LoopFlowContext *loop =
-        ctx->current_loop;
+    LoopFlowContext *loop = ctx->current_loop;
 
     assert(loop);
 
@@ -493,17 +437,11 @@ static void loop_record_continue(SemanticContext *ctx) {
 }
 
 static FlowState loop_iteration_flow(
-    SemanticContext *ctx,
-    const LoopFlowContext *loop,
-    const FlowState *body_flow
-) {
-    FlowState result =
-        flow_clone(ctx, body_flow);
+    SemanticContext *ctx, const LoopFlowContext *loop, const FlowState *body_flow) {
 
-    flow_truncate_to(
-        &result,
-        loop->active_variable_count
-    );
+    FlowState result = flow_clone(ctx, body_flow);
+
+    flow_truncate_to(&result, loop->active_variable_count);
 
     if (loop->has_continue_flow) {
         result =
@@ -519,10 +457,8 @@ static FlowState loop_iteration_flow(
 }
 
 static FlowState loop_conservative_exit_flow(
-    SemanticContext *ctx,
-    const LoopFlowContext *loop,
-    const FlowState *incoming
-) {
+    SemanticContext *ctx, const LoopFlowContext *loop, const FlowState *incoming) {
+
     /*
     * Coglet does not currently perform loop fixed-point analysis.
      *
@@ -534,8 +470,7 @@ static FlowState loop_conservative_exit_flow(
     * Literal-true loops with no reachable break are handled separately
     * and never reach this helper as continuing control flow.
     */
-    FlowState result =
-        flow_clone(ctx, incoming);
+    FlowState result = flow_clone(ctx, incoming);
 
     /*
     * Reachable break paths are additional possible exits. Merge them
@@ -560,7 +495,7 @@ static FlowState loop_conservative_exit_flow(
 
 static Scope *scope_new(SemanticContext *ctx, Scope *parent) {
 
-    Scope *scope   = arena_new(ctx->arena, Scope);
+    Scope *scope = arena_new(ctx->arena, Scope);
 
     *scope = (Scope){
         .symbols = NULL,
@@ -584,10 +519,7 @@ static void scope_pop(SemanticContext *ctx) {
     assert(scope);
     assert(scope->parent);
 
-    flow_truncate_to(
-        &ctx->flow,
-        scope->flow_count_mark
-    );
+    flow_truncate_to(&ctx->flow, scope->flow_count_mark);
 
     ctx->current_scope = scope->parent;
 }
@@ -602,7 +534,6 @@ static int names_equal(const char *a, size_t a_len, const char *b, size_t b_len)
 static Type *find_struct_field(const Type *struct_type, const char *name, size_t length) {
 
     for(int i = 0; i < struct_type->field_count; i++) {
-
         StructField *field = &struct_type->fields[i];
         if(names_equal(field->name.data, field->name.length, name, length))
             return field->type;
@@ -610,6 +541,8 @@ static Type *find_struct_field(const Type *struct_type, const char *name, size_t
 
     return NULL;
 }
+
+static void assert_symbol_builtin_invariant(const Symbol *symbol);
 
 // searches current scope only
 static Symbol *scope_find_local(const Scope *scope, const char *name, size_t length) {
@@ -632,23 +565,103 @@ static Symbol *scope_lookup(Scope *scope, const char *name, size_t length) {
     return NULL;
 }
 
-static Symbol *scope_define(SemanticContext *ctx, StringView name, SymbolKind kind, Type *type) {
+/*
+ * Internal symbol constructor.
+ *
+ * The complete symbol classification is supplied atomically so a
+ * SYMBOL_BUILTIN never temporarily exists with BUILTIN_NONE.
+ */
+static Symbol *scope_define_symbol(
+    SemanticContext *ctx,
+    StringView name,
+    SymbolKind kind,
+    BuiltinKind builtin_kind,
+    Type *type
+) {
+    assert(
+        kind == SYMBOL_BUILTIN
+            ? builtin_kind != BUILTIN_NONE
+            : builtin_kind == BUILTIN_NONE
+    );
 
-    Symbol *sym = arena_new(ctx->arena, Symbol);
+    Symbol *symbol =
+        arena_new(ctx->arena, Symbol);
 
-    *sym = (Symbol){
-        .name = name,
-        .kind = kind,
-        .type = type,
+    *symbol = (Symbol){
+        .name             = name,
+        .kind             = kind,
+        .builtin_kind     = builtin_kind,
+        .type             = type,
         .variable_storage = VARIABLE_STORAGE_NONE,
         .flow_owner_id    = INVALID_FLOW_OWNER_ID,
         .variable_id      = INVALID_VARIABLE_ID,
-        .next = ctx->current_scope->symbols,
+        .next             = ctx->current_scope->symbols,
     };
 
-    ctx->current_scope->symbols = sym;
+    assert_symbol_builtin_invariant(symbol);
 
-    return sym;
+    ctx->current_scope->symbols =
+        symbol;
+
+    return symbol;
+}
+
+static Symbol *scope_define(
+    SemanticContext *ctx,
+    StringView name,
+    SymbolKind kind,
+    Type *type
+) {
+    assert(kind != SYMBOL_BUILTIN);
+
+    return scope_define_symbol(ctx, name, kind, BUILTIN_NONE, type);
+}
+
+static void assert_symbol_builtin_invariant(const Symbol *symbol) {
+
+#ifndef NDEBUG
+    assert(symbol);
+
+    if (symbol->kind == SYMBOL_BUILTIN) {
+        assert(symbol->builtin_kind != BUILTIN_NONE);
+        assert(symbol->type == NULL);
+    } else {
+        assert(symbol->builtin_kind == BUILTIN_NONE);
+    }
+#else
+    (void)symbol;
+#endif
+
+}
+
+/*
+ * Defines a compiler-provided builtin in the current scope.
+ *
+ * Builtins do not have an ordinary fixed Type yet. Their result and
+ * argument types are determined by the central builtin call checker.
+ *
+ * Registration is performed only after the call checker understands
+ * SYMBOL_BUILTIN.
+ */
+static Symbol *scope_define_builtin(SemanticContext *ctx, const char *name, BuiltinKind builtin_kind) {
+
+    assert(name);
+    assert(builtin_kind != BUILTIN_NONE);
+
+    return scope_define_symbol(
+        ctx,
+        string_view_from_cstr(name),
+        SYMBOL_BUILTIN,
+        builtin_kind,
+        NULL);
+}
+
+static void register_builtin_symbols(SemanticContext *ctx) {
+
+    scope_define_builtin(ctx, "wrapping_add", BUILTIN_WRAPPING_ADD);
+    scope_define_builtin(ctx, "wrapping_sub", BUILTIN_WRAPPING_SUB);
+    scope_define_builtin(ctx, "wrapping_mul", BUILTIN_WRAPPING_MUL);
+    scope_define_builtin(ctx, "wrapping_neg", BUILTIN_WRAPPING_NEG);
 }
 
 /*
@@ -787,6 +800,7 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
 static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out);
 static int check_string_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
+static int eval_const_builtin_call(SemanticContext *ctx, Node *call, ConstValue *out);
 
 // ============================================================
 // expressions
@@ -839,10 +853,10 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
         case TYPE_U64:  snprintf(buffer, buffer_size, "u64");  return;
         case TYPE_F32:  snprintf(buffer, buffer_size, "f32");  return;
         case TYPE_F64:  snprintf(buffer, buffer_size, "f64");  return;
-        case TYPE_UNTYPED_INT: snprintf(buffer, buffer_size, "untyped-int"); return;
-        case TYPE_UNTYPED_FLOAT: snprintf(buffer, buffer_size, "untyped-float"); return;
 
         case TYPE_FUNCTION: snprintf(buffer, buffer_size, "function"); return;
+        case TYPE_UNTYPED_INT: snprintf(buffer, buffer_size, "untyped-int"); return;
+        case TYPE_UNTYPED_FLOAT: snprintf(buffer, buffer_size, "untyped-float"); return;
 
         case TYPE_NAMED:
             snprintf(
@@ -1031,78 +1045,116 @@ static int invalid_return_type(Type *type) {
     return contains_void_type(type);
 }
 
-static int is_concrete_integer_kind(TypeKind kind) {
+typedef struct IntegerTypeInfo {
+    unsigned bit_width;
+    int is_signed;
+} IntegerTypeInfo;
+
+/*
+ * Returns the fixed-width representation facts for a concrete
+ * Coglet integer type.
+ *
+ * This is the single source of truth for integer width and
+ * signedness. Untyped integers are exact compile-time values and
+ * deliberately have no fixed-width representation here.
+ */
+static int integer_type_info(TypeKind kind, IntegerTypeInfo *out) {
+
+    IntegerTypeInfo info = {
+        .bit_width = 0,
+        .is_signed = 0
+    };
 
     switch (kind) {
         case TYPE_I8:
-        case TYPE_I16:
-        case TYPE_I32:
-        case TYPE_I64:
-        case TYPE_U8:
-        case TYPE_U16:
-        case TYPE_U32:
-        case TYPE_U64:
-            return 1;
+            info.bit_width = 8;
+            info.is_signed = 1;
+            break;
 
-        default:
+        case TYPE_I16:
+            info.bit_width = 16;
+            info.is_signed = 1;
+            break;
+
+        case TYPE_I32:
+            info.bit_width = 32;
+            info.is_signed = 1;
+            break;
+
+        case TYPE_I64:
+            info.bit_width = 64;
+            info.is_signed = 1;
+            break;
+
+        case TYPE_U8:
+            info.bit_width = 8;
+            info.is_signed = 0;
+            break;
+
+        case TYPE_U16:
+            info.bit_width = 16;
+            info.is_signed = 0;
+            break;
+
+        case TYPE_U32:
+            info.bit_width = 32;
+            info.is_signed = 0;
+            break;
+
+        case TYPE_U64:
+            info.bit_width = 64;
+            info.is_signed = 0;
+            break;
+
+        case TYPE_VOID:
+        case TYPE_BOOL:
+        case TYPE_F32:
+        case TYPE_F64:
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
+        case TYPE_NULL:
+        case TYPE_POINTER:
+        case TYPE_ARRAY:
+        case TYPE_NAMED:
+        case TYPE_STRUCT:
+        case TYPE_ENUM:
+        case TYPE_FUNCTION:
             return 0;
     }
+
+    if (out)
+        *out = info;
+
+    return 1;
+}
+
+static int is_concrete_integer_kind(TypeKind kind) {
+    return integer_type_info(kind, NULL);
+}
+
+static int is_signed_integer_kind(TypeKind kind) {
+    IntegerTypeInfo info;
+
+    return integer_type_info(kind, &info) &&
+           info.is_signed;
 }
 
 static int is_unsigned_integer_kind(TypeKind kind) {
+    IntegerTypeInfo info;
 
-    switch (kind) {
-        case TYPE_U8:
-        case TYPE_U16:
-        case TYPE_U32:
-        case TYPE_U64:
-            return 1;
-
-        default:
-            return 0;
-    }
-}
-
-static int is_signed_integer_kind(TypeKind kind)
-{
-    switch (kind) {
-        case TYPE_I8:
-        case TYPE_I16:
-        case TYPE_I32:
-        case TYPE_I64:
-            return 1;
-
-        default:
-            return 0;
-    }
+    return integer_type_info(kind, &info) &&
+           !info.is_signed;
 }
 
 static int integer_kind_bit_width(TypeKind kind, unsigned *out_width) {
 
-    switch (kind) {
-        case TYPE_I8:
-        case TYPE_U8:
-            *out_width = 8;
-            return 1;
+    IntegerTypeInfo info;
 
-        case TYPE_I16:
-        case TYPE_U16:
-            *out_width = 16;
-            return 1;
+    if (!out_width || !integer_type_info(kind, &info))
+        return 0;
 
-        case TYPE_I32:
-        case TYPE_U32:
-            *out_width = 32;
-            return 1;
-
-        case TYPE_I64:
-        case TYPE_U64:
-            *out_width = 64;
-            return 1;
-
-        default:
-            return 0;
-    }
+    *out_width = info.bit_width;
+    return 1;
 }
 
 static int is_integer_kind(TypeKind kind) { return is_concrete_integer_kind(kind) || kind == TYPE_UNTYPED_INT;}
@@ -1113,9 +1165,11 @@ static int is_untyped_numeric_type(const Type *type) { return type && is_untyped
 
 static IntegerValue integer_value_make(uint64_t magnitude, int is_negative) {
 
-    IntegerValue value;
-    value.magnitude   = magnitude;
-    value.is_negative = magnitude != 0 && is_negative;
+    IntegerValue value = {
+        .magnitude   = magnitude,
+        .is_negative = magnitude != 0 && is_negative
+    };
+
     return value;
 }
 
@@ -1143,62 +1197,48 @@ static int integer_value_compare(IntegerValue a, IntegerValue b) {
     return a.magnitude < b.magnitude ? -1 : 1;
 }
 
-static int integer_value_fits_type(IntegerValue value, TypeKind kind) {
+static uint64_t integer_width_mask(unsigned width) {
 
-    switch (kind) {
-        case TYPE_I8:
-            return value.is_negative
-                ? value.magnitude <= UINT64_C(128)
-                : value.magnitude <= UINT64_C(127);
+    assert(width >= 1);
+    assert(width <= 64);
 
-        case TYPE_I16:
-            return value.is_negative
-                ? value.magnitude <= UINT64_C(32768)
-                : value.magnitude <= UINT64_C(32767);
-
-        case TYPE_I32:
-            return value.is_negative
-                ? value.magnitude <= UINT64_C(2147483648)
-                : value.magnitude <= UINT64_C(2147483647);
-
-        case TYPE_I64:
-            return value.is_negative
-                ? value.magnitude <= (UINT64_C(1) << 63)
-                : value.magnitude <= INT64_MAX;
-
-        case TYPE_U8:
-            return !value.is_negative &&
-                   value.magnitude <= UINT64_C(255);
-
-        case TYPE_U16:
-            return !value.is_negative &&
-                   value.magnitude <= UINT64_C(65535);
-
-        case TYPE_U32:
-            return !value.is_negative &&
-                   value.magnitude <= UINT32_MAX;
-
-        case TYPE_U64:
-            return !value.is_negative;
-
-        case TYPE_UNTYPED_INT:
-            /*
-             * Untyped integers retain an exact uint64_t magnitude and
-             * may be negative down to the i64 minimum.
-             */
-            return !value.is_negative ||
-                   value.magnitude <= (UINT64_C(1) << 63);
-
-        default:
-            return 0;
-    }
-}
-
-static uint64_t integer_width_mask(unsigned width)
-{
     return width == 64
         ? UINT64_MAX
-        : (UINT64_C(1) << width) - 1;
+        : (UINT64_C(1) << width) - UINT64_C(1);
+}
+
+static int integer_value_fits_type( IntegerValue value, TypeKind kind) {
+    /*
+     * Untyped integers retain an exact uint64_t magnitude.
+     *
+     * Positive values may use the complete uint64_t magnitude
+     * domain. Negative values are limited to the i64 minimum
+     * magnitude so they can receive an ordinary concrete default
+     * type.
+     */
+    if (kind == TYPE_UNTYPED_INT) {
+        return !value.is_negative ||
+               value.magnitude <= (UINT64_C(1) << 63);
+    }
+
+    IntegerTypeInfo info;
+
+    if (!integer_type_info(kind, &info))
+        return 0;
+
+    if (!info.is_signed) {
+        return !value.is_negative &&
+               value.magnitude <=
+                   integer_width_mask(info.bit_width);
+    }
+
+    uint64_t minimum_magnitude =
+        UINT64_C(1) << (info.bit_width - 1);
+
+    if (value.is_negative)
+        return value.magnitude <= minimum_magnitude;
+
+    return value.magnitude < minimum_magnitude;
 }
 
 static int integer_value_to_bit_pattern(IntegerValue value, TypeKind kind, uint64_t *out_pattern) {
@@ -1240,19 +1280,13 @@ static int integer_value_from_bit_pattern(uint64_t pattern, TypeKind kind, Integ
             uint64_t magnitude =
                 (~pattern + UINT64_C(1)) & mask;
 
-            *out = integer_value_make(
-                magnitude,
-                1
-            );
+            *out = integer_value_make(magnitude, 1);
 
             return 1;
         }
     }
 
-    *out = integer_value_make(
-        pattern,
-        0
-    );
+    *out = integer_value_make(pattern, 0);
 
     return 1;
 }
@@ -1418,25 +1452,240 @@ static int integer_value_shift(
     );
 }
 
-static int default_integer_kind_for_value(IntegerValue value, TypeKind *out_kind) {
+/*
+ * Evaluates wrapping addition, subtraction, or multiplication on
+ * fixed-width integer bit patterns.
+ *
+ * Host unsigned arithmetic is defined modulo 2^64. Masking the
+ * result then applies the corresponding modulo 2^N rule for every
+ * narrower Coglet integer type.
+ */
+static int evaluate_wrapping_integer_binary(
+    BuiltinKind builtin_kind,
+    IntegerValue left,
+    IntegerValue right,
+    TypeKind operation_kind,
+    IntegerValue *out
+) {
+    assert(out);
+    assert(is_concrete_integer_kind(operation_kind));
 
-    if (value.is_negative) {
-        if (value.magnitude <= UINT64_C(2147483648)) {
-            *out_kind = TYPE_I32;
-        } else if (value.magnitude <= (UINT64_C(1) << 63)) {
-            *out_kind = TYPE_I64;
-        } else {
-            return 0;
-        }
-    } else if (value.magnitude <= INT32_MAX) {
-        *out_kind = TYPE_I32;
-    } else if (value.magnitude <= INT64_MAX) {
-        *out_kind = TYPE_I64;
-    } else {
-        *out_kind = TYPE_U64;
+    unsigned width;
+    uint64_t left_pattern;
+    uint64_t right_pattern;
+
+    if (!integer_kind_bit_width(
+            operation_kind,
+            &width
+        ) ||
+        !integer_value_to_bit_pattern(
+            left,
+            operation_kind,
+            &left_pattern
+        ) ||
+        !integer_value_to_bit_pattern(
+            right,
+            operation_kind,
+            &right_pattern
+        )) {
+        return 0;
     }
 
-    return 1;
+    uint64_t result_pattern;
+
+    switch (builtin_kind) {
+        case BUILTIN_WRAPPING_ADD:
+            result_pattern =
+                left_pattern + right_pattern;
+            break;
+
+        case BUILTIN_WRAPPING_SUB:
+            result_pattern =
+                left_pattern - right_pattern;
+            break;
+
+        case BUILTIN_WRAPPING_MUL:
+            result_pattern =
+                left_pattern * right_pattern;
+            break;
+
+        case BUILTIN_WRAPPING_NEG:
+        case BUILTIN_NONE:
+            UNREACHABLE(
+                "non-binary wrapping builtin"
+            );
+    }
+
+    result_pattern &=
+        integer_width_mask(width);
+
+    return integer_value_from_bit_pattern(
+        result_pattern,
+        operation_kind,
+        out
+    );
+}
+
+/*
+ * Wrapping negation computes zero minus the operand modulo 2^N.
+ *
+ * This is valid for both signed and unsigned concrete integers.
+ */
+static int evaluate_wrapping_integer_negation(
+    IntegerValue operand,
+    TypeKind operation_kind,
+    IntegerValue *out
+) {
+    assert(out);
+    assert(is_concrete_integer_kind(operation_kind));
+
+    unsigned width;
+    uint64_t operand_pattern;
+
+    if (!integer_kind_bit_width(operation_kind, &width) ||
+        !integer_value_to_bit_pattern(
+            operand,
+            operation_kind,
+            &operand_pattern
+        )) {
+        return 0;
+    }
+
+    uint64_t result_pattern =
+        (UINT64_C(0) - operand_pattern) &
+        integer_width_mask(width);
+
+    return integer_value_from_bit_pattern(
+        result_pattern,
+        operation_kind,
+        out
+    );
+}
+
+typedef enum CheckedIntegerCastStatus {
+    CHECKED_INTEGER_CAST_VALID,
+    CHECKED_INTEGER_CAST_OUT_OF_RANGE,
+} CheckedIntegerCastStatus;
+
+typedef enum CheckedFloatToIntegerCastStatus {
+    CHECKED_FLOAT_TO_INTEGER_CAST_VALID,
+    CHECKED_FLOAT_TO_INTEGER_CAST_NON_FINITE,
+    CHECKED_FLOAT_TO_INTEGER_CAST_OUT_OF_RANGE,
+} CheckedFloatToIntegerCastStatus;
+
+/*
+ * Classifies a checked conversion of an exact integer value to a
+ * concrete integer type.
+ *
+ * Coglet's ordinary cast preserves the mathematical value. It does
+ * not discard high bits, reinterpret the source representation, or
+ * reduce the value modulo the destination width.
+ */
+static CheckedIntegerCastStatus
+classify_checked_integer_cast(
+    IntegerValue value,
+    TypeKind target_kind
+) {
+    assert(is_concrete_integer_kind(target_kind));
+
+    if (!integer_value_fits_type(value, target_kind))
+        return CHECKED_INTEGER_CAST_OUT_OF_RANGE;
+
+    return CHECKED_INTEGER_CAST_VALID;
+}
+
+/*
+ * Classifies a checked floating-point-to-integer conversion.
+ *
+ * Coglet:
+ *
+ * 1. rejects NaN and infinity;
+ * 2. truncates finite values toward zero;
+ * 3. requires the truncated mathematical integer to fit the
+ *    destination type.
+ */
+static CheckedFloatToIntegerCastStatus
+classify_checked_float_to_integer_cast(
+    double source,
+    TypeKind target_kind,
+    IntegerValue *out
+) {
+    assert(out);
+    assert(is_concrete_integer_kind(target_kind));
+
+    if (!isfinite(source))
+        return CHECKED_FLOAT_TO_INTEGER_CAST_NON_FINITE;
+
+    int is_negative =
+        source < 0.0;
+
+    double magnitude =
+        is_negative
+            ? -source
+            : source;
+
+    /*
+     * 2^64 is the first value outside IntegerValue's uint64_t
+     * magnitude domain.
+     *
+     * After proving:
+     *
+     *     0 <= magnitude < 2^64
+     *
+     * converting magnitude to uint64_t is defined and truncates
+     * toward zero.
+     */
+    if (magnitude >= 18446744073709551616.0) {
+        return
+            CHECKED_FLOAT_TO_INTEGER_CAST_OUT_OF_RANGE;
+    }
+
+    IntegerValue value =
+        integer_value_make(
+            (uint64_t)magnitude,
+            is_negative
+        );
+
+    CheckedIntegerCastStatus integer_status =
+        classify_checked_integer_cast(
+            value,
+            target_kind
+        );
+
+    switch (integer_status) {
+        case CHECKED_INTEGER_CAST_VALID:
+            break;
+
+        case CHECKED_INTEGER_CAST_OUT_OF_RANGE:
+            return
+                CHECKED_FLOAT_TO_INTEGER_CAST_OUT_OF_RANGE;
+    }
+
+    *out = value;
+
+    return CHECKED_FLOAT_TO_INTEGER_CAST_VALID;
+}
+
+static int default_integer_kind_for_value(IntegerValue value, TypeKind *out_kind) {
+
+    if (!out_kind) return 0;
+
+    if (integer_value_fits_type(value, TYPE_I32)) {
+        *out_kind = TYPE_I32;
+        return 1;
+    }
+
+    if (integer_value_fits_type(value, TYPE_I64)) {
+        *out_kind = TYPE_I64;
+        return 1;
+    }
+
+    if (integer_value_fits_type(value, TYPE_U64)) {
+        *out_kind = TYPE_U64;
+        return 1;
+    }
+
+    return 0;
 }
 
 static Type *untyped_integer_type_for_value(SemanticContext *ctx, IntegerValue value) {
@@ -1449,31 +1698,10 @@ static Type *untyped_integer_type_for_value(SemanticContext *ctx, IntegerValue v
     return new_type(ctx, TYPE_UNTYPED_INT);
 }
 
-static double integer_value_to_double(IntegerValue value)
-{
+static double integer_value_to_double(IntegerValue value){
+
     double result = (double)value.magnitude;
-
     return value.is_negative ? -result : result;
-}
-
-static int double_to_integer_value(double value, IntegerValue *out) {
-
-    if (!isfinite(value)) return 0;
-
-    int is_negative  = value < 0.0;
-    double magnitude = is_negative ? -value : value;
-
-    /*
-     * 2^64 is the first double outside the uint64_t magnitude
-     * domain. The cast below is therefore performed only for a
-     * representable nonnegative integral part.
-     */
-    if (magnitude >= 18446744073709551616.0)
-        return 0;
-
-    *out = integer_value_make((uint64_t)magnitude, is_negative);
-
-    return 1;
 }
 
 static int round_float_for_type(double value, TypeKind kind, double *out) {
@@ -1488,7 +1716,7 @@ static int round_float_for_type(double value, TypeKind kind, double *out) {
          * Infinity and NaN are representable IEEE-754 values and
          * remain infinity or NaN when converted to f32.
          */
-        if (isfinite(value) && (value > FLT_MAX || value < -FLT_MAX)) {
+        if (isfinite(value) && (value > COGLET_F32_MAX || value < -COGLET_F32_MAX)) {
             return 0;
         }
 
@@ -1511,6 +1739,7 @@ static int round_float_for_type(double value, TypeKind kind, double *out) {
 static int integer_value_add(IntegerValue left, IntegerValue right, IntegerValue *out) {
 
     if (left.is_negative == right.is_negative) {
+
         if (UINT64_MAX - left.magnitude < right.magnitude)
             return 0;
 
@@ -1549,9 +1778,8 @@ static int integer_value_subtract(IntegerValue left, IntegerValue right, Integer
 static int integer_value_multiply(IntegerValue left, IntegerValue right, IntegerValue *out) {
 
     if (left.magnitude != 0 &&
-        right.magnitude > UINT64_MAX / left.magnitude) {
+        right.magnitude > UINT64_MAX / left.magnitude)
         return 0;
-    }
 
     *out = integer_value_make(
         left.magnitude * right.magnitude,
@@ -1561,42 +1789,186 @@ static int integer_value_multiply(IntegerValue left, IntegerValue right, Integer
     return 1;
 }
 
-static int signed_integer_min_magnitude(TypeKind kind, uint64_t *out) {
+typedef enum CheckedIntegerArithmeticStatus {
+    CHECKED_INTEGER_ARITHMETIC_VALID,
+    CHECKED_INTEGER_ARITHMETIC_OVERFLOW,
+} CheckedIntegerArithmeticStatus;
 
-    switch (kind) {
-        case TYPE_I8:
-            *out = UINT64_C(1) << 7;
-            return 1;
+/*
+ * Applies Coglet's ordinary checked-arithmetic rule to an exact
+ * integer result.
+ *
+ * The result is valid only when its mathematical value fits the
+ * concrete operation type.
+ */
+static CheckedIntegerArithmeticStatus classify_checked_integer_result(
+    IntegerValue value, TypeKind operation_kind) {
 
-        case TYPE_I16:
-            *out = UINT64_C(1) << 15;
-            return 1;
+    assert(is_concrete_integer_kind(operation_kind));
 
-        case TYPE_I32:
-            *out = UINT64_C(1) << 31;
-            return 1;
+    if (!integer_value_fits_type(value, operation_kind))
+        return CHECKED_INTEGER_ARITHMETIC_OVERFLOW;
 
-        case TYPE_I64:
-            *out = UINT64_C(1) << 63;
-            return 1;
-
-        default:
-            return 0;
-    }
+    return CHECKED_INTEGER_ARITHMETIC_VALID;
 }
 
-static int integer_division_overflows(IntegerValue left, IntegerValue right, TypeKind result_kind) {
+/*
+ * Evaluates ordinary checked integer addition, subtraction, or
+ * multiplication.
+ *
+ * The operands must already fit the concrete operation type.
+ *
+ * Failure occurs when either:
+ *
+ * - the exact sign-and-magnitude result exceeds the constant
+ *   evaluator's uint64_t magnitude domain; or
+ * - the mathematical result does not fit the operation type.
+ *
+ * Both conditions represent ordinary Coglet integer overflow.
+ */
+static CheckedIntegerArithmeticStatus evaluate_checked_integer_binary(
+    TokenType operation,
+    IntegerValue left,
+    IntegerValue right,
+    TypeKind operation_kind,
+    IntegerValue *out
+) {
+    assert(out);
+    assert(is_concrete_integer_kind(operation_kind));
+    assert(integer_value_fits_type(left, operation_kind));
+    assert(integer_value_fits_type(right, operation_kind));
+
+    IntegerValue value;
+    int exact_result_available;
+
+    switch (operation) {
+        case TOK_PLUS:
+            exact_result_available =
+                integer_value_add(left, right, &value);
+            break;
+
+        case TOK_MINUS:
+            exact_result_available =
+                integer_value_subtract(left, right, &value);
+            break;
+
+        case TOK_STAR:
+            exact_result_available =
+                integer_value_multiply(left, right, &value);
+            break;
+
+        default:
+            UNREACHABLE(
+                "checked integer arithmetic operation"
+            );
+    }
+
+    if (!exact_result_available)
+        return CHECKED_INTEGER_ARITHMETIC_OVERFLOW;
+
+    CheckedIntegerArithmeticStatus status =
+        classify_checked_integer_result(value, operation_kind);
+
+    if (status != CHECKED_INTEGER_ARITHMETIC_VALID)
+        return status;
+
+    *out = value;
+
+    return CHECKED_INTEGER_ARITHMETIC_VALID;
+}
+
+/*
+ * Evaluates ordinary signed integer negation.
+ *
+ * For an already typed operand, semantic analysis guarantees that
+ * the operand fits the operation type.
+ *
+ * An untyped operand is different: its positive mathematical value
+ * may not fit the selected operation type even though its negated
+ * result does. This is required for:
+ *
+ *     -9223372036854775808
+ *
+ * Therefore only the negated result is checked here.
+ */
+static CheckedIntegerArithmeticStatus
+evaluate_checked_integer_negation(
+    IntegerValue operand,
+    TypeKind operation_kind,
+    IntegerValue *out
+) {
+    assert(out);
+    assert(is_signed_integer_kind(operation_kind));
+
+    IntegerValue value =
+        integer_value_negated(operand);
+
+    CheckedIntegerArithmeticStatus status =
+        classify_checked_integer_result(
+            value,
+            operation_kind
+        );
+
+    if (status != CHECKED_INTEGER_ARITHMETIC_VALID)
+        return status;
+
+    *out = value;
+
+    return CHECKED_INTEGER_ARITHMETIC_VALID;
+}
+
+static int signed_integer_min_magnitude( TypeKind kind, uint64_t *out) {
+
+    IntegerTypeInfo info;
+
+    if (!out || !integer_type_info(kind, &info) || !info.is_signed) {
+        return 0;
+    }
+
+    *out = UINT64_C(1) << (info.bit_width - 1);
+
+    return 1;
+}
+
+typedef enum IntegerDivisionStatus {
+    INTEGER_DIVISION_VALID,
+    INTEGER_DIVISION_ZERO_DIVISOR,
+    INTEGER_DIVISION_SIGNED_OVERFLOW,
+} IntegerDivisionStatus;
+
+/*
+ * Classifies the failure conditions shared by integer division
+ * and remainder.
+ *
+ * Coglet traps for both:
+ *
+ *     SIGNED_MIN / -1
+ *     SIGNED_MIN % -1
+ *
+ * The result type determines whether the signed-overflow case
+ * exists and which minimum magnitude applies.
+ */
+static IntegerDivisionStatus classify_integer_division(IntegerValue left, IntegerValue right, TypeKind result_kind) {
+
+    assert(is_concrete_integer_kind(result_kind));
+
+    if (right.magnitude == 0)
+        return INTEGER_DIVISION_ZERO_DIVISOR;
 
     uint64_t minimum_magnitude;
 
-    return signed_integer_min_magnitude(
-               result_kind,
-               &minimum_magnitude
-           ) &&
-           left.is_negative &&
-           left.magnitude == minimum_magnitude &&
-           right.is_negative &&
-           right.magnitude == 1;
+    if (signed_integer_min_magnitude(
+            result_kind,
+            &minimum_magnitude
+        ) &&
+        left.is_negative &&
+        left.magnitude == minimum_magnitude &&
+        right.is_negative &&
+        right.magnitude == 1) {
+        return INTEGER_DIVISION_SIGNED_OVERFLOW;
+    }
+
+    return INTEGER_DIVISION_VALID;
 }
 
 static int is_u8_type(Type *type)    { return type && type->kind == TYPE_U8; }
@@ -2514,15 +2886,11 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                 out->type = new_type(ctx, TYPE_UNTYPED_FLOAT);
             } else {
                 out->kind = CONST_VALUE_INT;
-                out->as.integer = integer_value_make(
-                    node->as.number.value.integer,
-                    0
-                );
+                out->as.integer =
+                    integer_value_make(node->as.number.value.integer, 0);
 
-                out->type = untyped_integer_type_for_value(
-                    ctx,
-                    out->as.integer
-                );
+                out->type =
+                    untyped_integer_type_for_value(ctx,out->as.integer);
             }
 
             return 1;
@@ -2540,6 +2908,9 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
 
         case NODE_CAST:
             return eval_const_cast(ctx, node, out);
+
+        case NODE_CALL:
+            return eval_const_builtin_call(ctx, node, out);
 
         case NODE_IDENT:
         {
@@ -2623,99 +2994,137 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
             }
 
             if (node->as.unary.op == TOK_MINUS) {
+
                 if (operand.kind == CONST_VALUE_INT) {
+                Type *result_type =
+                    const_value_default_type(ctx, &operand);
 
-                    Type *result_type =
-                        const_value_default_type(ctx, &operand);
-
-                    /*
-                     * Typed unsigned constants follow the same rule as ordinary
-                     * unsigned expressions. Coglet has not defined wrapping unary
-                     * negation for unsigned integers.
-                     */
-                    if (result_type &&
-                        is_unsigned_integer_kind(result_type->kind)) {
-                        semantic_error(ctx, node,
-                            "unary '-' cannot be applied to an unsigned value");
-
-                        return 0;
-                    }
-
-                    IntegerValue value =
-                        integer_value_negated(operand.as.integer);
-
-                    TypeKind operation_kind;
-
-                    /*
-                     * Untyped negation chooses its provisional concrete
-                     * operation kind from the resulting mathematical value.
-                     * This preserves spellings such as the i64 minimum.
-                     */
-                    if (result_type &&
-                        result_type->kind == TYPE_UNTYPED_INT) {
-                        if (!default_integer_kind_for_value(
-                                value,
-                                &operation_kind)) {
-
-                            semantic_error(ctx, node,
-                                "integer overflow in constant expression");
-
-                            return 0;
-                        }
-                    } else if (result_type &&
-                               is_concrete_integer_kind(
-                               result_type->kind)) {
-                        operation_kind = result_type->kind;
-                    } else {
-
-                        semantic_error(ctx, node,
-                            "integer constant expression has no integer type");
-
-                        return 0;
-                    }
-
-                    return integer_constant_result(
+                /*
+                 * Typed unsigned constants follow the same rule as ordinary
+                 * unsigned expressions. Coglet does not define ordinary
+                 * wrapping unary negation for unsigned integers.
+                 */
+                if (result_type &&
+                    is_unsigned_integer_kind(result_type->kind)) {
+                    semantic_error(
                         ctx,
                         node,
-                        result_type,
-                        operation_kind,
-                        value,
-                        out
+                        "unary '-' cannot be applied to an unsigned value"
                     );
+
+                    return 0;
                 }
 
-                if (operand.kind == CONST_VALUE_FLOAT) {
+                /*
+                 * The mathematical result is needed before selecting the
+                 * provisional type of untyped integer expression.
+                 *
+                 * This preserves the special but valid spelling:
+                 *
+                 *     -9223372036854775808
+                 *
+                 * The positive literal is representable in the exact untyped
+                 * domain, and its negated result receives i64 as its default
+                 * concrete type.
+                 */
+                IntegerValue mathematical_value =
+                    integer_value_negated(operand.as.integer);
 
-                    Type *result_type =
-                        const_value_default_type(ctx, &operand);
+                TypeKind operation_kind;
 
-                    TypeKind operation_kind;
-
-                    if (!default_numeric_kind_for_constant(
-                            &operand,
-                            &operation_kind) ||
-                        !is_concrete_float_kind(operation_kind)) {
-
-                        semantic_error(ctx, node,
-                            "floating-point constant expression has no floating-point type");
-
-                        return 0;
-                    }
-
-                    return float_constant_result(
+            if (result_type &&
+                result_type->kind == TYPE_UNTYPED_INT) {
+                if (!default_integer_kind_for_value(
+                        mathematical_value,
+                        &operation_kind
+                    )) {
+                    semantic_error(
                         ctx,
                         node,
-                        result_type,
-                        operation_kind,
-                        -operand.as.floating,
-                        out
+                        "integer overflow in constant expression"
                     );
-                }
 
-                semantic_error(ctx, node,
-                    "unary '-' requires a numeric constant");
+                    return 0;
+                }
+            } else if (
+                result_type &&
+                is_signed_integer_kind(result_type->kind)
+            ) {
+                operation_kind = result_type->kind;
+            } else {
+                semantic_error(
+                    ctx,
+                    node,
+                    "integer constant expression has no integer type"
+                );
 
                 return 0;
+            }
+
+                IntegerValue value;
+
+                CheckedIntegerArithmeticStatus status =
+                    evaluate_checked_integer_negation(
+                        operand.as.integer,
+                        operation_kind,
+                        &value);
+
+                switch (status) {
+                    case CHECKED_INTEGER_ARITHMETIC_VALID:
+                        break;
+
+                    case CHECKED_INTEGER_ARITHMETIC_OVERFLOW:
+                        semantic_error(
+                            ctx,
+                            node,
+                            "integer overflow in constant expression"
+                        );
+
+                        return 0;
+                }
+
+                return integer_constant_result(
+                    ctx,
+                    node,
+                    result_type,
+                    operation_kind,
+                    value,
+                    out
+                );
+            }
+
+            if (operand.kind == CONST_VALUE_FLOAT) {
+
+                Type *result_type =
+                    const_value_default_type(ctx, &operand);
+
+                TypeKind operation_kind;
+
+                if (!default_numeric_kind_for_constant(
+                        &operand,
+                        &operation_kind) ||
+                    !is_concrete_float_kind(operation_kind)) {
+
+                    semantic_error(ctx, node,
+                        "floating-point constant expression has no floating-point type");
+
+                    return 0;
+                }
+
+                return float_constant_result(
+                    ctx,
+                    node,
+                    result_type,
+                    operation_kind,
+                    -operand.as.floating,
+                    out
+                );
+            }
+
+            semantic_error(ctx, node,
+                "unary '-' requires a numeric constant");
+
+            return 0;
             }
 
             if (node->as.unary.op == TOK_TILDE) {
@@ -2751,7 +3160,7 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                                 "integer constant expression has no integer operation type");
 
                             return 0;
-                            }
+                        }
                     } else {
                         semantic_error(ctx, node,
                             "unary '~' requires an integer constant");
@@ -3124,17 +3533,16 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                         return 0;
                     }
 
+
                     if (left.kind == CONST_VALUE_INT &&
                         right.kind == CONST_VALUE_INT &&
                         is_concrete_integer_kind(operation_kind)) {
                         if (!integer_value_fits_type(
                                 left.as.integer,
-                                operation_kind
-                            ) ||
+                                operation_kind) ||
                             !integer_value_fits_type(
                                 right.as.integer,
-                                operation_kind
-                            )) {
+                                operation_kind)) {
 
                             semantic_error(ctx, node,
                                 "integer constant operand does not fit operation type");
@@ -3142,95 +3550,87 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                             return 0;
                         }
 
-                        if ((node->as.binary.op == TOK_SLASH ||
-                             node->as.binary.op == TOK_PERCENT) &&
-                            integer_division_overflows(
-                                left.as.integer,
-                                right.as.integer,
-                                operation_kind
-                            )) {
-
-                            semantic_error(ctx, node,
-                                "integer overflow in constant expression");
-
-                            return 0;
-                        }
-
                         IntegerValue value;
-                        int ok = 0;
 
                         switch (node->as.binary.op) {
                             case TOK_PLUS:
-                                ok = integer_value_add(
-                                    left.as.integer,
-                                    right.as.integer,
-                                    &value
-                                );
-                                break;
-
                             case TOK_MINUS:
-                                ok = integer_value_subtract(
-                                    left.as.integer,
-                                    right.as.integer,
-                                    &value
-                                );
-                                break;
-
                             case TOK_STAR:
-                                ok = integer_value_multiply(
-                                    left.as.integer,
-                                    right.as.integer,
-                                    &value
-                                );
+                            {
+                                CheckedIntegerArithmeticStatus status =
+                                    evaluate_checked_integer_binary(
+                                        node->as.binary.op,
+                                        left.as.integer,
+                                        right.as.integer,
+                                        operation_kind,
+                                        &value);
+
+                                switch (status) {
+                                    case CHECKED_INTEGER_ARITHMETIC_VALID:
+                                        break;
+
+                                    case CHECKED_INTEGER_ARITHMETIC_OVERFLOW:
+                                        semantic_error(
+                                            ctx,
+                                            node,
+                                            "integer overflow in constant expression"
+                                        );
+
+                                        return 0;
+                                }
+
                                 break;
+                            }
 
                             case TOK_SLASH:
-                                if (right.as.integer.magnitude == 0) {
-
-                                    semantic_error(ctx, node,
-                                        "division by zero in constant expression");
-
-                                    return 0;
-                                }
-
-                                value = integer_value_make(
-                                    left.as.integer.magnitude /
-                                        right.as.integer.magnitude,
-                                    left.as.integer.is_negative !=
-                                        right.as.integer.is_negative
-                                );
-
-                                ok = 1;
-                                break;
-
                             case TOK_PERCENT:
-                                if (right.as.integer.magnitude == 0) {
+                            {
+                                IntegerDivisionStatus status =
+                                    classify_integer_division(
+                                        left.as.integer,
+                                        right.as.integer,
+                                        operation_kind
+                                    );
 
-                                    semantic_error(ctx, node,
-                                        "remainder by zero in constant expression");
+                                switch (status) {
+                                    case INTEGER_DIVISION_VALID:
+                                        break;
 
-                                    return 0;
+                                    case INTEGER_DIVISION_ZERO_DIVISOR:
+                                        semantic_error(ctx,node,
+                                            node->as.binary.op == TOK_SLASH
+                                                ? "division by zero in constant expression"
+                                                : "remainder by zero in constant expression");
+
+                                        return 0;
+
+                                    case INTEGER_DIVISION_SIGNED_OVERFLOW:
+                                        semantic_error(ctx,node,
+                                            "integer overflow in constant expression");
+
+                                        return 0;
                                 }
 
-                                value = integer_value_make(
-                                    left.as.integer.magnitude %
-                                        right.as.integer.magnitude,
-                                    left.as.integer.is_negative
-                                );
+                                if (node->as.binary.op == TOK_SLASH) {
+                                    value = integer_value_make(
+                                        left.as.integer.magnitude /
+                                            right.as.integer.magnitude,
+                                        left.as.integer.is_negative !=
+                                            right.as.integer.is_negative
+                                    );
+                                } else {
+                                    value = integer_value_make(
+                                        left.as.integer.magnitude %
+                                            right.as.integer.magnitude,
+                                        left.as.integer.is_negative
+                                    );
+                                }
 
-                                ok = 1;
                                 break;
+                            }
 
                             default:
-                                break;
-                        }
-
-                        if (!ok) {
-
-                            semantic_error(ctx, node,
-                                "integer overflow in constant expression");
-
-                            return 0;
+                                UNREACHABLE("integer constant arithmetic operator");
                         }
 
                         return integer_constant_result(
@@ -3244,7 +3644,6 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                     }
 
                     if (node->as.binary.op == TOK_PERCENT) {
-
                         semantic_error(ctx, node,
                             "'%' requires integer constants");
 
@@ -3326,13 +3725,8 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
 
     ConstValue value;
 
-    if (!eval_const_expr(
-            ctx,
-            node->as.cast_expr.expression,
-            &value
-        )) {
+    if (!eval_const_expr(ctx, node->as.cast_expr.expression, &value))
         return 0;
-    }
 
     Type *target_type = resolve_type(
         ctx,
@@ -3340,8 +3734,7 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
         node
     );
 
-    if (!target_type)
-        return 0;
+    if (!target_type) return 0;
 
     Type *source_type =
         const_value_default_type(ctx, &value);
@@ -3350,7 +3743,6 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
             target_type,
             source_type
         )) {
-
         semantic_error(ctx, node,
             "invalid explicit cast");
 
@@ -3361,9 +3753,9 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
     out->type = target_type;
 
     /*
-    * A null-to-pointer cast remains a null constant, but carries
-    * the concrete destination pointer type.
-    */
+     * A null-to-pointer cast remains a null constant but carries
+     * the concrete destination pointer type.
+     */
     if (target_type->kind == TYPE_POINTER) {
         if (value.kind != CONST_VALUE_NULL) {
             semantic_error(ctx, node,
@@ -3376,9 +3768,14 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
         return 1;
     }
 
+    /*
+     * Closed enum construction has two requirements:
+     *
+     * 1. the integer value must fit the enum backing type;
+     * 2. the value must equal a declared runtime member value.
+     */
     if (target_type->kind == TYPE_ENUM) {
         if (value.kind != CONST_VALUE_INT) {
-
             semantic_error(ctx, node,
                 "enum cast requires an integer constant");
 
@@ -3390,7 +3787,6 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
                 value.as.integer,
                 target_type->enum_backing_type->kind
             )) {
-
             semantic_error(ctx, node,
                 "enum cast value does not fit in backing type");
 
@@ -3410,7 +3806,7 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
             );
 
             return 0;
-            }
+        }
 
         out->kind = CONST_VALUE_INT;
         out->as.integer = value.as.integer;
@@ -3420,48 +3816,81 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
     }
 
     if (is_integer_kind(target_type->kind)) {
-        IntegerValue integer_value;
 
+        assert(is_concrete_integer_kind(target_type->kind));
+
+        /*
+         * Integer and enum constants already carry an exact
+         * mathematical IntegerValue. Checked casting only needs to
+         * prove that this value fits the destination integer type.
+         */
         if (value.kind == CONST_VALUE_INT) {
-            integer_value = value.as.integer;
-        } else if (value.kind == CONST_VALUE_FLOAT) {
-            /*
-             * C-like explicit conversion: truncate toward zero,
-             * then verify the resulting mathematical integer.
-             */
-            if (!double_to_integer_value(
-                    value.as.floating,
-                    &integer_value
-                )) {
+            CheckedIntegerCastStatus status =
+                classify_checked_integer_cast(
+                    value.as.integer,
+                    target_type->kind
+                );
 
-                semantic_error(ctx, node,
-                    "integer cast value does not fit in target type");
+            switch (status) {
+                case CHECKED_INTEGER_CAST_VALID:
+                    break;
 
-                return 0;
+                case CHECKED_INTEGER_CAST_OUT_OF_RANGE:
+                    semantic_error(ctx, node,
+                        "integer cast value does not fit in target type");
+
+                    return 0;
             }
-        } else {
 
-            semantic_error(ctx, node,
-                "integer cast requires numeric constant");
+            out->kind = CONST_VALUE_INT;
+            out->as.integer = value.as.integer;
 
-            return 0;
+            return 1;
         }
 
-        if (!integer_value_fits_type(
-                integer_value,
-                target_type->kind
-            )) {
+        /*
+        * Checked floating-point-to-integer conversion:
+        *
+        * 1. reject NaN and infinity;
+        * 2. truncate finite values toward zero;
+        * 3. require the truncated mathematical integer to fit the
+        *    destination type.
+         */
+        if (value.kind == CONST_VALUE_FLOAT) {
+            IntegerValue integer_value;
 
-            semantic_error(ctx, node,
-                "integer cast value does not fit in target type");
+            CheckedFloatToIntegerCastStatus status =
+                classify_checked_float_to_integer_cast(
+                    value.as.floating,
+                    target_type->kind,
+                    &integer_value
+                );
 
-            return 0;
+            switch (status) {
+                case CHECKED_FLOAT_TO_INTEGER_CAST_VALID:
+                    break;
+
+                case CHECKED_FLOAT_TO_INTEGER_CAST_NON_FINITE:
+                case CHECKED_FLOAT_TO_INTEGER_CAST_OUT_OF_RANGE:
+                    semantic_error(
+                        ctx,
+                        node,
+                        "integer cast value does not fit in target type"
+                    );
+
+                    return 0;
+            }
+
+            out->kind = CONST_VALUE_INT;
+            out->as.integer = integer_value;
+
+            return 1;
         }
 
-        out->kind = CONST_VALUE_INT;
-        out->as.integer = integer_value;
+        semantic_error(ctx, node,
+            "integer cast requires numeric constant");
 
-        return 1;
+        return 0;
     }
 
     if (is_float_kind(target_type->kind)) {
@@ -3471,12 +3900,11 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
                 &value,
                 target_type->kind,
                 &float_value)) {
-
-            semantic_error(ctx, node,
+            semantic_error(ctx,node,
                 "float cast value does not fit in target type");
 
             return 0;
-                }
+        }
 
         out->kind = CONST_VALUE_FLOAT;
         out->as.floating = float_value;
@@ -3486,7 +3914,6 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
 
     if (target_type->kind == TYPE_BOOL) {
         if (value.kind != CONST_VALUE_BOOL) {
-
             semantic_error(ctx,node,
                 "bool cast requires boolean constant");
 
@@ -3512,8 +3939,8 @@ static int coerce_constant_to_type(
     Type *target_type,
     const char *integer_range_message,
     const char *float_range_message,
-    ConstValue *out
-) {
+    ConstValue *out) {
+
     *out = *value;
     out->type = target_type;
 
@@ -3634,7 +4061,7 @@ static int check_binary_constant_operands(
     return 1;
 }
 
-static int check_known_integer_zero_divisor(
+static int check_known_integer_divisor(
     SemanticContext *ctx,
     TokenType operation,
     Node *divisor,
@@ -3771,6 +4198,49 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
                        ctx,
                        node->as.binary.right
                    );
+
+        case NODE_CALL:
+        {
+            Node *callee =
+                node->as.call.callee;
+
+            if (!callee ||
+                callee->type != NODE_IDENT) {
+                return 0;
+                }
+
+            Symbol *symbol =
+                scope_lookup(
+                    ctx->current_scope,
+                    callee->as.ident.data,
+                    callee->as.ident.length
+                );
+
+            if (!symbol || symbol->kind != SYMBOL_BUILTIN)
+                return 0;
+
+            switch (symbol->builtin_kind) {
+                case BUILTIN_WRAPPING_ADD:
+                case BUILTIN_WRAPPING_SUB:
+                case BUILTIN_WRAPPING_MUL:
+                case BUILTIN_WRAPPING_NEG:
+                    break;
+
+                case BUILTIN_NONE:
+                    return 0;
+            }
+
+            for (int i = 0; i < node->as.call.arguments.count; i++) {
+                if (!expression_is_compile_time_constant(
+                        ctx,
+                        node->as.call.arguments.items[i]
+                    )) {
+                    return 0;
+                }
+            }
+
+            return 1;
+        }
 
         case NODE_IDENT:
         {
@@ -3913,6 +4383,25 @@ static Type *check_identifier_expression(SemanticContext *ctx, Node *node,Identi
     }
 
     /*
+    * Builtins have compiler-defined polymorphic signatures and are not
+    * first-class function values.
+    *
+    * NODE_CALL handles builtin identifiers through its dedicated
+    * dispatch path before ordinary value checking reaches here.
+    */
+    if (sym->kind == SYMBOL_BUILTIN) {
+        semantic_error_fmt(
+            ctx,
+            node,
+            "builtin '%.*s' can only be used as a call target",
+            (int)node->as.ident.length,
+            node->as.ident.data
+        );
+
+        return NULL;
+    }
+
+    /*
      * Type names are not values.
      *
      * Valid:
@@ -3997,6 +4486,486 @@ static Type *check_identifier_expression(SemanticContext *ctx, Node *node,Identi
     }
 
     return sym->type;
+}
+
+typedef enum WrappingBuiltinTypeStatus {
+    WRAPPING_BUILTIN_TYPE_VALID,
+    WRAPPING_BUILTIN_TYPE_REQUIRES_CONCRETE_INTEGER,
+    WRAPPING_BUILTIN_TYPE_MISMATCHED_ARGUMENTS,
+} WrappingBuiltinTypeStatus;
+
+static const char *builtin_kind_name(BuiltinKind kind) {
+    switch (kind) {
+        case BUILTIN_NONE:         return "<none>";
+        case BUILTIN_WRAPPING_ADD: return "wrapping_add";
+        case BUILTIN_WRAPPING_SUB: return "wrapping_sub";
+        case BUILTIN_WRAPPING_MUL: return "wrapping_mul";
+        case BUILTIN_WRAPPING_NEG: return "wrapping_neg";
+    }
+
+    UNREACHABLE("BuiltinKind");
+}
+
+static Symbol *resolve_builtin_callee(SemanticContext *ctx, Node *callee) {
+
+    if (!callee ||
+        callee->type != NODE_IDENT) {
+        return NULL;
+    }
+
+    Symbol *symbol =
+        scope_lookup(
+            ctx->current_scope,
+            callee->as.ident.data,
+            callee->as.ident.length
+        );
+
+    if (!symbol ||
+        symbol->kind != SYMBOL_BUILTIN) {
+        return NULL;
+    }
+
+    assert_symbol_builtin_invariant(symbol);
+
+    return symbol;
+}
+
+static int check_builtin_argument_count(SemanticContext *ctx, Node *call, const Symbol *builtin, int expected_count) {
+
+    assert(call);
+    assert(call->type == NODE_CALL);
+    assert(builtin);
+    assert(builtin->kind == SYMBOL_BUILTIN);
+
+    int actual_count =
+        call->as.call.arguments.count;
+
+    if (actual_count == expected_count)
+        return 1;
+
+    semantic_error_fmt(
+        ctx,
+        call,
+        "wrong number of arguments to builtin '%s': expected %d, got %d",
+        builtin_kind_name(builtin->builtin_kind),
+        expected_count,
+        actual_count
+    );
+
+    return 0;
+}
+
+static WrappingBuiltinTypeStatus
+    classify_wrapping_binary_types(Type *left_type, Type *right_type, Type **out_result_type) {
+
+    assert(out_result_type);
+
+    if (!left_type ||
+        !right_type ||
+        !is_concrete_integer_kind(left_type->kind) ||
+        !is_concrete_integer_kind(right_type->kind)) {
+        return
+            WRAPPING_BUILTIN_TYPE_REQUIRES_CONCRETE_INTEGER;
+        }
+
+    if (!type_equal(left_type, right_type)) {
+        return
+            WRAPPING_BUILTIN_TYPE_MISMATCHED_ARGUMENTS;
+    }
+
+    *out_result_type = left_type;
+
+    return WRAPPING_BUILTIN_TYPE_VALID;
+}
+
+static void report_wrapping_builtin_type_error(
+    SemanticContext *ctx, Node *owner, const Symbol *builtin, WrappingBuiltinTypeStatus status) {
+
+    assert(ctx);
+    assert(owner);
+    assert(builtin);
+    assert(builtin->kind == SYMBOL_BUILTIN);
+
+    switch (status) {
+        case WRAPPING_BUILTIN_TYPE_VALID:
+            UNREACHABLE("valid wrapping builtin type reported as error");
+
+        case WRAPPING_BUILTIN_TYPE_REQUIRES_CONCRETE_INTEGER:
+            if (builtin->builtin_kind ==
+                BUILTIN_WRAPPING_NEG) {
+                semantic_error_fmt(
+                    ctx,
+                    owner,
+                    "builtin '%s' requires a concrete integer argument",
+                    builtin_kind_name(
+                        builtin->builtin_kind
+                    )
+                );
+                } else {
+                    semantic_error_fmt(
+                        ctx,
+                        owner,
+                        "builtin '%s' requires concrete integer arguments",
+                        builtin_kind_name(
+                            builtin->builtin_kind
+                        )
+                    );
+                }
+
+            return;
+
+        case WRAPPING_BUILTIN_TYPE_MISMATCHED_ARGUMENTS:
+            semantic_error_fmt(
+                ctx,
+                owner,
+                "builtin '%s' requires arguments of the same integer type",
+                builtin_kind_name(
+                    builtin->builtin_kind
+                )
+            );
+
+            return;
+    }
+
+    UNREACHABLE("WrappingBuiltinTypeStatus");
+}
+
+/*
+ * Checks wrapping_add, wrapping_sub, and wrapping_mul.
+ *
+ * Wrapping width and signed interpretation are determined by the
+ * common concrete integer type. Untyped integer arguments are
+ * intentionally rejected because wrapping requires an explicit
+ * fixed width.
+ */
+static Type *check_wrapping_binary_builtin_call(SemanticContext *ctx, Node *call, const Symbol *builtin) {
+
+    if (!check_builtin_argument_count(ctx, call, builtin, 2))
+        return NULL;
+
+    Node *left_argument =
+        call->as.call.arguments.items[0];
+
+    Node *right_argument =
+        call->as.call.arguments.items[1];
+
+    Type *left_type =
+        check_value_expression(ctx, left_argument);
+
+    Type *right_type =
+        check_value_expression(ctx, right_argument);
+
+    if (!left_type || !right_type)
+        return NULL;
+
+    Type *result_type = NULL;
+
+    WrappingBuiltinTypeStatus status =
+        classify_wrapping_binary_types(left_type, right_type, &result_type);
+
+    if (status != WRAPPING_BUILTIN_TYPE_VALID) {
+        report_wrapping_builtin_type_error(
+            ctx,
+            call,
+            builtin,
+            status
+        );
+
+        return NULL;
+    }
+
+    assert(result_type);
+
+    return result_type;
+}
+
+static WrappingBuiltinTypeStatus classify_wrapping_neg_type(Type *argument_type, Type **out_result_type) {
+
+    assert(out_result_type);
+
+    if (!argument_type ||
+        !is_concrete_integer_kind(argument_type->kind)) {
+        return
+            WRAPPING_BUILTIN_TYPE_REQUIRES_CONCRETE_INTEGER;
+        }
+
+    *out_result_type = argument_type;
+
+    return WRAPPING_BUILTIN_TYPE_VALID;
+}
+
+/*
+ * Explicit wrapping negation is valid for both signed and unsigned
+ * concrete integer types.
+ *
+ * For an unsigned value, the operation computes zero minus the value
+ * modulo 2^N.
+ */
+static Type *check_wrapping_neg_builtin_call(SemanticContext *ctx, Node *call, const Symbol *builtin) {
+
+    if (!check_builtin_argument_count(ctx, call, builtin, 1))
+        return NULL;
+
+    Node *argument =
+        call->as.call.arguments.items[0];
+
+    Type *argument_type =
+        check_value_expression(ctx, argument);
+
+    if (!argument_type)
+        return NULL;
+
+    Type *result_type = NULL;
+
+    WrappingBuiltinTypeStatus status =
+        classify_wrapping_neg_type(argument_type, &result_type);
+
+    if (status != WRAPPING_BUILTIN_TYPE_VALID) {
+        report_wrapping_builtin_type_error(
+            ctx,
+            call,
+            builtin,
+            status
+        );
+
+        return NULL;
+    }
+
+    assert(result_type);
+
+    return result_type;
+}
+
+static Type *check_builtin_call(SemanticContext *ctx, Node *call, Symbol *builtin) {
+
+    assert(call);
+    assert(call->type == NODE_CALL);
+    assert(builtin);
+    assert(builtin->kind == SYMBOL_BUILTIN);
+
+    Type *result_type = NULL;
+
+    switch (builtin->builtin_kind) {
+        case BUILTIN_WRAPPING_ADD:
+        case BUILTIN_WRAPPING_SUB:
+        case BUILTIN_WRAPPING_MUL:
+            result_type =
+                check_wrapping_binary_builtin_call(ctx, call, builtin);
+            break;
+
+        case BUILTIN_WRAPPING_NEG:
+            result_type =
+                check_wrapping_neg_builtin_call(ctx,
+                call,
+                    builtin
+                );
+            break;
+
+        case BUILTIN_NONE:
+            UNREACHABLE("SYMBOL_BUILTIN with BUILTIN_NONE");
+    }
+
+    if (!result_type)
+        return NULL;
+
+    /*
+     * The builtin identifier is a successfully resolved call target,
+     * but it is not itself a first-class value with a fixed function
+     * type.
+     */
+    sem_record_expr_info(
+        ctx,
+        call->as.call.callee,
+        NULL,
+        builtin,
+        VALUE_CATEGORY_NONE
+    );
+
+    /*
+     * Recording the builtin symbol on the call preserves its stable
+     * compiler identity for constant evaluation and future lowering.
+     */
+    sem_record_expr_info(
+        ctx,
+        call,
+        result_type,
+        builtin,
+        VALUE_CATEGORY_RVALUE
+    );
+
+    return result_type;
+}
+
+static int eval_const_wrapping_binary_call(SemanticContext *ctx, Node *call, Symbol *builtin, ConstValue *out) {
+
+    if (!check_builtin_argument_count(ctx, call, builtin, 2))
+        return 0;
+
+    ConstValue left;
+    ConstValue right;
+
+    if (!eval_const_expr(ctx, call->as.call.arguments.items[0], &left))
+        return 0;
+
+    if (!eval_const_expr(
+            ctx,
+            call->as.call.arguments.items[1],
+            &right
+        )) {
+        return 0;
+        }
+
+    Type *left_type =
+        const_value_default_type(ctx, &left);
+
+    Type *right_type =
+        const_value_default_type(ctx, &right);
+
+    Type *result_type = NULL;
+
+    WrappingBuiltinTypeStatus type_status =
+        classify_wrapping_binary_types(
+            left_type,
+            right_type,
+            &result_type
+        );
+
+    if (type_status != WRAPPING_BUILTIN_TYPE_VALID) {
+        report_wrapping_builtin_type_error(
+            ctx,
+            call,
+            builtin,
+            type_status
+        );
+
+        return 0;
+    }
+
+    assert(result_type);
+    assert(left.kind == CONST_VALUE_INT);
+    assert(right.kind == CONST_VALUE_INT);
+
+    IntegerValue result;
+
+    if (!evaluate_wrapping_integer_binary(
+            builtin->builtin_kind,
+            left.as.integer,
+            right.as.integer,
+            result_type->kind,
+            &result
+        )) {
+        semantic_error(ctx, call,
+            "internal error: could not evaluate wrapping integer builtin");
+
+        return 0;
+    }
+
+    return integer_constant_result(
+        ctx,
+        call,
+        result_type,
+        result_type->kind,
+        result,
+        out
+    );
+}
+
+static int eval_const_wrapping_neg_call(SemanticContext *ctx, Node *call, Symbol *builtin, ConstValue *out) {
+
+    if (!check_builtin_argument_count(ctx, call, builtin, 1))
+        return 0;
+
+    ConstValue operand;
+
+    if (!eval_const_expr(ctx, call->as.call.arguments.items[0], &operand))
+        return 0;
+
+    Type *operand_type =
+        const_value_default_type(ctx,  &operand);
+
+    Type *result_type = NULL;
+
+    WrappingBuiltinTypeStatus type_status =
+        classify_wrapping_neg_type(operand_type, &result_type);
+
+    if (type_status != WRAPPING_BUILTIN_TYPE_VALID) {
+        report_wrapping_builtin_type_error(
+            ctx,
+            call,
+            builtin,
+            type_status
+        );
+
+        return 0;
+    }
+
+    assert(result_type);
+    assert(operand.kind == CONST_VALUE_INT);
+
+    IntegerValue result;
+
+    if (!evaluate_wrapping_integer_negation(
+            operand.as.integer,
+            result_type->kind,
+            &result
+        )) {
+        semantic_error(ctx, call,
+            "internal error: could not evaluate wrapping integer builtin");
+
+        return 0;
+    }
+
+    return integer_constant_result(
+        ctx,
+        call,
+        result_type,
+        result_type->kind,
+        result,
+        out
+    );
+}
+
+static int eval_const_builtin_call(SemanticContext *ctx, Node *call, ConstValue *out) {
+
+    assert(call);
+    assert(call->type == NODE_CALL);
+
+    Symbol *builtin =
+        resolve_builtin_callee(ctx, call->as.call.callee);
+
+    if (!builtin) {
+        semantic_error(ctx, call,
+            "expression is not a compile-time constant");
+
+        return 0;
+    }
+
+    switch (builtin->builtin_kind) {
+        case BUILTIN_WRAPPING_ADD:
+        case BUILTIN_WRAPPING_SUB:
+        case BUILTIN_WRAPPING_MUL:
+            return eval_const_wrapping_binary_call(
+                ctx,
+                call,
+                builtin,
+                out
+            );
+
+        case BUILTIN_WRAPPING_NEG:
+            return eval_const_wrapping_neg_call(
+                ctx,
+                call,
+                builtin,
+                out
+            );
+
+        case BUILTIN_NONE:
+            UNREACHABLE(
+                "SYMBOL_BUILTIN with BUILTIN_NONE"
+            );
+    }
+
+    UNREACHABLE("BuiltinKind");
 }
 
 static Type *check_expression(SemanticContext *ctx, Node *node) {
@@ -4259,7 +5228,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
-                    if (!check_known_integer_zero_divisor(
+                    if (!check_known_integer_divisor(
                             ctx,
                             node->as.binary.op,
                             node->as.binary.right,
@@ -4620,6 +5589,16 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return NULL;
 
         case NODE_CALL: {
+            Symbol *builtin =
+                resolve_builtin_callee(ctx,node->as.call.callee);
+
+            if (builtin) {
+                return check_builtin_call(ctx, node, builtin);
+            }
+
+            /*
+            * Ordinary function-call path.
+            */
             Type *callee = check_value_expression(ctx, node->as.call.callee);
             if (!callee)
                 return NULL;
@@ -5636,7 +6615,7 @@ static int check_compound_assignment_statement(SemanticContext *ctx,Node *node) 
                 return 0;
             }
 
-            if (!check_known_integer_zero_divisor(
+            if (!check_known_integer_divisor(
                     ctx,
                     operation,
                     value_node,
@@ -6691,8 +7670,7 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
 
     Type *type = node->as.enum_decl.resolved_type;
 
-    if (!type)
-        return;
+    if (!type) return;
 
     Type *backing_type = NULL;
 
@@ -6704,9 +7682,7 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
             return;
 
     } else {
-
-        // Default enum backing type.
-        backing_type = ctx->type_i32;
+        backing_type = ctx->type_i32;  // Default enum backing type.
     }
 
     if (!is_integer_kind(backing_type->kind)) {
@@ -6872,10 +7848,8 @@ static Type *check_cast_expression(SemanticContext *ctx, Node *node) {
      * emitting a runtime check. Runtime checked enum conversion is not yet
      * implemented, so reject it for now.
      */
-    if (is_integer_to_enum_cast(
-            target_type,
-            source_type
-        )) {
+    if (is_integer_to_enum_cast(target_type, source_type)) {
+
         if (!source_is_constant) {
             semantic_error(ctx, node,
                 "runtime integer-to-enum cast is not supported");
@@ -7171,6 +8145,8 @@ void semantic_check(Node *program, SemanticContext *ctx) {
 
     ctx->current_scope = scope_new(ctx, NULL);
     ctx->expr_infos = NULL;
+
+    register_builtin_symbols(ctx);
 
     check_node(ctx,  program);
 }

@@ -114,9 +114,17 @@ operation kind, verifies operand representability, performs the mathematical
 operation, and checks the result against both the operation type and any
 untyped-integer domain limits.
 
-Known integer division and remainder by zero are diagnosed both for fully
-constant expressions and when only the divisor is compile-time known.
-Compound `/=` and `%=` use the same check.
+Known integer division and remainder failures are diagnosed both for fully
+constant expressions and when the relevant failure can be proven from
+compile-time-known operands.
+
+The shared failure rules cover:
+
+a zero divisor;
+signed minimum divided by -1;
+signed minimum remaindered by -1.
+
+Compound /= and %= use the same rules.
 
 Integer bitwise constant evaluation converts exact sign-and-magnitude values
 to an explicitly sized unsigned bit pattern, performs `~`, `&`, `|`, or `^`,
@@ -130,8 +138,11 @@ host right shift of a negative signed integer.
 
 Statically known shift counts are rejected when negative or greater than or
 equal to the left operand's width. The same helper is shared by ordinary
-shifts and `<<=`/`>>=`. Unknown runtime counts remain a future execution-layer
-check.
+shifts and <<=/>>=.
+
+A runtime-dependent count remains a valid frontend expression, but the language
+contract requires a future execution layer to trap when the count is outside
+the same range. Counts must not be masked modulo the width.
 
 Floating constants are stored as host `double` values, but `f32` operations
 are performed at `float` precision before being retained in the constant
@@ -156,6 +167,51 @@ Integer conversion rejects non-finite floating values. Checked conversion to
 The compiler itself must not be built with floating-point options such as
 `-ffast-math` that discard IEEE-754 NaN, infinity, signed-zero, or comparison
 semantics relied on by constant evaluation.
+
+## Runtime Scalar Contract and Frontend Ownership
+
+Ordinary signed and unsigned integer arithmetic is checked in every build
+mode. Addition, subtraction, multiplication, signed negation,
+increment/decrement, and their compound forms require a representable result.
+
+Known failures are compile-time diagnostics. Runtime-dependent failures are
+accepted by the frontend and must trap in any future execution layer.
+
+Integer division and remainder additionally require:
+
+a nonzero divisor;
+no signed-minimum and -1 overflow case.
+
+Numeric cast is also checked. A known unrepresentable conversion is
+diagnosed, while a runtime-dependent conversion remains well typed and
+requires a future runtime check.
+
+The semantic-expression side table does not need fields such as
+requires_overflow_check or requires_checked_cast. The operation kind,
+resolved operand types, result type, and cast destination already determine
+the language-required check.
+
+A future lowering layer can derive the required behavior directly:
+
+integer +, -, *       -> checked arithmetic
+signed unary -        -> checked negation
+integer / and %       -> divisor and signed-overflow checks
+integer shift         -> shift-count range check
+numeric cast          -> checked conversion
+bitwise operation     -> fixed-width bit-pattern operation
+
+This keeps semantic facts backend-neutral and avoids duplicating policy in
+mutable flags.
+
+Explicit wrapping arithmetic and truncating conversion will use separate
+builtin identities. They must not be represented by scattered source-name
+comparisons throughout semantic analysis. Their eventual implementation
+should use one exhaustive builtin classification and one central semantic
+dispatch path.
+
+The exact runtime trap mechanism remains outside frontend ownership. At the
+language level, a trap means that the operation produces no result and normal
+execution cannot continue.
 
 ## Definite Assignment and Control-Flow Analysis
 

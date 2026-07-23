@@ -4,11 +4,35 @@
 #include "ast.h"
 #include "semantic_info.h"
 
+typedef enum BuiltinKind {
+    /*
+     * Used by every ordinary user-defined symbol.
+     *
+     * A symbol with kind SYMBOL_BUILTIN must never carry this value.
+     */
+    BUILTIN_NONE,
+
+    BUILTIN_WRAPPING_ADD,
+    BUILTIN_WRAPPING_SUB,
+    BUILTIN_WRAPPING_MUL,
+    BUILTIN_WRAPPING_NEG,
+} BuiltinKind;
+
 typedef enum {
     SYMBOL_VARIABLE,  // variables
     SYMBOL_FUNCTION,  // functions
     SYMBOL_TYPE,       // struct names, typedefs later // TODO: make separations for typedefs
     SYMBOL_CONSTANT,
+
+
+    /*
+     * A compiler-provided operation resolved through the ordinary
+     * lexical scope mechanism.
+     *
+     * Builtins are not ordinary functions because their signatures
+     * may depend on their argument types.
+     */
+    SYMBOL_BUILTIN,
 } SymbolKind;
 
 typedef enum {
@@ -55,6 +79,14 @@ typedef struct Symbol {
     StringView name;
 
     SymbolKind kind;
+
+    /*
+    * Stable compiler identity for a language-provided builtin.
+    *
+    * This is BUILTIN_NONE for every symbol whose kind is not
+    * SYMBOL_BUILTIN.
+    */
+    BuiltinKind builtin_kind;
 
     ConstValue const_value;   // only meaningful when kind == SYMBOL_CONSTANT
 

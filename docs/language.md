@@ -432,41 +432,84 @@ unsigned: u32 = 1;
 signed + unsigned; // invalid: use an explicit cast
 ```
 
-Compile-time integer arithmetic is exact and range checked. A result outside
-the operation type is an error, including unsigned underflow.
+Compile-time integer arithmetic is exact and range checked. Ordinary runtime
+integer arithmetic follows the same representability rules.
+
+For both signed and unsigned integer types, the following ordinary operations
+require their mathematical result to fit the operation type:
+
+```
+left + right;
+left - right;
+left * right;
+
+left += right;
+left -= right;
+left *= right;
+
+value++;
+value--;
+```
+
+A statically known unrepresentable result is a compile-time error. If the
+result depends on runtime values and is not representable, execution traps.
+
+Unsigned arithmetic does not wrap implicitly. Unsigned underflow and overflow
+use the same checked rule as signed overflow.
 
 Typed unsigned integers do not support unary negation:
 
-```c
+```
 value: u32 = 1;
 
 -value; // invalid
 ```
 
-Binary subtraction on unsigned values remains a valid runtime operation:
+Signed unary negation is valid only when its result is representable. Negating
+the minimum value of a signed integer type is therefore a compile-time error
+when known and a runtime trap otherwise.
 
-```c
+Binary subtraction on unsigned values remains valid:
+
+```
 difference: u32 = left - right;
 difference -= right;
 ```
 
-The frontend currently establishes that these runtime expressions are well
-typed. Runtime overflow and underflow behavior has not yet been selected.
+These operations trap when right is greater than left; they do not wrap to
+a large unsigned result.
 
-The remainder operator `%` is integer-only.
+A runtime trap means that the operation produces no value and normal execution
+does not continue. The eventual trap mechanism, panic handler, diagnostic
+format, and runtime ABI remain execution-layer decisions.
 
-A statically known zero divisor is rejected for integer division and
-remainder, including compound assignment:
+The remainder operator % is integer-only.
 
-```c
+Integer division truncates toward zero. Integer remainder has the sign of the
+left operand.
+
+The following integer division and remainder failures trap:
+
+division by zero;
+remainder by zero;
+the minimum value of a signed integer type divided by -1;
+the minimum value of a signed integer type remaindered by -1.
+
+The same rules apply to /=`` and %=`.
+
+A statically known failure is rejected during semantic analysis:
+
+```
 value / 0;   // invalid
 value % 0;   // invalid
 value /= 0;  // invalid
 value %= 0;  // invalid
 ```
 
-This rule also applies when zero is produced by a named constant, cast, or
-other compile-time constant expression.
+Known failures are diagnosed when their operands are produced by literals,
+named constants, casts, or other compile-time constant expressions. When the
+operands depend on runtime values, the expression remains well typed and a
+future execution layer must perform the required checks.
 
 Equality is currently defined for:
 
@@ -521,32 +564,34 @@ value << small_count; // u32
 value >> wide_count;  // u32
 ```
 
-A statically known count must satisfy:
+Every shift count must satisfy:
 
-```text
+```
 0 <= count < left_operand_bit_width
 ```
 
-Negative counts and counts equal to or greater than the width are errors.
-Unknown runtime counts are accepted by the frontend; a future execution layer
-must enforce the same range rather than masking the count modulo the width.
+A statically known invalid count is a compile-time error. A runtime-dependent
+negative count or a count equal to or greater than the width traps.
 
-An untyped left operand uses its ordinary default integer width. Therefore
-`1 << count` uses `i32`; an explicitly wider operation starts with a cast such
-as `cast(u64, 1) << count`.
+Shift counts are never masked modulo the operand width.
 
-### Shift result semantics
+An untyped left operand uses its ordinary default integer width. Therefore,
+1 << count uses i32; an explicitly wider operation starts with a cast such
+as cast(u64, 1) << count.
+
+Shift result semantics
 
 Left shift is a fixed-width bit-pattern operation. Zero bits enter from the
 right and bits shifted beyond the width are discarded:
 
-```c
-cast(u8, 128) << 1; // u8 value 0
-cast(i8, 64) << 1;  // i8 value -128
 ```
-
-This defined truncation applies specifically to shift operations. It does not
-settle general runtime overflow behavior for arithmetic operators.
+cast(u8, 128) << 1; // u8 value 0
+cast(i8, 64)  << 1;  // i8 value -128
+```
+Discarding high bits during a valid left shift does not cause an arithmetic
+overflow trap. This rule is specific to shifts; ordinary addition,
+subtraction, multiplication, increment, and decrement remain checked
+arithmetic operations.
 
 Unsigned right shift fills with zero. Signed right shift is arithmetic and
 sign-extending:
@@ -594,27 +639,31 @@ operand must match it exactly; an untyped integer constant may adapt when it
 fits. For `<<=` and `>>=`, the target determines the width while the count may
 have any integer type. Known counts use the same range rule as ordinary shifts.
 
-### Floating-point semantics
+Floating-point semantics
 
-`f32` and `f64` constant arithmetic follows IEEE-754 behavior. Floating-point
-division by zero is not an integer-style semantic error:
+Coglet defines:
 
-```c
+f32 as IEEE-754 binary32;
+f64 as IEEE-754 binary64;
+round-to-nearest, ties-to-even as the normal rounding mode.
+
+Compile-time evaluation and future runtime execution must follow the same
+value-level rules.
+
+Floating-point division by zero is not an integer-style semantic error:
+
+```
 1.0 / 0.0;   // positive infinity
 -1.0 / 0.0;  // negative infinity
 0.0 / 0.0;   // NaN
 ```
-
 Signed zero is preserved:
-
-```c
+```
 0.0 == -0.0; // true
 1.0 / -0.0;  // negative infinity
 ```
-
 NaN is unordered:
-
-```c
+```
 NAN_VALUE :: 0.0 / 0.0;
 
 NAN_VALUE == NAN_VALUE; // false
@@ -625,11 +674,19 @@ NAN_VALUE <= 0.0; // false
 NAN_VALUE > 0.0;  // false
 NAN_VALUE >= 0.0; // false
 ```
+Floating-point arithmetic overflow produces infinity. Underflow follows
+IEEE-754 gradual-underflow behavior, including subnormal values.
 
-Both the `f32` and `f64` constant-evaluation paths preserve infinity, NaN, and
-signed zero. Explicit conversion of NaN or infinity to an integer is invalid.
-A finite value that does not fit the destination floating-point type is also
-rejected during checked constant conversion.
+f32 operations produce f32-precision results rather than being evaluated
+as f64 operations and rounded only afterward.
+
+Compilation modes must not silently enable reassociation, flush-to-zero,
+discarded signed zero, or other fast-math transformations that change
+observable Coglet behavior.
+
+Exact NaN payload behavior, signalling NaNs, floating-point exception flags,
+configurable rounding modes, and fused-operation contraction remain subjects
+for a later complete floating-point specification.
 
 ## Raw Object Pointers
 
@@ -1067,24 +1124,55 @@ typed_null := cast(i32*, null);
 Integer-to-pointer, pointer-to-integer, and null-to-non-pointer casts are not
 currently supported.
 
-A cast whose operand is known at compile time is checked for representability in the destination type in every expression context, including discarded expression statements:
+cast(TargetType, expression) is a checked conversion.
 
-```c
+Compile-time and runtime casts accept the same mathematical input values. The
+difference is how a failure is reported:
+
+a statically known invalid conversion is a compile-time error;
+a runtime-dependent invalid conversion traps.
+
+Compile-time-known casts are checked in every expression context, including
+discarded expression statements:
+
 test::() -> void {
-    cast(u8, 256); // invalid even though the result is discarded
+cast(u8, 256); // invalid even though the result is discarded
 }
-```
+
+Integer-to-integer conversion requires the mathematical source value to fit
+the destination type. This applies to widening, narrowing, signed-to-unsigned,
+and unsigned-to-signed conversions.
+
+Integer-to-integer cast never implicitly discards high bits, reinterprets a
+bit pattern, or reduces the value modulo the destination width.
+
+Floating-point-to-integer conversion:
+
+rejects NaN and positive or negative infinity;
+truncates a finite value toward zero;
+requires the truncated integer to fit the destination type.
+
+Integer-to-floating-point conversion rounds to the nearest representable value
+of the destination format, with ties to even. Precision loss is permitted
+because the conversion is explicit.
+
+f32-to-f64 conversion is exact. Finite f64-to-f32 conversion rounds to
+the nearest f32 value, with ties to even, but rejects a finite source whose
+magnitude is outside the finite f32 range. NaN, infinity, and signed zero are
+preserved by floating-point casts.
 
 For closed enums, fitting the backing type is necessary but not sufficient:
 
-```c
 Small :: enum(u8) { A, B }
 
 cast(Small, 1);   // valid: Small.B
 cast(Small, 255); // invalid: no declared member has value 255
-```
 
-Runtime integer-to-enum casts are rejected until checked runtime conversion exists. Runtime narrowing between numeric types remains intentionally unspecified; Coglet still needs to choose checked conversion, wrapping/truncating conversion, or rejection.
+Runtime integer-to-enum casts remain rejected until Coglet has a checked
+runtime enum-conversion facility.
+
+Explicit wrapping arithmetic and truncating integer conversion will be
+provided separately. They do not change the checked behavior of cast.
 
 ## Current Semantic Architecture
 
@@ -1101,16 +1189,27 @@ The verifier can also print a deterministic source-order dump for debugging. Sem
 
 ## Future Direction
 
-Backend work is deliberately deferred until the language's purpose, runtime model, and execution strategy are clearer. Near-term work should focus on language semantics and tests. Candidate areas include:
+Backend work remains deliberately deferred. The runtime scalar language
+contract is now defined, but Coglet does not yet need a code generator,
+interpreter, runtime ABI, or trap implementation.
 
-- runtime integer overflow and narrowing-cast semantics
-- readonly and opaque raw-pointer variants
-- slices and readonly byte views
-- ownership, lifetime, and mutability rules
-- a later first-class string type
-- C ABI representation and a future `#repr_c` attribute
-- imports and modules
-- multi-file compilation
-- standard library facilities
-- generics
-- self-hosting
+Near-term work should remain language- and frontend-focused. Candidate areas
+include:
+
+auditing ordinary integer operations and numeric casts against the selected
+checked runtime contract;
+explicit wrapping integer arithmetic built-ins;
+an explicit truncating integer-conversion built-in;
+readonly and opaque raw-pointer variants;
+slices and readonly byte views;
+ownership, lifetime, and mutability rules;
+a later first-class string type;
+C ABI representation and a future #repr_c attribute;
+imports and modules;
+multi-file compilation;
+standard library facilities;
+generics;
+self-hosting.
+
+Wrapping and truncating operations must be explicit and must not alter the
+all-build checked semantics of ordinary arithmetic or cast.

@@ -1,0 +1,38 @@
+Color :: enum(u8) {
+    Red,
+    Green,
+    Blue,
+}
+
+RED: Color : Color.Red;
+GREEN: Color : Color.Green;
+BLUE: Color : Color.Blue;
+
+classify_constant_color::(color: Color) -> i32 {
+    switch color {
+        case RED:
+            return 1;
+
+        case GREEN:
+            return 2;
+
+        case BLUE:
+            return 3;
+    }
+}
+
+AliasColor :: enum(u8) {
+    Red = 0,
+    Crimson = 0,
+    Green = 1,
+}
+
+classify_alias_color::(color: AliasColor) -> i32 {
+    switch color {
+        case AliasColor.Red:
+            return 1;
+
+        case AliasColor.Green:
+            return 2;
+    }
+}

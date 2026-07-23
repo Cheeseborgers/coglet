@@ -92,6 +92,255 @@ return x++;
 
 Successful mutation nodes produce no value.
 
+## Definite Assignment and Reachability
+
+A local variable declaration does not implicitly initialize the variable:
+
+```c
+value: i32;
+```
+
+The variable exists and has type `i32`, but its value cannot be read until semantic analysis can prove that it has been initialized on every reachable incoming control-flow path.
+
+A plain whole-variable assignment initializes it:
+
+```c
+value: i32;
+
+value = 10;
+
+return value; // valid
+```
+
+Parameters and local variables declared with initializers begin initialized:
+
+```c
+use_value::(parameter: i32) -> i32 {
+    local: i32 = 10;
+
+    return parameter + local;
+}
+```
+
+Definite-assignment analysis applies to function-local variables and parameters. Global variables are not tracked by this local flow analysis.
+
+### Reads and writes
+
+An ordinary identifier use reads the variable and therefore requires prior initialization:
+
+```c
+value: i32;
+
+other := value; // invalid
+```
+
+A direct plain-assignment target does not read the previous value:
+
+```c
+value: i32;
+
+value = 10; // valid: initializes value
+```
+
+Compound assignment and increment/decrement read the previous value before writing it:
+
+```c
+value: i32;
+
+value += 1; // invalid
+value++;    // invalid
+value--;    // invalid
+```
+
+Taking the address of a local also requires the local to be initialized:
+
+```c
+value: i32;
+
+pointer := &value; // invalid
+```
+
+This prevents an uninitialized local from becoming observable indirectly through a pointer.
+
+### Whole values and subobjects
+
+Assigning a complete struct or array variable initializes that variable:
+
+```c
+values: i32[3];
+
+values = [1, 2, 3];
+
+first := values[0]; // valid
+```
+
+Writing only a field, element, pointee, or pointer-indexed location does not initialize the complete base variable:
+
+```c
+point: Point;
+values: i32[3];
+pointer: i32* = get_pointer();
+
+point.x = 10;    // does not initialize point
+values[0] = 10; // does not initialize values
+*pointer = 10;  // does not initialize another tracked local
+pointer[0] = 10;
+```
+
+The base and index expressions used by a subobject write are still ordinary reads and must already be initialized where applicable.
+
+### Conditional branches
+
+Each `if` branch is checked from the same incoming state.
+
+When both branches can continue, a variable is initialized afterward only when both branches initialize it:
+
+```c
+value: i32;
+
+if condition {
+    value = 10;
+} else {
+    value = 20;
+}
+
+return value; // valid
+```
+
+Without an `else`, the unchanged incoming path remains possible:
+
+```c
+value: i32;
+
+if condition {
+    value = 10;
+}
+
+return value; // invalid
+```
+
+A branch that cannot continue does not weaken a branch that can:
+
+```c
+value: i32;
+
+if condition {
+    value = 10;
+} else {
+    return 20;
+}
+
+return value; // valid
+```
+
+### Switch statements
+
+Every switch case begins from the same incoming definite-assignment state. Cases do not inherit initialization from earlier cases, and Coglet switches do not fall through.
+
+A switch is exhaustive when it contains:
+
+* a `default` case;
+* both validated Boolean values, `true` and `false`;
+* every distinct runtime value declared by a closed enum.
+
+Case coverage is based on successfully checked compile-time values, not on the source spelling of the case expression. Constants and explicit constant casts may therefore contribute to exhaustiveness.
+
+Invalid case expressions never contribute to exhaustiveness.
+
+For enums with aliased members, one case covers all member names representing the same runtime value:
+
+```c
+Color :: enum(u8) {
+    Red = 0,
+    Crimson = 0,
+    Green = 1,
+}
+```
+
+An exhaustive switch over `Color` requires cases for values `0` and `1`, not separate cases for both `Red` and `Crimson`.
+
+An integer switch is exhaustive only when it contains `default`.
+
+A non-exhaustive switch has an implicit path on which no case matches. That path preserves the incoming initialization state.
+
+### Loops
+
+Loop analysis is intentionally conservative. Initialization performed only during an iteration is not generally available after the loop:
+
+```c
+value: i32;
+
+while condition {
+    value = 10;
+}
+
+return value; // invalid
+```
+
+The same rule applies to `for` loops.
+
+For a `for` loop, flow is checked in runtime order:
+
+1. condition;
+2. body;
+3. post expression.
+
+Normal body fallthrough and `continue` paths reach the post expression. `break` and `return` paths do not.
+
+`break` and `continue` apply to the nearest enclosing loop.
+
+A literal-true loop with no reachable `break` does not continue to the statement following the loop:
+
+```c
+run_forever::() -> i32 {
+    while true {
+    }
+}
+```
+
+This function is valid even though it contains no `return`, because normal control flow cannot reach the end of the function.
+
+A literal-true loop with a reachable `break` may continue after the loop and does not satisfy a non-void function's return obligation by itself.
+
+### Unreachable statements
+
+`return`, `break`, and `continue` make the remainder of their current control-flow path unreachable.
+
+Coglet reports unreachable statements during block traversal:
+
+```c
+test::() -> i32 {
+    return 10;
+
+    value := 20; // unreachable
+}
+```
+
+A non-void function is valid when normal control flow cannot reach the end of its body. This includes both explicit returns and provably non-continuing control flow.
+
+### Nested functions
+
+Nested functions do not currently support closure capture.
+
+A nested function cannot read, modify, or take the address of a local variable or parameter belonging to an enclosing function:
+
+```c
+outer::() -> i32 {
+    value: i32 = 10;
+
+    inner::() -> i32 {
+        return value; // invalid: capture is not supported
+    }
+
+    return 0;
+}
+```
+
+Nested functions may still refer to visible global variables, compile-time constants, types, and function declarations.
+
+Closure environments and captured runtime storage remain future language-design work.
+
+
 ## Void-Returning Calls
 
 A call to a function returning `void` is a successful no-value expression.
@@ -496,7 +745,10 @@ Raw pointers are not intended to become Coglet's only pointer-like abstraction. 
 Arrays are fixed-size values with an element type and compile-time length.
 
 ```c
-values: i32[3];
+values: i32[3] = [0, 0, 0];
+
+values[0] = 1;
+values[1] += 2;
 ```
 
 The type means an array of three `i32` values.
@@ -758,18 +1010,36 @@ A future `#repr_c` annotation is planned to make the backing representation and 
 
 ## Switch Statements
 
-Switch expressions may use integer, boolean, or enum values.
+Switch expressions may use integer, Boolean, or enum values.
 
-Case values must be compile-time constants compatible with the switch type.
+Case expressions must be compile-time constants compatible with the switch expression type.
 
 Semantic analysis checks:
 
-- switch expression type
-- case type compatibility
-- duplicate case values
-- duplicate default clauses
-- enum exhaustiveness
-- return-path behavior through switch branches
+* the switch expression type;
+* case-value compatibility and representability;
+* duplicate runtime case values;
+* duplicate `default` clauses;
+* Boolean and enum exhaustiveness;
+* definite-assignment state across independent cases;
+* whether control flow can continue after the switch.
+
+Case values contribute to exhaustiveness only after they have been successfully checked and converted to the switch expression type. An invalid case never improves definite-assignment or return-flow results.
+
+Each case begins from the same incoming state. Cases do not execute sequentially and do not inherit initialization from earlier cases.
+
+A switch is exhaustive when it has:
+
+* `default`;
+* both Boolean runtime values;
+* every distinct declared runtime value of a closed enum.
+
+Enum exhaustiveness is value-based. Aliased enum member names with the same value require only one corresponding case.
+
+Integer switches require `default` to be exhaustive.
+
+A non-exhaustive switch includes an implicit no-match path that retains the incoming definite-assignment state.
+
 
 ## Casts
 

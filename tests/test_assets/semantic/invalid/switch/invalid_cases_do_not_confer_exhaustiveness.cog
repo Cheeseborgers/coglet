@@ -1,0 +1,49 @@
+invalid_bool_cases_do_not_initialize::(
+    selector: i32
+) -> i32 {
+    value: i32;
+
+    switch selector {
+        case true:
+            value = 10;
+
+        case false:
+            value = 20;
+    }
+
+    return value;
+}
+
+invalid_bool_cases_do_not_satisfy_return::(
+    selector: i32
+) -> i32 {
+    switch selector {
+        case true:
+            return 10;
+
+        case false:
+            return 20;
+    }
+}
+
+State :: enum(u8) {
+    Ready,
+    Done,
+}
+
+shadowed_enum_cases_do_not_cover_outer::(
+    state: State
+) -> i32 {
+    State :: enum(u8) {
+        Ready,
+        Done,
+    }
+
+    switch state {
+        case State.Ready:
+            return 1;
+
+        case State.Done:
+            return 2;
+    }
+}

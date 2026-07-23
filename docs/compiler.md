@@ -34,6 +34,7 @@ The following data is backed by the owned arenas:
 - AST nodes;
 - parser diagnostics and diagnostic messages;
 - semantic symbols and scopes;
+- definite-assignment flow storage and temporary flow snapshots;
 - semantic types;
 - expression side-table information.
 
@@ -156,6 +157,212 @@ The compiler itself must not be built with floating-point options such as
 `-ffast-math` that discard IEEE-754 NaN, infinity, signed-zero, or comparison
 semantics relied on by constant evaluation.
 
+## Definite Assignment and Control-Flow Analysis
+
+Semantic analysis performs definite-assignment and reachability analysis while traversing function bodies. Flow-sensitive information is stored separately from lexical symbols so that one symbol may have different initialization states at different program points.
+
+### Variable storage and flow identity
+
+Every variable symbol has a `VariableStorage` classification:
+
+* `VARIABLE_STORAGE_NONE`;
+* `VARIABLE_STORAGE_GLOBAL`;
+* `VARIABLE_STORAGE_LOCAL`;
+* `VARIABLE_STORAGE_PARAMETER`.
+
+Only locals and parameters participate in function-local definite-assignment analysis.
+
+Each analyzed function receives a unique flow-owner ID. Locals and parameters receive monotonically increasing variable IDs within that owner. The complete flow identity of a tracked variable is therefore:
+
+```text
+(flow owner ID, variable ID)
+```
+
+Variable IDs restart from zero for each function, but flow-owner IDs are not reused during a semantic-analysis run.
+
+IDs are also not reused after lexical scope exit. This keeps shadowed declarations and stale semantic references distinct even when their source-level names are identical.
+
+Globals do not receive local flow IDs and are not tracked by this analysis.
+
+### Flow state
+
+`FlowState` contains:
+
+* the current function's flow-owner ID;
+* an arena-backed byte array of initialization flags;
+* a tracked-slot prefix count;
+* allocated capacity;
+* a `reachable` flag.
+
+The count is the active tracked-slot prefix, not necessarily the number of currently visible variables. Because variable IDs are not reused, variables from exited inner scopes may leave unused slots below the current high-water boundary.
+
+Registering a local or parameter creates or exposes its slot and records its initial state:
+
+* parameters begin initialized;
+* locals with successful initializers begin initialized;
+* locals without initializers begin uninitialized.
+
+All flow queries and mutations assert that the symbol belongs to the active flow owner. This prevents one function from accidentally consulting another function's numerically identical variable slot.
+
+### Scope lifetime
+
+Each lexical `Scope` records the flow-slot count that was active when the scope was entered.
+
+When the scope exits:
+
+* the tracked-slot prefix is truncated to the recorded mark;
+* removed initialization flags are cleared;
+* the function's next variable ID is not rewound.
+
+This prevents block-local variables from leaking into later branch merges while preserving stable symbol identity.
+
+### Identifier uses and assignments
+
+Identifier checking distinguishes ordinary reads from direct plain-assignment targets.
+
+An ordinary read consults the active flow state. A tracked variable is rejected when its initialization slot is not set.
+
+A direct target such as:
+
+```c
+value = 10;
+```
+
+does not read the previous value. After the target and right-hand side have both checked successfully and their types are compatible, the direct target's slot is marked initialized.
+
+Nested assignment targets continue to check their component expressions normally:
+
+```c
+point.field = 10;
+values[index] = 10;
+*pointer = 10;
+```
+
+These writes do not mark the whole base variable initialized.
+
+Compound assignment and increment/decrement use ordinary read checking because they consume the previous value before writing a replacement.
+
+Taking the address of a tracked local also performs the ordinary initialization check.
+
+A malformed or type-invalid assignment does not update definite-assignment state.
+
+### Flow cloning and merging
+
+Branches and switch cases require independent flow states. `flow_clone()` therefore allocates and copies the initialization array rather than copying only its pointer.
+
+Every clone preserves its flow-owner ID.
+
+Flow merging first restricts both inputs to the tracked-slot prefix that was active before the branch. It then handles reachability as follows:
+
+* when both paths continue, initialization flags are intersected;
+* when only one path continues, that path is preserved;
+* when neither path continues, the result remains unreachable.
+
+An unreachable path therefore does not weaken a reachable path.
+
+Merge helpers assert that both inputs belong to the same flow owner.
+
+### Conditional statements
+
+An `if` condition is checked before the incoming flow state is cloned.
+
+The `then` and `else` branches each begin from independent copies of that state. When no explicit `else` exists, the false path is represented by an unchanged copy of the incoming state.
+
+After both branches have been checked, their continuing paths are merged.
+
+### Switch statements
+
+Every switch case begins from the same incoming flow state. Cases never inherit definite-assignment state from preceding cases.
+
+Case expressions are checked and converted to the switch expression's type before their values are recorded. Only successfully validated `ConstValue` entries contribute to duplicate detection or exhaustiveness.
+
+Switch exhaustiveness is value-based:
+
+* `default` covers every possible value;
+* a Boolean switch requires both `true` and `false`;
+* an enum switch requires every distinct declared runtime value.
+
+Enum aliases with the same backing value therefore require only one corresponding case.
+
+Invalid case expressions cannot make a switch exhaustive.
+
+When a switch is not exhaustive, control-flow analysis includes an implicit no-match path containing the unchanged incoming state.
+
+Continuing case flows are merged using the same reachability-aware intersection operation used by `if`.
+
+### Loop contexts
+
+Loop analysis uses a stack of `LoopFlowContext` values. Each context stores:
+
+* the active variable-slot prefix at loop entry;
+* accumulated reachable `break` exit states;
+* accumulated reachable `continue` iteration states;
+* the parent loop context.
+
+`break` and `continue` target the nearest context.
+
+The source-language legality of `break` and `continue` is determined by `loop_depth`. Once legality has been established, `current_loop` is required as an asserted internal invariant.
+
+Recording either statement adds the current path to the appropriate accumulator and then marks the active path unreachable.
+
+For a `for` loop, flow is checked in runtime order:
+
+1. condition;
+2. body;
+3. post expression.
+
+Normal body fallthrough and accumulated `continue` paths are merged before the post expression is checked. `break` and `return` paths do not reach the post expression.
+
+Coglet does not currently compute a loop fixed point. A loop that may terminate normally preserves the unchanged incoming state as a conservative possible exit. Initialization performed only during an iteration therefore cannot become definitely initialized after the loop.
+
+A literal-true loop with no reachable `break` is handled specially and leaves the surrounding flow unreachable.
+
+### Unified reachability
+
+`FlowState.reachable` is the single source of truth for whether normal control flow can continue.
+
+The same state controls:
+
+* branch merging;
+* switch continuation;
+* `return`;
+* `break`;
+* `continue`;
+* unreachable-statement diagnostics;
+* non-void function fallthrough checking.
+
+`return`, `break`, and `continue` mark the active path unreachable.
+
+Block traversal reports an unreachable statement when it encounters a statement after the active path has become unreachable. The statement is still semantically checked so that unrelated semantic errors are not silently hidden.
+
+A non-void function is rejected only when its final flow state remains reachable. This accepts both explicit returns and provably non-continuing bodies such as literal-true loops without reachable breaks.
+
+The older separate return-analysis and unreachable-analysis helpers are no longer used.
+
+### Nested functions
+
+Each function body begins with:
+
+* a fresh `FlowState`;
+* a new flow-owner ID;
+* a variable-ID counter reset to zero;
+* no inherited active loop;
+* its own current return type.
+
+Before entering a nested function, semantic analysis saves the enclosing function's:
+
+* flow state;
+* variable-ID counter;
+* loop context;
+* loop depth;
+* return type.
+
+These values are restored after the nested body has been checked. The global next-flow-owner counter is not restored, ensuring that every function receives a distinct owner.
+
+Nested functions do not currently implement closure environments. A reference to an enclosing local or parameter is therefore rejected before definite-assignment state is queried.
+
+Visible globals, constants, types, and function declarations remain accessible because they do not require an enclosing function's runtime flow slots.
+
 
 ## Semantic-Information Verification
 
@@ -173,6 +380,15 @@ Diagnostic source-order dump:
 check_semantic_info --dump-semantic-info source.cog
 ```
 
-The verifier checks completeness, duplicate and orphan entries, type/category invariants, symbol associations, and the rule that variables and parameters have concrete types.
+The verifier checks completeness, duplicate and orphan entries, type/category invariants, 
+symbol associations, and the rule that variables and parameters have concrete types.
 
-A program that fails parsing or semantic analysis is not required to have a complete semantic side table. With `--dump-semantic-info`, a partial table may be printed for diagnosis; it is not passed through the successful-program completeness verifier.
+Expression facts may be recorded before a later flow-sensitive use is rejected. 
+For example, an identifier read can retain its resolved type, symbol, and lvalue category 
+even when definite-assignment analysis subsequently reports that the variable may be uninitialized. 
+The side table records successfully resolved expression facts; 
+it is not itself a record that every later semantic rule accepted the expression's use.
+
+A program that fails parsing or semantic analysis is not required to have a complete semantic side table. 
+With `--dump-semantic-info`, a partial table may be printed for diagnosis; 
+it is not passed through the successful-program completeness verifier.

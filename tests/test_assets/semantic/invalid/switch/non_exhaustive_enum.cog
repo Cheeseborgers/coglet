@@ -1,6 +1,5 @@
-// may report this as a return-path failure rather than a dedicated non-exhaustive-switch diagnostic.
-//semantic error at line 7: non-void function may not return a value
-//1 semantic error generated.
+// This currently reports the resulting non-void function fallthrough
+// rather than a dedicated non-exhaustive-switch diagnostic.
 
 Color :: enum(u16) {
     Red,

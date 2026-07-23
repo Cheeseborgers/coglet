@@ -1,0 +1,10 @@
+semantic error at line 7: switch case type does not match switch expression type
+semantic error at line 10: switch case type does not match switch expression type
+semantic error at line 14: variable 'value' may be uninitialized
+semantic error at line 21: switch case type does not match switch expression type
+semantic error at line 24: switch case type does not match switch expression type
+semantic error at line 17: non-void function may not return a value
+semantic error at line 43: switch case type does not match switch expression type
+semantic error at line 46: switch case type does not match switch expression type
+semantic error at line 34: non-void function may not return a value
+9 semantic errors generated.

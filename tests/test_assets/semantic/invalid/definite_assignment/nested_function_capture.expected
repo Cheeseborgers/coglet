@@ -1,0 +1,5 @@
+semantic error at line 5: nested function cannot capture variable 'outer_value' from an enclosing function
+semantic error at line 15: nested function cannot capture variable 'outer_value' from an enclosing function
+semantic error at line 23: nested function cannot capture variable 'outer_value' from an enclosing function
+semantic error at line 33: nested function cannot capture variable 'outer_value' from an enclosing function
+4 semantic errors generated.

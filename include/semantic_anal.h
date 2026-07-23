@@ -19,6 +19,7 @@ typedef enum {
 } VariableStorage;
 
 #define INVALID_VARIABLE_ID ((size_t)-1)
+#define INVALID_FLOW_OWNER_ID ((size_t)-1)
 
 typedef enum {
     CONST_VALUE_INT,
@@ -60,6 +61,14 @@ typedef struct Symbol {
     Type *type;
 
     VariableStorage variable_storage;
+
+    /*
+     * Function flow state that owns variable_id.
+     *
+     * Only locals and parameters have flow ownership.
+     * Globals and non-variable symbols use INVALID_FLOW_OWNER_ID.
+     */
+    size_t flow_owner_id;
     size_t variable_id;
 
     struct Symbol *next;
@@ -78,6 +87,12 @@ typedef struct Scope {
 } Scope;
 
 typedef struct {
+    /*
+     * Identifies the function whose local-variable slots are stored
+     * in this flow state.
+     */
+    size_t owner_id;
+
     unsigned char *initialized;
     size_t count;
     size_t capacity;
@@ -98,7 +113,14 @@ typedef struct {
     LoopFlowContext *current_loop;
 
     int function_depth;
+
+    /*
+    * Flow-owner IDs are unique for the complete semantic check.
+    * Variable IDs restart from zero for each function.
+    */
+    size_t next_flow_owner_id;
     size_t next_variable_id;
+
     FlowState flow;
 
     Type *type_i8;

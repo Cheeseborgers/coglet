@@ -30,6 +30,22 @@ The current semantic rules reject stored value types containing `void`, includin
 
 A plain `void` return type remains valid for functions.
 
+### Initialization
+
+A local variable declaration may omit an initializer:
+
+```c
+value: i32;
+```
+
+This is syntactically valid.
+
+The variable is **not** implicitly initialized.
+
+Semantic analysis requires every read of a local variable or parameter to be provably initialized 
+along every reachable incoming control-flow path.
+
+Parameters and declarations with successful initializers begin initialized.
 
 ## Numeric Literals and Unary Minus
 
@@ -225,6 +241,17 @@ takes_i32(does_nothing());
 does_nothing() + 1;
 ```
 
+### Nested Function Semantics
+
+Nested function declarations are permitted.
+
+Nested functions currently execute without closure environments.
+
+They may reference visible globals, compile-time constants, types, and function declarations.
+
+They may **not** capture locals or parameters belonging to an enclosing function.
+
+
 ## Operator Precedence and Associativity
 
 Binary operators are left-associative. Assignment and compound assignment are
@@ -320,7 +347,8 @@ make_point().x = 1;
 make_array()[0] = 1;
 ```
 
-The right-hand side is checked as an initializer against the target type. This permits contextual string and array literals.
+The right-hand side is checked as an initializer against the target type. This permits contextual 
+string and array literals.
 
 Assignment is statement-only and does not produce a value.
 
@@ -331,6 +359,31 @@ y := (x = 1);
 takes_i32(x = 1);
 return x = 1;
 ```
+
+### Assignment Semantics
+
+A direct assignment
+
+```c
+value = expression;
+```
+
+assigns to the complete variable and initializes it after successful semantic checking.
+
+Assignments to subobjects do **not** initialize the enclosing variable:
+
+```c
+point.x = value;
+values[index] = value;
+*pointer = value;
+pointer[index] = value;
+```
+
+These operations still evaluate their component expressions normally.
+
+Compound assignment and increment/decrement read the previous value before writing a replacement and 
+therefore require the target to have been initialized already.
+
 
 ## Compound Assignment
 
@@ -467,6 +520,22 @@ Case expressions must:
 At most one default clause is allowed.
 
 Enum switches may be recognized as exhaustive when every member is covered.
+
+### Switch Semantics
+
+Case expressions must be compile-time constants compatible with the switch expression type.
+
+Semantic analysis validates every case before it contributes to duplicate detection or exhaustiveness.
+
+Switch exhaustiveness is value-based:
+
+* `default` covers every possible value.
+* Boolean switches require both `true` and `false`.
+* Enum switches require every distinct declared runtime value.
+* Enum aliases sharing the same runtime value require only one corresponding case.
+
+Invalid case expressions never contribute to exhaustiveness.
+
 
 ## Enum Declarations and Closed Values
 

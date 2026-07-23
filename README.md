@@ -57,14 +57,20 @@ add::(a, b: i32) -> i32 {
 
 Supported features include:
 
-- typed parameters
-- grouped parameter declarations
-- optional default parameter values
-- explicit return types
-- omitted return types defaulting to `void`
-- argument type checking
-- non-void return-path analysis
-- unreachable-statement diagnostics
+* typed parameters
+* grouped parameter declarations
+* optional default parameter values
+* explicit return types
+* omitted return types defaulting to `void`
+* argument type checking
+* unified reachability and non-void fallthrough checking
+* unreachable-statement diagnostics
+* nested function declarations
+
+Nested functions do not currently support closure capture. 
+They may access visible globals, constants, types, and function declarations, but cannot read or modify 
+locals and parameters belonging to an enclosing function.
+
 
 ### Types
 
@@ -136,6 +142,51 @@ Valid targets include mutable variables and fields/indexes whose base is assigna
 
 Invalid targets include constants, enum members, and fields or indexes derived from temporary values.
 
+### Definite Assignment
+
+Local variables are not implicitly initialized:
+
+```c
+value: i32;
+```
+
+A variable may be read only when semantic analysis can prove that it has been initialized on every 
+reachable incoming path.
+
+A direct whole-variable assignment initializes it:
+
+```c
+value: i32;
+
+value = 10;
+
+return value;
+```
+
+Parameters and variables declared with initializers begin initialized.
+
+Compound assignment and increment/decrement require prior initialization because they read 
+the previous value:
+
+```c
+value: i32;
+
+value += 1; // invalid
+value++;    // invalid
+```
+
+Assigning an entire struct or array initializes that variable. Assigning only a field, element, 
+pointee, or pointer-indexed location does not initialize the complete base variable.
+
+Taking the address of an uninitialized local is rejected.
+
+Branch merging is reachability-aware. An unreachable branch does not weaken a branch that continues, 
+and non-exhaustive switches include an implicit no-match path.
+
+Loop analysis is conservative because a loop may execute zero times. Initialization performed only 
+inside a loop is not generally available afterward.
+
+
 ### Void-Returning Calls
 
 A call to a function returning `void` is valid when its result is discarded:
@@ -184,7 +235,7 @@ typed_null := cast(i32*, null);
 ### Arrays
 
 ```c
-values: i32[3];
+values: i32[3] = [1, 2, 3];
 ```
 
 Arrays have a fixed compile-time size that is part of the type.
@@ -321,14 +372,38 @@ parses as `(flags & mask) == 0`, avoiding C's surprising precedence rule.
 
 Supported control flow includes:
 
-- `if` / `else`
-- `while`
-- `for`
-- `switch`
-- `break`
-- `continue`
-- `return`
-- lexical block scopes
+* `if` / `else`
+* `while`
+* `for`
+* `switch`
+* `break`
+* `continue`
+* `return`
+* lexical block scopes
+
+Semantic analysis uses a unified reachability model for:
+
+* definite assignment;
+* branch and switch merging;
+* `return`, `break`, and `continue`;
+* unreachable-statement diagnostics;
+* non-void function fallthrough checking.
+
+A non-void function is valid when normal control flow cannot reach the end of its body. 
+This includes functions that return on every continuing path and functions containing a provably 
+non-terminating literal-true loop with no reachable `break`.
+
+Switch analysis includes:
+
+* switch-expression type checking;
+* compile-time case validation;
+* duplicate runtime-value detection;
+* duplicate-`default` detection;
+* Boolean and enum exhaustiveness;
+* independent definite-assignment flow for every case.
+
+Exhaustiveness is based on successfully validated runtime values. Invalid cases do not contribute coverage, and aliased enum members with the same value require only one corresponding case.
+
 
 Switch analysis includes case type checking, compile-time case validation, duplicate-case detection, duplicate-default detection, and enum exhaustiveness checks.
 
@@ -404,6 +479,13 @@ Recently completed work includes:
 - closed enum value sets
 - declared-member validation for constant integer-to-enum casts
 - rejection of runtime integer-to-enum casts until checked conversion exists
+- definite-assignment analysis for local variables and parameters
+- stable per-function variable flow identity
+- reachability-aware `if` and switch merging
+- validated value-based Boolean and enum switch exhaustiveness
+- conservative loop flow with `break` and `continue` tracking
+- unified reachability for returns, unreachable statements, and function fallthrough
+- rejection of unsupported nested-function captures
 
 Backend and code-generation work is intentionally deferred until the language's direction and runtime model are clearer.
 

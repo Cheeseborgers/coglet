@@ -1,0 +1,11 @@
+global_value: i32 = 10;
+
+outer::() -> i32 {
+    LOCAL_CONSTANT :: 20;
+
+    inner::() -> i32 {
+        return global_value + LOCAL_CONSTANT;
+    }
+
+    return inner();
+}

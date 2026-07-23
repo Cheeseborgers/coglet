@@ -16,17 +16,74 @@ Implemented areas include:
 - raw object pointers with dedicated `null`, fixed arrays, nominal structs, nominal enums, and function types
 - arithmetic, bitwise operations, shifts, comparisons, logic, calls, fields, indexes, casts, and aggregate initializers
 - contextual fixed-array and null-terminated `u8` string literals
-- assignment, arithmetic/bitwise/shift compound assignment, and increment/decrement as statement-only mutations
+- assignment, arithmetic/bitwise/shift compound assignment, and increment/decrement as statement-only 
+mutations
 - lvalue/rvalue/no-value tracking
 - `if`, `while`, `for`, `switch`, `break`, `continue`, and `return`
-- return-path and unreachable-statement analysis
+- definite-assignment analysis for locals and parameters
+- unified reachability for branches, switches, loops, returns, unreachable statements, and non-void 
+fallthrough
+- value-based Boolean and enum switch exhaustiveness
+- nested functions without closure capture
 - compile-time constant evaluation with exact signed-magnitude integers
-- checked constant integer arithmetic, known zero-divisor diagnostics, and numeric representability checks
+- checked constant integer arithmetic, known zero-divisor diagnostics, and numeric representability 
+- checks
 - constant array-index bounds checking
 - IEEE-754 constant behavior for `f32` and `f64`, including infinity, NaN, and signed zero
 - deterministic semantic-information verification and dumps
 
 ## Recently Completed
+
+### Definite Assignment and Unified Reachability
+
+Coglet now tracks whether each function-local variable and parameter is definitely initialized at every 
+reachable program point.
+
+Completed behavior includes:
+
+* local declarations without initializers remain uninitialized
+* parameters and successfully initialized locals begin initialized
+* direct whole-variable assignment initializes its target
+* whole-struct and whole-array assignment initializes the complete variable
+* field, element, pointer-index, and dereference writes do not initialize a complete base variable
+* compound assignment and increment/decrement require prior initialization
+* taking the address of an uninitialized local is rejected
+* `if` branches are checked independently and merged by intersecting continuing paths
+* omitted `else` branches preserve the unchanged incoming path
+* switch cases begin from independent copies of the incoming state
+* non-exhaustive switches include an implicit no-match path
+* loops conservatively preserve the possibility of zero iterations
+* `break` and `continue` flow targets the nearest loop
+* `continue` and body-fallthrough paths reach a `for` post expression
+* `break` and `return` paths do not reach a `for` post expression
+* literal-true loops with no reachable `break` are non-continuing
+* unreachable statements are diagnosed during block traversal
+* a non-void function is accepted whenever normal control flow cannot reach the end of its body
+
+Path-dependent initialization is stored in a separate `FlowState` rather than as mutable state on symbols.
+
+Each tracked variable has an owner-qualified flow identity:
+
+```text
+(flow owner ID, variable ID)
+```
+
+This prevents nested functions from accidentally consulting an enclosing function's numerically identical 
+variable slot.
+
+Nested functions do not currently support closure capture. They may access visible globals, constants, 
+types, and functions, but references to enclosing locals and parameters are rejected.
+
+Switch exhaustiveness is based on successfully checked runtime values:
+
+* `default` covers every value
+* Boolean switches require both `true` and `false`
+* enum switches require every distinct declared runtime value
+* enum aliases with the same backing value require only one case
+* invalid cases never contribute coverage
+
+The older separate return-path and unreachable-analysis helpers have been removed. `FlowState.reachable` is now the single control-flow source of truth.
+
 
 ### Semantic Type and Numeric Hardening
 
@@ -67,13 +124,18 @@ Current rules:
 - `T*` is a raw, nullable pointer to mutable `T`
 - `&expression` requires a mutable lvalue and produces a `T*` rvalue
 - `*expression` requires `T*` and produces a `T` lvalue
-- variables, assignable fields, assignable array indexes, dereferences, and pointer indexes may be addressed
+- variables, assignable fields, assignable array indexes, dereferences, and pointer indexes may be 
+addressed
 - pointer indexing remains an unchecked low-level operation
-- pointer arithmetic operators, array-to-pointer decay, `void*`, pointee const qualification, and lifetime checking remain unsupported
+- pointer arithmetic operators, array-to-pointer decay, `void*`, pointee const qualification, and 
+lifetime checking remain unsupported
 - `null` is the only source-level null-pointer value; integer zero is rejected in pointer contexts
 - `null` may contextually adapt to a concrete pointer type or be explicitly cast to one
 
-Raw pointers are intentionally the C-interop and unsafe-memory foundation, not the final abstraction for ordinary safe Coglet APIs. Future work may add non-null references, mutable and readonly slices, read-only raw pointers, opaque pointers, and checked or unsafe conversions without changing the basic `T*` representation.
+Raw pointers are intentionally the C-interop and unsafe-memory foundation, not the final abstraction 
+for ordinary safe Coglet APIs. Future work may add non-null references, mutable and readonly slices, 
+read-only raw pointers, opaque pointers, and checked or unsafe conversions without changing the basic `T*` 
+representation.
 
 ### Explicit Untyped Numeric Kinds
 
@@ -84,7 +146,9 @@ TYPE_UNTYPED_INT
 TYPE_UNTYPED_FLOAT
 ```
 
-The previous mixed state of a concrete kind plus an `is_untyped` flag has been removed. Mutable inferred variables and parameters receive concrete default types (`i32`, `i64`, `u64`, or `f64`), while inferred compile-time constants may remain adaptable.
+The previous mixed state of a concrete kind plus an `is_untyped` flag has been removed. 
+Mutable inferred variables and parameters receive concrete default types (`i32`, `i64`, `u64`, or `f64`), 
+while inferred compile-time constants may remain adaptable.
 
 ### Semantic-Information Verifier
 
@@ -100,7 +164,8 @@ The standalone verifier now:
 
 ### Closed Enums
 
-Normal enums are now closed. The backing type determines representation and range, while the valid enum values are exactly the declared member values.
+Normal enums are now closed. The backing type determines representation and range, 
+while the valid enum values are exactly the declared member values.
 
 Current cast rules:
 
@@ -132,7 +197,11 @@ Coglet now supports the integer bit-manipulation core:
 Coglet intentionally gives bitwise operators higher precedence than equality
 and ordered comparison, so `flags & mask == 0` means `(flags & mask) == 0`.
 
-## Immediate Design Work
+## Candidate Next Design Work
+
+The definite-assignment and unified-reachability milestone is complete. 
+The following items are candidate frontend design areas rather than a committed implementation sequence. 
+Code generation remains deferred.
 
 ### 1. Runtime Integer Arithmetic and Numeric Casts
 
@@ -199,6 +268,7 @@ encoding, and C interoperability rules are clearer.
 - stable declaration identity across files
 - structured diagnostics with source spans and notes
 - a standard library design
+- closure and capture semantics, only if nested runtime functions require them
 - generics, if justified by real use cases
 
 ## Deferred Execution Work

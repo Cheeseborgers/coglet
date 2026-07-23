@@ -210,19 +210,93 @@ static Token scan_identifier(Lexer *lx, const char *start, int start_line, int s
     );
 }
 
-// Handles integers (123), floats (3.14), no exponent/hex support yet.
-static Token scan_number(Lexer *lx, const char *start, int start_line, int start_column) {
-    while (is_digit(peek(lx))) advance(lx);
+/*
+ * Scans decimal integer and floating-point literals.
+ *
+ * Supported forms:
+ *
+ *     123
+ *     3.14
+ *     1e3
+ *     1E3
+ *     1e+3
+ *     1e-3
+ *     1.25e4
+ *
+ * A decimal point must be followed by a digit. An exponent must
+ * contain at least one digit after its optional sign.
+ */
+static Token scan_number(
+    Lexer *lx,
+    const char *start,
+    int start_line,
+    int start_column
+) {
+    while (is_digit(peek(lx)))
+        advance(lx);
 
     int is_float = 0;
-    if (peek(lx) == '.' && is_digit(peek_next(lx))) {
+
+    /*
+     * Fractional component.
+     *
+     * Preserve the existing rule that a decimal point belongs to
+     * the number only when followed by a digit.
+     */
+    if (peek(lx) == '.' &&
+        is_digit(peek_next(lx))) {
         is_float = 1;
-        advance(lx); // consume '.'
-        while (is_digit(peek(lx))) advance(lx);
-    }
+
+        advance(lx);
+
+        while (is_digit(peek(lx)))
+            advance(lx);
+        }
+
+    /*
+     * Optional decimal exponent.
+     *
+     * Exponent notation always produces a floating-point token,
+     * including forms without a decimal point such as 1e3.
+     */
+    if (peek(lx) == 'e' || peek(lx) == 'E') {
+
+        is_float = 1;
+
+        advance(lx);
+
+        if (peek(lx) == '+' || peek(lx) == '-')
+            advance(lx);
+
+
+        if (!is_digit(peek(lx))) {
+
+            int length = (int)(lx->current - start);
+
+            return error_token(
+                lx,
+                start,
+                length,
+                start_line,
+                start_column,
+                "expected digits after exponent");
+        }
+
+        while (is_digit(peek(lx)))
+            advance(lx);
+        }
 
     int length = (int)(lx->current - start);
-    return make_token(is_float ? TOK_NUMBER_FLOAT : TOK_NUMBER_INT, start, length, start_line, start_column);
+
+    return make_token(
+        is_float
+            ? TOK_NUMBER_FLOAT
+            : TOK_NUMBER_INT,
+        start,
+        length,
+        start_line,
+        start_column
+    );
 }
 
 // Handles "..." with backslash escapes; does NOT interpret the escapes

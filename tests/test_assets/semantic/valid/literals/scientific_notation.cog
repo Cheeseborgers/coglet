@@ -1,0 +1,25 @@
+scientific_notation::() -> void {
+    /*
+     * Exponent notation is contextually converted to the declared
+     * concrete floating-point type.
+     */
+    thousand_f32: f32 = 1e3;
+    fraction_f32: f32 = 1.25e-3;
+
+    avogadro_f64: f64 = 6.022E23;
+    negative_f64: f64 = -2.5e-4;
+
+    /*
+     * Scientific literals participate in ordinary floating-point
+     * constant expressions.
+     */
+    sum: f64 = 1e2 + 2.5e1;
+    product: f64 = 2e3 * 5e-1;
+
+    /*
+     * Decimal and exponent notation use the same floating-point
+     * semantics.
+     */
+    equivalent_a: bool = 1e3 == 1000.0;
+    equivalent_b: bool = 2.5e-1 == 0.25;
+}

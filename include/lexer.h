@@ -8,7 +8,7 @@ typedef enum {
 
     // literals
     TOK_NUMBER_INT,     // 123
-    TOK_NUMBER_FLOAT,   // 3.14
+    TOK_NUMBER_FLOAT,   // 3.14, 1e3, 1.25e-4
     TOK_STRING,         // "hello"
     TOK_CHAR,           // 'a'
     TOK_IDENT,          // foo

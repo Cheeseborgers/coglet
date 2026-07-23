@@ -1,0 +1,3 @@
+scientific_notation_f32_overflow::() -> void {
+    value: f32 = 1e39;
+}

@@ -93,7 +93,23 @@ generic canonical object because their structure or declaration identity
 matters.
 
 Type equality begins with pointer identity. Built-in scalars then compare by
-kind, while pointers, arrays, and function types compare recursively.
+kind. Arrays and functions compare structurally. Pointer type equality includes
+both exact pointee-type equality and exact `PointerAccess` equality, so `T*`
+and `readonly T*` are distinct semantic types.
+
+Directional compatibility is separate from type identity. The only
+access-changing pointer conversion is:
+
+```text
+T* -> readonly T*
+```
+
+The immediate pointee types must already be exactly equal. This prevents
+unsafe recursive conversions such as `T** -> readonly T**`.
+
+Pointer equality comparison may ignore only an immediate mutable-versus-
+readonly access difference when the immediate pointee types are exactly equal.
+Comparison does not alter either operand's permissions.
 
 Structs and enums are nominal: the semantic `Type *` allocated for the
 declaration is its identity. Two different declarations remain different even
@@ -168,6 +184,19 @@ The compiler itself must not be built with floating-point options such as
 `-ffast-math` that discard IEEE-754 NaN, infinity, signed-zero, or comparison
 semantics relied on by constant evaluation.
 
+Wrapping builtin evaluation operates on explicit fixed-width bit patterns.
+`wrapping_add`, `wrapping_sub`, `wrapping_mul`, and `wrapping_neg` evaluate
+modulo `2^N` for the concrete integer width.
+
+Truncating integer conversion retains the low target-width bits of the exact
+mathematical source value and reconstructs the result according to the target
+signedness. The evaluator does not rely on host-C signed overflow or
+implementation-defined narrowing conversions.
+
+`NODE_CAST` constant evaluation dispatches exhaustively on `CastKind` so
+checked and truncating conversions cannot accidentally share the wrong
+conversion path.
+
 ## Runtime Scalar Contract and Frontend Ownership
 
 Ordinary signed and unsigned integer arithmetic is checked in every build
@@ -177,22 +206,26 @@ increment/decrement, and their compound forms require a representable result.
 Known failures are compile-time diagnostics. Runtime-dependent failures are
 accepted by the frontend and must trap in any future execution layer.
 
-Integer division and remainder additionally require:
+Integer division and remainder additionally require a nonzero divisor and no
+signed-minimum/`-1` overflow case.
 
-a nonzero divisor;
-no signed-minimum and -1 overflow case.
+Numeric `cast` is checked. A known invalid conversion is diagnosed, while a
+runtime-dependent conversion remains well typed and requires a future runtime
+check.
 
-Numeric cast is also checked. A known unrepresentable conversion is
-diagnosed, while a runtime-dependent conversion remains well typed and
-requires a future runtime check.
+Explicit wrapping arithmetic uses stable `BuiltinKind` identities registered
+in the root scope. Calls pass through ordinary lexical resolution and one
+central exhaustive builtin dispatcher. Semantic expression facts retain the
+resolved builtin symbol rather than depending on source-name comparisons.
 
-The semantic-expression side table does not need fields such as
-requires_overflow_check or requires_checked_cast. The operation kind,
-resolved operand types, result type, and cast destination already determine
-the language-required check.
+Truncating integer conversion is represented by `NODE_CAST` with
+`CAST_TRUNCATING`, alongside checked conversion represented by `CAST_CHECKED`.
+Semantic checking and constant evaluation each dispatch exhaustively on
+`CastKind`.
 
-A future lowering layer can derive the required behavior directly:
+A future lowering layer can derive required behavior directly:
 
+```text
 integer +, -, *       -> checked arithmetic
 signed unary -        -> checked negation
 integer / and %       -> divisor and signed-overflow checks
@@ -201,34 +234,57 @@ numeric cast          -> checked conversion
 truncate              -> fixed-width low-bit integer conversion
 wrapping builtin      -> fixed-width modulo integer arithmetic
 bitwise operation     -> fixed-width bit-pattern operation
+```
 
-This keeps semantic facts backend-neutral and avoids duplicating policy in
-mutable flags.
-
-Explicit wrapping arithmetic uses stable `BuiltinKind` identities registered
-in the root scope. Calls pass through normal lexical name resolution and one
-central exhaustive builtin semantic dispatcher. Semantic expression facts
-retain the resolved builtin symbol rather than depending on source-name
-comparisons.
-
-Truncating integer conversion is represented by `NODE_CAST` with
-`CAST_TRUNCATING`, alongside checked conversion represented by
-`CAST_CHECKED`. Semantic checking and constant evaluation each dispatch
-exhaustively on `CastKind`.
-
-Constant `truncate` expressions are evaluated by retaining the destination
-width’s low bits and interpreting that bit pattern using the destination
-signedness. This avoids host-C signed overflow and implementation-defined
-narrowing conversions.
-
-These explicit operations remain backend-neutral. A future lowering layer can
-distinguish them through builtin identity or `CastKind` without additional
-mutable semantic flags.
-
+The semantic-expression side table does not need mutable flags such as
+`requires_overflow_check`. Operation kind, resolved types, builtin identity,
+and `CastKind` already determine the required behavior.
 
 The exact runtime trap mechanism remains outside frontend ownership. At the
-language level, a trap means that the operation produces no result and normal
+language level, a trap means the operation produces no result and normal
 execution cannot continue.
+
+## Storage Access Facts
+
+Semantic expression information separates storage identity from write
+permission:
+
+```text
+ValueCategory:
+    NONE
+    RVALUE
+    LVALUE
+
+ValueAccess:
+    NONE
+    READONLY
+    WRITABLE
+```
+
+The valid combinations are:
+
+```text
+NONE    + NONE
+RVALUE  + NONE
+LVALUE  + READONLY
+LVALUE  + WRITABLE
+```
+
+This distinction allows `*readonly_pointer` to identify storage while
+remaining non-assignable.
+
+Semantic checking propagates access as follows:
+
+```text
+dereference       <- pointer access
+pointer index     <- pointer access
+array index       <- array expression access
+field access      <- object expression access
+address-of result <- operand storage access
+```
+
+Assignment, compound assignment, increment, and decrement require a writable
+lvalue. Address-of requires an lvalue but does not require writable access.
 
 ## Definite Assignment and Control-Flow Analysis
 
@@ -439,7 +495,8 @@ Visible globals, constants, types, and function declarations remain accessible b
 
 ## Semantic-Information Verification
 
-`check_semantic_info` uses the same compiler-driver frontend pipeline and then verifies the semantic side table after a successful analysis.
+`check_semantic_info` uses the same compiler-driver frontend pipeline and then
+verifies the semantic side table after successful analysis.
 
 Normal verification:
 
@@ -453,15 +510,27 @@ Diagnostic source-order dump:
 check_semantic_info --dump-semantic-info source.cog
 ```
 
-The verifier checks completeness, duplicate and orphan entries, type/category invariants, 
-symbol associations, and the rule that variables and parameters have concrete types.
+The verifier checks:
 
-Expression facts may be recorded before a later flow-sensitive use is rejected. 
-For example, an identifier read can retain its resolved type, symbol, and lvalue category 
-even when definite-assignment analysis subsequently reports that the variable may be uninitialized. 
-The side table records successfully resolved expression facts; 
-it is not itself a record that every later semantic rule accepted the expression's use.
+- completeness, duplicate entries, and orphan entries;
+- type, symbol, and value-category invariants;
+- valid `ValueCategory`/`ValueAccess` combinations;
+- readonly and writable dereference propagation;
+- pointer and array index access propagation;
+- field-access inheritance;
+- address-of access preservation;
+- canonical built-in scalar types;
+- concrete variable and parameter types;
+- builtin identity and mutation-node invariants.
 
-A program that fails parsing or semantic analysis is not required to have a complete semantic side table. 
-With `--dump-semantic-info`, a partial table may be printed for diagnosis; 
-it is not passed through the successful-program completeness verifier.
+Expression facts may be recorded before a later flow-sensitive use is
+rejected. For example, an identifier read can retain its resolved type, symbol,
+and lvalue facts even when definite-assignment analysis subsequently reports
+that the variable may be uninitialized. The side table records successfully
+resolved expression facts; it is not itself a record that every later semantic
+rule accepted the expression's use.
+
+A program that fails parsing or semantic analysis is not required to have a
+complete semantic side table. With `--dump-semantic-info`, a partial table may
+be printed for diagnosis; it is not passed through successful-program
+completeness verification.

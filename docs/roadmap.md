@@ -13,21 +13,20 @@ Implemented areas include:
 - lexical scopes, symbol lookup, and shadowing
 - explicit and inferred variables, parameters, functions, and constants
 - canonical primitive numeric and boolean semantic types
-- raw object pointers with dedicated `null`, fixed arrays, nominal structs, nominal enums, and function types
+- mutable and readonly raw object pointers with dedicated `null`, fixed arrays, nominal structs, nominal enums, and function types
 - arithmetic, bitwise operations, shifts, comparisons, logic, calls, fields, indexes, casts, and aggregate initializers
 - contextual fixed-array and null-terminated `u8` string literals
-- assignment, arithmetic/bitwise/shift compound assignment, and increment/decrement as statement-only 
-mutations
-- lvalue/rvalue/no-value tracking
+- assignment, arithmetic/bitwise/shift compound assignment, and increment/decrement as statement-only
+  mutations
+- lvalue/rvalue/no-value tracking with writable/readonly storage access
 - `if`, `while`, `for`, `switch`, `break`, `continue`, and `return`
 - definite-assignment analysis for locals and parameters
-- unified reachability for branches, switches, loops, returns, unreachable statements, and non-void 
-fallthrough
+- unified reachability for branches, switches, loops, returns, unreachable statements, and non-void
+  fallthrough
 - value-based Boolean and enum switch exhaustiveness
 - nested functions without closure capture
 - compile-time constant evaluation with exact signed-magnitude integers
-- checked constant integer arithmetic, known zero-divisor diagnostics, and numeric representability 
-- checks
+- checked constant integer arithmetic, known zero-divisor diagnostics, and numeric representability checks
 - constant array-index bounds checking
 - IEEE-754 constant behavior for `f32` and `f64`, including infinity, NaN, and signed zero
 - deterministic semantic-information verification and dumps
@@ -36,7 +35,7 @@ fallthrough
 
 ### Definite Assignment and Unified Reachability
 
-Coglet now tracks whether each function-local variable and parameter is definitely initialized at every 
+Coglet now tracks whether each function-local variable and parameter is definitely initialized at every
 reachable program point.
 
 Completed behavior includes:
@@ -68,10 +67,10 @@ Each tracked variable has an owner-qualified flow identity:
 (flow owner ID, variable ID)
 ```
 
-This prevents nested functions from accidentally consulting an enclosing function's numerically identical 
+This prevents nested functions from accidentally consulting an enclosing function's numerically identical
 variable slot.
 
-Nested functions do not currently support closure capture. They may access visible globals, constants, 
+Nested functions do not currently support closure capture. They may access visible globals, constants,
 types, and functions, but references to enclosing locals and parameters are rejected.
 
 Switch exhaustiveness is based on successfully checked runtime values:
@@ -118,33 +117,57 @@ The language-level runtime scalar contract is now selected:
 Explicit wrapping arithmetic and truncating integer conversion are implemented
 as separate frontend operations rather than implicit behavior.
 
-### Raw Object Pointers
+### Explicit Scalar Alternatives
 
-Coglet now supports the first low-level pointer milestone:
+The explicit scalar-alternatives milestone is complete.
+
+Coglet now provides:
+
+- checked ordinary signed and unsigned integer arithmetic in every build mode;
+- checked numeric `cast`;
+- central integer metadata and representability rules;
+- runtime-dependent frontend conformance coverage;
+- stable compiler builtin identities;
+- `wrapping_add`, `wrapping_sub`, `wrapping_mul`, and `wrapping_neg`;
+- `truncate(TargetIntegerType, expression)`;
+- compile-time fixed-width evaluation for wrapping and truncating operations;
+- semantic-expression verifier coverage.
+
+Wrapping operations use fixed-width modulo arithmetic. Truncating conversion
+retains the low destination-width bits and interprets them using target
+signedness. These explicit operations do not change the checked semantics of
+ordinary operators or `cast`.
+
+### Mutable and Readonly Raw Object Pointers
+
+Coglet's typed raw-pointer access milestone is complete.
+
+Implemented forms:
 
 ```c
-x: i32 = 10;
-p: i32* = &x;
-*p = 20;
+T*
+readonly T*
 ```
 
-Current rules:
+Completed rules include:
 
-- `T*` is a raw, nullable pointer to mutable `T`
-- `&expression` requires a mutable lvalue and produces a `T*` rvalue
-- `*expression` requires `T*` and produces a `T` lvalue
-- variables, assignable fields, assignable array indexes, dereferences, and pointer indexes may be 
-addressed
-- pointer indexing remains an unchecked low-level operation
-- pointer arithmetic operators, array-to-pointer decay, `void*`, pointee const qualification, and 
-lifetime checking remain unsupported
-- `null` is the only source-level null-pointer value; integer zero is rejected in pointer contexts
-- `null` may contextually adapt to a concrete pointer type or be explicitly cast to one
+- raw pointers remain nullable, non-owning, unchecked, and potentially dangling;
+- `T*` grants mutable pointee access;
+- `readonly T*` grants read access through that pointer;
+- pointer bindings themselves remain independently assignable;
+- mutable pointers adapt implicitly or explicitly to matching readonly pointers;
+- readonly pointers cannot recover mutable access;
+- qualification is shallow and is not recursively introduced through nested pointers;
+- dereference and pointer indexing propagate pointer access;
+- struct fields inherit the access of their object expression;
+- address-of preserves writable or readonly storage access;
+- matching mutable and readonly pointers may be compared;
+- both forms adapt to and compare with `null`;
+- semantic expression information distinguishes storage identity from write permission;
+- semantic-info verification covers the access invariants.
 
-Raw pointers are intentionally the C-interop and unsafe-memory foundation, not the final abstraction 
-for ordinary safe Coglet APIs. Future work may add non-null references, mutable and readonly slices, 
-read-only raw pointers, opaque pointers, and checked or unsafe conversions without changing the basic `T*` 
-representation.
+This milestone does not add ownership, borrowing, lifetime checking, bounds
+checking, pointer arithmetic, or deep immutability.
 
 ### Explicit Untyped Numeric Kinds
 
@@ -155,8 +178,8 @@ TYPE_UNTYPED_INT
 TYPE_UNTYPED_FLOAT
 ```
 
-The previous mixed state of a concrete kind plus an `is_untyped` flag has been removed. 
-Mutable inferred variables and parameters receive concrete default types (`i32`, `i64`, `u64`, or `f64`), 
+The previous mixed state of a concrete kind plus an `is_untyped` flag has been removed.
+Mutable inferred variables and parameters receive concrete default types (`i32`, `i64`, `u64`, or `f64`),
 while inferred compile-time constants may remain adaptable.
 
 ### Semantic-Information Verifier
@@ -173,7 +196,7 @@ The standalone verifier now:
 
 ### Closed Enums
 
-Normal enums are now closed. The backing type determines representation and range, 
+Normal enums are now closed. The backing type determines representation and range,
 while the valid enum values are exactly the declared member values.
 
 Current cast rules:
@@ -208,83 +231,55 @@ and ordered comparison, so `flags & mask == 0` means `(flags & mask) == 0`.
 
 ## Candidate Next Design Work
 
-The definite-assignment and unified-reachability milestone is complete. 
-The following items are candidate frontend design areas rather than a committed implementation sequence. 
-Code generation remains deferred.
+The checked-scalar, explicit wrapping/truncation, and mutable/readonly typed
+raw-pointer milestones are complete. Code generation remains deferred.
 
-### Explicit Scalar Alternatives
+### 1. Opaque Raw Pointers
 
-The explicit scalar-alternatives milestone is complete.
+Design an opaque pointer facility for handle-oriented APIs and future C
+interoperability.
 
-Coglet now provides:
+The design must settle:
 
-* checked ordinary signed and unsigned integer arithmetic in every build mode;
-* checked numeric `cast`;
-* central integer metadata and representability rules;
-* status-based checked arithmetic and conversion classification;
-* runtime-dependent frontend conformance coverage;
-* stable compiler builtin identities;
-* `wrapping_add`;
-* `wrapping_sub`;
-* `wrapping_mul`;
-* `wrapping_neg`;
-* `truncate(TargetIntegerType, expression)`;
-* compile-time fixed-width evaluation for wrapping and truncating operations;
-* semantic-expression verifier coverage.
+- source syntax;
+- whether opaque pointers have mutable and readonly variants;
+- conversions to and from typed object pointers;
+- whether conversions require an explicitly unsafe operation;
+- null compatibility;
+- equality rules;
+- prohibition of dereference and indexing;
+- interaction with future external declarations and ABI types.
 
-Wrapping operations use fixed-width modulo arithmetic. Truncating conversion
-retains the low destination-width bits and interprets them using the target
-signedness.
+Opaque pointers should not automatically inherit every permissive rule
+associated with C `void*`.
 
-These operations are explicit and do not change the checked semantics of
-ordinary operators or `cast`.
-
-No code generation or runtime implementation was added as part of this
-milestone.
-
-
-### 2. Readonly and Opaque Raw Pointers
-
-Design a small const-correctness mechanism without conflating:
-
-- immutable bindings
-- non-reassignable pointer variables
-- readonly pointees
-- deep immutability
-- compile-time constants
-- safe references or lifetime-checked borrows
-
-A future readonly raw pointer should remain nullable, non-owning, unchecked,
-and potentially dangling. Opaque raw pointers should be considered separately
-for future `void*`-style interoperation.
-
-### 3. C Interoperability Design
+### 2. C Interoperability Design
 
 Plan, but do not yet implement syntax-only ABI promises. Relevant future work
 includes:
 
-- external declarations
-- target-aware primitive ABI types
-- C-compatible struct layout
-- opaque pointer conversion rules
-- enum backing representation
-- `#repr_c` or an equivalent general representation attribute
-- mapping C null pointers to Coglet `null`
+- external declarations;
+- target-aware primitive ABI types;
+- C-compatible struct layout;
+- opaque pointer conversion rules;
+- enum backing representation;
+- `#repr_c` or an equivalent representation attribute;
+- mapping C null pointers to Coglet `null`.
 
-### 4. Slices and Pointer-Length Views
+### 3. Slices and Pointer-Length Views
 
-Slices remain a strong candidate after raw-pointer mutability and ABI rules
-are clearer. Their design must settle:
+Slices remain a strong candidate after opaque-pointer and ABI rules are
+clearer. Their design must settle:
 
-- mutable versus readonly slices
-- pointer-and-length versus pointer-length-capacity layout
-- fixed-array-to-slice conversion
-- string-literal-to-byte-view conversion
-- lifetime of temporary arrays and literals
-- null termination and visible length
+- mutable versus readonly slices;
+- pointer-and-length versus pointer-length-capacity layout;
+- fixed-array-to-slice conversion;
+- string-literal-to-byte-view conversion;
+- lifetime of temporary arrays and literals;
+- null termination and visible length.
 
 A first-class `string` type should wait until slice, ownership, mutability,
-encoding, and C interoperability rules are clearer.
+encoding, and C-interoperability rules are clearer.
 
 ## Later Frontend Work
 

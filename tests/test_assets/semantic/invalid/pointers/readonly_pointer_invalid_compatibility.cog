@@ -1,0 +1,23 @@
+readonly_pointer_invalid_compatibility::(
+    view: readonly i32*,
+    nested_mutable: i32**,
+    nested_readonly: readonly i32**
+) -> void {
+    /*
+     * Explicit casts may not recover write access.
+     */
+    recovered: i32* =
+        cast(i32*, view);
+
+    /*
+     * Readonly access is not recursively added through pointers.
+     */
+    nested_cast: readonly i32** =
+        cast(readonly i32**, nested_mutable);
+
+    /*
+     * Nested pointers with different immediate pointee types
+     * cannot be compared.
+     */
+    nested_mutable == nested_readonly;
+}

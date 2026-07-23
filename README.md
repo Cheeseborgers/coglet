@@ -67,8 +67,8 @@ Supported features include:
 * unreachable-statement diagnostics
 * nested function declarations
 
-Nested functions do not currently support closure capture. 
-They may access visible globals, constants, types, and function declarations, but cannot read or modify 
+Nested functions do not currently support closure capture.
+They may access visible globals, constants, types, and function declarations, but cannot read or modify
 locals and parameters belonging to an enclosing function.
 
 
@@ -87,7 +87,7 @@ not a user-declarable storage type.
 
 Compound and declared types:
 
-- raw nullable object pointers
+- mutable and readonly raw nullable object pointers
 - fixed-size arrays
 - nominal structs
 - nominal enums
@@ -110,7 +110,8 @@ Supported expression forms include:
 - function calls
 - field access
 - array and pointer indexing
-- explicit casts
+- checked casts and explicit integer truncation
+- compiler-provided wrapping integer operations
 - struct initializers
 - contextual array literals
 
@@ -150,7 +151,7 @@ Local variables are not implicitly initialized:
 value: i32;
 ```
 
-A variable may be read only when semantic analysis can prove that it has been initialized on every 
+A variable may be read only when semantic analysis can prove that it has been initialized on every
 reachable incoming path.
 
 A direct whole-variable assignment initializes it:
@@ -165,7 +166,7 @@ return value;
 
 Parameters and variables declared with initializers begin initialized.
 
-Compound assignment and increment/decrement require prior initialization because they read 
+Compound assignment and increment/decrement require prior initialization because they read
 the previous value:
 
 ```c
@@ -175,15 +176,15 @@ value += 1; // invalid
 value++;    // invalid
 ```
 
-Assigning an entire struct or array initializes that variable. Assigning only a field, element, 
+Assigning an entire struct or array initializes that variable. Assigning only a field, element,
 pointee, or pointer-indexed location does not initialize the complete base variable.
 
 Taking the address of an uninitialized local is rejected.
 
-Branch merging is reachability-aware. An unreachable branch does not weaken a branch that continues, 
+Branch merging is reachability-aware. An unreachable branch does not weaken a branch that continues,
 and non-exhaustive switches include an implicit no-match path.
 
-Loop analysis is conservative because a loop may execute zero times. Initialization performed only 
+Loop analysis is conservative because a loop may execute zero times. Initialization performed only
 inside a loop is not generally available afterward.
 
 
@@ -206,30 +207,74 @@ does_nothing() + 1;
 
 ### Raw Object Pointers
 
+Coglet provides mutable and readonly raw object pointers:
+
 ```c
 value: i32 = 10;
-pointer: i32* = &value;
 
-*pointer = 20;
-pointer[0] = 30;
-pointer = null;
+pointer: i32* = &value;
+view: readonly i32* = pointer;
 ```
 
-`T*` is a raw, nullable, non-owning pointer to mutable `T`. Dereference and
-pointer indexing produce lvalues. Pointer operations are unchecked for
-lifetime, bounds, ownership, and dangling values.
+`T*` is a raw pointer that grants mutable access to `T`.
+`readonly T*` grants read access but does not permit mutation through that
+pointer:
+
+```c
+read: i32 = *view;  // valid
+*view = 20;         // invalid
+view[0] = 20;       // invalid
+```
+
+Readonly access is shallow and access-based. It does not guarantee that the
+underlying object never changes because the same object may remain reachable
+through another mutable pointer.
+
+Both pointer forms are nullable, non-owning, and unchecked for lifetime,
+alignment, bounds, aliasing, and dangling values.
+
+A mutable pointer may adapt implicitly or explicitly to the corresponding
+readonly pointer:
+
+```c
+view: readonly i32* = pointer;
+other := cast(readonly i32*, pointer);
+```
+
+Readonly access cannot implicitly or explicitly become mutable access.
+Dereference, pointer indexing, field access, and address-of preserve the
+relevant access permission:
+
+```c
+readonly_again: readonly i32* = &*view;
+```
+
+Pointers with the same immediate pointee type may be compared even when one is
+mutable and the other readonly. Comparison does not grant additional
+permissions:
+
+```c
+pointer == view;
+pointer != null;
+view == null;
+```
+
+Nested pointer qualification is strict. Readonly access is not introduced
+recursively through multiple pointer layers.
 
 `null` is the only source-level null-pointer value:
 
 ```c
-pointer: i32* = null; // valid
-pointer: i32* = 0;    // invalid
+pointer: i32* = null;          // valid
+view: readonly i32* = null;    // valid
+pointer: i32* = 0;             // invalid
 ```
 
-An explicit `null`-to-pointer cast may provide a concrete pointer type:
+An explicit `null`-to-pointer cast may provide either concrete pointer type:
 
 ```c
-typed_null := cast(i32*, null);
+mutable_null := cast(i32*, null);
+readonly_null := cast(readonly i32*, null);
 ```
 
 ### Arrays
@@ -341,16 +386,33 @@ does not wrap implicitly.
 
 Integer division truncates toward zero, and remainder has the sign of the
 dividend. Division or remainder by zero traps. Signed minimum divided or
-remaindered by -1 also traps.
+remaindered by `-1` also traps.
 
-Numeric cast is checked. Integer conversions must fit the destination.
+Numeric `cast` is checked. Integer conversions must fit the destination.
 Floating-point-to-integer conversion rejects NaN and infinity, truncates toward
 zero, and then checks the destination range.
 
-f32 and f64 follow IEEE-754 binary32 and binary64 behavior, including
+Coglet also provides explicit fixed-width alternatives:
+
+```c
+wrapping_add(left, right)
+wrapping_sub(left, right)
+wrapping_mul(left, right)
+wrapping_neg(value)
+
+truncate(TargetIntegerType, value)
+```
+
+Wrapping operations use modulo arithmetic at the concrete integer width.
+`truncate` retains the low destination-width bits of an integer value and
+interprets that bit pattern using the destination signedness. These explicit
+operations do not alter the checked behavior of ordinary arithmetic or
+`cast`.
+
+`f32` and `f64` follow IEEE-754 binary32 and binary64 behavior, including
 infinity, NaN, signed zero, and round-to-nearest with ties to even:
 
-```
+```c
 1.0 / 0.0;   // positive infinity
 -1.0 / 0.0;  // negative infinity
 0.0 / 0.0;   // NaN
@@ -376,26 +438,11 @@ is arithmetic and sign-extending.
 Coglet intentionally gives bitwise operators higher precedence than equality
 and ordered comparisons. Therefore:
 
-```
+```c
 flags & mask == 0;
 ```
 
 parses as `(flags & mask) == 0`, avoiding C's surprising precedence rule.
-
-Explicit wrapping arithmetic is provided by the compiler built-ins
-`wrapping_add`, `wrapping_sub`, `wrapping_mul`, and `wrapping_neg`.
-
-Explicit truncating integer conversion uses:
-
-```c
-truncate(TargetIntegerType, expression)
-```
-
-Truncation retains the low bits corresponding to the destination width and
-interprets the resulting bit pattern using the destination signedness. Unlike
-`cast`, truncation does not require the mathematical source value to fit the
-destination and never fails because of range.
-
 
 ### Control Flow
 
@@ -418,8 +465,8 @@ Semantic analysis uses a unified reachability model for:
 * unreachable-statement diagnostics;
 * non-void function fallthrough checking.
 
-A non-void function is valid when normal control flow cannot reach the end of its body. 
-This includes functions that return on every continuing path and functions containing a provably 
+A non-void function is valid when normal control flow cannot reach the end of its body.
+This includes functions that return on every continuing path and functions containing a provably
 non-terminating literal-true loop with no reachable `break`.
 
 Switch analysis includes:
@@ -442,35 +489,45 @@ Semantic analysis records expression information in a side table.
 
 Facts include:
 
-- resolved type
-- resolved symbol, when applicable
-- value category: lvalue, rvalue, or none
+- resolved type;
+- resolved symbol, when applicable;
+- value category: lvalue, rvalue, or none;
+- storage access: writable, readonly, or none.
+
+Value category and storage access are separate. A readonly dereference still
+identifies storage and is therefore an lvalue, but it is not writable.
 
 Examples:
 
 ```text
-variable expression:
+mutable variable expression:
     type = variable type
     category = lvalue
+    access = writable
+
+readonly pointer dereference:
+    type = pointee type
+    category = lvalue
+    access = readonly
 
 numeric literal or adaptable constant:
     type = untyped-int or untyped-float
     category = rvalue
-
-inferred mutable numeric variable:
-    type = concrete i32, i64, u64, or f64
-    category = lvalue
+    access = none
 
 void-returning call:
     type = void
     category = none
+    access = none
 
 successful assignment statement:
     type = none
     category = none
+    access = none
 ```
 
-This distinction is used to enforce assignability and value-required contexts.
+This distinction is used to enforce assignability, readonly access, and
+value-required contexts.
 
 ## Memory Model
 
@@ -486,36 +543,33 @@ Higher-level facilities may be added later, but they should not obscure ownershi
 
 ## Current Status
 
-The parser and semantic analyzer support a substantial core language. The semantic-information verifier now walks successful programs in source order and checks table completeness, duplicate/orphan entries, value categories, symbol associations, and concrete variable/parameter types. An optional diagnostic flag prints the semantic table deterministically.
+The parser and semantic analyzer support a substantial core language. The
+semantic-information verifier walks successful programs in source order and
+checks table completeness, duplicate/orphan entries, value categories, storage
+access, symbol associations, and concrete variable/parameter types. An
+optional diagnostic flag prints the semantic table deterministically.
 
 Recently completed work includes:
 
-- canonical shared semantic types for built-in scalars
-- dedicated `null` semantics with no integer-zero pointer conversion
-- nominal declaration identity for structs and enums
-- restricted equality and ordered-comparison operand categories
-- checked known integer zero-divisor diagnostics
-- integer-only bitwise and shift operators with defined fixed-width semantics
-- bitwise and shift compound assignments
-- checked statically known shift counts
-- IEEE-754 constant behavior for `f32` and `f64`
-- explicit `TYPE_UNTYPED_INT` and `TYPE_UNTYPED_FLOAT` kinds
-- concrete default typing for inferred mutable numeric variables and parameters
-- adaptable compile-time numeric constants
-- exact constant arithmetic and representability checks
-- build-mode-independent checked runtime scalar semantics
-- complete semantic-info invariant verification
-- deterministic source-order semantic dumps
-- closed enum value sets
-- declared-member validation for constant integer-to-enum casts
-- rejection of runtime integer-to-enum casts until checked conversion exists
-- definite-assignment analysis for local variables and parameters
-- stable per-function variable flow identity
-- reachability-aware `if` and switch merging
-- validated value-based Boolean and enum switch exhaustiveness
-- conservative loop flow with `break` and `continue` tracking
-- unified reachability for returns, unreachable statements, and function fallthrough
-- rejection of unsupported nested-function captures
+- canonical shared semantic types for built-in scalars;
+- dedicated `null` semantics with no integer-zero pointer conversion;
+- nominal declaration identity for structs and enums;
+- restricted equality and ordered-comparison operand categories;
+- checked known integer zero-divisor diagnostics;
+- integer-only bitwise and shift operators with defined fixed-width semantics;
+- build-mode-independent checked runtime scalar semantics;
+- explicit wrapping integer builtins;
+- explicit truncating integer conversion;
+- exact constant arithmetic and representability checks;
+- IEEE-754 constant behavior for `f32` and `f64`;
+- closed enum value sets and checked enum conversions;
+- definite-assignment and unified reachability analysis;
+- mutable and readonly raw-pointer access;
+- safe mutable-to-readonly pointer adaptation;
+- access-preserving dereference, indexing, fields, and address-of;
+- separate semantic facts for storage identity and write permission;
+- readonly-pointer compatibility and semantic-info verification;
+- rejection of unsupported nested-function captures.
 
 Backend and code-generation work remains intentionally deferred until the
 execution strategy and enough remaining language and runtime decisions are
@@ -525,20 +579,13 @@ stable.
 
 Near-term work should remain language- and frontend-focused:
 
-1. Consolidate and document the completed runtime scalar semantics before selecting the next frontend language-design milestone. 
-2. Design a small readonly raw-pointer mechanism without introducing borrowing or lifetime checking. 
-3. Plan opaque raw pointers and explicit C ABI types. 
-4. Design slices and pointer-length views after the raw-pointer mutability rules are settled.
-Later work may include:
+1. Design opaque raw pointers separately from ordinary typed pointers.
+2. Plan explicit C ABI types and representation rules.
+3. Design mutable and readonly slices and pointer-length views.
+4. Reassess imports, modules, and multi-file compilation.
+5. Continue improving diagnostics, tests, and documentation.
 
-- imports and modules
-- multi-file compilation
-- package visibility
-- C interoperability and explicit representation attributes
-- a standard library
-- generics
-- interpretation or code generation once the execution strategy is chosen
-- self-hosting
+Backend and code-generation work remain deferred.
 
 ## License
 

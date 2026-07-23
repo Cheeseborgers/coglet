@@ -495,7 +495,7 @@ remainder by zero;
 the minimum value of a signed integer type divided by -1;
 the minimum value of a signed integer type remaindered by -1.
 
-The same rules apply to /=`` and %=`.
+The same rules apply to `/=` and `%=`.
 
 A statically known failure is rejected during semantic analysis:
 
@@ -516,8 +516,8 @@ Equality is currently defined for:
 - numeric values with compatible types
 - `bool`
 - values of the same enum declaration
-- pointers with the same pointee type
-- a pointer and `null`
+- raw pointers with exactly equal immediate pointee types, ignoring only an immediate mutable-versus-readonly access difference
+- a mutable or readonly pointer and `null`
 
 Value equality is not currently defined for structs, arrays, or functions.
 
@@ -690,112 +690,157 @@ for a later complete floating-point specification.
 
 ## Raw Object Pointers
 
-Coglet supports raw object pointers as its low-level memory and future C-interoperability foundation.
+Coglet supports mutable and readonly raw object pointers as its low-level memory
+and future C-interoperability foundation.
 
 ```c
 value: i32 = 10;
+
 pointer: i32* = &value;
-*pointer = 20;
+view: readonly i32* = pointer;
 ```
 
-The current pointer type `T*` is:
+`T*` grants mutable access to its pointee. `readonly T*` grants read access but
+does not permit mutation through that pointer.
 
-- nullable
-- a pointer to mutable `T`
-- unchecked for lifetime, alignment, bounds, ownership, and aliasing
-- an rvalue when produced by address-of
-- a source of a `T` lvalue when dereferenced
+Both forms remain nullable, non-owning, unchecked, and potentially dangling.
+Readonly access is not ownership, borrowing, lifetime checking, deep
+immutability, or a guarantee that the underlying object cannot change through
+another alias.
 
-Address-of requires mutable assignable storage. Valid targets include mutable variables, assignable fields, assignable fixed-array indexes, dereference expressions, and pointer indexes. Constants, enum members, literals, arithmetic results, direct call results, and fields or indexes of temporary aggregate values cannot be addressed.
+The pointer variable itself remains assignable:
 
 ```c
-x: i32 = 1;
-p: i32* = &x;       // valid
-q: i32* = &*p;      // valid
-*&x = 2;            // valid
+first: readonly i32* = get_first();
+second: readonly i32* = get_second();
 
-bad: i32* = &(1 + 2); // invalid
+first = second; // valid
 ```
 
-Dereferencing a non-pointer is invalid. Dereference produces an lvalue even when the pointer expression itself is an rvalue, because a temporary pointer value may still designate persistent storage:
+The restriction applies to storage reached through the pointer:
 
 ```c
-get_pointer()[0] = 1;
-*get_pointer() = 2;
+value := *first; // valid
+*first = 10;     // invalid
+first[0] = 10;   // invalid
 ```
 
-Pointer indexing is currently an unchecked low-level operation. General pointer
-arithmetic operators remain unsupported, arrays do not decay implicitly to
-pointers, and unrelated pointer types do not implicitly convert.
+### Access propagation
+
+Dereferencing a mutable pointer produces a writable lvalue. Dereferencing a
+readonly pointer produces a readonly lvalue:
+
+```text
+*T*            -> writable T lvalue
+*readonly T*   -> readonly T lvalue
+```
+
+Pointer indexing follows the same rule.
+
+A struct field selected from an lvalue inherits the access of that lvalue:
+
+```c
+Point :: struct {
+    x: i32;
+}
+
+read::(point: readonly Point*) -> i32 {
+    return (*point).x;
+}
+
+write::(point: readonly Point*) -> void {
+    (*point).x = 10; // invalid
+}
+```
+
+Address-of accepts writable or readonly lvalues and preserves their access:
+
+```text
+&writable T lvalue -> T*
+&readonly T lvalue -> readonly T*
+```
+
+An address/dereference round trip therefore cannot recover mutable access:
+
+```c
+view: readonly i32* = get_view();
+
+same_view: readonly i32* = &*view; // valid
+mutable: i32* = &*view;            // invalid
+```
+
+### Pointer conversions
+
+Coglet permits one access-changing pointer conversion:
+
+```text
+T* -> readonly T*
+```
+
+The immediate pointee types must otherwise be exactly equal. The conversion is
+valid implicitly and through `cast`:
+
+```c
+mutable: i32* = get_pointer();
+
+implicit_view: readonly i32* = mutable;
+explicit_view := cast(readonly i32*, mutable);
+```
+
+The reverse conversion is rejected because it would invent write permission:
+
+```c
+view: readonly i32* = get_view();
+
+mutable: i32* = view; // invalid
+cast(i32*, view);     // invalid
+```
+
+Readonly access is not introduced recursively through nested pointers. In
+particular, `i32**` does not adapt to `readonly i32**`.
+
+### Pointer equality
+
+Pointers with the same immediate pointee type may be compared even when their
+immediate access permissions differ:
+
+```c
+mutable: i32* = get_pointer();
+view: readonly i32* = mutable;
+
+mutable == view; // valid
+view != mutable; // valid
+```
+
+Comparison observes pointer values and does not transfer permissions. Nested
+access differences remain significant because the immediate pointee types are
+different.
 
 ### Null pointers
 
-`null` is Coglet's dedicated null-pointer literal. It is not integer zero, and
-integer `0` is not accepted where a pointer is required.
+`null` is Coglet's dedicated null-pointer literal. It adapts to mutable or
+readonly raw-pointer types:
 
 ```c
-pointer: i32* = null;
-pointer = null;
+mutable: i32* = null;
+view: readonly i32* = null;
 
-takes_pointer(null);
-return null;
-
-pointer == null;
-null != pointer;
+mutable == null;
+view != null;
 ```
 
-`null` has a contextual pseudo-type rather than a concrete storage type. A
-surrounding pointer type must determine its concrete pointer type.
-
-Invalid:
+Explicit casts may provide either concrete pointer type:
 
 ```c
-pointer := null;
-NONE :: null;
-
-pointer: i32* = 0;
-pointer = 0;
-takes_pointer(0);
-
-null == null;
-null == 0;
-null < pointer;
-null + 1;
-
-*null;
+cast(i32*, null);
+cast(readonly i32*, null);
 ```
 
-A typed pointer constant may use `null`:
+Integer zero is not a null-pointer constant. Integer-to-pointer,
+pointer-to-integer, and null-to-non-pointer casts are rejected.
 
-```c
-NONE: i32* : null;
-NONE_IS_NULL :: NONE == null;
-```
-
-An explicit cast may supply the missing concrete pointer type:
-
-```c
-pointer := cast(i32*, null);
-```
-
-The reverse direction is not supported, and integer values do not become
-pointers through casts:
-
-```c
-cast(i32*, 0);    // invalid
-cast(i32, null);  // invalid
-cast(u64, null);  // invalid
-cast(bool, null); // invalid
-```
-
-At a future C interoperability boundary, Coglet `null` will represent a C null
-pointer. Coglet does not need to adopt C's source-language rule that integer
-zero may act as a null-pointer constant.
-
-`void*`, read-only pointee qualification, safe references, slices, ownership,
-borrowing, and lifetime checking remain future work.
-
-Raw pointers are not intended to become Coglet's only pointer-like abstraction. Future safe references and slices may use stronger source-language rules while retaining direct or wrapper-based C ABI compatibility.
+Pointer arithmetic, array-to-pointer decay, opaque pointers, ownership,
+borrowing, and lifetime checking remain unsupported.
 
 ## Arrays
 
@@ -1098,95 +1143,85 @@ Integer switches require `default` to be exhaustive.
 A non-exhaustive switch includes an implicit no-match path that retains the incoming definite-assignment state.
 
 
-## Casts
+## Casts and Explicit Integer Conversion
 
-Explicit casts use the form:
+### Checked casts
+
+Checked casts use:
 
 ```c
 cast(TargetType, expression)
 ```
 
-Supported cast categories currently include:
+Supported categories include:
 
-- identical types
-- selected numeric conversions
-- enum-to-integer conversion
-- compile-time integer-to-enum conversion to a declared member
-- `null` to a concrete raw-pointer type
-- boolean to boolean
+- identical types;
+- selected numeric conversions;
+- enum-to-integer conversion;
+- compile-time integer-to-enum conversion to a declared member;
+- `null` to a concrete mutable or readonly raw-pointer type;
+- mutable raw pointer to the corresponding readonly raw-pointer type;
+- Boolean to Boolean.
 
-A `null` cast may provide a concrete pointer type:
+A mutable pointer may explicitly drop write permission when the immediate
+pointee type is otherwise exactly equal:
 
 ```c
-typed_null := cast(i32*, null);
+view := cast(readonly i32*, mutable_pointer);
 ```
 
+A checked pointer cast may not add write permission or recursively qualify a
+nested pointer.
+
 Integer-to-pointer, pointer-to-integer, and null-to-non-pointer casts are not
-currently supported.
+supported.
 
-cast(TargetType, expression) is a checked conversion.
-
-Compile-time and runtime casts accept the same mathematical input values. The
-difference is how a failure is reported:
-
-a statically known invalid conversion is a compile-time error;
-a runtime-dependent invalid conversion traps.
-
-Compile-time-known casts are checked in every expression context, including
-discarded expression statements:
-
-test::() -> void {
-cast(u8, 256); // invalid even though the result is discarded
-}
+`cast` is value-preserving and checked. A statically known invalid conversion
+is a compile-time error; a runtime-dependent invalid conversion remains well
+typed and must trap in a future execution layer.
 
 Integer-to-integer conversion requires the mathematical source value to fit
-the destination type. This applies to widening, narrowing, signed-to-unsigned,
-and unsigned-to-signed conversions.
-
-Integer-to-integer cast never implicitly discards high bits, reinterprets a
+the destination type. It never implicitly discards high bits, reinterprets a
 bit pattern, or reduces the value modulo the destination width.
 
 Floating-point-to-integer conversion:
 
-rejects NaN and positive or negative infinity;
-truncates a finite value toward zero;
-requires the truncated integer to fit the destination type.
+- rejects NaN and positive or negative infinity;
+- truncates a finite value toward zero;
+- requires the truncated integer to fit the destination type.
 
 Integer-to-floating-point conversion rounds to the nearest representable value
 of the destination format, with ties to even. Precision loss is permitted
 because the conversion is explicit.
 
-f32-to-f64 conversion is exact. Finite f64-to-f32 conversion rounds to
-the nearest f32 value, with ties to even, but rejects a finite source whose
-magnitude is outside the finite f32 range. NaN, infinity, and signed zero are
-preserved by floating-point casts.
+`f32`-to-`f64` conversion is exact. Finite `f64`-to-`f32` conversion rounds to
+the nearest `f32` value, with ties to even, but rejects a finite source outside
+the finite `f32` range. NaN, infinity, and signed zero are preserved.
 
 For closed enums, fitting the backing type is necessary but not sufficient:
 
+```c
 Small :: enum(u8) { A, B }
 
 cast(Small, 1);   // valid: Small.B
 cast(Small, 255); // invalid: no declared member has value 255
+```
 
 Runtime integer-to-enum casts remain rejected until Coglet has a checked
 runtime enum-conversion facility.
 
-### Truncating Integer Conversion
+### Truncating integer conversion
 
-Explicit truncating integer conversion uses:
+Explicit truncating conversion uses:
 
 ```c
 truncate(TargetIntegerType, expression)
 ```
 
-The target must be a concrete integer type, and the source expression must
-produce an integer value.
-
-Truncation retains the low `N` bits of the source mathematical value, where
-`N` is the destination width. The resulting fixed-width bit pattern is then
-interpreted using the destination signedness.
-
-Examples:
+The target must be a concrete integer type and the source must be an integer.
+The result retains the low `N` bits of the source mathematical value, where
+`N` is the destination width, and interprets that bit pattern using the target
+signedness.
 
 ```c
 truncate(u8, 256);            // 0
@@ -1196,21 +1231,17 @@ truncate(i8, 128);            // -128
 truncate(u16, cast(i8, -1));  // 65535
 ```
 
-Truncating conversion never fails because the source value is outside the
-destination range. It is therefore distinct from checked `cast`, which
-requires the mathematical source value to be representable by the
-destination type.
+Truncation never fails because the mathematical source value is outside the
+destination range. Floating-point, Boolean, pointer, and enum truncation are
+not supported.
 
-The initial truncation operation supports only integer-to-integer conversion.
-Floating-point, Boolean, pointer, and enum operands or targets are rejected.
-
-When its operand is a compile-time constant, `truncate` is also a compile-time
-constant expression and is evaluated using explicit fixed-width bit-pattern
+When its operand is compile-time constant, `truncate` is also a compile-time
+constant expression and is evaluated with explicit fixed-width bit-pattern
 semantics.
 
-### Explicit Wrapping Arithmetic
+### Explicit wrapping arithmetic
 
-Coglet provides the compiler built-ins:
+Coglet provides compiler builtins:
 
 ```c
 wrapping_add(left, right)
@@ -1219,46 +1250,73 @@ wrapping_mul(left, right)
 wrapping_neg(value)
 ```
 
-Their operands must currently have matching concrete integer types. Results
-are computed modulo the width of that integer type and never fail because of
-arithmetic overflow.
+Operands currently require matching concrete integer types. Results are
+computed modulo the type width and never fail because of arithmetic overflow.
 
 Wrapping operations and `truncate` are explicit alternatives. They do not
-change the checked behavior of ordinary arithmetic or `cast`.
-
+change the checked semantics of ordinary arithmetic or `cast`.
 
 ## Current Semantic Architecture
 
-Semantic analysis stores expression facts separately from the AST. The semantic-info verifier walks successful programs in source order and checks:
+Semantic analysis stores expression facts separately from the AST. Each
+successful expression records:
 
-- one semantic entry for every successful expression or mutation node
-- no duplicate or orphan side-table entries
-- correct lvalue, rvalue, and no-value categories
-- symbol/type consistency
-- concrete types for variables and parameters
-- distinct handling of mutation nodes and void-returning calls
+- its resolved type;
+- its resolved symbol, when applicable;
+- a `ValueCategory`;
+- a `ValueAccess`.
 
-The verifier can also print a deterministic source-order dump for debugging. Semantic tables from failed programs may be partial and are dumped only when explicitly requested.
+`ValueCategory` distinguishes no-value expressions, rvalues, and lvalues.
+`ValueAccess` independently distinguishes no storage access, readonly storage,
+and writable storage.
+
+The valid combinations are:
+
+```text
+NONE    + NONE
+RVALUE  + NONE
+LVALUE  + READONLY
+LVALUE  + WRITABLE
+```
+
+This allows a readonly dereference to remain an lvalue without being
+assignable.
+
+The semantic-info verifier walks successful programs in source order and
+checks:
+
+- one semantic entry for every successful expression or mutation node;
+- no duplicate or orphan side-table entries;
+- valid value-category and storage-access combinations;
+- pointer dereference and indexing access propagation;
+- field-access inheritance;
+- address-of access preservation;
+- symbol/type consistency;
+- concrete types for variables and parameters;
+- distinct handling of mutation nodes and void-returning calls.
+
+The verifier can print a deterministic source-order dump for debugging.
+Semantic tables from failed programs may be partial and are dumped only when
+explicitly requested.
 
 ## Future Direction
 
 Backend work remains deliberately deferred. The runtime scalar language
-contract is now defined, but Coglet does not yet need a code generator,
-interpreter, runtime ABI, or trap implementation.
+contract, explicit wrapping/truncating operations, and mutable/readonly typed
+raw pointers are now defined at the frontend level.
 
-Near-term work should remain language- and frontend-focused. Candidate areas
-include:
+Near-term candidate areas include:
 
-readonly and opaque raw-pointer variants;
-slices and readonly byte views;
-ownership, lifetime, and mutability rules;
-a later first-class string type;
-C ABI representation and a future #repr_c attribute;
-imports and modules;
-multi-file compilation;
-standard library facilities;
-generics;
-self-hosting.
+- opaque raw pointers;
+- explicit C ABI types and representation rules;
+- mutable and readonly slices and byte views;
+- ownership and lifetime rules only when justified by concrete use cases;
+- a later first-class string type;
+- imports and modules;
+- multi-file compilation;
+- standard library facilities;
+- generics, if justified by real use cases;
+- self-hosting.
 
-Wrapping and truncating operations are explicit and do not alter the
-all-build checked semantics of ordinary arithmetic or cast.
+Opaque pointers should be designed separately from typed raw pointers rather
+than inheriting every permissive rule associated with C `void*`.

@@ -1,0 +1,4 @@
+semantic error at line 10: invalid explicit cast
+semantic error at line 16: invalid explicit cast
+semantic error at line 22: comparison type mismatch
+3 semantic errors generated.

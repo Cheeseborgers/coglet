@@ -6,29 +6,44 @@ It is not yet a complete formal grammar.
 
 ## Type Syntax
 
-A simplified current type grammar is:
+A simplified type grammar is:
 
 ```ebnf
 type =
-    base_type
+    ["readonly"] base_type
     {"*"}
     ["[" integer_constant "]"];
 ```
 
-Examples:
+`readonly` is valid only when at least one pointer layer follows the base type.
+It qualifies the first pointer layer following that base type.
+
+```c
+mutable: i32*;
+view: readonly i32*;
+nested: readonly i32**;
+```
+
+`readonly i32**` means a mutable pointer to a readonly pointer to `i32`.
+Additional outer pointer layers remain mutable.
+
+These are invalid:
+
+```c
+value: readonly i32;
+values: readonly i32[4];
+```
+
+Examples of ordinary types:
 
 ```c
 value: i32;
 pointer: i32*;
-values: i32[3];
-bytes: u8[16];
+values: i32[4];
+points: Point[8];
 ```
 
 Fixed-size array bounds must currently be compile-time integer constants.
-
-The current semantic rules reject stored value types containing `void`, including `void*` and `void[N]`.
-
-A plain `void` return type remains valid for functions.
 
 ### Initialization
 
@@ -42,7 +57,7 @@ This is syntactically valid.
 
 The variable is **not** implicitly initialized.
 
-Semantic analysis requires every read of a local variable or parameter to be provably initialized 
+Semantic analysis requires every read of a local variable or parameter to be provably initialized
 along every reachable incoming control-flow path.
 
 Parameters and declarations with successful initializers begin initialized.
@@ -63,89 +78,70 @@ unary_expression =
 
 For example, `-2147483648` is parsed as unary negation applied to the positive literal `2147483648`. Numeric literals initially have adaptable `untyped-int` or `untyped-float` semantic types. Inferred mutable variables and parameters are concretized to default runtime types, while inferred compile-time constants may remain adaptable.
 
-## Explicit Conversion Expressions
-
-Checked and truncating conversions share the following surface form:
-
-```ebnf
-conversion_expression =
-      "cast" "(" type "," expression ")"
-    | "truncate" "(" type "," expression ")";
-```
-
-A checked conversion uses:
-
-```c
-cast(TargetType, expression)
-```
-
-Its semantic validity depends on the source and destination categories.
-Numeric checked conversions require the mathematical source value to be
-representable according to the destination conversion rules.
-
-A truncating integer conversion uses:
-
-```c
-truncate(TargetIntegerType, expression)
-```
-
-For `truncate`, the target must be a concrete integer type and the source must
-be an integer expression. The result retains the low bits corresponding to
-the target width and interprets them using the target signedness.
-
-Examples:
-
-```c
-truncate(u8, 256);
-truncate(i8, 255);
-truncate(u16, cast(i8, -1));
-```
-
-`truncate` does not support floating-point, Boolean, pointer, or enum
-conversion.
-
-
 ## Raw Object Pointers
 
-Pointer types use postfix `*` in type syntax. Address-of and dereference use prefix unary operators:
+Pointer types use postfix `*`. The optional `readonly` keyword describes
+access through the first pointer layer.
 
 ```c
 value: i32 = 10;
-pointer: i32* = &value;
-*pointer = 20;
+
+mutable: i32* = &value;
+view: readonly i32* = mutable;
 ```
 
-`T*` currently means a raw, nullable pointer to mutable `T`. It carries no bounds, ownership, lifetime, non-null, or aliasing guarantee.
+`T*` grants mutable access to `T`. `readonly T*` grants read access without
+write permission through that pointer.
 
-Address-of requires a mutable lvalue. Dereference requires a pointer value and produces an lvalue. Postfix operators bind more tightly than prefix unary operators, so `*p.field` parses as `*(p.field)`, while `(*p).field` accesses a field through a pointer.
+Dereference and pointer indexing produce lvalues. Their storage access is
+determined by the pointer type:
 
-Arrays do not decay implicitly to pointers. General pointer arithmetic, `void*`, and pointee const qualification are not yet supported. `null` is the only source-level null-pointer value. Integer zero does not implicitly or explicitly become a pointer.
+```text
+T*            -> writable lvalue
+readonly T*   -> readonly lvalue
+```
+
+Address-of requires an lvalue and preserves its storage access. It does not
+require the operand to be writable.
+
+Postfix operators bind more tightly than prefix unary operators, so
+`*p.field` parses as `*(p.field)`, while `(*p).field` accesses a field through
+a pointer.
+
+Mutable pointers may adapt to matching readonly pointers. The reverse and
+recursive nested-pointer adaptations are rejected.
+
+Pointers with equal immediate pointee types may be compared despite an
+immediate mutable-versus-readonly difference. Both pointer forms may be
+compared with `null`.
+
+Arrays do not decay implicitly to pointers. General pointer arithmetic,
+opaque pointers, and ownership or lifetime checking are not yet supported.
+`null` is the only source-level null-pointer value; integer zero does not
+implicitly or explicitly become a pointer.
 
 ## Array Indexing
 
-```ebnf
-index_expression =
-    expression "[" expression "]";
-```
-
-Examples:
+Indexing uses postfix syntax:
 
 ```c
-values[0]
-values[i + 1]
+object[index]
 ```
 
-The index expression must produce an integer value.
+The index expression must have an integer type.
 
-Constant indexes into fixed-size arrays are checked at compile time.
-
-Fixed-array indexing is assignable only when the indexed array expression is assignable. Pointer indexing always denotes the storage selected by the pointer value:
+Fixed-array indexing inherits the value category and storage access of the
+array expression. Pointer indexing always produces an lvalue whose access
+comes from the pointer type:
 
 ```c
-values[0] = 1;              // valid when values is mutable storage
-make_array()[0] = 1;        // invalid: the array result is a temporary value
-get_pointer()[0] = 1;       // valid: the pointer value designates storage
+mutable_pointer[0] = 1;       // valid
+readonly_pointer[0] = 1;      // invalid
+value := readonly_pointer[0]; // valid
 ```
+
+Compile-time-known indexes into fixed-size arrays are bounds checked. Raw
+pointer indexing remains unchecked because pointers carry no length.
 
 ## Array Literals
 
@@ -389,7 +385,7 @@ make_point().x = 1;
 make_array()[0] = 1;
 ```
 
-The right-hand side is checked as an initializer against the target type. This permits contextual 
+The right-hand side is checked as an initializer against the target type. This permits contextual
 string and array literals.
 
 Assignment is statement-only and does not produce a value.
@@ -423,7 +419,7 @@ pointer[index] = value;
 
 These operations still evaluate their component expressions normally.
 
-Compound assignment and increment/decrement read the previous value before writing a replacement and 
+Compound assignment and increment/decrement read the previous value before writing a replacement and
 therefore require the target to have been initialized already.
 
 
@@ -517,20 +513,45 @@ Mutation operations are accepted only in statement position.
 
 ## Field Access
 
-```ebnf
-field_expression =
-    expression "." identifier;
+Field access uses postfix syntax:
+
+```c
+object.field
 ```
 
-Struct field access produces an lvalue only when the base expression is an lvalue.
+A struct field selected from an lvalue inherits both its lvalue category and
+its writable or readonly access. A field selected from an rvalue remains an
+rvalue.
 
-Enum member access has the same surface syntax:
+Pointer field access currently requires explicit dereference:
+
+```c
+(*pointer).field
+```
+
+Enum member syntax uses the same AST form but is resolved as a type-qualified
+member rather than runtime storage:
 
 ```c
 Color.Red
 ```
 
-Enum members are values, not assignable storage.
+## Explicit Conversion Expressions
+
+Checked and truncating conversions share this surface grammar:
+
+```ebnf
+conversion_expression =
+      "cast" "(" type "," expression ")"
+    | "truncate" "(" type "," expression ")";
+```
+
+`cast(TargetType, expression)` is checked and value-preserving. It also permits
+the safe access conversion from `T*` to `readonly T*`, but not the reverse.
+
+`truncate(TargetIntegerType, expression)` accepts only integer sources and
+concrete integer targets. It retains the low destination-width bits and
+interprets them using the target signedness.
 
 ## Switch
 

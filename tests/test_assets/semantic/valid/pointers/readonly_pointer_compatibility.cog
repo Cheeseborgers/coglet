@@ -1,0 +1,39 @@
+readonly_pointer_compatibility::(
+    mutable: i32*,
+    view: readonly i32*
+) -> void {
+    /*
+     * Explicitly dropping write access is valid.
+     */
+    explicit_view: readonly i32* =
+        cast(readonly i32*, mutable);
+
+    /*
+     * Access permission does not affect address equality.
+     */
+    mutable == view;
+    view == mutable;
+
+    mutable != view;
+    view != mutable;
+
+    explicit_view == mutable;
+
+    /*
+     * Null comparisons support either pointer access mode.
+     */
+    mutable == null;
+    null == mutable;
+
+    view != null;
+    null != view;
+
+    /*
+     * Explicit null casts support either pointer type.
+     */
+    mutable_null: i32* =
+        cast(i32*, null);
+
+    readonly_null: readonly i32* =
+        cast(readonly i32*, null);
+}

@@ -2208,6 +2208,57 @@ static int is_null_to_pointer_cast(Type *to, Type *from) {
     return to && to->kind == TYPE_POINTER && is_null_type(from);
 }
 
+/*
+ * Allows the single safe pointer-access conversion:
+ *
+ *     mutable T* -> readonly T*
+ *
+ * Only the immediate pointer access changes. The pointee types must
+ * already be exactly equal, preventing unsafe recursive conversion
+ * such as:
+ *
+ *     T** -> readonly T**
+ */
+static int pointer_readonly_conversion_allowed(const Type *target, const Type *source) {
+
+    if (!target ||
+        !source ||
+        target->kind != TYPE_POINTER ||
+        source->kind != TYPE_POINTER) {
+        return 0;
+    }
+
+    return target->pointer_access ==
+               POINTER_ACCESS_READONLY &&
+           source->pointer_access ==
+               POINTER_ACCESS_MUTABLE &&
+           type_equal(target->element, source->element);
+}
+
+/*
+ * Pointer equality may ignore only the immediate access permission.
+ *
+ * Comparing addresses does not grant write access, so:
+ *
+ *     T* == readonly T*
+ *
+ * is valid when both pointers have exactly the same pointee type.
+ *
+ * Nested access differences remain significant because the immediate
+ * pointee types will not be equal.
+ */
+static int pointer_equality_compatible(const Type *left, const Type *right) {
+
+    if (!left ||
+        !right ||
+        left->kind != TYPE_POINTER ||
+        right->kind != TYPE_POINTER) {
+        return 0;
+    }
+
+    return type_equal(left->element, right->element);
+}
+
 static int is_allowed_explicit_cast(Type *to, Type *from) {
 
     if (!to || !from) return 0;
@@ -2219,12 +2270,24 @@ static int is_allowed_explicit_cast(Type *to, Type *from) {
         return 1;
 
     /*
+     * Explicitly removing write permission is safe and preserves
+     * the pointer value:
+     *
+     *     cast(readonly T*, mutable_pointer)
+     *
+     * The reverse conversion remains invalid.
+     */
+    if (pointer_readonly_conversion_allowed(to, from))
+        return 1;
+
+    /*
      * A null literal may be given an explicit concrete pointer type:
      *
      *     cast(i32*, null)
+     *     cast(readonly i32*, null)
      *
      * The reverse conversion is not allowed, and integers do not
-     * implicitly or explicitly become pointers through this rule.
+     * become pointers through this rule.
      */
     if (is_null_to_pointer_cast(to, from))
         return 1;
@@ -2238,6 +2301,7 @@ static int is_allowed_explicit_cast(Type *to, Type *from) {
 
     /*
      * Numeric casts:
+     *
      *     i32 -> i64
      *     i64 -> u8
      *     f64 -> i32
@@ -2248,8 +2312,9 @@ static int is_allowed_explicit_cast(Type *to, Type *from) {
 
     /*
      * Enum backing-value casts:
+     *
      *     raw: u16 = cast(u16, Color.Green);
-     *     c: Color = cast(Color, 0);
+     *     color: Color = cast(Color, 0);
      */
     if (is_enum_to_integer_cast(to, from))
         return 1;
@@ -2485,36 +2550,6 @@ static int is_integer_zero_to_pointer(const Type *expected, const Node *value) {
            value->as.number.value.integer == 0;
 }
 
-static int pointer_implicitly_compatible(const Type *expected, const Type *actual) {
-
-    if (!expected ||
-        !actual ||
-        expected->kind != TYPE_POINTER ||
-        actual->kind != TYPE_POINTER) {
-        return 0;
-    }
-
-    /*
-     * Exact pointer types are handled by type_equal() before this
-     * helper is called.
-     *
-     * The only additional implicit pointer conversion is:
-     *
-     *     mutable T* -> readonly T*
-     *
-     * The pointee types must be exactly equal. Do not recursively
-     * add readonly access inside nested pointers, because allowing
-     * T** -> readonly T** would be unsound.
-     */
-    return expected->pointer_access ==
-               POINTER_ACCESS_READONLY &&
-           actual->pointer_access ==
-               POINTER_ACCESS_MUTABLE &&
-           type_equal(
-               expected->element,
-               actual->element);
-}
-
 /**
  * Determines whether a value of one type may be used where another type is
  * expected.
@@ -2538,11 +2573,13 @@ static int pointer_implicitly_compatible(const Type *expected, const Type *actua
  */
 static int initializer_compatible(Type *declared, Type *init_type) {
 
-    if (!declared || !init_type) return 1;
+    if (!declared || !init_type)
+        return 1;
 
-    if (type_equal(declared, init_type)) return 1;
+    if (type_equal(declared, init_type))
+        return 1;
 
-    if (pointer_implicitly_compatible(declared, init_type))
+    if (pointer_readonly_conversion_allowed(declared, init_type))
         return 1;
 
     /*
@@ -2553,26 +2590,18 @@ static int initializer_compatible(Type *declared, Type *init_type) {
      *
      * TYPE_NULL is not globally equal to TYPE_POINTER.
      */
-    if (declared->kind == TYPE_POINTER &&
-        is_null_type(init_type)) {
+    if (declared->kind == TYPE_POINTER && is_null_type(init_type)) {
         return 1;
-        }
-
-    if (init_type->kind == TYPE_UNTYPED_INT) {
-        return is_concrete_integer_kind(
-                   declared->kind
-               ) ||
-               is_concrete_float_kind(
-                   declared->kind
-               );
     }
 
-    if (init_type->kind ==
-        TYPE_UNTYPED_FLOAT) {
-        return is_concrete_float_kind(
-            declared->kind
-        );
-        }
+    if (init_type->kind == TYPE_UNTYPED_INT) {
+        return is_concrete_integer_kind(declared->kind) ||
+               is_concrete_float_kind(declared->kind);
+    }
+
+    if (init_type->kind == TYPE_UNTYPED_FLOAT) {
+        return is_concrete_float_kind(declared->kind);
+    }
 
     return 0;
 }
@@ -5856,24 +5885,34 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 case TOK_EQUAL_EQUAL:
                 case TOK_BANG_EQUAL:
                 {
-                    int left_is_null  = is_null_type(left);
-                    int right_is_null = is_null_type(right);
+                    int left_is_null =
+                        is_null_type(left);
+
+                    int right_is_null =
+                        is_null_type(right);
 
                     /*
-                     * TYPE_NULL equals TYPE_NULL structurally, but a comparison
-                     * needs a concrete pointer type to provide context.
+                     * `null == null` has no concrete pointer type to provide
+                     * comparison context.
                      */
-                    if (left_is_null && right_is_null) {
-                        semantic_error(ctx, node,
-                            "cannot compare null without a pointer type");
+                    if (left_is_null &&
+                        right_is_null) {
+                        semantic_error(
+                            ctx,
+                            node,
+                            "cannot compare null without a pointer type"
+                        );
 
                         return NULL;
                     }
 
                     /*
-                    * Exactly one null operand and one concrete pointer operand.
-                    */
-                    if (is_pointer_null_pair(left, right)) {
+                     * Either mutable or readonly pointers may be compared with null.
+                     */
+                    if (is_pointer_null_pair(
+                            left,
+                            right
+                        )) {
                         sem_record_expr_info(
                             ctx,
                             node,
@@ -5886,35 +5925,40 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     }
 
                     /*
-                     * Any other null combination is invalid, including null == 0.
-                     */
-                    if (left_is_null || right_is_null) {
-                        semantic_error(ctx, node,
-                            "null may only be compared with a pointer");
+                    * Any other null combination is invalid, including null == 0.
+                    */
+                    if (left_is_null ||
+                        right_is_null) {
+                            semantic_error(
+                                ctx,
+                                node,
+                                "null may only be compared with a pointer"
+                            );
 
-                        return NULL;
+                            return NULL;
                     }
 
                     if (is_numeric_type(left) && is_numeric_type(right)) {
-                        Type *common = common_numeric_type(left, right);
+                        Type *common =
+                            common_numeric_type(left, right);
 
                         if (!common) {
                             semantic_error(ctx, node,
-                                "comparison operands have incompatible numeric types");
+                            "comparison operands have incompatible numeric types");
 
                             return NULL;
                         }
 
                         if (!check_binary_constant_operands(
-                                ctx,
-                                node,
-                                left,
-                                right,
-                                common,
-                                "integer constant operand does not fit comparison type",
-                                "floating-point constant operand does not fit comparison type",
-                                NULL)) {
-                            return NULL;
+                            ctx,
+                            node,
+                            left,
+                            right,
+                            common,
+                            "integer constant operand does not fit comparison type",
+                            "floating-point constant operand does not fit comparison type",
+                            NULL)) {
+                                return NULL;
                         }
 
                         sem_record_expr_info(
@@ -5922,36 +5966,46 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                             node,
                             ctx->type_bool,
                             NULL,
-                            VALUE_CATEGORY_RVALUE
-                        );
+                            VALUE_CATEGORY_RVALUE);
 
-                        return ctx->type_bool;
+                            return ctx->type_bool;
                     }
 
                     /*
-                    * Non-numeric operands must first have the same semantic type.
-                    *
-                    * This preserves diagnostics such as comparing two different enum
-                    * types or pointers with different pointee types.
-                    */
-                    if (!type_equal(left, right)) {
-                        semantic_error(ctx, node,
-                            "comparison type mismatch");
+                     * Non-numeric operands normally require exact type equality.
+                     *
+                     * Pointer comparison additionally allows an immediate mutable
+                     * versus readonly access difference when the pointee types are
+                     * otherwise exactly equal.
+                     */
+                    int compatible_types =
+                        type_equal(left, right) ||
+                        pointer_equality_compatible(
+                            left,
+                            right
+                        );
+
+                    if (!compatible_types) {
+                        semantic_error(
+                            ctx,
+                            node,
+                            "comparison type mismatch"
+                        );
 
                         return NULL;
                     }
 
                     /*
-                     * Structural type equality does not imply that the language defines
-                     * an equality operation for that type.
-                     *
-                     * Arrays, structs, and functions may be structurally equal types,
-                     * but Coglet does not currently define value equality for them.
+                     * Equal or compatible types do not necessarily support value
+                     * equality. Structs, arrays, and functions remain unsupported.
                      */
                     if (!is_equality_comparable_type(left) ||
                         !is_equality_comparable_type(right)) {
-                        semantic_error(ctx, node,
-                            "type does not support equality comparison");
+                        semantic_error(
+                            ctx,
+                            node,
+                            "type does not support equality comparison"
+                        );
 
                         return NULL;
                     }

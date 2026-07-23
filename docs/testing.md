@@ -19,7 +19,7 @@ ctest \
     --output-on-failure
 ```
 
-The exact number of tests changes as coverage is added. Do not treat a previously recorded total as 
+The exact number of tests changes as coverage is added. Do not treat a previously recorded total as
 authoritative.
 
 ## Test Categories
@@ -91,7 +91,7 @@ Invalid programs are stored under:
 tests/test_assets/semantic/invalid/
 ```
 
-Each invalid source file has a corresponding `.expected` file containing the exact diagnostics and 
+Each invalid source file has a corresponding `.expected` file containing the exact diagnostics and
 final error-count summary.
 
 For example:
@@ -118,7 +118,7 @@ Diagnostic snapshots intentionally verify:
 * the final semantic error count;
 * the expected process exit status.
 
-A test should not be updated merely to make a failure disappear. First verify that the new output 
+A test should not be updated merely to make a failure disappear. First verify that the new output
 represents the intended language behavior.
 
 ## Generating Expected Semantic Diagnostics
@@ -129,7 +129,7 @@ Expected files for invalid semantic tests can be generated with:
 ./tests/get_expected.sh
 ```
 
-Review every generated change before accepting it. A bulk expected-file update can conceal a diagnostic 
+Review every generated change before accepting it. A bulk expected-file update can conceal a diagnostic
 regression or an unintended cascade.
 
 To inspect one invalid program directly:
@@ -163,13 +163,16 @@ These tests cover facts including:
 * resolved expression types;
 * associated symbols;
 * lvalue, rvalue, and no-value categories;
+* writable, readonly, and no-storage access classifications;
+* valid category/access combinations;
+* dereference, index, field, and address-of access propagation;
 * completeness and uniqueness of side-table entries;
 * absence of orphan entries;
 * canonical built-in scalar types;
 * declaration and symbol associations.
 
-An expression may retain valid resolved facts even when a later flow-sensitive rule rejects its use. 
-For example, an identifier can retain its type, symbol, and lvalue category while definite-assignment 
+An expression may retain valid resolved facts even when a later flow-sensitive rule rejects its use.
+For example, an identifier can retain its type, symbol, and lvalue category while definite-assignment
 analysis reports that the variable may be uninitialized.
 
 ## Compile-Time Constant Tests
@@ -181,7 +184,9 @@ They cover behavior including:
 * exact integer values;
 * overflow and representability;
 * integer division and remainder diagnostics;
-* casts;
+* checked casts;
+* truncating integer conversion;
+* wrapping integer builtins;
 * Boolean operations;
 * enum values;
 * bitwise operations;
@@ -237,8 +242,25 @@ Coverage includes:
 * rejection of unsupported nested-function captures;
 * semantic-information recording for rejected reads.
 
-Tests for another semantic rule may need to initialize arrays or structs explicitly so that 
+Tests for another semantic rule may need to initialize arrays or structs explicitly so that
 definite-assignment diagnostics do not mask the behavior the test is intended to exercise.
+
+## Raw-Pointer Coverage
+
+Pointer semantic tests cover:
+
+- mutable and readonly pointer syntax;
+- mutable-to-readonly initialization, assignment, arguments, and returns;
+- explicit mutable-to-readonly casts;
+- rejection of readonly-to-mutable conversion;
+- rejection of recursive nested-pointer qualification;
+- valid reads through readonly pointers;
+- rejection of assignment, compound assignment, increment, and decrement through readonly pointers;
+- access propagation through dereference, pointer indexing, array indexing, and fields;
+- preservation of readonly access through `&*pointer`;
+- equality between matching mutable and readonly pointers;
+- null casts and comparisons for both pointer access modes;
+- semantic-info verification of storage access facts.
 
 ## Focused Test Runs
 
@@ -277,15 +299,15 @@ Run the semantic suite against that build after changes to:
 * constant evaluation;
 * AST or side-table storage.
 
-Coglet intentionally uses arena lifetime management. Leak reporting may need to be disabled when 
-the purpose of the run is to detect invalid accesses and undefined behavior rather than arena-wide 
+Coglet intentionally uses arena lifetime management. Leak reporting may need to be disabled when
+the purpose of the run is to detect invalid accesses and undefined behavior rather than arena-wide
 lifetime retention.
 
 ## Test Design Requirements
 
 Every semantic rule should have focused positive and negative coverage where both are meaningful.
 
-Tests should verify the intended rule directly rather than passing or failing because an earlier 
+Tests should verify the intended rule directly rather than passing or failing because an earlier
 unrelated diagnostic masks it.
 
 When adding or changing a semantic feature, consider coverage for:
@@ -307,8 +329,8 @@ Do not claim a test passes until it has actually been run.
 
 There is an older parser test involving an integer literal whose magnitude exceeds `u64`.
 
-The compiler correctly rejects that source, but the parser snapshot harness may still expect the 
-success status used by ordinary AST snapshot tests. If the test remains failing, 
+The compiler correctly rejects that source, but the parser snapshot harness may still expect the
+success status used by ordinary AST snapshot tests. If the test remains failing,
 do not classify it as a definite-assignment or semantic-analysis regression.
 
 The parser test harness should eventually distinguish:

@@ -28,8 +28,9 @@ static Type *new_type(SemanticContext *ctx, TypeKind kind)
 {
     Type *type = arena_new(ctx->arena, Type);
 
-    type->kind       = kind;
-    type->array_size = -1;
+    type->kind           = kind;
+    type->pointer_access = POINTER_ACCESS_MUTABLE;
+    type->array_size     = -1;
 
     return type;
 }
@@ -891,8 +892,38 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
 
         case TYPE_POINTER: {
             char element[128];
-            format_type_name(type->element, element, sizeof(element));
-            snprintf(buffer, buffer_size, "%s*", element);
+
+            format_type_name(
+                type->element,
+                element,
+                sizeof(element)
+            );
+
+            switch (type->pointer_access) {
+                case POINTER_ACCESS_MUTABLE:
+                    snprintf(
+                        buffer,
+                        buffer_size,
+                        "%s*",
+                        element
+                    );
+                    return;
+
+                case POINTER_ACCESS_READONLY:
+                    snprintf(
+                        buffer,
+                        buffer_size,
+                        "readonly %s*",
+                        element
+                    );
+                    return;
+            }
+
+            snprintf(
+                buffer,
+                buffer_size,
+                "<invalid-pointer-access>"
+            );
             return;
         }
 
@@ -917,6 +948,17 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
     }
 
     snprintf(buffer, buffer_size, "<unknown>");
+}
+
+static int is_valid_pointer_access(PointerAccess access) {
+
+    switch (access) {
+        case POINTER_ACCESS_MUTABLE:
+        case POINTER_ACCESS_READONLY:
+            return 1;
+    }
+
+    return 0;
 }
 
 static int type_equal(const Type *a, const Type *b) {
@@ -966,27 +1008,25 @@ static int type_equal(const Type *a, const Type *b) {
          * Compound structural types.
          */
         case TYPE_POINTER:
-            return type_equal(
-                a->element,
-                b->element
-            );
+            assert(is_valid_pointer_access(a->pointer_access));
+            assert(is_valid_pointer_access(b->pointer_access));
 
-        case TYPE_ARRAY:
-            return a->array_size == b->array_size &&
-                   type_equal(
-                       a->element,
-                       b->element
-                   );
+            return a->pointer_access ==
+               b->pointer_access &&
+                type_equal(
+                    a->element,
+                    b->element);
+
+            case TYPE_ARRAY:
+                return a->array_size == b->array_size &&
+                        type_equal(a->element, b->element);
 
         case TYPE_FUNCTION:
-            if (a->parameter_count !=
-                b->parameter_count) {
+            if (a->parameter_count != b->parameter_count) {
                 return 0;
             }
 
-            for (int i = 0;
-                 i < a->parameter_count;
-                 i++) {
+            for (int i = 0; i < a->parameter_count;i++) {
                 if (!type_equal(
                         a->parameters[i],
                         b->parameters[i]
@@ -1022,6 +1062,9 @@ static int type_equal(const Type *a, const Type *b) {
          */
         case TYPE_STRUCT:
         case TYPE_ENUM:
+            return 0;
+
+        default:
             return 0;
     }
 
@@ -2317,12 +2360,44 @@ static int is_integer_zero_to_pointer(const Type *expected, const Node *value) {
            value->as.number.value.integer == 0;
 }
 
+static int pointer_implicitly_compatible(const Type *expected, const Type *actual) {
+
+    if (!expected ||
+        !actual ||
+        expected->kind != TYPE_POINTER ||
+        actual->kind != TYPE_POINTER) {
+        return 0;
+    }
+
+    /*
+     * Exact pointer types are handled by type_equal() before this
+     * helper is called.
+     *
+     * The only additional implicit pointer conversion is:
+     *
+     *     mutable T* -> readonly T*
+     *
+     * The pointee types must be exactly equal. Do not recursively
+     * add readonly access inside nested pointers, because allowing
+     * T** -> readonly T** would be unsound.
+     */
+    return expected->pointer_access ==
+               POINTER_ACCESS_READONLY &&
+           actual->pointer_access ==
+               POINTER_ACCESS_MUTABLE &&
+           type_equal(
+               expected->element,
+               actual->element);
+}
+
 /**
  * Determines whether a value of one type may be used where another type is
  * expected.
  *
  * Current compatibility rules:
  *   - Exact type matches are accepted.
+ *   - A mutable pointer may adapt to a readonly pointer with the same
+ *     immediate pointee type.
  *   - A null literal contextually adapts to any raw pointer type.
  *   - An untyped integer may adapt to a concrete integer or floating-point
  *     type.
@@ -2330,21 +2405,26 @@ static int is_integer_zero_to_pointer(const Type *expected, const Node *value) {
  *     type.
  *   - Concrete numeric types do not implicitly widen or narrow.
  *
+ * Readonly pointer access cannot implicitly become mutable pointer access.
+ * Readonly access is not recursively added through nested pointers.
+ *
  * Integer zero is not a null-pointer constant. The only source-level null
  * pointer value is `null`.
  */
 static int initializer_compatible(Type *declared, Type *init_type) {
 
-    if (!declared || !init_type)
-        return 1;
+    if (!declared || !init_type) return 1;
 
-    if (type_equal(declared, init_type))
+    if (type_equal(declared, init_type)) return 1;
+
+    if (pointer_implicitly_compatible(declared, init_type))
         return 1;
 
     /*
      * A null literal contextually adapts to any raw pointer type:
      *
      *     T* <- null
+     *     readonly T* <- null
      *
      * TYPE_NULL is not globally equal to TYPE_POINTER.
      */
@@ -2354,12 +2434,20 @@ static int initializer_compatible(Type *declared, Type *init_type) {
         }
 
     if (init_type->kind == TYPE_UNTYPED_INT) {
-        return is_concrete_integer_kind(declared->kind) ||
-               is_concrete_float_kind(declared->kind);
+        return is_concrete_integer_kind(
+                   declared->kind
+               ) ||
+               is_concrete_float_kind(
+                   declared->kind
+               );
     }
 
-    if (init_type->kind == TYPE_UNTYPED_FLOAT)
-        return is_concrete_float_kind(declared->kind);
+    if (init_type->kind ==
+        TYPE_UNTYPED_FLOAT) {
+        return is_concrete_float_kind(
+            declared->kind
+        );
+        }
 
     return 0;
 }
@@ -5206,6 +5294,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     Type *pointer = new_type(ctx, TYPE_POINTER);
 
                     pointer->element = operand;
+                    pointer->pointer_access = POINTER_ACCESS_MUTABLE;
 
                     sem_record_expr_info(
                         ctx,

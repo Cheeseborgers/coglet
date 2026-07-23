@@ -165,6 +165,7 @@ static const Keyword keywords[] = {
     {"false", TOK_FALSE},
     {"cast", TOK_CAST},
     {"truncate", TOK_TRUNCATE},
+    {"readonly", TOK_READONLY},
     {"null", TOK_NULL},
 
     {"i8", TOK_I8},
@@ -828,83 +829,33 @@ Token lexer_next(Lexer *lx) {
 const char *token_type_name(TokenType type) {
 
     switch (type) {
-        case TOK_EOF:
-            return "EOF";
-
-        case TOK_ERROR:
-            return "ERROR";
-
-        case TOK_NUMBER_INT:
-            return "NUMBER_INT";
-
-        case TOK_NUMBER_FLOAT:
-            return "NUMBER_FLOAT";
-
-        case TOK_STRING:
-            return "STRING";
-
-        case TOK_CHAR:
-            return "CHAR";
-
-        case TOK_IDENT:
-            return "IDENT";
-
-        case TOK_TRUE:
-            return "TRUE";
-
-        case TOK_FALSE:
-            return "FALSE";
-
-        case TOK_NULL:
-            return "NULL";
-
-        case TOK_IF:
-            return "IF";
-
-        case TOK_ELSE:
-            return "ELSE";
-
-        case TOK_WHILE:
-            return "WHILE";
-
-        case TOK_FOR:
-            return "FOR";
-
-        case TOK_RETURN:
-            return "RETURN";
-
-        case TOK_VOID:
-            return "VOID";
-
-        case TOK_STRUCT:
-            return "STRUCT";
-
-        case TOK_BREAK:
-            return "BREAK";
-
-        case TOK_CONTINUE:
-            return "CONTINUE";
-
-        case TOK_ENUM:
-            return "ENUM";
-
-        case TOK_SWITCH:
-            return "SWITCH";
-
-        case TOK_CASE:
-            return "CASE";
-
-        case TOK_DEFAULT:
-            return "DEFAULT";
-
-        case TOK_CAST:
-            return "CAST";
-
-        case TOK_TRUNCATE:
-            return "TRUNCATE";
-
-        case TOK_I8:
-            return "I8";
+        case TOK_EOF: return "EOF";
+        case TOK_ERROR: return "ERROR";
+        case TOK_NUMBER_INT: return "NUMBER_INT";
+        case TOK_NUMBER_FLOAT: return "NUMBER_FLOAT";
+        case TOK_STRING: return "STRING";
+        case TOK_CHAR: return "CHAR";
+        case TOK_IDENT: return "IDENT";
+        case TOK_TRUE: return "TRUE";
+        case TOK_FALSE: return "FALSE";
+        case TOK_NULL: return "NULL";
+        case TOK_IF: return "IF";
+        case TOK_ELSE: return "ELSE";
+        case TOK_WHILE: return "WHILE";
+        case TOK_FOR: return "FOR";
+        case TOK_RETURN: return "RETURN";
+        case TOK_VOID: return "VOID";
+        case TOK_STRUCT: return "STRUCT";
+        case TOK_BREAK: return "BREAK";
+        case TOK_CONTINUE: return "CONTINUE";
+        case TOK_ENUM: return "ENUM";
+        case TOK_SWITCH: return "SWITCH";
+        case TOK_CASE: return "CASE";
+        case TOK_DEFAULT: return "DEFAULT";
+        case TOK_CAST: return "CAST";
+        case TOK_TRUNCATE: return "TRUNCATE";
+        case TOK_READONLY: return "READONLY";
+        case TOK_I8: return "I8";
 
         case TOK_I16:
             return "I16";

@@ -1,0 +1,5 @@
+semantic error at line 9: initializer type does not match declared type
+semantic error at line 15: initializer type does not match declared type
+semantic error at line 18: initializer type does not match declared type
+semantic error at line 20: argument type does not match parameter type: expected i32*, got readonly i32*
+4 semantic errors generated.

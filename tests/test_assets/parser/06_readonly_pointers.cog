@@ -1,0 +1,13 @@
+Point::struct {
+    x: i32;
+    y: i32;
+}
+
+inspect::(
+    value: readonly i32*,
+    point: readonly Point*,
+    nested: readonly u8**
+) -> readonly i32* {
+    local: readonly i32* = value;
+    return local;
+}

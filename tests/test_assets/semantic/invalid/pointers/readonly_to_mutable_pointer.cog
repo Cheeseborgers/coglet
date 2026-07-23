@@ -1,0 +1,21 @@
+requires_mutable::(
+    pointer: i32*
+) -> void {
+}
+
+return_mutable::(
+    pointer: readonly i32*
+) -> i32* {
+    return pointer;
+}
+
+readonly_to_mutable_is_invalid::(
+    view: readonly i32*
+) -> void {
+    mutable: i32* = view;
+
+    other: i32* = null;
+    other = view;
+
+    requires_mutable(view);
+}

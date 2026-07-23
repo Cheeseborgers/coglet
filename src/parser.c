@@ -269,6 +269,9 @@ const char *token_debug_display_name(TokenType type)
         case TOK_TRUNCATE:
             return "'truncate'";
 
+        case TOK_READONLY:
+            return "'readonly'";
+
         // Types
         case TOK_BOOL:
             return "'bool'";
@@ -838,8 +841,15 @@ static Node *parse_assignment(Parser *p) { return parse_assignment_from(p, parse
 // or after '->' for a return type. Never called speculatively.
 static Type *parse_type(Parser *p)
 {
-    Type *base = arena_alloc(p->arena, sizeof(Type));
-    memset(base, 0, sizeof(*base));
+    int has_readonly     = 0;
+    Token readonly_token = {0};
+
+    if (match(p, TOK_READONLY)) {
+        has_readonly = 1;
+        readonly_token = p->previous;
+    }
+
+    Type *base = arena_new(p->arena, Type);
 
     base->array_size = -1;
 
@@ -893,20 +903,37 @@ static Type *parse_type(Parser *p)
         return base;
     }
 
+    int pointer_count = 0;
+
     while (match(p, TOK_STAR)) {
-        Type *ptr = arena_alloc(p->arena, sizeof(Type));
-        memset(ptr, 0, sizeof(*ptr));
+        Type *ptr = arena_new(p->arena, Type);
 
         ptr->kind = TYPE_POINTER;
         ptr->element = base;
         ptr->array_size = -1;
 
+        if (has_readonly && pointer_count == 0) {
+            ptr->pointer_access =
+                POINTER_ACCESS_READONLY;
+        } else {
+            ptr->pointer_access =
+                POINTER_ACCESS_MUTABLE;
+        }
+
         base = ptr;
+        pointer_count++;
+    }
+
+    if (has_readonly && pointer_count == 0) {
+        error_at(
+            p,
+            &readonly_token,
+            "'readonly' must qualify a pointer type"
+        );
     }
 
     if (match(p, TOK_LBRACKET)) {
-        Type *arr = arena_alloc(p->arena, sizeof(Type));
-        memset(arr, 0, sizeof(*arr));
+        Type *arr = arena_new(p->arena, Type);
 
         arr->kind = TYPE_ARRAY;
         arr->element = base;
@@ -917,7 +944,10 @@ static Type *parse_type(Parser *p)
                 Token size_token = p->previous;
                 uint64_t size;
 
-                if (!parse_decimal_u64(size_token, &size)) {
+                if (!parse_decimal_u64(
+                        size_token,
+                        &size
+                    )) {
                     error_at(
                         p,
                         &size_token,
@@ -933,7 +963,11 @@ static Type *parse_type(Parser *p)
                     arr->array_size = (int)size;
                 }
             } else {
-                error_at(p, &p->current, "expected array size");
+                error_at(
+                    p,
+                    &p->current,
+                    "expected array size"
+                );
             }
         }
 
@@ -1015,8 +1049,7 @@ typedef struct PendingParamName {
 
 static PendingParamName *pending_param_push(Parser *p, PendingParamName **head, PendingParamName **tail, Token token)
 {
-    PendingParamName *node =
-        arena_alloc(p->scratch, sizeof(PendingParamName));
+    PendingParamName *node = arena_new(p->scratch, PendingParamName);
 
     node->name = token;
     node->next = NULL;

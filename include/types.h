@@ -55,6 +55,11 @@ typedef enum {
     NUMBER_LITERAL_FLOAT,
 } NumberLiteralKind;
 
+typedef enum PointerAccess {
+    POINTER_ACCESS_MUTABLE,
+    POINTER_ACCESS_READONLY,
+} PointerAccess;
+
 typedef struct IntegerValue {
     uint64_t magnitude;
     int is_negative;
@@ -74,9 +79,12 @@ struct Type {
     TypeKind kind;
 
     /*
-     * Pointer and array types.
-     */
+    * Pointer and array types.
+    *
+    * pointer_access is meaningful only when kind == TYPE_POINTER.
+    */
     Type *element;
+    PointerAccess pointer_access;
     int array_size; /* -1 if unspecified */
 
     StringView named_name;   // TYPE_NAMED

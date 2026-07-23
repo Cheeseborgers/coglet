@@ -1,0 +1,38 @@
+read_value::(
+    pointer: readonly i32*
+) -> void {
+}
+
+return_readonly::(
+    pointer: i32*
+) -> readonly i32* {
+    return pointer;
+}
+
+readonly_pointer_conversions::(
+    first: i32*,
+    second: i32*
+) -> void {
+    /*
+     * Variable initialisation.
+     */
+    view: readonly i32* = first;
+
+    /*
+     * Assignment.
+     */
+    view = second;
+
+    /*
+     * Function argument.
+     */
+    read_value(first);
+    read_value(view);
+
+    /*
+     * Null adapts to either access mode.
+     */
+    empty: readonly i32* = null;
+
+    read_value(null);
+}

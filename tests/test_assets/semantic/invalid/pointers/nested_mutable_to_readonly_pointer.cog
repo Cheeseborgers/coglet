@@ -1,0 +1,5 @@
+nested_pointer_conversion_is_invalid::(
+    source: i32**
+) -> void {
+    destination: readonly i32** = source;
+}

@@ -1,0 +1,16 @@
+program
+  struct Point
+    struct_field_decl x: i32
+    struct_field_decl y: i32
+  func inspect -> readonly i32*
+    params:
+      param_decl value: readonly i32*
+      param_decl point: readonly Point*
+      param_decl nested: readonly u8**
+    body:
+      block
+        var_decl local: readonly i32*
+          init:
+            value
+        return
+          local

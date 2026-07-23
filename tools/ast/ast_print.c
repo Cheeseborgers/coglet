@@ -239,6 +239,9 @@ static const char *token_type_str(TokenType type)
         case TOK_TRUNCATE:
             return "TRUNCATE";
 
+        case TOK_READONLY:
+            return "READONLY";
+
         // Types
         case TOK_BOOL:
             return "BOOL";
@@ -314,6 +317,15 @@ static void print_type(Type *t)
         case TYPE_F64:  printf("f64");  break;
 
         case TYPE_POINTER:
+            switch (t->pointer_access) {
+            case POINTER_ACCESS_MUTABLE:
+                    break;
+
+            case POINTER_ACCESS_READONLY:
+                    printf("readonly ");
+                    break;
+            }
+
             print_type(t->element);
             printf("*");
             break;

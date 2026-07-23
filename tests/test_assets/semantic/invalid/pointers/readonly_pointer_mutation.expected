@@ -1,0 +1,6 @@
+semantic error at line 10: assignment target is readonly
+semantic error at line 11: assignment target is readonly
+semantic error at line 12: assignment target is readonly
+semantic error at line 14: compound assignment target is readonly
+semantic error at line 15: increment/decrement target is readonly
+5 semantic errors generated.

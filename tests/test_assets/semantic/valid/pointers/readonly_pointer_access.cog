@@ -1,0 +1,47 @@
+Point::struct {
+    x: i32;
+}
+
+read_readonly_storage::(
+    value: readonly i32*,
+    values: readonly i32*,
+    point: readonly Point*
+) -> i32 {
+    /*
+     * Reading through readonly pointers is valid.
+     */
+    first: i32 = *value;
+    second: i32 = values[0];
+    third: i32 = (*point).x;
+
+    /*
+     * Taking the address again must preserve readonly access.
+     */
+    first_address: readonly i32* =
+        &*value;
+
+    second_address: readonly i32* =
+        &values[0];
+
+    third_address: readonly i32* =
+        &(*point).x;
+
+    return first + second + third;
+}
+
+write_mutable_storage::(
+    value: i32*,
+    values: i32*,
+    point: Point*
+) -> void {
+    /*
+     * The equivalent operations remain valid through mutable
+     * pointers.
+     */
+    *value = 1;
+    values[0] = 2;
+    (*point).x = 3;
+
+    *value += 1;
+    (*value)++;
+}

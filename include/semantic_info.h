@@ -30,6 +30,12 @@ typedef enum ValueCategory {
     VALUE_CATEGORY_LVALUE,
 } ValueCategory;
 
+typedef enum ValueAccess {
+    VALUE_ACCESS_NONE,
+    VALUE_ACCESS_READONLY,
+    VALUE_ACCESS_WRITABLE,
+} ValueAccess;
+
 typedef struct SemExprInfo {
     Node *node;
 
@@ -37,6 +43,7 @@ typedef struct SemExprInfo {
     Symbol *symbol;
 
     ValueCategory value_category;
+    ValueAccess value_access;
 
     struct SemExprInfo *next;
 } SemExprInfo;

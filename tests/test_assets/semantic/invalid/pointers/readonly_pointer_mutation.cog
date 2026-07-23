@@ -1,0 +1,16 @@
+Point::struct {
+    x: i32;
+}
+
+mutate_readonly_storage::(
+    value: readonly i32*,
+    values: readonly i32*,
+    point: readonly Point*
+) -> void {
+    *value = 1;
+    values[0] = 2;
+    (*point).x = 3;
+
+    *value += 1;
+    (*value)++;
+}

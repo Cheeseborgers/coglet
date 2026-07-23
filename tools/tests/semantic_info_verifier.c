@@ -160,8 +160,7 @@ static int node_is_mutation(NodeType type)
            type == NODE_INC_DEC;
 }
 
-static int node_can_be_lvalue(const Node *node)
-{
+static int node_can_be_lvalue(const Node *node) {
     if (!node)
         return 0;
 
@@ -169,20 +168,20 @@ static int node_can_be_lvalue(const Node *node)
         node->type == NODE_FIELD ||
         node->type == NODE_INDEX) {
         return 1;
-        }
+    }
 
     return node->type == NODE_UNARY &&
            node->as.unary.op == TOK_STAR;
 }
 
-static void expression_list_destroy(ExpressionList *list)
-{
+static void expression_list_destroy(ExpressionList *list) {
+
     free(list->items);
     memset(list, 0, sizeof(*list));
 }
 
-static int expression_list_push(ExpressionList *list, Node *expression)
-{
+static int expression_list_push(ExpressionList *list, Node *expression) {
+
     if (list->count == list->capacity) {
         int new_capacity = list->capacity > 0
             ? list->capacity * 2
@@ -378,9 +377,7 @@ static void walk_expression(ExpressionWalker *walker, Node *expression)
             break;
 
         case NODE_STRUCT_INIT:
-            for (int i = 0;
-                 i < expression->as.struct_init.fields.count;
-                 i++) {
+            for (int i = 0; i < expression->as.struct_init.fields.count; i++) {
                 Node *field_init =
                     expression->as.struct_init.fields.items[i];
 
@@ -391,6 +388,7 @@ static void walk_expression(ExpressionWalker *walker, Node *expression)
                     );
                 }
             }
+
             break;
 
         case NODE_ARRAY_LITERAL:
@@ -599,33 +597,23 @@ static void collect_expression(void *context, Node *expression)
     Verifier *verifier = context;
 
     if (!node_is_expression(expression->type)) {
-        verifier_error(
-            verifier,
-            expression,
-            "AST walker classified a non-expression node as an expression"
-        );
+        verifier_error(verifier,expression,
+            "AST walker classified a non-expression node as an expression");
+
         return;
     }
 
-    if (expression_list_contains(
-            &verifier->expressions,
-            expression)) {
-        verifier_error(
-            verifier,
-            expression,
-            "AST contains the same expression node more than once"
-        );
+    if (expression_list_contains(&verifier->expressions, expression)) {
+        verifier_error(verifier, expression,
+            "AST contains the same expression node more than once");
+
         return;
     }
 
-    if (!expression_list_push(
-            &verifier->expressions,
-            expression)) {
-        verifier_error(
-            verifier,
-            expression,
-            "out of memory while collecting expression nodes"
-        );
+    if (!expression_list_push(&verifier->expressions, expression)) {
+        verifier_error(verifier, expression,
+            "out of memory while collecting expression nodes");
+
         return;
     }
 
@@ -633,36 +621,91 @@ static void collect_expression(void *context, Node *expression)
         verifier->mutation_count++;
 }
 
+static const char *value_access_name(ValueAccess access) {
+
+    switch (access) {
+        case VALUE_ACCESS_NONE:
+            return "none";
+
+        case VALUE_ACCESS_READONLY:
+            return "readonly";
+
+        case VALUE_ACCESS_WRITABLE:
+            return "writable";
+    }
+
+    return "<invalid>";
+}
+
+static int pointer_access_to_value_access(PointerAccess pointer_access, ValueAccess *out) {
+
+    if (!out) return 0;
+
+    switch (pointer_access) {
+        case POINTER_ACCESS_MUTABLE:
+            *out = VALUE_ACCESS_WRITABLE;
+            return 1;
+
+        case POINTER_ACCESS_READONLY:
+            *out = VALUE_ACCESS_READONLY;
+            return 1;
+    }
+
+    return 0;
+}
+
+static int value_access_to_pointer_access(ValueAccess value_access,PointerAccess *out) {
+
+    if (!out) return 0;
+
+    switch (value_access) {
+        case VALUE_ACCESS_WRITABLE:
+            *out = POINTER_ACCESS_MUTABLE;
+            return 1;
+
+        case VALUE_ACCESS_READONLY:
+            *out = POINTER_ACCESS_READONLY;
+            return 1;
+
+        case VALUE_ACCESS_NONE:
+            return 0;
+    }
+
+    return 0;
+}
+
 static int verify_mutation_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
 
     int valid = 1;
 
     if (info->type) {
-        verifier_error(
-            verifier,
-            expression,
+        verifier_error(verifier, expression,
             "statement-only mutation has type %s",
-            type_kind_name(info->type->kind)
-        );
+            type_kind_name(info->type->kind));
+
         valid = 0;
     }
 
     if (info->symbol) {
-        verifier_error(
-            verifier,
-            expression,
-            "statement-only mutation unexpectedly has a resolved symbol"
-        );
+        verifier_error(verifier, expression,
+            "statement-only mutation unexpectedly has a resolved symbol");
+
         valid = 0;
     }
 
     if (info->value_category != VALUE_CATEGORY_NONE) {
-        verifier_error(
-            verifier,
-            expression,
+        verifier_error(verifier, expression,
             "statement-only mutation has category %s instead of none",
-            value_category_name(info->value_category)
-        );
+            value_category_name(info->value_category));
+
+        valid = 0;
+    }
+
+    if (info->value_access != VALUE_ACCESS_NONE) {
+        verifier_error(verifier, expression,
+            "statement-only mutation has access %s instead of none",
+            value_access_name(info->value_access));
+
         valid = 0;
     }
 
@@ -674,45 +717,49 @@ static int verify_pointer_unary_info(Verifier *verifier, Node *expression, SemEx
     if (expression->type != NODE_UNARY)
         return 1;
 
-    TokenType op = expression->as.unary.op;
+    TokenType op =
+        expression->as.unary.op;
 
-    if (op != TOK_AND && op != TOK_STAR)
+    if (op != TOK_AND &&
+        op != TOK_STAR) {
         return 1;
+    }
 
-    Node *operand = expression->as.unary.operand;
+    Node *operand =
+        expression->as.unary.operand;
 
     SemExprInfo *operand_info =
-        semantic_get_expr_info(
-            verifier->sem,
-            operand
-        );
+        semantic_get_expr_info(verifier->sem, operand);
 
-    if (!operand_info || !operand_info->type) {
-        verifier_error(
-            verifier,
-            expression,
-            "pointer unary operand has no semantic type"
-        );
+    if (!operand_info ||
+        !operand_info->type) {
+        verifier_error(verifier, expression,
+            "pointer unary operand has no semantic type");
 
         return 0;
     }
 
     int valid = 1;
 
+    /*
+     * Address-of:
+     *
+     *     &writable_lvalue -> mutable pointer
+     *     &readonly_lvalue -> readonly pointer
+     */
     if (op == TOK_AND) {
         if (operand_info->value_category !=
             VALUE_CATEGORY_LVALUE) {
-            verifier_error(
-                verifier,
-                expression,
-                "address-of operand is not an lvalue"
-            );
+            verifier_error(verifier, expression,
+                "address-of operand is not an lvalue");
 
             valid = 0;
         }
 
-        if (info->type->kind != TYPE_POINTER ||
-            info->type->element != operand_info->type) {
+        if (!info->type ||
+            info->type->kind != TYPE_POINTER ||
+            info->type->element !=
+                operand_info->type) {
             verifier_error(
                 verifier,
                 expression,
@@ -725,11 +772,36 @@ static int verify_pointer_unary_info(Verifier *verifier, Node *expression, SemEx
 
         if (info->value_category !=
             VALUE_CATEGORY_RVALUE) {
+            verifier_error(verifier, expression,
+                "address-of result is not an rvalue");
+
+            valid = 0;
+        }
+
+        PointerAccess expected_pointer_access;
+
+        if (!value_access_to_pointer_access(
+                operand_info->value_access,
+                &expected_pointer_access
+            )) {
             verifier_error(
                 verifier,
                 expression,
-                "address-of result is not an rvalue"
+                "address-of operand has invalid storage access %s",
+                value_access_name(
+                    operand_info->value_access
+                )
             );
+
+            valid = 0;
+        } else if (
+            info->type &&
+            info->type->kind == TYPE_POINTER &&
+            info->type->pointer_access !=
+                expected_pointer_access
+        ) {
+            verifier_error(verifier, expression,
+                "address-of result does not preserve operand storage access");
 
             valid = 0;
         }
@@ -737,32 +809,56 @@ static int verify_pointer_unary_info(Verifier *verifier, Node *expression, SemEx
         return valid;
     }
 
-    if (operand_info->type->kind != TYPE_POINTER) {
-        verifier_error(
-            verifier,
-            expression,
-            "dereference operand is not a pointer"
-        );
+    /*
+     * Dereference:
+     *
+     *     *T*            -> writable lvalue
+     *     *readonly T*   -> readonly lvalue
+     */
+    if (operand_info->type->kind !=
+        TYPE_POINTER) {
+        verifier_error(verifier, expression,
+            "dereference operand is not a pointer");
 
-        valid = 0;
-    } else if (info->type != operand_info->type->element) {
-        verifier_error(
-            verifier,
-            expression,
-            "dereference result does not match "
-            "the pointer element type"
-        );
+        return 0;
+    }
+
+    if (info->type !=
+        operand_info->type->element) {
+        verifier_error(verifier, expression,
+            "dereference result does not match the pointer element type");
 
         valid = 0;
     }
 
     if (info->value_category !=
         VALUE_CATEGORY_LVALUE) {
+        verifier_error(verifier, expression,
+            "dereference result is not an lvalue");
+
+        valid = 0;
+    }
+
+    ValueAccess expected_value_access;
+
+    if (!pointer_access_to_value_access(
+            operand_info->type->pointer_access,
+            &expected_value_access
+        )) {
+        verifier_error(verifier,expression,
+            "dereference operand has invalid pointer access");
+
+        valid = 0;
+    } else if (
+        info->value_access !=
+            expected_value_access
+    ) {
         verifier_error(
             verifier,
             expression,
-            "dereference result is not an lvalue"
-        );
+            "dereference result has access %s instead of %s",
+            value_access_name(info->value_access),
+            value_access_name(expected_value_access));
 
         valid = 0;
     }
@@ -770,10 +866,184 @@ static int verify_pointer_unary_info(Verifier *verifier, Node *expression, SemEx
     return valid;
 }
 
+static int verify_field_access_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
+
+    if (expression->type != NODE_FIELD)
+        return 1;
+
+    /*
+     * Color.Red is an enum member, not runtime storage.
+     */
+    if (field_uses_enum_type_qualifier(verifier->sem, expression))
+        return 1;
+
+    Node *object =
+        expression->as.field.object;
+
+    SemExprInfo *object_info =
+        semantic_get_expr_info(verifier->sem, object);
+
+    if (!object_info || !object_info->type) {
+        verifier_error(verifier, expression,
+            "field object has no semantic information");
+
+        return 0;
+    }
+
+    int valid = 1;
+
+    if (object_info->value_category == VALUE_CATEGORY_LVALUE) {
+        if (info->value_category != VALUE_CATEGORY_LVALUE) {
+            verifier_error(verifier, expression,
+                "field of an lvalue is not an lvalue");
+
+            valid = 0;
+        }
+
+        if (info->value_access != object_info->value_access) {
+            verifier_error(verifier, expression,
+                "field access %s does not match object access %s",
+                value_access_name(info->value_access),
+                value_access_name(object_info->value_access));
+
+            valid = 0;
+        }
+
+    } else {
+        if (info->value_category != VALUE_CATEGORY_RVALUE) {
+            verifier_error(verifier, expression,
+                "field of an rvalue is not an rvalue");
+
+            valid = 0;
+        }
+
+        if (info->value_access != VALUE_ACCESS_NONE) {
+            verifier_error(verifier, expression,
+                "rvalue field has storage access %s",
+                value_access_name(info->value_access));
+
+            valid = 0;
+        }
+    }
+
+    return valid;
+}
+
+static int verify_index_access_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
+
+    if (expression->type != NODE_INDEX)
+        return 1;
+
+    Node *object =
+        expression->as.index.object;
+
+    SemExprInfo *object_info =
+        semantic_get_expr_info(verifier->sem, object);
+
+    if (!object_info ||
+        !object_info->type) {
+        verifier_error(verifier, expression,
+            "index object has no semantic information");
+
+        return 0;
+    }
+
+    Type *object_type =
+        object_info->type;
+
+    if (object_type->kind != TYPE_POINTER &&
+        object_type->kind != TYPE_ARRAY) {
+        verifier_error(verifier, expression,
+            "index object is not an array or pointer");
+
+        return 0;
+    }
+
+    int valid = 1;
+
+    if (info->type != object_type->element) {
+        verifier_error(verifier, expression,
+            "index result does not match the object element type");
+
+        valid = 0;
+    }
+
+    if (object_type->kind == TYPE_POINTER) {
+        ValueAccess expected_access;
+
+        if (!pointer_access_to_value_access(object_type->pointer_access, &expected_access)) {
+            verifier_error(verifier, expression,
+                "indexed pointer has invalid access");
+
+            return 0;
+        }
+
+        if (info->value_category !=
+            VALUE_CATEGORY_LVALUE) {
+            verifier_error(verifier, expression,
+                "pointer index result is not an lvalue");
+
+            valid = 0;
+        }
+
+        if (info->value_access !=
+            expected_access) {
+            verifier_error(verifier, expression,
+                "pointer index has access %s instead of %s",
+                value_access_name(info->value_access),
+                value_access_name(expected_access));
+
+            valid = 0;
+        }
+
+        return valid;
+    }
+
+    /*
+     * Fixed-array indexing inherits the array expression's
+     * category and storage access.
+     */
+    if (object_info->value_category ==
+        VALUE_CATEGORY_LVALUE) {
+        if (info->value_category !=
+            VALUE_CATEGORY_LVALUE) {
+            verifier_error(verifier, expression,
+                "array lvalue index is not an lvalue");
+
+            valid = 0;
+        }
+
+        if (info->value_access !=
+            object_info->value_access) {
+            verifier_error(verifier, expression,
+                "array index access does not match the array expression");
+
+            valid = 0;
+        }
+    } else {
+        if (info->value_category !=
+            VALUE_CATEGORY_RVALUE) {
+            verifier_error(verifier, expression,
+                "temporary array index is not an rvalue");
+
+            valid = 0;
+        }
+
+        if (info->value_access !=
+            VALUE_ACCESS_NONE) {
+            verifier_error(verifier, expression,
+                "temporary array index has storage access");
+
+            valid = 0;
+        }
+    }
+
+    return valid;
+}
+
 static int verify_null_cast_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
 
-    if (expression->type != NODE_CAST)
-        return 1;
+    if (expression->type != NODE_CAST) return 1;
 
     Node *source =
         expression->as.cast_expr.expression;
@@ -782,17 +1052,11 @@ static int verify_null_cast_info(Verifier *verifier, Node *expression, SemExprIn
         return 1;
 
     SemExprInfo *source_info =
-        semantic_get_expr_info(
-            verifier->sem,
-            source
-        );
+        semantic_get_expr_info(verifier->sem, source);
 
     if (!source_info || !source_info->type) {
-        verifier_error(
-            verifier,
-            expression,
-            "null cast operand has no semantic type"
-        );
+        verifier_error(verifier, expression,
+            "null cast operand has no semantic type");
 
         return 0;
     }
@@ -804,54 +1068,62 @@ static int verify_null_cast_info(Verifier *verifier, Node *expression, SemExprIn
      * expression carries the concrete pointer type.
      */
     if (source_info->type != verifier->sem->type_null) {
-        verifier_error(
-            verifier,
-            source,
-            "null cast operand does not use the canonical null type"
-        );
+        verifier_error(verifier, source,
+            "null cast operand does not use the canonical null type");
 
         valid = 0;
     }
 
     if (source_info->value_category !=
         VALUE_CATEGORY_RVALUE) {
-        verifier_error(
-            verifier,
-            source,
-            "null cast operand is not an rvalue"
-        );
+        verifier_error(verifier, source,
+            "null cast operand is not an rvalue");
 
         valid = 0;
-        }
+    }
 
     if (!info->type ||
         info->type->kind != TYPE_POINTER) {
-        verifier_error(
-            verifier,
-            expression,
-            "null cast result is not a concrete pointer type"
-        );
+        verifier_error(verifier, expression,
+            "null cast result is not a concrete pointer type");
 
         valid = 0;
-        }
+    }
 
     if (info->value_category !=
         VALUE_CATEGORY_RVALUE) {
-        verifier_error(
-            verifier,
-            expression,
-            "null cast result is not an rvalue"
-        );
+        verifier_error(verifier, expression,
+            "null cast result is not an rvalue");
 
         valid = 0;
-        }
+    }
 
     return valid;
+}
+
+static int value_access_is_valid(ValueAccess access) {
+
+    switch (access) {
+        case VALUE_ACCESS_NONE:
+        case VALUE_ACCESS_READONLY:
+        case VALUE_ACCESS_WRITABLE:
+            return 1;
+    }
+
+    return 0;
 }
 
 static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
 
     int valid = 1;
+
+    if (!value_access_is_valid(info->value_access)) {
+        verifier_error(verifier, expression,
+            "expression has invalid value access %d",
+            (int)info->value_access);
+
+        valid = 0;
+    }
 
     /*
     * Builtin identifiers are resolved call targets rather than
@@ -862,21 +1134,15 @@ static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *
         info->symbol->kind == SYMBOL_BUILTIN) {
 
         if (info->type != NULL) {
-            verifier_error(
-                verifier,
-                expression,
-                "builtin callee identifier unexpectedly has a type"
-            );
+            verifier_error(verifier, expression,
+                "builtin callee identifier unexpectedly has a type");
 
             valid = 0;
         }
 
         if (info->value_category != VALUE_CATEGORY_NONE) {
-            verifier_error(
-                verifier,
-                expression,
-                "builtin callee identifier has a value category"
-            );
+            verifier_error(verifier, expression,
+                "builtin callee identifier has a value category");
 
             valid = 0;
         }
@@ -885,11 +1151,8 @@ static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *
     }
 
     if (!info->type) {
-        verifier_error(
-            verifier,
-            expression,
-            "value expression has no type"
-        );
+        verifier_error(verifier, expression,
+            "value expression has no type");
         return 0;
     }
 
@@ -899,21 +1162,15 @@ static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *
             info->type->kind == TYPE_VOID;
 
         if (!is_void_call) {
-            verifier_error(
-                verifier,
-                expression,
-                "typed expression has category none"
-            );
+            verifier_error(verifier, expression,
+                "typed expression has category none");
             valid = 0;
         }
     } else if (info->value_category != VALUE_CATEGORY_RVALUE &&
                info->value_category != VALUE_CATEGORY_LVALUE) {
-        verifier_error(
-            verifier,
-            expression,
+        verifier_error(verifier,expression,
             "expression has invalid value category %d",
-            (int)info->value_category
-        );
+            (int)info->value_category);
         valid = 0;
     }
 
@@ -930,37 +1187,73 @@ static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *
         valid = 0;
     }
 
-    if (expression->type == NODE_IDENT) {
-        if (!info->symbol) {
+    switch (info->value_category) {
+        case VALUE_CATEGORY_NONE:
+        case VALUE_CATEGORY_RVALUE:
+            if (info->value_access != VALUE_ACCESS_NONE) {
+                verifier_error(verifier, expression,
+                    "%s expression has storage access %s",
+                    value_category_name(info->value_category),
+                    value_access_name(info->value_access));
+
+                valid = 0;
+            }
+
+            break;
+
+        case VALUE_CATEGORY_LVALUE:
+            if (info->value_access !=
+                    VALUE_ACCESS_READONLY &&
+                info->value_access !=
+                    VALUE_ACCESS_WRITABLE) {
+                verifier_error(verifier, expression,
+                    "lvalue has invalid storage access %s",
+                    value_access_name(info->value_access));
+
+                valid = 0;
+            }
+
+            break;
+    }
+
+    if (expression->type == NODE_IDENT &&
+        info->symbol &&
+        info->symbol->kind == SYMBOL_BUILTIN) {
+
+        if (info->type != NULL) {
             verifier_error(verifier, expression,
-                "resolved identifier has no symbol");
-            valid = 0;
-        } else if (info->symbol->type != info->type) {
-            verifier_error(verifier, expression,
-                "identifier type does not match its symbol type");
+                "builtin callee identifier unexpectedly has a type");
+
             valid = 0;
         }
-    } else if (info->symbol) {
 
-        int is_enum_member =
-            expression->type == NODE_FIELD &&
-            info->symbol->kind == SYMBOL_TYPE &&
-            info->type->kind == TYPE_ENUM;
-
-        int is_builtin_call =
-            expression->type == NODE_CALL &&
-            info->symbol->kind == SYMBOL_BUILTIN;
-
-        if (!is_enum_member &&
-            !is_builtin_call) {
+        if (info->value_category != VALUE_CATEGORY_NONE) {
             verifier_error(verifier, expression,
-                "only identifiers, enum members, and builtin calls may carry symbols");
+                "builtin callee identifier has a value category");
 
             valid = 0;
-            }
+        }
+
+        if (info->value_access != VALUE_ACCESS_NONE) {
+            verifier_error(verifier, expression,
+                "builtin callee identifier has storage access %s",
+                value_access_name(info->value_access));
+
+            valid = 0;
+        }
+
+        return valid;
     }
 
     if (!verify_pointer_unary_info(verifier, expression, info)) {
+        valid = 0;
+    }
+
+    if (!verify_field_access_info(verifier, expression, info)) {
+        valid = 0;
+    }
+
+    if (!verify_index_access_info(verifier, expression, info)) {
         valid = 0;
     }
 
@@ -1002,41 +1295,29 @@ static void verify_table_entries(Verifier *verifier) {
         verifier->table_entry_count++;
 
         if (!info->node) {
-            verifier_error(
-                verifier,
-                NULL,
-                "semantic-info table contains an entry with a null node"
-            );
+            verifier_error(verifier, NULL,
+                "semantic-info table contains an entry with a null node");
+
             continue;
         }
 
         if (!node_is_expression(info->node->type)) {
-            verifier_error(
-                verifier,
-                info->node,
-                "semantic-info entry belongs to a non-expression node"
-            );
+            verifier_error(verifier, info->node,
+                "semantic-info entry belongs to a non-expression node");
         }
 
-        if (!expression_list_contains(
-                &verifier->expressions,
-                info->node)) {
-            verifier_error(
-                verifier,
-                info->node,
-                "semantic-info entry does not belong to the program AST"
-            );
+        if (!expression_list_contains(&verifier->expressions, info->node)) {
+            verifier_error(verifier, info->node,
+                "semantic-info entry does not belong to the program AST");
         }
 
         for (SemExprInfo *other = info->next;
              other;
              other = other->next) {
             if (other->node == info->node) {
-                verifier_error(
-                    verifier,
-                    info->node,
-                    "semantic-info table contains duplicate entries for one AST node"
-                );
+                verifier_error(verifier, info->node,
+                    "semantic-info table contains duplicate entries for one AST node");
+
                 break;
             }
         }
@@ -1050,6 +1331,7 @@ static void dump_expression(void *context, Node *expression)
 
     const char *type_name     = "<missing>";
     const char *category_name = "<missing>";
+    const char *access_name   = "<missing>";
     const char *symbol_name   = "<missing>";
 
     if (info) {
@@ -1060,18 +1342,22 @@ static void dump_expression(void *context, Node *expression)
             info->value_category
         );
         symbol_name = info->symbol ? "yes" : "no";
+
+        access_name = value_access_name(info->value_access);
     }
 
     fprintf(
         dump->output,
-        "  %4d  line %-4d node=%-18s type=%-18s category=%-6s symbol=%s\n",
+        "  %4d  line %-4d node=%-18s "
+        "type=%-18s category=%-6s "
+        "access=%-8s symbol=%s\n",
         dump->count,
         expression->line,
         node_type_name(expression->type),
         type_name,
         category_name,
-        symbol_name
-    );
+        access_name,
+        symbol_name);
 
     dump->count++;
 }

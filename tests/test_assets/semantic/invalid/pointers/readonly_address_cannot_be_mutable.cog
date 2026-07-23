@@ -1,0 +1,5 @@
+recover_mutable_access::(
+    value: readonly i32*
+) -> void {
+    mutable: i32* = &*value;
+}

@@ -123,6 +123,7 @@ static SemExprInfo *sem_get_or_create_expr_info(SemanticContext *ctx, Node *node
 
     info->node = node;
     info->value_category = VALUE_CATEGORY_NONE;
+    info->value_access   = VALUE_ACCESS_NONE;
 
     info->next = ctx->expr_infos;
     ctx->expr_infos = info;
@@ -142,6 +143,43 @@ static void sem_record_expr_info(
     info->type = type;
     info->symbol = symbol;
     info->value_category = category;
+
+    switch (category) {
+        case VALUE_CATEGORY_NONE:
+        case VALUE_CATEGORY_RVALUE:
+            info->value_access =
+                VALUE_ACCESS_NONE;
+            break;
+
+        case VALUE_CATEGORY_LVALUE:
+            /*
+             * Existing behaviour remains unchanged during Stage 4A.
+             * Readonly lvalues will be recorded explicitly in Stage 4B.
+             */
+            info->value_access =
+                VALUE_ACCESS_WRITABLE;
+            break;
+    }
+}
+
+static void sem_record_lvalue_info(
+    SemanticContext *ctx, Node *node, Type *type, Symbol *symbol, ValueAccess access) {
+
+    assert(access == VALUE_ACCESS_READONLY || access == VALUE_ACCESS_WRITABLE);
+
+    sem_record_expr_info(
+        ctx,
+        node,
+        type,
+        symbol,
+        VALUE_CATEGORY_LVALUE
+    );
+
+    SemExprInfo *info =
+        sem_find_expr_info(ctx, node);
+
+    assert(info);
+    info->value_access = access;
 }
 
 /*
@@ -154,18 +192,108 @@ static void sem_record_no_value(SemanticContext *ctx, Node *node) {
     sem_record_expr_info(ctx, node, NULL, NULL, VALUE_CATEGORY_NONE);
 }
 
-static int expression_is_lvalue(SemanticContext *ctx, Node *node) {
-    SemExprInfo *info = sem_find_expr_info(ctx, node);
-    return info && info->value_category == VALUE_CATEGORY_LVALUE;
+static int expression_is_lvalue(
+    SemanticContext *ctx,
+    Node *node
+) {
+    SemExprInfo *info =
+        sem_find_expr_info(ctx, node);
+
+    return info &&
+           info->value_category ==
+               VALUE_CATEGORY_LVALUE;
 }
 
-static int require_lvalue(SemanticContext *ctx, Node *owner, Node *target, const char *message) {
+static int require_lvalue(
+    SemanticContext *ctx,
+    Node *owner,
+    Node *target,
+    const char *message
+) {
     if (!expression_is_lvalue(ctx, target)) {
         semantic_error(ctx, owner, message);
         return 0;
     }
 
     return 1;
+}
+
+static int require_writable_lvalue(
+    SemanticContext *ctx,
+    Node *owner,
+    Node *target,
+    const char *description
+) {
+    SemExprInfo *info =
+        sem_find_expr_info(ctx, target);
+
+    if (!info ||
+        info->value_category !=
+            VALUE_CATEGORY_LVALUE) {
+        semantic_error_fmt(
+            ctx,
+            owner,
+            "%s is not assignable",
+            description
+        );
+
+        return 0;
+    }
+
+    switch (info->value_access) {
+        case VALUE_ACCESS_WRITABLE:
+            return 1;
+
+        case VALUE_ACCESS_READONLY:
+            semantic_error_fmt(
+                ctx,
+                owner,
+                "%s is readonly",
+                description
+            );
+
+            return 0;
+
+        case VALUE_ACCESS_NONE:
+            UNREACHABLE(
+                "lvalue has no storage access"
+            );
+    }
+
+    UNREACHABLE("ValueAccess");
+}
+
+static ValueAccess value_access_from_pointer_access(
+    PointerAccess access
+) {
+    switch (access) {
+        case POINTER_ACCESS_MUTABLE:
+            return VALUE_ACCESS_WRITABLE;
+
+        case POINTER_ACCESS_READONLY:
+            return VALUE_ACCESS_READONLY;
+    }
+
+    UNREACHABLE("PointerAccess");
+}
+
+static PointerAccess pointer_access_from_value_access(
+    ValueAccess access
+) {
+    switch (access) {
+        case VALUE_ACCESS_WRITABLE:
+            return POINTER_ACCESS_MUTABLE;
+
+        case VALUE_ACCESS_READONLY:
+            return POINTER_ACCESS_READONLY;
+
+        case VALUE_ACCESS_NONE:
+            UNREACHABLE(
+                "non-lvalue has no pointer access"
+            );
+    }
+
+    UNREACHABLE("ValueAccess");
 }
 
 // ============================================================
@@ -1017,8 +1145,8 @@ static int type_equal(const Type *a, const Type *b) {
                     a->element,
                     b->element);
 
-            case TYPE_ARRAY:
-                return a->array_size == b->array_size &&
+        case TYPE_ARRAY:
+            return a->array_size == b->array_size &&
                         type_equal(a->element, b->element);
 
         case TYPE_FUNCTION:
@@ -1062,9 +1190,6 @@ static int type_equal(const Type *a, const Type *b) {
          */
         case TYPE_STRUCT:
         case TYPE_ENUM:
-            return 0;
-
-        default:
             return 0;
     }
 
@@ -4388,7 +4513,7 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
                 node->as.unary.op != TOK_BANG &&
                 node->as.unary.op != TOK_TILDE) {
                 return 0;
-                }
+            }
 
             return expression_is_compile_time_constant(
                 ctx,
@@ -5248,16 +5373,10 @@ static Type *check_cast_expression(SemanticContext *ctx,Node *node) {
 
     switch (node->as.cast_expr.kind) {
         case CAST_CHECKED:
-            return check_checked_cast_expression(
-                ctx,
-                node
-            );
+            return check_checked_cast_expression(ctx,node);
 
         case CAST_TRUNCATING:
-            return check_truncating_cast_expression(
-                ctx,
-                node
-            );
+            return check_truncating_cast_expression(ctx,node);
     }
 
     UNREACHABLE("CastKind");
@@ -5282,19 +5401,54 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             {
                 case TOK_AND:
                 {
-                    /* Address-of implementation */
+                    Node *operand_node =
+                        node->as.unary.operand;
+
+                    /*
+                     * Both writable and readonly storage have an address.
+                     *
+                     * Address-of therefore requires an lvalue, but it does not
+                     * require a writable lvalue.
+                     */
                     if (!require_lvalue(
                             ctx,
                             node,
-                            node->as.unary.operand,
-                            "address-of operand is not assignable")) {
+                            operand_node,
+                            "address-of operand is not assignable"
+                        )) {
                         return NULL;
-                    }
+                        }
 
-                    Type *pointer = new_type(ctx, TYPE_POINTER);
+                    SemExprInfo *operand_info =
+                        sem_find_expr_info(
+                            ctx,
+                            operand_node
+                        );
+
+                    assert(operand_info);
+                    assert(
+                        operand_info->value_access ==
+                            VALUE_ACCESS_WRITABLE ||
+                        operand_info->value_access ==
+                            VALUE_ACCESS_READONLY
+                    );
+
+                    Type *pointer =
+                        new_type(ctx, TYPE_POINTER);
 
                     pointer->element = operand;
-                    pointer->pointer_access = POINTER_ACCESS_MUTABLE;
+
+                    /*
+                     * Taking the address of readonly storage must not recover
+                     * mutable access.
+                     *
+                     *     &writable_storage -> T*
+                     *     &readonly_storage -> readonly T*
+                     */
+                    pointer->pointer_access =
+                        pointer_access_from_value_access(
+                            operand_info->value_access
+                        );
 
                     sem_record_expr_info(
                         ctx,
@@ -5328,13 +5482,13 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
-                    sem_record_expr_info(
+                    sem_record_lvalue_info(
                         ctx,
                         node,
                         operand->element,
                         NULL,
-                        VALUE_CATEGORY_LVALUE
-                    );
+                        value_access_from_pointer_access(
+                            operand->pointer_access));
 
                     return operand->element;
                 }
@@ -5973,30 +6127,32 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
              *
              *     Color.Red
              *
-             * The object side is an identifier naming a type, not a runtime value.
+             * The object side names an enum type rather than a runtime
+             * value expression.
              */
             if (node->as.field.object &&
-                node->as.field.object->type == NODE_IDENT)
-            {
+                node->as.field.object->type ==
+                    NODE_IDENT) {
+                Node *object_node =
+                    node->as.field.object;
 
-                Node *object_node = node->as.field.object;
-
-                Symbol *sym =
+                Symbol *symbol =
                     scope_lookup(
                         ctx->current_scope,
                         object_node->as.ident.data,
-                        object_node->as.ident.length);
+                        object_node->as.ident.length
+                    );
 
-                if (sym &&
-                    sym->kind == SYMBOL_TYPE &&
-                    sym->type &&
-                    sym->type->kind == TYPE_ENUM) {
-
+                if (symbol &&
+                    symbol->kind == SYMBOL_TYPE &&
+                    symbol->type &&
+                    symbol->type->kind == TYPE_ENUM) {
                     EnumMember *member =
                         find_enum_member(
-                            sym->type,
+                            symbol->type,
                             node->as.field.name.data,
-                            node->as.field.name.length);
+                            node->as.field.name.length
+                        );
 
                     if (!member) {
                         semantic_error_name(
@@ -6004,7 +6160,8 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                             node,
                             "unknown enum member",
                             node->as.field.name.data,
-                            node->as.field.name.length);
+                            node->as.field.name.length
+                        );
 
                         return NULL;
                     }
@@ -6012,11 +6169,12 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     sem_record_expr_info(
                         ctx,
                         node,
-                        sym->type,
-                        sym,
-                        VALUE_CATEGORY_RVALUE);
+                        symbol->type,
+                        symbol,
+                        VALUE_CATEGORY_RVALUE
+                    );
 
-                    return sym->type;
+                    return symbol->type;
                 }
             }
 
@@ -6024,27 +6182,41 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
              * Normal runtime field access:
              *
              *     point.x
+             *     (*pointer).x
              */
-            Type *object = check_value_expression(ctx, node->as.field.object);
+            Node *object_node =
+                node->as.field.object;
 
-            if (!object) return NULL;
+            Type *object_type =
+                check_value_expression(
+                    ctx,
+                    object_node
+                );
 
-            if (object->kind != TYPE_STRUCT) {
-                semantic_error(ctx, node,
-                    "field access requires a struct");
+            if (!object_type)
+                return NULL;
+
+            if (object_type->kind != TYPE_STRUCT) {
+                semantic_error(
+                    ctx,
+                    node,
+                    "field access requires a struct"
+                );
 
                 return NULL;
             }
 
-            Type *field =
+            Type *field_type =
                 find_struct_field(
-                    object,
+                    object_type,
                     node->as.field.name.data,
                     node->as.field.name.length
                 );
 
-            if (!field) {
-                semantic_error(ctx, node,
+            if (!field_type) {
+                semantic_error(
+                    ctx,
+                    node,
                     "unknown struct field"
                 );
 
@@ -6052,113 +6224,169 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             }
 
             SemExprInfo *object_info =
-                sem_find_expr_info(ctx, node->as.field.object);
+                sem_find_expr_info(
+                    ctx,
+                    object_node
+                );
 
-            ValueCategory category = VALUE_CATEGORY_RVALUE;
-
-            if (object->kind == TYPE_POINTER ||
-                (object_info && object_info->value_category == VALUE_CATEGORY_LVALUE)) {
-                category = VALUE_CATEGORY_LVALUE;
+            /*
+             * A field of an lvalue is also an lvalue and inherits the
+             * same access permission.
+             *
+             *     writable_point.x       -> writable lvalue
+             *     (*readonly_point).x    -> readonly lvalue
+             *
+             * A field selected from a temporary struct remains an rvalue.
+             */
+            if (object_info &&
+                object_info->value_category ==
+                    VALUE_CATEGORY_LVALUE) {
+                sem_record_lvalue_info(
+                    ctx,
+                    node,
+                    field_type,
+                    NULL,
+                    object_info->value_access
+                );
+            } else {
+                sem_record_expr_info(
+                    ctx,
+                    node,
+                    field_type,
+                    NULL,
+                    VALUE_CATEGORY_RVALUE
+                );
             }
 
-            sem_record_expr_info(
-                ctx,
-                node,
-                field,
-                NULL,
-                category
-            );
-
-            return field;
+            return field_type;
         }
 
         case NODE_INDEX:
         {
-            Type *object = check_value_expression(ctx, node->as.index.object);
+            Node *object_node =
+                node->as.index.object;
 
-            if (!object) return NULL;
+            Node *index_node =
+                node->as.index.index;
 
-            Type *index = check_value_expression(ctx, node->as.index.index);
+            Type *object_type =
+                check_value_expression(
+                    ctx,
+                    object_node
+                );
 
-            if (!index) return NULL;
+            if (!object_type)
+                return NULL;
 
-            if (!is_integer_kind(index->kind)) {
+            Type *index_type =
+                check_value_expression(
+                    ctx,
+                    index_node
+                );
 
-                semantic_error(ctx, node,
-                    "array index must be integer");
+            if (!index_type)
+                return NULL;
+
+            if (!is_integer_kind(index_type->kind)) {
+                semantic_error(
+                    ctx,
+                    node,
+                    "array index must be integer"
+                );
 
                 return NULL;
             }
 
-            if (object->kind != TYPE_ARRAY && object->kind != TYPE_POINTER) {
-
-                semantic_error(ctx, node,
-                    "object is not indexable");
+            if (object_type->kind != TYPE_ARRAY &&
+                object_type->kind != TYPE_POINTER) {
+                semantic_error(
+                    ctx,
+                    node,
+                    "object is not indexable"
+                );
 
                 return NULL;
             }
 
             /*
-             * Compile-time bounds check for fixed-size arrays.
-             *
-             * Runtime indexes are allowed:
-             *
-             *     arr[i]
-             *
-             * Constant indexes are checked:
-             *
-             *     arr[3]
+             * Compile-time bounds checking applies only to fixed arrays.
+             * Raw pointers carry no length information.
              */
-            if (object->kind == TYPE_ARRAY &&
-                object->array_size >= 0 &&
-                expression_is_compile_time_constant(
-                    ctx,
-                    node->as.index.index)) {
+            if (object_type->kind == TYPE_ARRAY &&
+                object_type->array_size >= 0 &&
+                expression_is_compile_time_constant(ctx, index_node)) {
 
                 ConstValue index_value;
 
                 if (eval_const_expr(
-                    ctx,node->as.index.index, &index_value) &&
-                    index_value.kind == CONST_VALUE_INT) {
+                        ctx,
+                        index_node,
+                        &index_value
+                    ) &&
+                    index_value.kind ==
+                        CONST_VALUE_INT) {
                     if (index_value.as.integer.is_negative ||
                         index_value.as.integer.magnitude >=
-                            (uint64_t)object->array_size) {
-
+                            (uint64_t)object_type->array_size) {
                         semantic_error(ctx, node,
                             "array index out of bounds");
                     }
                 }
             }
 
-            Type *element_type = object->element;
+            Type *element_type =
+                object_type->element;
 
             SemExprInfo *object_info =
-                sem_find_expr_info(ctx, node->as.index.object);
+                sem_find_expr_info(ctx, object_node);
 
-            ValueCategory category = VALUE_CATEGORY_RVALUE;
-
-            /*
-             * Indexing a pointer denotes the storage to which the pointer
-             * points. The pointer expression itself does not need to be a
-             * lvalue.
-             *
-             * Indexing a fixed array inherits the array expression's value
-             * category, so indexing a temporary array remains a rvalue.
-             */
-            if (object->kind == TYPE_POINTER ||
-                (object_info &&
-                 object_info->value_category ==
-                     VALUE_CATEGORY_LVALUE)) {
-                category = VALUE_CATEGORY_LVALUE;
-                     }
-
-            sem_record_expr_info(
-                ctx,
-                node,
-                element_type,
-                NULL,
-                category
-            );
+            if (object_type->kind ==
+                TYPE_POINTER) {
+                /*
+                 * Pointer indexing denotes pointee storage regardless of
+                 * whether the pointer expression itself is an lvalue.
+                 *
+                 * Access comes from the pointer type:
+                 *
+                 *     T*[i]           -> writable lvalue
+                 *     readonly T*[i]  -> readonly lvalue
+                 */
+                sem_record_lvalue_info(
+                    ctx,
+                    node,
+                    element_type,
+                    NULL,
+                    value_access_from_pointer_access(
+                        object_type->pointer_access
+                    )
+                );
+            } else if (
+                object_info &&
+                object_info->value_category ==
+                    VALUE_CATEGORY_LVALUE
+            ) {
+                /*
+                 * Array indexing inherits access from the array storage.
+                 */
+                sem_record_lvalue_info(
+                    ctx,
+                    node,
+                    element_type,
+                    NULL,
+                    object_info->value_access
+                );
+            } else {
+                /*
+                 * Indexing a temporary array produces a rvalue.
+                 */
+                sem_record_expr_info(
+                    ctx,
+                    node,
+                    element_type,
+                    NULL,
+                    VALUE_CATEGORY_RVALUE
+                );
+            }
 
             return element_type;
         }
@@ -6799,22 +7027,11 @@ static int check_assignment_statement(SemanticContext *ctx, Node *node) {
     if (!target_type)
         return 0;
 
-    if (!require_lvalue(
-            ctx,
-            node,
-            target_node,
-            "assignment target is not assignable"
-        )) {
+    if (!require_writable_lvalue(ctx, node, target_node, "assignment target"))
         return 0;
-    }
 
-    if (!check_initializer_against_type(
-            ctx,
-            target_type,
-            value_node
-        )) {
+    if (!check_initializer_against_type(ctx, target_type, value_node))
         return 0;
-    }
 
     Symbol *target_symbol =
         direct_assignment_target_symbol(ctx, target_node);
@@ -6841,13 +7058,8 @@ static int check_compound_assignment_statement(SemanticContext *ctx,Node *node) 
 
     if (!target_type) return 0;
 
-    if (!require_lvalue(
-            ctx,
-            node,
-            target_node,
-            "compound assignment target is not assignable")) {
+    if (!require_writable_lvalue(ctx, node, target_node, "compound assignment target"))
         return 0;
-    }
 
     Type *value_type =
         check_value_expression(ctx, value_node);
@@ -7023,7 +7235,7 @@ static int check_inc_dec_statement(SemanticContext *ctx, Node *node) {
     Type *target_type = check_expression(ctx, target);
     if (!target_type) return 0;
 
-    if (!require_lvalue(ctx, node, target, "increment/decrement target is not assignable"))
+    if (!require_writable_lvalue(ctx, node, target, "increment/decrement target"))
         return 0;
 
     if (!is_numeric_type(target_type)) {

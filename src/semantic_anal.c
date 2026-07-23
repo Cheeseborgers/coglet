@@ -802,8 +802,6 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out);
 static int check_string_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 static int eval_const_builtin_call(SemanticContext *ctx, Node *call, ConstValue *out);
 static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
-static int expression_is_compile_time_constant(SemanticContext *ctx,Node *node);
-static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out);
 
 // ============================================================
 // expressions

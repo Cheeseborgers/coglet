@@ -115,8 +115,8 @@ The language-level runtime scalar contract is now selected:
 - semantics do not change between debug and release builds;
 - shifts retain their existing fixed-width bit-pattern rules.
 
-Explicit wrapping arithmetic and truncating integer conversion remain separate
-frontend features rather than implicit behavior.
+Explicit wrapping arithmetic and truncating integer conversion are implemented
+as separate frontend operations rather than implicit behavior.
 
 ### Raw Object Pointers
 
@@ -212,39 +212,36 @@ The definite-assignment and unified-reachability milestone is complete.
 The following items are candidate frontend design areas rather than a committed implementation sequence. 
 Code generation remains deferred.
 
-1. Explicit Scalar Alternatives
+### Explicit Scalar Alternatives
 
-The ordinary runtime scalar model is now settled. Signed and unsigned
-arithmetic and numeric cast are checked in every build mode, while known
-failures are diagnosed during semantic analysis.
+The explicit scalar-alternatives milestone is complete.
 
-The next scalar milestone is to audit the existing frontend against that
-contract and then add a small explicit alternative family.
+Coglet now provides:
 
-Initial work should cover:
+* checked ordinary signed and unsigned integer arithmetic in every build mode;
+* checked numeric `cast`;
+* central integer metadata and representability rules;
+* status-based checked arithmetic and conversion classification;
+* runtime-dependent frontend conformance coverage;
+* stable compiler builtin identities;
+* `wrapping_add`;
+* `wrapping_sub`;
+* `wrapping_mul`;
+* `wrapping_neg`;
+* `truncate(TargetIntegerType, expression)`;
+* compile-time fixed-width evaluation for wrapping and truncating operations;
+* semantic-expression verifier coverage.
 
-- verifying that constant evaluation and runtime-dependent typing use the same
-representability rules;
-- focused tests for known-invalid and runtime-dependent operations;
-- a central builtin identity and exhaustive builtin semantic dispatcher;
-- wrapping addition;
-- wrapping subtraction;
-- wrapping multiplication;
-- wrapping negation;
-- explicit truncating integer conversion.
+Wrapping operations use fixed-width modulo arithmetic. Truncating conversion
+retains the low destination-width bits and interprets them using the target
+signedness.
 
-Wrapping operations use fixed-width modulo arithmetic and never trap because
-of arithmetic overflow. Truncating conversion explicitly discards bits or
-performs the corresponding fixed-width conversion.
+These operations are explicit and do not change the checked semantics of
+ordinary operators or `cast`.
 
-The exact source spelling should be selected during builtin design. These
-operations must not be implemented through scattered string comparisons or by
-changing the behavior of ordinary operators and cast.
+No code generation or runtime implementation was added as part of this
+milestone.
 
-Saturating arithmetic and checked operations that return a success result
-remain deferred until Coglet has concrete use cases and suitable result types.
-
-No code generation or runtime implementation is required for this milestone.
 
 ### 2. Readonly and Opaque Raw Pointers
 

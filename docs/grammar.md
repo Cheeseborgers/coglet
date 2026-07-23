@@ -63,6 +63,48 @@ unary_expression =
 
 For example, `-2147483648` is parsed as unary negation applied to the positive literal `2147483648`. Numeric literals initially have adaptable `untyped-int` or `untyped-float` semantic types. Inferred mutable variables and parameters are concretized to default runtime types, while inferred compile-time constants may remain adaptable.
 
+## Explicit Conversion Expressions
+
+Checked and truncating conversions share the following surface form:
+
+```ebnf
+conversion_expression =
+      "cast" "(" type "," expression ")"
+    | "truncate" "(" type "," expression ")";
+```
+
+A checked conversion uses:
+
+```c
+cast(TargetType, expression)
+```
+
+Its semantic validity depends on the source and destination categories.
+Numeric checked conversions require the mathematical source value to be
+representable according to the destination conversion rules.
+
+A truncating integer conversion uses:
+
+```c
+truncate(TargetIntegerType, expression)
+```
+
+For `truncate`, the target must be a concrete integer type and the source must
+be an integer expression. The result retains the low bits corresponding to
+the target width and interprets them using the target signedness.
+
+Examples:
+
+```c
+truncate(u8, 256);
+truncate(i8, 255);
+truncate(u16, cast(i8, -1));
+```
+
+`truncate` does not support floating-point, Boolean, pointer, or enum
+conversion.
+
+
 ## Raw Object Pointers
 
 Pointer types use postfix `*` in type syntax. Address-of and dereference use prefix unary operators:

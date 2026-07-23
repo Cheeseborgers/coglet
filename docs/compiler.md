@@ -198,16 +198,33 @@ signed unary -        -> checked negation
 integer / and %       -> divisor and signed-overflow checks
 integer shift         -> shift-count range check
 numeric cast          -> checked conversion
+truncate              -> fixed-width low-bit integer conversion
+wrapping builtin      -> fixed-width modulo integer arithmetic
 bitwise operation     -> fixed-width bit-pattern operation
 
 This keeps semantic facts backend-neutral and avoids duplicating policy in
 mutable flags.
 
-Explicit wrapping arithmetic and truncating conversion will use separate
-builtin identities. They must not be represented by scattered source-name
-comparisons throughout semantic analysis. Their eventual implementation
-should use one exhaustive builtin classification and one central semantic
-dispatch path.
+Explicit wrapping arithmetic uses stable `BuiltinKind` identities registered
+in the root scope. Calls pass through normal lexical name resolution and one
+central exhaustive builtin semantic dispatcher. Semantic expression facts
+retain the resolved builtin symbol rather than depending on source-name
+comparisons.
+
+Truncating integer conversion is represented by `NODE_CAST` with
+`CAST_TRUNCATING`, alongside checked conversion represented by
+`CAST_CHECKED`. Semantic checking and constant evaluation each dispatch
+exhaustively on `CastKind`.
+
+Constant `truncate` expressions are evaluated by retaining the destination
+width’s low bits and interpreting that bit pattern using the destination
+signedness. This avoids host-C signed overflow and implementation-defined
+narrowing conversions.
+
+These explicit operations remain backend-neutral. A future lowering layer can
+distinguish them through builtin identity or `CastKind` without additional
+mutable semantic flags.
+
 
 The exact runtime trap mechanism remains outside frontend ownership. At the
 language level, a trap means that the operation produces no result and normal

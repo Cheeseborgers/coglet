@@ -1171,8 +1171,61 @@ cast(Small, 255); // invalid: no declared member has value 255
 Runtime integer-to-enum casts remain rejected until Coglet has a checked
 runtime enum-conversion facility.
 
-Explicit wrapping arithmetic and truncating integer conversion will be
-provided separately. They do not change the checked behavior of cast.
+### Truncating Integer Conversion
+
+Explicit truncating integer conversion uses:
+
+```c
+truncate(TargetIntegerType, expression)
+```
+
+The target must be a concrete integer type, and the source expression must
+produce an integer value.
+
+Truncation retains the low `N` bits of the source mathematical value, where
+`N` is the destination width. The resulting fixed-width bit pattern is then
+interpreted using the destination signedness.
+
+Examples:
+
+```c
+truncate(u8, 256);            // 0
+truncate(u8, -1);             // 255
+truncate(i8, 255);            // -1
+truncate(i8, 128);            // -128
+truncate(u16, cast(i8, -1));  // 65535
+```
+
+Truncating conversion never fails because the source value is outside the
+destination range. It is therefore distinct from checked `cast`, which
+requires the mathematical source value to be representable by the
+destination type.
+
+The initial truncation operation supports only integer-to-integer conversion.
+Floating-point, Boolean, pointer, and enum operands or targets are rejected.
+
+When its operand is a compile-time constant, `truncate` is also a compile-time
+constant expression and is evaluated using explicit fixed-width bit-pattern
+semantics.
+
+### Explicit Wrapping Arithmetic
+
+Coglet provides the compiler built-ins:
+
+```c
+wrapping_add(left, right)
+wrapping_sub(left, right)
+wrapping_mul(left, right)
+wrapping_neg(value)
+```
+
+Their operands must currently have matching concrete integer types. Results
+are computed modulo the width of that integer type and never fail because of
+arithmetic overflow.
+
+Wrapping operations and `truncate` are explicit alternatives. They do not
+change the checked behavior of ordinary arithmetic or `cast`.
+
 
 ## Current Semantic Architecture
 
@@ -1196,10 +1249,6 @@ interpreter, runtime ABI, or trap implementation.
 Near-term work should remain language- and frontend-focused. Candidate areas
 include:
 
-auditing ordinary integer operations and numeric casts against the selected
-checked runtime contract;
-explicit wrapping integer arithmetic built-ins;
-an explicit truncating integer-conversion built-in;
 readonly and opaque raw-pointer variants;
 slices and readonly byte views;
 ownership, lifetime, and mutability rules;
@@ -1211,5 +1260,5 @@ standard library facilities;
 generics;
 self-hosting.
 
-Wrapping and truncating operations must be explicit and must not alter the
+Wrapping and truncating operations are explicit and do not alter the
 all-build checked semantics of ordinary arithmetic or cast.

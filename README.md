@@ -380,10 +380,22 @@ and ordered comparisons. Therefore:
 flags & mask == 0;
 ```
 
-parses as `(flags & mask)` == 0, avoiding C's surprising precedence rule.
+parses as `(flags & mask) == 0`, avoiding C's surprising precedence rule.
 
-Explicit wrapping arithmetic and truncating integer conversion are planned as
-separate built-in operations.
+Explicit wrapping arithmetic is provided by the compiler built-ins
+`wrapping_add`, `wrapping_sub`, `wrapping_mul`, and `wrapping_neg`.
+
+Explicit truncating integer conversion uses:
+
+```c
+truncate(TargetIntegerType, expression)
+```
+
+Truncation retains the low bits corresponding to the destination width and
+interprets the resulting bit pattern using the destination signedness. Unlike
+`cast`, truncation does not require the mathematical source value to fit the
+destination and never fails because of range.
+
 
 ### Control Flow
 
@@ -513,7 +525,7 @@ stable.
 
 Near-term work should remain language- and frontend-focused:
 
-1. Audit the frontend against the checked runtime scalar contract and add explicit wrapping and truncating built-ins. 
+1. Consolidate and document the completed runtime scalar semantics before selecting the next frontend language-design milestone. 
 2. Design a small readonly raw-pointer mechanism without introducing borrowing or lifetime checking. 
 3. Plan opaque raw pointers and explicit C ABI types. 
 4. Design slices and pointer-length views after the raw-pointer mutability rules are settled.

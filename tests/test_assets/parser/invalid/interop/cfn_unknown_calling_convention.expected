@@ -1,0 +1,6 @@
+error: unsupported C calling convention; expected 'cdecl', 'stdcall', 'sysv64', or 'win64'
+bad: cfn(call=fastcall, c_int) -> c_int = null;
+              ^~~~~~~~
+error: expected ';' before ','
+bad: cfn(call=fastcall, c_int) -> c_int = null;
+                      ^

@@ -1,0 +1,4 @@
+#extern(c, call=stdcall)
+bad_extern::(format: readonly c_char*, ...) -> c_int;
+
+bad_callback: cfn(call=stdcall, c_int, ...) -> c_int = null;

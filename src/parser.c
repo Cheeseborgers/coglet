@@ -54,6 +54,10 @@ static Node *parse_array_literal(Parser *p);
 
 static int parse_integer_u64(Token token, uint64_t *out);
 static int parse_float_token(Parser *p, Token token, double *out);
+static int token_text_equals(Token token, const char *text);
+static int parse_c_calling_convention_token(
+    Parser *p, Token token, CCallingConvention *out
+);
 
 // postfix helpers
 static Node *finish_call(Parser *p, Node *callee);
@@ -154,6 +158,12 @@ static void advance(Parser *p) {
 
 static int check(Parser *p, TokenType type) {
     return p->current.type == type;
+}
+
+static TokenType peek_next_token_type(Parser *p) {
+    Lexer lexer = p->lexer;
+    Token token = lexer_next(&lexer);
+    return token.type;
 }
 
 static int match(Parser *p, TokenType type) {
@@ -886,9 +896,36 @@ static Type *parse_type(Parser *p)
          */
         base->kind = TYPE_FUNCTION;
         base->function_abi = FUNCTION_ABI_C;
+        base->function_call_conv = C_CALL_DEFAULT;
 
         if (!consume(p, TOK_LPAREN)) {
             return base;
+        }
+
+        /*
+         * Optional contextual calling-convention option:
+         *
+         *     cfn(call=win64, c_int) -> c_int
+         *     cfn(call=stdcall) -> void
+         *
+         * `call` remains a valid named type when it is not followed by `=`.
+         */
+        if (check(p, TOK_IDENT) &&
+            token_text_equals(p->current, "call") &&
+            peek_next_token_type(p) == TOK_EQUAL) {
+            advance(p);
+            consume(p, TOK_EQUAL);
+
+            if (!consume(p, TOK_IDENT))
+                return base;
+
+            if (!parse_c_calling_convention_token(
+                    p, p->previous, &base->function_call_conv)) {
+                return base;
+            }
+
+            if (!check(p, TOK_RPAREN) && !consume(p, TOK_COMMA))
+                return base;
         }
 
         Type **parameters = NULL;
@@ -1356,6 +1393,40 @@ static int token_text_equals(Token token, const char *text)
            memcmp(token.start, text, length) == 0;
 }
 
+static int parse_c_calling_convention_token(
+    Parser *p,
+    Token token,
+    CCallingConvention *out
+)
+{
+    if (token_text_equals(token, "cdecl")) {
+        *out = C_CALL_CDECL;
+        return 1;
+    }
+
+    if (token_text_equals(token, "stdcall")) {
+        *out = C_CALL_STDCALL;
+        return 1;
+    }
+
+    if (token_text_equals(token, "sysv64")) {
+        *out = C_CALL_SYSV64;
+        return 1;
+    }
+
+    if (token_text_equals(token, "win64")) {
+        *out = C_CALL_WIN64;
+        return 1;
+    }
+
+    error_at(
+        p,
+        &token,
+        "unsupported C calling convention; expected 'cdecl', 'stdcall', 'sysv64', or 'win64'"
+    );
+    return 0;
+}
+
 /*
  * Parses the first ABI declaration form:
  *
@@ -1418,7 +1489,9 @@ static Node *parse_attribute_decl(Parser *p)
 {
     Token hash = p->current;
     StringView external_name = string_view_empty();
+    CCallingConvention extern_call_conv = C_CALL_DEFAULT;
     int saw_name = 0;
+    int saw_extern_call = 0;
 
     if (!consume(p, TOK_HASH))
         return ast_new_error(p->arena, p->current);
@@ -1436,6 +1509,8 @@ static Node *parse_attribute_decl(Parser *p)
         int saw_packed = 0;
         int saw_align = 0;
         int saw_layout_option = 0;
+        int saw_call = 0;
+        CCallingConvention repr_call_conv = C_CALL_DEFAULT;
 
         if (!consume(p, TOK_LPAREN) || !consume(p, TOK_IDENT)) {
             synchronize(p);
@@ -1456,9 +1531,9 @@ static Node *parse_attribute_decl(Parser *p)
             }
 
             Token option = p->previous;
-            saw_layout_option = 1;
 
             if (token_text_equals(option, "packed")) {
+                saw_layout_option = 1;
                 if (saw_packed) {
                     error_at(p, &option, "duplicate #repr(c) option 'packed'");
                     synchronize(p);
@@ -1471,6 +1546,7 @@ static Node *parse_attribute_decl(Parser *p)
             }
 
             if (token_text_equals(option, "align")) {
+                saw_layout_option = 1;
                 if (saw_align) {
                     error_at(p, &option, "duplicate #repr(c) option 'align'");
                     synchronize(p);
@@ -1503,7 +1579,29 @@ static Node *parse_attribute_decl(Parser *p)
                 continue;
             }
 
-            error_at(p, &option, "unknown #repr(c) option; expected 'packed' or 'align'");
+            if (token_text_equals(option, "call")) {
+                if (saw_call) {
+                    error_at(p, &option, "duplicate #repr(c) option 'call'");
+                    synchronize(p);
+                    return ast_new_error(p->arena, option);
+                }
+
+                if (!consume(p, TOK_EQUAL) || !consume(p, TOK_IDENT)) {
+                    synchronize(p);
+                    return ast_new_error(p->arena, p->current);
+                }
+
+                if (!parse_c_calling_convention_token(
+                        p, p->previous, &repr_call_conv)) {
+                    synchronize(p);
+                    return ast_new_error(p->arena, p->previous);
+                }
+
+                saw_call = 1;
+                continue;
+            }
+
+            error_at(p, &option, "unknown #repr(c) option; expected 'packed', 'align', or 'call'");
             synchronize(p);
             return ast_new_error(p->arena, option);
         }
@@ -1522,6 +1620,16 @@ static Node *parse_attribute_decl(Parser *p)
         Node *decl = NULL;
 
         if (check(p, TOK_STRUCT) || check(p, TOK_UNION)) {
+            if (saw_call) {
+                error_at(
+                    p,
+                    &p->current,
+                    "#repr(c) option 'call' applies only to function declarations"
+                );
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
+            }
+
             decl = parse_struct_decl_rest(p, name, hash.line);
             if (decl && decl->type == NODE_STRUCT_DECL) {
                 decl->as.struct_decl.is_repr_c = 1;
@@ -1541,6 +1649,16 @@ static Node *parse_attribute_decl(Parser *p)
             return ast_new_error(p->arena, p->current);
         }
 
+        if (saw_call && !check(p, TOK_LPAREN)) {
+            error_at(
+                p,
+                &p->current,
+                "#repr(c) option 'call' applies only to function declarations"
+            );
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
         if (check(p, TOK_ENUM)) {
             decl = parse_enum_decl_rest(p, name, hash.line);
             if (decl && decl->type == NODE_ENUM_DECL)
@@ -1550,8 +1668,10 @@ static Node *parse_attribute_decl(Parser *p)
 
         if (check(p, TOK_LPAREN)) {
             decl = parse_proc_decl_rest(p, name, hash.line);
-            if (decl && decl->type == NODE_FUNC_DECL)
+            if (decl && decl->type == NODE_FUNC_DECL) {
                 decl->as.func_decl.is_repr_c = 1;
+                decl->as.func_decl.c_call_conv = repr_call_conv;
+            }
             return decl;
         }
 
@@ -1587,29 +1707,52 @@ static Node *parse_attribute_decl(Parser *p)
 
         Token option = p->previous;
 
-        if (!token_text_equals(option, "name")) {
-            error_at(p, &option, "unknown #extern(c) option; expected 'name'");
-            synchronize(p);
-            return ast_new_error(p->arena, option);
+        if (token_text_equals(option, "name")) {
+            if (saw_name) {
+                error_at(p, &option, "duplicate #extern(c) option 'name'");
+                synchronize(p);
+                return ast_new_error(p->arena, option);
+            }
+
+            if (!consume(p, TOK_EQUAL) || !consume(p, TOK_STRING)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
+            }
+
+            if (!decode_extern_name(p, p->previous, &external_name)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->previous);
+            }
+
+            saw_name = 1;
+            continue;
         }
 
-        if (saw_name) {
-            error_at(p, &option, "duplicate #extern(c) option 'name'");
-            synchronize(p);
-            return ast_new_error(p->arena, option);
+        if (token_text_equals(option, "call")) {
+            if (saw_extern_call) {
+                error_at(p, &option, "duplicate #extern(c) option 'call'");
+                synchronize(p);
+                return ast_new_error(p->arena, option);
+            }
+
+            if (!consume(p, TOK_EQUAL) || !consume(p, TOK_IDENT)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
+            }
+
+            if (!parse_c_calling_convention_token(
+                    p, p->previous, &extern_call_conv)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->previous);
+            }
+
+            saw_extern_call = 1;
+            continue;
         }
 
-        if (!consume(p, TOK_EQUAL) || !consume(p, TOK_STRING)) {
-            synchronize(p);
-            return ast_new_error(p->arena, p->current);
-        }
-
-        if (!decode_extern_name(p, p->previous, &external_name)) {
-            synchronize(p);
-            return ast_new_error(p->arena, p->previous);
-        }
-
-        saw_name = 1;
+        error_at(p, &option, "unknown #extern(c) option; expected 'name' or 'call'");
+        synchronize(p);
+        return ast_new_error(p->arena, option);
     }
 
     if (!consume(p, TOK_RPAREN) || !consume(p, TOK_IDENT)) {
@@ -1637,6 +1780,7 @@ static Node *parse_attribute_decl(Parser *p)
 
     func->as.func_decl.linkage = FUNCTION_LINKAGE_EXTERN_C;
     func->as.func_decl.external_name = external_name;
+    func->as.func_decl.c_call_conv = extern_call_conv;
 
     if (!consume(p, TOK_SEMICOLON)) {
         synchronize(p);

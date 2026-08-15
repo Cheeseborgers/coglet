@@ -1,0 +1,11 @@
+#repr(c, call=cdecl)
+cdecl_callback::(value: c_int) -> c_int {
+    return value;
+}
+
+#extern(c, call=win64)
+accept_win64::(callback: cfn(call=win64, c_int) -> c_int) -> c_int;
+
+bad::() -> c_int {
+    return accept_win64(cdecl_callback);
+}

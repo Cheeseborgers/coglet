@@ -82,11 +82,14 @@ malloc::(size: c_size) -> opaque*;
 
 #extern(c, name="SDL_CreateWindow")
 create_window::(title: readonly c_char*) -> opaque*;
+
+#extern(c, call=win64)
+platform_probe::(value: c_int) -> c_int;
 ```
 
 `#extern(c)` declarations are top-level, have no Coglet body, and currently
-accept the scalar/raw-pointer ABI subset plus structs explicitly marked
-`#repr(c)`. `name="..."` optionally changes the
+accept the scalar/raw-pointer ABI subset plus explicitly represented C
+aggregates/enums and native `cfn` callback types. `name="..."` optionally changes the
 external symbol without changing the Coglet identifier. The native C scalar
 family is available through transparent aliases such as `c_char`, `c_short`,
 `c_int`, `c_long`, `c_longlong`, their unsigned forms, `c_size`, `c_bool`,
@@ -103,7 +106,10 @@ cross extern parameters and returns by value. By-value layout dependencies,
 including struct dependencies reached through array fields, are cycle-checked and
 need not follow source order. Native C callbacks use explicit `cfn(...) -> T`
 types, and Coglet-defined callbacks opt into the C ABI with top-level `#repr(c)`
-functions. The host-C backend emits real function-pointer typedefs and supports C
+functions. `#extern(c, call=...)`, `#repr(c, call=...)`, and
+`cfn(call=..., ...)` support explicit `cdecl`, `stdcall`, `sysv64`, and `win64`
+calling-convention contracts; calling convention is part of callback type
+identity. The host-C backend emits real function-pointer typedefs and supports C
 calling back into those Coglet functions. C-variadic extern declarations and
 variadic `cfn` types are supported for the current scalar/pointer ABI subset,
 with standard C default argument promotions performed by the native compiler.
@@ -695,7 +701,7 @@ with weaker C behavior.
 
 Near-term work should combine C interoperability with careful backend expansion:
 
-1. Continue C ABI coverage with calling conventions and other platform-specific ABI controls.
+1. Continue C ABI coverage with `volatile` and other platform-specific ABI controls.
 2. Add explicit target/C-ABI selection before cross-compilation claims are made.
 3. Lower core storage/control-flow and checked runtime arithmetic correctly.
 4. Design byte views/slices without introducing unrestricted array decay.

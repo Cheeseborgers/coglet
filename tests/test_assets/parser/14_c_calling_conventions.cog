@@ -1,0 +1,7 @@
+#extern(c, name="native_probe", call=win64)
+probe::(callback: cfn(call=win64, c_int) -> c_int, value: c_int) -> c_int;
+
+#repr(c, call=cdecl)
+callback::(value: c_int) -> c_int {
+    return value;
+}

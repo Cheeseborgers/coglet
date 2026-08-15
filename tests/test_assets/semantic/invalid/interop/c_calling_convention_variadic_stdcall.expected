@@ -1,0 +1,3 @@
+semantic error at line 1: #extern(c) cannot use call=stdcall with C variadics
+semantic error at line 4: stdcall C function pointers cannot be variadic
+2 semantic errors generated.

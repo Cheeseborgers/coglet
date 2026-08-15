@@ -336,3 +336,19 @@ int coglet_backend_layout_probe(
 }
 
 #endif
+
+#if (defined(__GNUC__) || defined(__clang__)) && \
+    (defined(__x86_64__) || defined(__amd64__))
+typedef int (__attribute__((ms_abi)) *CogletBackendWin64Callback)(int);
+
+int __attribute__((ms_abi)) coglet_backend_win64_call_probe(
+    CogletBackendWin64Callback callback,
+    int value
+)
+{
+    if (!callback || callback(value) != value)
+        return 80;
+
+    return 79;
+}
+#endif

@@ -1,0 +1,2 @@
+#repr(c, call=win64)
+Packet::struct;

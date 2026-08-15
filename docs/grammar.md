@@ -14,9 +14,11 @@ type =
     (
         base_type {"*"}
       | "opaque" "*" {"*"}
-      | "cfn" "(" [type {"," type} ["," "..."]] ")" ["->" type] {"*"}
+      | "cfn" "(" [cfn_call_option [","]] [type {"," type} ["," "..."]] ")" ["->" type] {"*"}
     )
     ["[" integer_constant "]"];
+
+cfn_call_option = "call" "=" c_calling_convention;
 ```
 
 `readonly` is valid only when at least one pointer layer follows the base type.
@@ -51,14 +53,20 @@ Fixed-size array bounds must currently be compile-time integer constants.
 
 `cfn(...) -> T` is a native C function-pointer type. Callback type parameters
 are types only; names and defaults are not part of function-pointer type syntax.
-A trailing `...` marks a C-variadic function-pointer type and requires at least
-one fixed parameter, for example `cfn(c_int, ...) -> c_int`. Omitting `-> T`
-means `-> void`. `cfn` values are nullable and callable. An ordinary Coglet
-function does not implicitly become a `cfn`; a Coglet-defined callback must opt
-into the C ABI with `#repr(c)` on the function declaration.
+An optional leading `call=<convention>` selects an explicit native calling
+convention, for example `cfn(call=win64, c_int) -> c_int`. Supported convention
+names are `cdecl`, `stdcall`, `sysv64`, and `win64`; absence of `call=` means the
+platform/default C ABI. Calling convention is part of function-pointer type
+identity. A trailing `...` marks a C-variadic function-pointer type and requires
+at least one fixed parameter, for example `cfn(c_int, ...) -> c_int`.
+`call=stdcall` cannot be variadic. Omitting `-> T` means `-> void`. `cfn` values
+are nullable and callable. An ordinary Coglet function does not implicitly become
+a `cfn`; a Coglet-defined callback must opt into the C ABI with `#repr(c)` on the
+function declaration.
 
 ```c
 callback: cfn(c_int, opaque*) -> c_int;
+win_callback: cfn(call=win64, c_int) -> c_int;
 missing: cfn(c_int) -> c_int = null;
 ```
 
@@ -299,11 +307,15 @@ coglet_function_declaration =
     block;
 
 extern_c_function_declaration =
-    "#" "extern" "(" "c" ")"
+    "#" "extern" "(" "c" {"," extern_c_option} ")"
     identifier "::"
     "(" [parameter_list ["," "..."]] ")"
     ["->" type]
     ";";
+
+extern_c_option =
+      "name" "=" string_literal
+    | "call" "=" c_calling_convention;
 ```
 
 Ordinary Coglet function:
@@ -325,11 +337,16 @@ printf::(format: readonly c_char*, ...) -> c_int;
 
 #extern(c, name="SDL_CreateWindow")
 create_window::(title: readonly c_char*) -> opaque*;
+
+#extern(c, call=win64)
+platform_probe::(value: c_int) -> c_int;
 ```
 
 The optional `name="..."` option overrides the external C/linker symbol while
-leaving the Coglet function identifier unchanged. Without it, the Coglet name
-is used as the external symbol. `#extern(c)` declarations have no Coglet body,
+leaving the Coglet function identifier unchanged. `call=<convention>` selects an
+explicit C calling convention (`cdecl`, `stdcall`, `sysv64`, or `win64`); without
+it, the platform/default C ABI is used. Without `name=`, the Coglet name is used
+as the external symbol. `#extern(c)` declarations have no Coglet body,
 are terminated by `;`, and are currently restricted semantically to top level.
 A trailing `...` is available only for the C ABI; ordinary Coglet function
 definitions remain non-variadic. C-variadic declarations require at least one
@@ -349,12 +366,16 @@ Conceptually:
 
 ```text
 repr_c_decl :=
-    "#" "repr" "(" "c" [repr_c_layout_option {"," repr_c_layout_option}] ")"
-    identifier "::" (repr_c_struct_body | repr_c_union_body | repr_c_enum_body);
+    "#" "repr" "(" "c" [repr_c_option {"," repr_c_option}] ")"
+    identifier "::"
+    (repr_c_struct_body | repr_c_union_body | repr_c_enum_body | repr_c_function_body);
 
-repr_c_layout_option :=
+repr_c_option :=
       "packed"
-    | "align" "=" integer_literal;
+    | "align" "=" integer_literal
+    | "call" "=" c_calling_convention;
+
+c_calling_convention := "cdecl" | "stdcall" | "sysv64" | "win64";
 
 repr_c_struct_body :=
     "struct" ("{" {struct_field_decl} "}" | ";");
@@ -364,12 +385,17 @@ repr_c_union_body :=
 
 repr_c_enum_body :=
     "enum" "(" c_integer_alias ")" "{" [enum_member {"," enum_member} [","]] "}";
+
+repr_c_function_body :=
+    "(" [parameter_list] ")" ["->" type] block;
 ```
 
 `repr` and `c` remain identifiers at the lexer level. `union` is a language
-keyword. `#repr(c)` applies to top-level struct, union, and enum declarations.
+keyword. `#repr(c)` applies to top-level struct, union, enum, and function declarations.
 The optional `packed` and `align=N` layout controls apply only to complete struct
-and union declarations. `align=N` requires a positive power of two and requests a
+and union declarations. `call=<convention>` applies only to `#repr(c)` function
+definitions and selects the same explicit C calling convention used by `cfn` and
+`#extern(c)`. `align=N` requires a positive power of two and requests a
 minimum aggregate alignment; `packed` reduces member alignment. They may be
 combined as `#repr(c, packed, align=8)`. Incomplete structs cannot carry layout
 controls. C-represented enums require an explicit native C integer backing alias. A

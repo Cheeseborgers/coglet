@@ -1,0 +1,6 @@
+#extern(c, name="abs", call=stdcall)
+absolute::(value: c_int) -> c_int;
+
+main::() -> c_int {
+    return absolute(-7);
+}

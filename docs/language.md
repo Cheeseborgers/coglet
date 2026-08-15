@@ -1408,11 +1408,16 @@ may override that symbol without changing the name used by Coglet code:
 ```c
 #extern(c, name="SDL_CreateWindow")
 create_window::(title: readonly c_char*) -> opaque*;
+
+#extern(c, call=win64)
+platform_probe::(value: c_int) -> c_int;
 ```
 
 Calls in Coglet still refer to `create_window`; host-C lowering emits a reference
 to `SDL_CreateWindow`. The `name` value is a decoded, non-empty Coglet string and
-may not contain a NUL byte.
+may not contain a NUL byte. `call=<convention>` may independently select `cdecl`,
+`stdcall`, `sysv64`, or `win64`; absence of the option uses the platform/default
+C ABI.
 
 External C declarations:
 
@@ -1606,6 +1611,37 @@ uses a separate C object that invokes the pointer and returns the Coglet
 callback's result. Callback closures/capture are not introduced: `#repr(c)`
 functions are top-level and therefore have no enclosing local state to capture.
 
+### C calling conventions
+
+Native C function declarations, callback definitions, and callback pointer types
+may carry an explicit calling convention:
+
+```c
+#extern(c, call=win64)
+native_probe::(callback: cfn(call=win64, c_int) -> c_int, value: c_int) -> c_int;
+
+#repr(c, call=win64)
+callback::(value: c_int) -> c_int {
+    return value;
+}
+```
+
+The supported source names are `cdecl`, `stdcall`, `sysv64`, and `win64`. No
+`call=` option means the platform/default C ABI. Calling convention is part of a
+`cfn` type's identity, so callbacks with different conventions do not implicitly
+convert even when their parameter and return types are otherwise identical.
+`stdcall` is rejected for variadic declarations/types because the Win32 stdcall
+stack-cleanup model is not compatible with C variadics.
+
+The current host-C backend maps explicit conventions through generated C
+attributes/macros. `cdecl` uses the ordinary C ABI (with an explicit attribute on
+32-bit x86 where available); `stdcall` requires GNU/Clang-compatible 32-bit x86
+(or the unified Win64 ABI); `sysv64` and `win64` require GNU/Clang-compatible
+x86-64 `sysv_abi` / `ms_abi` support. If a requested convention cannot be
+represented by the host C compiler/architecture, generated C fails explicitly
+instead of silently using another convention. Cross-target ABI selection remains
+a separate future milestone.
+
 ### C variadic calls
 
 C variadics are an FFI-only feature. A declaration may place `...` after one or
@@ -1716,9 +1752,9 @@ literal. It does not yet lower locals, control flow, runtime checked arithmetic,
 general casts, or general array storage/decay. Host executables currently use
 `main::() -> c_int` as the entry-point contract.
 
-Variadic functions, additional non-C calling conventions, callback lifetime
-policies beyond raw function pointers, and cross-target lowering are still
-deferred.
+Additional platform-specific conventions beyond the current `cdecl`/`stdcall`/
+`sysv64`/`win64` set, callback lifetime policies beyond raw function pointers,
+and cross-target lowering are still deferred.
 
 ## Current Semantic Architecture
 

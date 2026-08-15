@@ -275,6 +275,13 @@ struct Node {
              */
             int is_repr_c;
 
+            /*
+             * Optional explicit native C calling convention. C_CALL_DEFAULT
+             * means the platform/default C ABI. Meaningful only for
+             * #extern(c) or #repr(c) functions.
+             */
+            CCallingConvention c_call_conv;
+
             /* C-ABI variadic declaration: fixed parameters followed by `...`. */
             int is_variadic;
 

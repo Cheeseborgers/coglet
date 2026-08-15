@@ -1,3 +1,3 @@
-error: unknown #extern(c) option; expected 'name'
+error: unknown #extern(c) option; expected 'name' or 'call'
 #extern(c, library="SDL3")
            ^~~~~~~

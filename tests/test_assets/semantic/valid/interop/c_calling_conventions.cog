@@ -1,0 +1,30 @@
+#repr(c, call=cdecl)
+cdecl_identity::(value: c_int) -> c_int {
+    return value;
+}
+
+#repr(c, call=win64)
+win64_identity::(value: c_int) -> c_int {
+    return value;
+}
+
+#extern(c, call=cdecl)
+accept_cdecl::(callback: cfn(call=cdecl, c_int) -> c_int, value: c_int) -> c_int;
+
+#extern(c, call=win64)
+accept_win64::(callback: cfn(call=win64, c_int) -> c_int, value: c_int) -> c_int;
+
+#extern(c, call=sysv64)
+sysv_probe::(value: c_int) -> c_int;
+
+use_calling_conventions::() -> c_int {
+    cdecl_cb: cfn(call=cdecl, c_int) -> c_int = cdecl_identity;
+    win64_cb: cfn(call=win64, c_int) -> c_int = win64_identity;
+    missing: cfn(call=stdcall, c_int) -> c_int = null;
+
+    if missing != null {
+        return 1;
+    }
+
+    return accept_cdecl(cdecl_cb, 7) + accept_win64(win64_cb, 11) + sysv_probe(13);
+}

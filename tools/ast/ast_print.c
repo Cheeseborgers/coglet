@@ -30,6 +30,19 @@ static void print_escaped_string_view_inline(StringView view)
     putchar('"');
 }
 
+static const char *c_calling_convention_name(CCallingConvention convention)
+{
+    switch (convention) {
+        case C_CALL_DEFAULT: return NULL;
+        case C_CALL_CDECL: return "cdecl";
+        case C_CALL_STDCALL: return "stdcall";
+        case C_CALL_SYSV64: return "sysv64";
+        case C_CALL_WIN64: return "win64";
+    }
+
+    return NULL;
+}
+
 static const char *cast_kind_name(CastKind kind)
 {
     switch (kind) {
@@ -410,10 +423,14 @@ static void print_type(Type *t)
             break;
 
         case TYPE_FUNCTION:
-            if (t->function_abi == FUNCTION_ABI_C)
+            if (t->function_abi == FUNCTION_ABI_C) {
                 printf("cfn(");
-            else
+                const char *call = c_calling_convention_name(t->function_call_conv);
+                if (call)
+                    printf("call=%s%s", call, t->parameter_count > 0 ? ", " : "");
+            } else {
                 printf("fn(");
+            }
 
             for (int i = 0; i < t->parameter_count; i++) {
                 if (i > 0) printf(", ");
@@ -804,10 +821,19 @@ static void print_node(Node *node)
                     print_escaped_string_view_inline(node->as.func_decl.external_name);
                     printf(" ");
                 }
+
+                const char *call = c_calling_convention_name(node->as.func_decl.c_call_conv);
+                if (call)
+                    printf("call=%s ", call);
             } else {
                 printf("(func ");
-                if (node->as.func_decl.is_repr_c)
-                    printf("#repr(c) ");
+                if (node->as.func_decl.is_repr_c) {
+                    const char *call = c_calling_convention_name(node->as.func_decl.c_call_conv);
+                    if (call)
+                        printf("#repr(c, call=%s) ", call);
+                    else
+                        printf("#repr(c) ");
+                }
             }
 
             print_string_view(node->as.func_decl.name);
@@ -1351,16 +1377,27 @@ static void print_node_pretty(Node *node, int depth)
             indent(depth);
 
             if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C) {
-                if (string_view_is_empty(node->as.func_decl.external_name)) {
+                const char *call = c_calling_convention_name(node->as.func_decl.c_call_conv);
+                if (string_view_is_empty(node->as.func_decl.external_name) && !call) {
                     printf("extern(c) func ");
                 } else {
-                    printf("extern(c, name=");
-                    print_escaped_string_view_inline(node->as.func_decl.external_name);
+                    printf("extern(c");
+                    if (!string_view_is_empty(node->as.func_decl.external_name)) {
+                        printf(", name=");
+                        print_escaped_string_view_inline(node->as.func_decl.external_name);
+                    }
+                    if (call)
+                        printf(", call=%s", call);
                     printf(") func ");
                 }
             } else {
-                if (node->as.func_decl.is_repr_c)
-                    printf("#repr(c) ");
+                if (node->as.func_decl.is_repr_c) {
+                    const char *call = c_calling_convention_name(node->as.func_decl.c_call_conv);
+                    if (call)
+                        printf("#repr(c, call=%s) ", call);
+                    else
+                        printf("#repr(c) ");
+                }
                 printf("func ");
             }
 

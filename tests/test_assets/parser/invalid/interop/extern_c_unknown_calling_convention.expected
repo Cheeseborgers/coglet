@@ -1,0 +1,3 @@
+error: unsupported C calling convention; expected 'cdecl', 'stdcall', 'sysv64', or 'win64'
+#extern(c, call=fastcall)
+                ^~~~~~~~

@@ -326,13 +326,17 @@ and their combination for complete structs/unions. Alignment values are positive
 powers of two and denote minimum aggregate alignment; packed layout reduces
 member alignment. The host-C bootstrap lowers these through guarded
 GNU-compatible C attributes and executable tests verify size, alignment, field
-offsets, and by-value calls.
+offsets, and by-value calls. Explicit C calling conventions are also represented
+with `call=cdecl`, `call=stdcall`, `call=sysv64`, and `call=win64` on extern
+declarations, C callback definitions, and `cfn` types. Function-type identity
+includes that convention, and an x86-64 executable regression crosses the
+`win64`/`ms_abi` boundary in both directions.
 
 Remaining C interoperability work includes:
 
 - explicit target/C-ABI selection for cross compilation;
 - richer linker/toolchain configuration beyond `-L` / `-l`;
-- remaining ABI representation controls (calling conventions, volatile, and other platform-specific cases);
+- remaining ABI representation controls (`volatile`, additional calling conventions, and other platform-specific cases);
 - mapping C null pointers to Coglet `null` at additional lowering boundaries.
 
 ### 2. Slices and Pointer-Length Views

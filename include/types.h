@@ -69,6 +69,17 @@ typedef enum FunctionAbi {
     FUNCTION_ABI_C,
 } FunctionAbi;
 
+typedef enum CCallingConvention {
+    /* Platform/default C ABI selected by #extern(c), #repr(c), or cfn. */
+    C_CALL_DEFAULT,
+
+    /* Explicit native calling-convention contracts. */
+    C_CALL_CDECL,
+    C_CALL_STDCALL,
+    C_CALL_SYSV64,
+    C_CALL_WIN64,
+} CCallingConvention;
+
 typedef struct IntegerValue {
     uint64_t magnitude;
     int is_negative;
@@ -112,6 +123,7 @@ struct Type {
     int parameter_count;
     Type *return_type;
     FunctionAbi function_abi;
+    CCallingConvention function_call_conv;
     int function_is_variadic;
 
     StringView enum_name;    // TYPE_ENUM

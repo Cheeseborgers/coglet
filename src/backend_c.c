@@ -76,6 +76,19 @@ static int sv_equals(StringView view, const char *text)
     return view.length == length && memcmp(view.data, text, length) == 0;
 }
 
+static const char *c_call_macro_name(CCallingConvention convention)
+{
+    switch (convention) {
+        case C_CALL_DEFAULT: return "";
+        case C_CALL_CDECL:   return "CG_CALL_CDECL";
+        case C_CALL_STDCALL: return "CG_CALL_STDCALL";
+        case C_CALL_SYSV64:  return "CG_CALL_SYSV64";
+        case C_CALL_WIN64:   return "CG_CALL_WIN64";
+    }
+
+    return "";
+}
+
 static void backend_error(CBackend *backend, const Node *node, const char *message)
 {
     if (!backend) return;
@@ -272,13 +285,27 @@ static const char *register_c_type(CBackend *backend, const Type *type, const No
         strcpy(return_copy, return_name);
         strcpy(alias_copy, alias->name);
 
-        int written = snprintf(
-            alias->definition,
-            sizeof(alias->definition),
-            "typedef %s (*%s)(",
-            return_copy,
-            alias_copy
-        );
+        const char *call_macro = c_call_macro_name(type->function_call_conv);
+
+        int written;
+        if (type->function_call_conv == C_CALL_DEFAULT) {
+            written = snprintf(
+                alias->definition,
+                sizeof(alias->definition),
+                "typedef %s (*%s)(",
+                return_copy,
+                alias_copy
+            );
+        } else {
+            written = snprintf(
+                alias->definition,
+                sizeof(alias->definition),
+                "typedef %s (%s *%s)(",
+                return_copy,
+                call_macro,
+                alias_copy
+            );
+        }
 
         if (written < 0 || (size_t)written >= sizeof(alias->definition)) {
             backend_error(backend, owner, "generated C callback typedef is too long");
@@ -1017,6 +1044,82 @@ static int emit_enum_definitions(CBackend *backend)
     return !backend->had_error;
 }
 
+static int uses_c_calling_convention(
+    const CBackend *backend,
+    CCallingConvention convention
+)
+{
+    for (int i = 0; i < backend->function_count; i++) {
+        if (backend->functions[i].node->as.func_decl.c_call_conv == convention)
+            return 1;
+    }
+
+    for (int i = 0; i < backend->type_alias_count; i++) {
+        const Type *type = backend->type_aliases[i].type;
+        if (type && type->kind == TYPE_FUNCTION &&
+            type->function_call_conv == convention) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static void emit_c_calling_convention_support(CBackend *backend)
+{
+    if (uses_c_calling_convention(backend, C_CALL_CDECL)) {
+        fputs(
+            "#if (defined(__GNUC__) || defined(__clang__)) && defined(__i386__)\n"
+            "#define CG_CALL_CDECL __attribute__((cdecl))\n"
+            "#else\n"
+            "#define CG_CALL_CDECL\n"
+            "#endif\n\n",
+            backend->out
+        );
+    }
+
+    if (uses_c_calling_convention(backend, C_CALL_STDCALL)) {
+        fputs(
+            "#if (defined(__GNUC__) || defined(__clang__)) && defined(__i386__)\n"
+            "#define CG_CALL_STDCALL __attribute__((stdcall))\n"
+            "#elif (defined(__GNUC__) || defined(__clang__)) && defined(_WIN32) && "
+                "(defined(__x86_64__) || defined(__amd64__))\n"
+            "#define CG_CALL_STDCALL /* unified Win64 ABI */\n"
+            "#else\n"
+            "#error \"Coglet host-C backend: call=stdcall requires 32-bit x86 (or the unified Win64 ABI)\"\n"
+            "#define CG_CALL_STDCALL\n"
+            "#endif\n\n",
+            backend->out
+        );
+    }
+
+    if (uses_c_calling_convention(backend, C_CALL_SYSV64)) {
+        fputs(
+            "#if (defined(__GNUC__) || defined(__clang__)) && "
+                "(defined(__x86_64__) || defined(__amd64__))\n"
+            "#define CG_CALL_SYSV64 __attribute__((sysv_abi))\n"
+            "#else\n"
+            "#error \"Coglet host-C backend: call=sysv64 requires GNU-compatible x86-64 C attributes\"\n"
+            "#define CG_CALL_SYSV64\n"
+            "#endif\n\n",
+            backend->out
+        );
+    }
+
+    if (uses_c_calling_convention(backend, C_CALL_WIN64)) {
+        fputs(
+            "#if (defined(__GNUC__) || defined(__clang__)) && "
+                "(defined(__x86_64__) || defined(__amd64__))\n"
+            "#define CG_CALL_WIN64 __attribute__((ms_abi))\n"
+            "#else\n"
+            "#error \"Coglet host-C backend: call=win64 requires GNU-compatible x86-64 C attributes\"\n"
+            "#define CG_CALL_WIN64\n"
+            "#endif\n\n",
+            backend->out
+        );
+    }
+}
+
 static int has_repr_c_layout_controls(const CBackend *backend)
 {
     for (int i = 0; i < backend->struct_count; i++) {
@@ -1220,14 +1323,31 @@ static int emit_function_declarations(CBackend *backend)
         const char *return_type = function_return_type(backend, func);
         if (!return_type) return 0;
 
+        const char *call_macro = c_call_macro_name(func->as.func_decl.c_call_conv);
+        const char *call_sep = func->as.func_decl.c_call_conv == C_CALL_DEFAULT ? "" : " ";
+
         if (func->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C) {
-            fprintf(backend->out, "extern %s %s(", return_type, entry->generated_name);
+            fprintf(
+                backend->out,
+                "extern %s%s%s %s(",
+                return_type,
+                call_sep,
+                call_macro,
+                entry->generated_name
+            );
             emit_parameter_type_list(backend, func, 0);
             fputs(") __asm__(", backend->out);
             emit_c_string_literal(backend->out, external_symbol_name(func));
             fputs(");\n", backend->out);
         } else {
-            fprintf(backend->out, "static %s %s(", return_type, entry->generated_name);
+            fprintf(
+                backend->out,
+                "static %s%s%s %s(",
+                return_type,
+                call_sep,
+                call_macro,
+                entry->generated_name
+            );
             emit_parameter_type_list(backend, func, 0);
             fputs(");\n", backend->out);
         }
@@ -1251,7 +1371,17 @@ static int emit_function_bodies(CBackend *backend)
 
         backend->current_function = func;
 
-        fprintf(backend->out, "static %s %s(", return_type, entry->generated_name);
+        const char *call_macro = c_call_macro_name(func->as.func_decl.c_call_conv);
+        const char *call_sep = func->as.func_decl.c_call_conv == C_CALL_DEFAULT ? "" : " ";
+
+        fprintf(
+            backend->out,
+            "static %s%s%s %s(",
+            return_type,
+            call_sep,
+            call_macro,
+            entry->generated_name
+        );
         emit_parameter_type_list(backend, func, 1);
         fputs(")\n{\n", backend->out);
 
@@ -1329,6 +1459,7 @@ static CBackendStatus c_backend_emit_stream(
     fputs("#include <stddef.h>\n#include <stdint.h>\n\n", out);
 
     emit_repr_c_layout_support(&backend);
+    emit_c_calling_convention_support(&backend);
     emit_struct_forward_declarations(&backend);
 
     if (!emit_enum_definitions(&backend))

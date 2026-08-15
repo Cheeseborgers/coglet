@@ -260,6 +260,7 @@ Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *r
     node->as.func_decl.resolved_type = NULL;
     node->as.func_decl.linkage       = FUNCTION_LINKAGE_COGLET;
     node->as.func_decl.is_repr_c      = 0;
+    node->as.func_decl.c_call_conv    = C_CALL_DEFAULT;
     node->as.func_decl.is_variadic    = 0;
     node->as.func_decl.external_name = string_view_empty();
 
@@ -518,6 +519,7 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.func_decl.resolved_type = NULL;
             clone->as.func_decl.linkage       = node->as.func_decl.linkage;
             clone->as.func_decl.is_repr_c      = node->as.func_decl.is_repr_c;
+            clone->as.func_decl.c_call_conv    = node->as.func_decl.c_call_conv;
             clone->as.func_decl.is_variadic    = node->as.func_decl.is_variadic;
             clone->as.func_decl.external_name = node->as.func_decl.external_name;
 

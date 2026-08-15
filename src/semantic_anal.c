@@ -1104,6 +1104,17 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
         }
 
         if (resolved_function->function_abi == FUNCTION_ABI_C &&
+            resolved_function->function_is_variadic &&
+            resolved_function->function_call_conv == C_CALL_STDCALL) {
+            semantic_error(
+                ctx,
+                error_node,
+                "stdcall C function pointers cannot be variadic"
+            );
+            return NULL;
+        }
+
+        if (resolved_function->function_abi == FUNCTION_ABI_C &&
             !extern_c_type_supported(resolved_function, 0)) {
             semantic_error(
                 ctx,
@@ -1189,6 +1200,19 @@ static int contains_void_type(Type *type) {
     return 0;
 }
 
+static const char *c_calling_convention_name(CCallingConvention convention)
+{
+    switch (convention) {
+        case C_CALL_DEFAULT: return NULL;
+        case C_CALL_CDECL: return "cdecl";
+        case C_CALL_STDCALL: return "stdcall";
+        case C_CALL_SYSV64: return "sysv64";
+        case C_CALL_WIN64: return "win64";
+    }
+
+    return NULL;
+}
+
 static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
 
     if (!buffer || buffer_size == 0) return;
@@ -1217,12 +1241,29 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
         case TYPE_FUNCTION: {
             const char *prefix =
                 type->function_abi == FUNCTION_ABI_C ? "cfn" : "fn";
-            snprintf(
-                buffer,
-                buffer_size,
-                type->function_is_variadic ? "%s(..., ...)" : "%s(...)",
-                prefix
-            );
+            const char *call =
+                type->function_abi == FUNCTION_ABI_C
+                    ? c_calling_convention_name(type->function_call_conv)
+                    : NULL;
+
+            if (call) {
+                snprintf(
+                    buffer,
+                    buffer_size,
+                    type->function_is_variadic
+                        ? "%s(call=%s, ..., ...)"
+                        : "%s(call=%s, ...)",
+                    prefix,
+                    call
+                );
+            } else {
+                snprintf(
+                    buffer,
+                    buffer_size,
+                    type->function_is_variadic ? "%s(..., ...)" : "%s(...)",
+                    prefix
+                );
+            }
             return;
         }
         case TYPE_UNTYPED_INT: snprintf(buffer, buffer_size, "untyped-int"); return;
@@ -1405,6 +1446,7 @@ static int type_equal(const Type *a, const Type *b) {
 
         case TYPE_FUNCTION:
             if (a->function_abi != b->function_abi ||
+                a->function_call_conv != b->function_call_conv ||
                 a->function_is_variadic != b->function_is_variadic)
                 return 0;
 
@@ -8683,6 +8725,17 @@ static int validate_c_abi_function_signature(
 
     int ok = 1;
 
+    if (type->function_is_variadic &&
+        type->function_call_conv == C_CALL_STDCALL) {
+        semantic_error_fmt(
+            ctx,
+            func,
+            "%s cannot use call=stdcall with C variadics",
+            annotation
+        );
+        ok = 0;
+    }
+
     for (int i = 0; i < type->parameter_count; i++) {
         Node *param = func->as.func_decl.params.items[i];
 
@@ -8738,6 +8791,11 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
          func->as.func_decl.is_repr_c)
             ? FUNCTION_ABI_C
             : FUNCTION_ABI_COGLET;
+
+    type->function_call_conv =
+        type->function_abi == FUNCTION_ABI_C
+            ? func->as.func_decl.c_call_conv
+            : C_CALL_DEFAULT;
 
     type->parameter_count = func->as.func_decl.params.count;
     type->function_is_variadic = func->as.func_decl.is_variadic;

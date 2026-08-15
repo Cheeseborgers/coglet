@@ -1,0 +1,12 @@
+program
+  extern(c, name="native_probe", call=win64) func probe -> c_int
+    params:
+      param_decl callback: cfn(call=win64, c_int) -> c_int
+      param_decl value: c_int
+  #repr(c, call=cdecl) func callback -> c_int
+    params:
+      param_decl value: c_int
+    body:
+      block
+        return
+          value

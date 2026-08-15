@@ -1,0 +1,14 @@
+#repr(c, call=win64)
+win64_identity::(value: c_int) -> c_int {
+    return value;
+}
+
+#extern(c, name="coglet_backend_win64_call_probe", call=win64)
+win64_call_probe::(
+    callback: cfn(call=win64, c_int) -> c_int,
+    value: c_int
+) -> c_int;
+
+main::() -> c_int {
+    return win64_call_probe(win64_identity, 79);
+}

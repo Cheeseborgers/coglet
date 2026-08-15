@@ -1,0 +1,3 @@
+error: #repr(c) option 'call' applies only to function declarations
+Packet::struct;
+        ^~~~~~

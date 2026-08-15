@@ -83,7 +83,10 @@ Callers must not print these diagnostics again.
 `FUNCTION_LINKAGE_COGLET` and retain a block body. `#repr(c)` on a Coglet-defined
 function sets `NODE_FUNC_DECL.is_repr_c`; the function keeps its Coglet body but
 its semantic `TYPE_FUNCTION` carries `FUNCTION_ABI_C` so it may cross a native C
-callback boundary. Unannotated Coglet functions carry `FUNCTION_ABI_COGLET`.
+callback boundary. Unannotated Coglet functions carry `FUNCTION_ABI_COGLET`. Native C function
+types additionally carry a `CCallingConvention`; `C_CALL_DEFAULT` means the
+platform/default C ABI, while explicit `cdecl`, `stdcall`, `sysv64`, and `win64`
+contracts remain part of structural function-type identity.
 
 The parser keeps `extern`, `c`, and option names such as `name` as ordinary
 identifiers. Only `#` is new punctuation. This means the annotation syntax does
@@ -94,7 +97,9 @@ declaration metadata such as `#repr(c)`.
 An empty view means the source-level Coglet function name is also the external
 symbol. `#extern(c, name="...")` populates the override; the parser rejects an
 empty name, invalid string escape, embedded NUL, duplicate `name`, or unknown
-option. AST cloning preserves this metadata.
+option. `NODE_FUNC_DECL.c_call_conv` stores the optional explicit C calling
+convention for both extern declarations and `#repr(c)` callback definitions. AST
+cloning preserves this metadata.
 
 Semantic analysis registers external function signatures in the same function
 namespace as ordinary functions, so duplicate-declaration and call-resolution
@@ -167,6 +172,15 @@ resolves to canonical Coglet `bool`. C `float`/`double` are admitted only when
 the host format macros match Coglet's IEEE binary32/binary64 contracts, then
 resolve to canonical `f32`/`f64`. This keeps the rest of type checking
 target-agnostic while preserving source-level ABI intent for backend emission.
+
+Explicit C calling conventions are lowered at the generated-C type/declaration
+level. Callback typedefs carry the convention as part of the function-pointer
+declarator, while extern declarations and `#repr(c)` function declarations/
+definitions carry the same convention attribute. The current backend emits
+guarded GNU/Clang-compatible mappings for `stdcall`, `sysv64`, and `win64` and
+fails during generated-C compilation when the selected host architecture cannot
+represent the requested convention; `cdecl` maps to the normal C convention
+outside 32-bit x86. `stdcall` variadics are rejected semantically.
 
 A deliberately narrow **host-C backend** now provides the first executable
 lowering path. `coglet input.cog -o program` emits a temporary C translation

@@ -1,0 +1,1 @@
+bad: cfn(call=fastcall, c_int) -> c_int = null;

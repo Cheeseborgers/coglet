@@ -589,6 +589,45 @@ set_tests_properties(
         PROPERTIES LABELS "backend;backend.c;interop;abi;callback"
 )
 
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
+   CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+add_test(
+        NAME backend_extern_c_calling_convention
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_calling_convention.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_calling_convention
+        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
+        -DLIB_NAME=coglet_backend_link_support
+        -DSTYLE=joined
+        -DEXPECT_EXIT=79
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+)
+set_tests_properties(
+        backend_extern_c_calling_convention
+        PROPERTIES LABELS "backend;backend.c;interop;abi;calling-convention;callback"
+)
+endif()
+
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
+   CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64" AND
+   NOT WIN32)
+add_test(
+        NAME backend_rejects_unsupported_stdcall
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/unsupported_stdcall_calling_convention.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_unsupported_stdcall
+        -DEXPECT_EXIT=3
+        "-DEXPECT_SUBSTRING=call=stdcall requires 32-bit x86"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_failure_test.cmake"
+)
+set_tests_properties(
+        backend_rejects_unsupported_stdcall
+        PROPERTIES LABELS "backend;backend.c;backend.invalid;interop;abi;calling-convention"
+)
+endif()
+
 
 add_test(
         NAME backend_extern_c_variadic

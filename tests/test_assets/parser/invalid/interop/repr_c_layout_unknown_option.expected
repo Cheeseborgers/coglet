@@ -1,4 +1,4 @@
-error: unknown #repr(c) option; expected 'packed' or 'align'
+error: unknown #repr(c) option; expected 'packed', 'align', or 'call'
 #repr(c, mystery)
          ^~~~~~~
 error: expected expression

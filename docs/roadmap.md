@@ -332,11 +332,11 @@ declarations, C callback definitions, and `cfn` types. Function-type identity
 includes that convention, and an x86-64 executable regression crosses the
 `win64`/`ms_abi` boundary in both directions.
 
-Remaining C interoperability work includes:
+The manual/native-host C interop surface is now intentionally paused at this stage. Remaining C interoperability work includes:
 
 - explicit target/C-ABI selection for cross compilation;
 - richer linker/toolchain configuration beyond `-L` / `-l`;
-- remaining ABI representation controls (`volatile`, additional calling conventions, and other platform-specific cases);
+- additional platform-specific ABI controls beyond the current `volatile`, layout, and calling-convention surface;
 - mapping C null pointers to Coglet `null` at additional lowering boundaries.
 
 ### 2. Slices and Pointer-Length Views

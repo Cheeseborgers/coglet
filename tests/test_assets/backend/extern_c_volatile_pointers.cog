@@ -1,0 +1,12 @@
+#extern(c, name="coglet_backend_get_volatile_rw")
+get_rw::() -> volatile c_int*;
+
+#extern(c, name="coglet_backend_get_volatile_ro")
+get_ro::() -> readonly volatile c_int*;
+
+#extern(c, name="coglet_backend_volatile_probe")
+probe::(rw: volatile c_int*, ro: readonly volatile c_int*) -> c_int;
+
+main::() -> c_int {
+    return probe(get_rw(), get_ro());
+}

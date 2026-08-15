@@ -109,7 +109,7 @@ types, and Coglet-defined callbacks opt into the C ABI with top-level `#repr(c)`
 functions. `#extern(c, call=...)`, `#repr(c, call=...)`, and
 `cfn(call=..., ...)` support explicit `cdecl`, `stdcall`, `sysv64`, and `win64`
 calling-convention contracts; calling convention is part of callback type
-identity. The host-C backend emits real function-pointer typedefs and supports C
+identity. Raw pointers also support independent `volatile` qualification, including `readonly volatile` combinations, with monotonic qualifier conversion and native C `volatile` lowering. The host-C backend emits real function-pointer typedefs and supports C
 calling back into those Coglet functions. C-variadic extern declarations and
 variadic `cfn` types are supported for the current scalar/pointer ABI subset,
 with standard C default argument promotions performed by the native compiler.
@@ -701,11 +701,11 @@ with weaker C behavior.
 
 Near-term work should combine C interoperability with careful backend expansion:
 
-1. Continue C ABI coverage with `volatile` and other platform-specific ABI controls.
-2. Add explicit target/C-ABI selection before cross-compilation claims are made.
-3. Lower core storage/control-flow and checked runtime arithmetic correctly.
-4. Design byte views/slices without introducing unrestricted array decay.
-5. Reassess imports, modules, and multi-file compilation.
+1. Pause broad C-interop expansion and return focus to native Coglet/compiler semantics.
+2. Lower core storage/control-flow and checked runtime arithmetic correctly.
+3. Design byte views/slices without introducing unrestricted array decay.
+4. Reassess imports, modules, and multi-file compilation.
+5. Add explicit target/C-ABI selection when cross-compilation becomes a priority.
 6. Continue improving diagnostics, tests, and documentation.
 
 ## License

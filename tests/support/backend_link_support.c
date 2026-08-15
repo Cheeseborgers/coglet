@@ -352,3 +352,32 @@ int __attribute__((ms_abi)) coglet_backend_win64_call_probe(
     return 79;
 }
 #endif
+
+static volatile int coglet_backend_volatile_rw_value = 0;
+static const volatile int coglet_backend_volatile_ro_value = 89;
+
+volatile int *coglet_backend_get_volatile_rw(void)
+{
+    return &coglet_backend_volatile_rw_value;
+}
+
+const volatile int *coglet_backend_get_volatile_ro(void)
+{
+    return &coglet_backend_volatile_ro_value;
+}
+
+int coglet_backend_volatile_probe(
+    volatile int *rw,
+    const volatile int *ro
+)
+{
+    if (!rw || !ro)
+        return 90;
+
+    *rw = 89;
+
+    if (*rw != 89 || *ro != 89)
+        return 90;
+
+    return 89;
+}

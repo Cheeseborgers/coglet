@@ -419,17 +419,19 @@ static const char *register_c_type(CBackend *backend, const Type *type, const No
         snprintf(
             alias->definition,
             sizeof(alias->definition),
-            "typedef %svoid *%s;",
+            "typedef %s%svoid *%s;",
             type->pointer_access == POINTER_ACCESS_READONLY ? "const " : "",
+            type->pointer_is_volatile ? "volatile " : "",
             alias_name
         );
     } else {
         snprintf(
             alias->definition,
             sizeof(alias->definition),
-            "typedef %s%s *%s;",
+            "typedef %s%s%s *%s;",
             element_name,
             type->pointer_access == POINTER_ACCESS_READONLY ? " const" : "",
+            type->pointer_is_volatile ? " volatile" : "",
             alias_name
         );
     }

@@ -30,9 +30,10 @@ static Type *new_type(SemanticContext *ctx, TypeKind kind)
 {
     Type *type = arena_new(ctx->arena, Type);
 
-    type->kind           = kind;
-    type->pointer_access = POINTER_ACCESS_MUTABLE;
-    type->array_size     = -1;
+    type->kind                = kind;
+    type->pointer_access      = POINTER_ACCESS_MUTABLE;
+    type->pointer_is_volatile = 0;
+    type->array_size          = -1;
 
     return type;
 }
@@ -126,6 +127,7 @@ static SemExprInfo *sem_get_or_create_expr_info(SemanticContext *ctx, Node *node
     info->node = node;
     info->value_category = VALUE_CATEGORY_NONE;
     info->value_access   = VALUE_ACCESS_NONE;
+    info->value_is_volatile = 0;
 
     info->next = ctx->expr_infos;
     ctx->expr_infos = info;
@@ -151,6 +153,7 @@ static void sem_record_expr_info(
         case VALUE_CATEGORY_RVALUE:
             info->value_access =
                 VALUE_ACCESS_NONE;
+            info->value_is_volatile = 0;
             break;
 
         case VALUE_CATEGORY_LVALUE:
@@ -164,8 +167,9 @@ static void sem_record_expr_info(
     }
 }
 
-static void sem_record_lvalue_info(
-    SemanticContext *ctx, Node *node, Type *type, Symbol *symbol, ValueAccess access) {
+static void sem_record_lvalue_info_qualified(
+    SemanticContext *ctx, Node *node, Type *type, Symbol *symbol,
+    ValueAccess access, int is_volatile) {
 
     assert(access == VALUE_ACCESS_READONLY || access == VALUE_ACCESS_WRITABLE);
 
@@ -182,6 +186,7 @@ static void sem_record_lvalue_info(
 
     assert(info);
     info->value_access = access;
+    info->value_is_volatile = !!is_volatile;
 }
 
 /*
@@ -1300,8 +1305,13 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
             return;
 
         case TYPE_OPAQUE_POINTER:
-            if (type->pointer_access == POINTER_ACCESS_READONLY) {
+            if (type->pointer_access == POINTER_ACCESS_READONLY &&
+                type->pointer_is_volatile) {
+                snprintf(buffer, buffer_size, "readonly volatile opaque*");
+            } else if (type->pointer_access == POINTER_ACCESS_READONLY) {
                 snprintf(buffer, buffer_size, "readonly opaque*");
+            } else if (type->pointer_is_volatile) {
+                snprintf(buffer, buffer_size, "volatile opaque*");
             } else {
                 snprintf(buffer, buffer_size, "opaque*");
             }
@@ -1321,7 +1331,7 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
                     snprintf(
                         buffer,
                         buffer_size,
-                        "%s*",
+                        type->pointer_is_volatile ? "volatile %s*" : "%s*",
                         element
                     );
                     return;
@@ -1330,7 +1340,9 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
                     snprintf(
                         buffer,
                         buffer_size,
-                        "readonly %s*",
+                        type->pointer_is_volatile
+                            ? "readonly volatile %s*"
+                            : "readonly %s*",
                         element
                     );
                     return;
@@ -1428,14 +1440,15 @@ static int type_equal(const Type *a, const Type *b) {
             assert(is_valid_pointer_access(a->pointer_access));
             assert(is_valid_pointer_access(b->pointer_access));
 
-            return a->pointer_access == b->pointer_access;
+            return a->pointer_access == b->pointer_access &&
+                   a->pointer_is_volatile == b->pointer_is_volatile;
 
         case TYPE_POINTER:
             assert(is_valid_pointer_access(a->pointer_access));
             assert(is_valid_pointer_access(b->pointer_access));
 
-            return a->pointer_access ==
-               b->pointer_access &&
+            return a->pointer_access == b->pointer_access &&
+                a->pointer_is_volatile == b->pointer_is_volatile &&
                 type_equal(
                     a->element,
                     b->element);
@@ -2546,17 +2559,12 @@ static int is_null_to_pointer_cast(Type *to, Type *from) {
 }
 
 /*
- * Allows the single safe pointer-access conversion:
- *
- *     mutable T* -> readonly T*
- *
- * Only the immediate pointer access changes. The pointee types must
- * already be exactly equal, preventing unsafe recursive conversion
- * such as:
- *
- *     T** -> readonly T**
+ * Compares raw-pointer family and immediate pointee identity while ignoring
+ * only the outer pointer's readonly/volatile qualifiers. This is the basis for
+ * safe shallow qualifier addition and pointer equality compatibility. Nested
+ * pointer qualifiers remain part of the pointee type and therefore must match.
  */
-static int pointer_identity_equal_ignoring_access(
+static int pointer_identity_equal_ignoring_qualifiers(
     const Type *left,
     const Type *right
 ) {
@@ -2572,24 +2580,43 @@ static int pointer_identity_equal_ignoring_access(
     return type_equal(left->element, right->element);
 }
 
-static int pointer_readonly_conversion_allowed(const Type *target, const Type *source) {
-
-    if (!pointer_identity_equal_ignoring_access(target, source))
+/*
+ * Safe immediate pointer qualification may only add restrictions/observability:
+ *
+ *     T*                  -> readonly T*
+ *     T*                  -> volatile T*
+ *     T*                  -> readonly volatile T*
+ *     volatile T*         -> readonly volatile T*
+ *     readonly T*         -> readonly volatile T*
+ *
+ * Neither readonly nor volatile may be discarded implicitly. Qualifiers are
+ * never added recursively through nested pointer layers.
+ */
+static int pointer_qualification_conversion_allowed(
+    const Type *target,
+    const Type *source
+) {
+    if (!pointer_identity_equal_ignoring_qualifiers(target, source))
         return 0;
 
-    return target->pointer_access ==
-               POINTER_ACCESS_READONLY &&
-           source->pointer_access ==
-               POINTER_ACCESS_MUTABLE;
+    if (source->pointer_access == POINTER_ACCESS_READONLY &&
+        target->pointer_access == POINTER_ACCESS_MUTABLE)
+        return 0;
+
+    if (source->pointer_is_volatile && !target->pointer_is_volatile)
+        return 0;
+
+    return target->pointer_access != source->pointer_access ||
+           target->pointer_is_volatile != source->pointer_is_volatile;
 }
 
 /*
- * Pointer equality may ignore only the immediate access permission.
- * Typed and opaque raw pointers remain different pointer families and
- * therefore are not directly comparable.
+ * Pointer equality does not access the pointee, so immediate readonly/volatile
+ * qualifier differences do not make otherwise identical raw pointers
+ * incomparable.
  */
 static int pointer_equality_compatible(const Type *left, const Type *right) {
-    return pointer_identity_equal_ignoring_access(left, right);
+    return pointer_identity_equal_ignoring_qualifiers(left, right);
 }
 
 static int reinterpret_pointer_conversion_allowed(
@@ -2612,6 +2639,10 @@ static int reinterpret_pointer_conversion_allowed(
         return 0;
     }
 
+    /* Never discard volatile access semantics. */
+    if (source->pointer_is_volatile && !target->pointer_is_volatile)
+        return 0;
+
     return 1;
 }
 
@@ -2633,7 +2664,7 @@ static int is_allowed_explicit_cast(Type *to, Type *from) {
      *
      * The reverse conversion remains invalid.
      */
-    if (pointer_readonly_conversion_allowed(to, from))
+    if (pointer_qualification_conversion_allowed(to, from))
         return 1;
 
     /*
@@ -2934,7 +2965,7 @@ static int initializer_compatible(Type *declared, Type *init_type) {
     if (type_equal(declared, init_type))
         return 1;
 
-    if (pointer_readonly_conversion_allowed(declared, init_type))
+    if (pointer_qualification_conversion_allowed(declared, init_type))
         return 1;
 
     /*
@@ -5793,6 +5824,12 @@ static Type *check_reinterpret_expression(SemanticContext *ctx, Node *node) {
         return NULL;
     }
 
+    if (source_type->pointer_is_volatile && !target_type->pointer_is_volatile) {
+        semantic_error(ctx, node,
+            "reinterpret cannot discard volatile pointer access");
+        return NULL;
+    }
+
     if (!reinterpret_pointer_conversion_allowed(target_type, source_type)) {
         semantic_error(ctx, node,
             "reinterpret must cross between typed and opaque raw pointers");
@@ -5878,16 +5915,19 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     pointer->element = operand;
 
                     /*
-                     * Taking the address of readonly storage must not recover
-                     * mutable access.
+                     * Taking the address of qualified storage must preserve
+                     * both write permission and volatile access semantics.
                      *
-                     *     &writable_storage -> T*
-                     *     &readonly_storage -> readonly T*
+                     *     &writable ordinary storage -> T*
+                     *     &readonly storage          -> readonly T*
+                     *     &volatile storage          -> volatile T*
                      */
                     pointer->pointer_access =
                         pointer_access_from_value_access(
                             operand_info->value_access
                         );
+                    pointer->pointer_is_volatile =
+                        operand_info->value_is_volatile;
 
                     sem_record_expr_info(
                         ctx,
@@ -5936,13 +5976,14 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
-                    sem_record_lvalue_info(
+                    sem_record_lvalue_info_qualified(
                         ctx,
                         node,
                         operand->element,
                         NULL,
                         value_access_from_pointer_access(
-                            operand->pointer_access));
+                            operand->pointer_access),
+                        operand->pointer_is_volatile);
 
                     return operand->element;
                 }
@@ -6399,9 +6440,9 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     /*
                      * Non-numeric operands normally require exact type equality.
                      *
-                     * Pointer comparison additionally allows an immediate mutable
-                     * versus readonly access difference when the pointee types are
-                     * otherwise exactly equal.
+                     * Pointer comparison additionally allows immediate readonly/volatile
+                     * qualifier differences when the pointee types are otherwise
+                     * exactly equal.
                      */
                     int compatible_types =
                         type_equal(left, right) ||
@@ -6769,7 +6810,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
             /*
              * A field of an lvalue is also an lvalue and inherits the
-             * same access permission.
+             * same access permission and volatile-access property.
              *
              *     writable_point.x       -> writable lvalue
              *     (*readonly_point).x    -> readonly lvalue
@@ -6779,12 +6820,13 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             if (object_info &&
                 object_info->value_category ==
                     VALUE_CATEGORY_LVALUE) {
-                sem_record_lvalue_info(
+                sem_record_lvalue_info_qualified(
                     ctx,
                     node,
                     field_type,
                     NULL,
-                    object_info->value_access
+                    object_info->value_access,
+                    object_info->value_is_volatile
                 );
             } else {
                 sem_record_expr_info(
@@ -6905,17 +6947,20 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                  *
                  * Access comes from the pointer type:
                  *
-                 *     T*[i]           -> writable lvalue
-                 *     readonly T*[i]  -> readonly lvalue
+                 *     T*[i]                    -> writable ordinary lvalue
+                 *     readonly T*[i]           -> readonly ordinary lvalue
+                 *     volatile T*[i]           -> writable volatile lvalue
+                 *     readonly volatile T*[i]  -> readonly volatile lvalue
                  */
-                sem_record_lvalue_info(
+                sem_record_lvalue_info_qualified(
                     ctx,
                     node,
                     element_type,
                     NULL,
                     value_access_from_pointer_access(
                         object_type->pointer_access
-                    )
+                    ),
+                    object_type->pointer_is_volatile
                 );
             } else if (
                 object_info &&
@@ -6925,12 +6970,13 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 /*
                  * Array indexing inherits access from the array storage.
                  */
-                sem_record_lvalue_info(
+                sem_record_lvalue_info_qualified(
                     ctx,
                     node,
                     element_type,
                     NULL,
-                    object_info->value_access
+                    object_info->value_access,
+                    object_info->value_is_volatile
                 );
             } else {
                 /*
@@ -7924,6 +7970,7 @@ static int source_type_is_readonly_c_char_pointer(const Type *type) {
     return type &&
            type->kind == TYPE_POINTER &&
            type->pointer_access == POINTER_ACCESS_READONLY &&
+           !type->pointer_is_volatile &&
            type->element &&
            type->element->kind == TYPE_NAMED &&
            names_equal(

@@ -1,0 +1,12 @@
+1 VOLATILE volatile
+1 I32 i32
+1 STAR *
+2 READONLY readonly
+2 VOLATILE volatile
+2 IDENT c_int
+2 STAR *
+3 VOLATILE volatile
+3 READONLY readonly
+3 OPAQUE opaque
+3 STAR *
+4 EOF

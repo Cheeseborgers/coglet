@@ -106,6 +106,7 @@ struct Type {
     */
     Type *element;
     PointerAccess pointer_access;
+    int pointer_is_volatile;
     int array_size; /* -1 if unspecified */
 
     StringView named_name;   // TYPE_NAMED

@@ -45,6 +45,9 @@ typedef struct SemExprInfo {
     ValueCategory value_category;
     ValueAccess value_access;
 
+    /* True when an lvalue denotes volatile-qualified storage. */
+    int value_is_volatile;
+
     struct SemExprInfo *next;
 } SemExprInfo;
 

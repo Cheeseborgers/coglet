@@ -1,0 +1,34 @@
+#extern(c)
+read_register::(reg: readonly volatile c_uint*) -> c_uint;
+
+#extern(c)
+write_register::(reg: volatile c_uint*, value: c_uint) -> void;
+
+#repr(c)
+Device::struct {
+    status: volatile c_uint*;
+    view: readonly volatile c_uint*;
+    raw: volatile opaque*;
+}
+
+qualifiers::(
+    plain: c_uint*,
+    readonly_plain: readonly c_uint*,
+    volatile_plain: volatile c_uint*,
+    readonly_volatile: readonly volatile c_uint*
+) -> void {
+    add_volatile: volatile c_uint* = plain;
+    add_both: readonly volatile c_uint* = plain;
+    add_volatile_to_readonly: readonly volatile c_uint* = readonly_plain;
+    add_readonly_to_volatile: readonly volatile c_uint* = volatile_plain;
+
+    round_trip_volatile := &*volatile_plain;
+    round_trip_both := &*readonly_volatile;
+    indexed_round_trip := &volatile_plain[0];
+
+    same := plain == volatile_plain;
+    same_both := plain == readonly_volatile;
+
+    read_register(readonly_volatile);
+    write_register(volatile_plain, 1);
+}

@@ -516,7 +516,7 @@ Equality is currently defined for:
 - numeric values with compatible types
 - `bool`
 - values of the same enum declaration
-- raw pointers with exactly equal immediate pointee types, ignoring only an immediate mutable-versus-readonly access difference
+- raw pointers with exactly equal immediate pointee types, ignoring immediate readonly/volatile qualifier differences
 - a mutable or readonly pointer and `null`
 
 Value equality is not currently defined for structs, arrays, or functions.
@@ -690,21 +690,20 @@ for a later complete floating-point specification.
 
 ## Raw Object Pointers
 
-Coglet supports mutable and readonly raw object pointers as its low-level memory
-and future C-interoperability foundation.
+Coglet supports mutable/readonly raw object pointers with optional volatile access as its low-level memory and C-interoperability foundation.
 
 ```c
 value: i32 = 10;
 
 pointer: i32* = &value;
 view: readonly i32* = pointer;
+device: volatile i32* = pointer;
+status: readonly volatile i32* = pointer;
 ```
 
-`T*` grants mutable access to its pointee. `readonly T*` grants read access but
-does not permit mutation through that pointer.
+`T*` grants mutable ordinary access to its pointee. `readonly T*` removes write permission. `volatile T*` remains writable but requires accesses through that pointer to retain volatile semantics. `readonly volatile T*` combines both qualifiers.
 
-Both forms remain nullable, non-owning, unchecked, and potentially dangling.
-Readonly access is not ownership, borrowing, lifetime checking, deep
+All forms remain nullable, non-owning, unchecked, and potentially dangling. Readonly access is not ownership, borrowing, lifetime checking, deep
 immutability, or a guarantee that the underlying object cannot change through
 another alias.
 
@@ -727,15 +726,14 @@ first[0] = 10;   // invalid
 
 ### Access propagation
 
-Dereferencing a mutable pointer produces a writable lvalue. Dereferencing a
-readonly pointer produces a readonly lvalue:
+Dereferencing or indexing preserves both permission and volatility:
 
 ```text
-*T*            -> writable T lvalue
-*readonly T*   -> readonly T lvalue
+*T*                     -> writable ordinary T lvalue
+*readonly T*            -> readonly ordinary T lvalue
+*volatile T*            -> writable volatile T lvalue
+*readonly volatile T*   -> readonly volatile T lvalue
 ```
-
-Pointer indexing follows the same rule.
 
 A struct field selected from an lvalue inherits the access of that lvalue:
 
@@ -753,11 +751,13 @@ write::(point: readonly Point*) -> void {
 }
 ```
 
-Address-of accepts writable or readonly lvalues and preserves their access:
+Address-of accepts writable or readonly lvalues and preserves both permission and volatility:
 
 ```text
-&writable T lvalue -> T*
-&readonly T lvalue -> readonly T*
+&writable ordinary T lvalue -> T*
+&readonly ordinary T lvalue -> readonly T*
+&writable volatile T lvalue -> volatile T*
+&readonly volatile T lvalue -> readonly volatile T*
 ```
 
 An address/dereference round trip therefore cannot recover mutable access:
@@ -771,45 +771,40 @@ mutable: i32* = &*view;            // invalid
 
 ### Pointer conversions
 
-Coglet permits one access-changing pointer conversion:
-
-```text
-T* -> readonly T*
-```
-
-The immediate pointee types must otherwise be exactly equal. The conversion is
-valid implicitly and through `cast`:
+Coglet permits monotonic immediate pointer qualification. A matching raw pointer may add `readonly`, `volatile`, or both, but may not remove either qualifier. The immediate pointee types must otherwise be exactly equal. These conversions are valid implicitly and through `cast`:
 
 ```c
 mutable: i32* = get_pointer();
 
 implicit_view: readonly i32* = mutable;
-explicit_view := cast(readonly i32*, mutable);
+volatile_view: volatile i32* = mutable;
+both: readonly volatile i32* = mutable;
+explicit_view := cast(readonly volatile i32*, mutable);
 ```
 
-The reverse conversion is rejected because it would invent write permission:
+Qualifier removal is rejected because it could invent write permission or discard volatile access semantics:
 
 ```c
-view: readonly i32* = get_view();
+view: readonly volatile i32* = get_view();
 
-mutable: i32* = view; // invalid
-cast(i32*, view);     // invalid
+mutable: i32* = view;            // invalid
+nonvolatile: readonly i32* = view; // invalid
+cast(i32*, view);                 // invalid
 ```
 
-Readonly access is not introduced recursively through nested pointers. In
-particular, `i32**` does not adapt to `readonly i32**`.
+Qualifiers are not introduced recursively through nested pointers. In particular, `i32**` does not adapt to `volatile i32**` or `readonly i32**`.
 
 ### Pointer equality
 
-Pointers with the same immediate pointee type may be compared even when their
-immediate access permissions differ:
+Pointers with the same immediate pointee type may be compared even when their immediate readonly/volatile qualifiers differ:
 
 ```c
 mutable: i32* = get_pointer();
 view: readonly i32* = mutable;
+device: volatile i32* = mutable;
 
-mutable == view; // valid
-view != mutable; // valid
+mutable == view;   // valid
+mutable == device; // valid
 ```
 
 Comparison observes pointer values and does not transfer permissions. Nested
@@ -818,12 +813,13 @@ different.
 
 ### Null pointers
 
-`null` is Coglet's dedicated null-pointer literal. It adapts to mutable or
-readonly raw-pointer types:
+`null` is Coglet's dedicated null-pointer literal. It adapts to any raw-pointer qualifier combination:
 
 ```c
 mutable: i32* = null;
 view: readonly i32* = null;
+device: volatile i32* = null;
+status: readonly volatile i32* = null;
 
 mutable == null;
 view != null;
@@ -850,6 +846,8 @@ and future C interoperability:
 ```c
 handle: opaque* = null;
 view: readonly opaque* = handle;
+device: volatile opaque* = handle;
+status: readonly volatile opaque* = handle;
 ```
 
 `opaque*` is pointer-sized and address-like, but it has no Coglet pointee type.
@@ -860,18 +858,17 @@ It therefore cannot be dereferenced or indexed:
 handle[0];  // invalid
 ```
 
-Mutable and readonly opaque pointers are distinct semantic types. As with typed
-raw pointers, mutable access may be dropped implicitly or through `cast`, but
-readonly access cannot become mutable:
+Readonly and volatile qualifiers are part of opaque-pointer type identity. As with typed raw pointers, qualifiers may be added monotonically but not discarded:
 
 ```c
 mutable: opaque* = get_handle();
 view: readonly opaque* = mutable;
-explicit_view := cast(readonly opaque*, mutable);
+device: volatile opaque* = mutable;
+both: readonly volatile opaque* = mutable;
+explicit_view := cast(readonly volatile opaque*, mutable);
 ```
 
-`null` adapts to either opaque-pointer access mode, and matching mutable and
-readonly opaque pointers may be compared. Typed raw pointers and opaque raw
+`null` adapts to every opaque-pointer qualifier form, and matching opaque pointers may be compared despite immediate qualifier differences. Typed raw pointers and opaque raw
 pointers are not assignment-compatible or directly comparable.
 
 Opaque pointers compose with ordinary pointer layers. `opaque**` is a normal
@@ -887,9 +884,7 @@ handle := *out;      // valid: result is opaque*
 **out;               // invalid: opaque* is not dereferenceable
 ```
 
-`readonly` continues to qualify the first pointer layer. Therefore
-`readonly opaque**` means a mutable outer pointer to a readonly `opaque*`
-value, matching the existing shallow pointer-qualification rule.
+`readonly` and `volatile` continue to qualify only the first pointer layer. Therefore `readonly volatile opaque**` means a mutable/non-volatile outer pointer to a readonly+volatile `opaque*` value.
 
 Crossing between typed and opaque raw pointers requires `reinterpret`; there
 is no implicit conversion and ordinary `cast` does not perform this operation.
@@ -1328,17 +1323,20 @@ interpretation. Coglet cannot prove that an opaque address actually denotes an
 object of the recovered pointee type, so this operation is explicitly
 unchecked.
 
-`reinterpret` never grants stronger access. A readonly source may only produce
-a readonly target:
+`reinterpret` never grants stronger access or weaker volatility guarantees. A readonly source may only produce a readonly target, and a volatile source may only produce a volatile target:
 
 ```c
 rp: readonly i32* = get_view();
 rh: readonly opaque* = reinterpret(readonly opaque*, rp); // valid
 
 reinterpret(opaque*, rp); // invalid: would discard readonly access
+
+vp: volatile i32* = get_device();
+reinterpret(opaque*, vp);          // invalid: would discard volatile access
+reinterpret(volatile opaque*, vp); // valid
 ```
 
-Mutable sources may be reinterpreted as mutable or readonly targets. General
+Mutable/non-volatile sources may add readonly and/or volatile qualifiers while being reinterpreted. General
 typed-pointer-to-typed-pointer conversions and opaque-pointer-to-opaque-pointer
 conversions are rejected; safe access-only changes continue to use ordinary
 assignment or `cast`.
@@ -1641,6 +1639,24 @@ x86-64 `sysv_abi` / `ms_abi` support. If a requested convention cannot be
 represented by the host C compiler/architecture, generated C fails explicitly
 instead of silently using another convention. Cross-target ABI selection remains
 a separate future milestone.
+
+### Volatile raw-pointer access
+
+Coglet models C `volatile` as an immediate raw-pointer pointee qualifier, independent from `readonly`:
+
+```c
+read_write: volatile c_uint*;
+read_only: readonly volatile c_uint*;
+raw: volatile opaque*;
+```
+
+`volatile T*` remains writable; it means loads/stores through that pointer are volatile accesses. `readonly volatile T*` combines read-only permission with volatile access semantics. The qualifiers may be written in either order, but diagnostics and AST output canonicalize them as `readonly volatile`. Like `readonly`, `volatile` applies only to the first pointer layer, so `volatile T**` is a mutable/non-volatile outer pointer to a volatile `T*`.
+
+Pointer qualification is monotonic. A matching pointer may implicitly add `readonly`, `volatile`, or both, but neither qualifier may be discarded implicitly. `cast` follows the same safe qualification rule, and `reinterpret` refuses to discard either readonly or volatile access while crossing between typed and opaque raw pointers. Pointer equality may ignore immediate readonly/volatile differences because comparison does not access the pointee.
+
+Volatility is also carried on semantic lvalue metadata. Dereference, pointer indexing, and field selection through a volatile lvalue preserve that property, and address-of reconstructs a volatile-qualified pointer. This prevents operations such as `&*p` from silently stripping volatility before a future native backend/optimizer sees the access.
+
+The host-C backend lowers represented pointer types to `volatile T *`, `const volatile T *`, `volatile void *`, and corresponding nested forms. Volatile-qualified raw pointers are valid anywhere the current C ABI subset accepts the corresponding unqualified raw pointer, including extern signatures, `cfn` types, and `#repr(c)` aggregate fields. Direct string-literal binding remains intentionally restricted to exactly `readonly c_char*`; it does not implicitly produce a volatile string pointer.
 
 ### C variadic calls
 

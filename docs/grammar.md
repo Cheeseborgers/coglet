@@ -10,7 +10,7 @@ A simplified type grammar is:
 
 ```ebnf
 type =
-    ["readonly"]
+    {"readonly" | "volatile"}
     (
         base_type {"*"}
       | "opaque" "*" {"*"}
@@ -21,22 +21,23 @@ type =
 cfn_call_option = "call" "=" c_calling_convention;
 ```
 
-`readonly` is valid only when at least one pointer layer follows the base type.
-It qualifies the first pointer layer following that base type.
+`readonly` and `volatile` are valid only when at least one pointer layer follows the base type. They may appear in either order, each at most once, and qualify the first pointer layer following that base type.
 
 ```c
 mutable: i32*;
 view: readonly i32*;
-nested: readonly i32**;
+device: volatile i32*;
+status: readonly volatile i32*;
+nested: readonly volatile i32**;
 ```
 
-`readonly i32**` means a mutable pointer to a readonly pointer to `i32`.
-Additional outer pointer layers remain mutable.
+`readonly volatile i32**` means a mutable outer pointer to a readonly+volatile pointer to `i32`. Additional outer pointer layers remain mutable and non-volatile unless separately represented by another type layer.
 
 These are invalid:
 
 ```c
 value: readonly i32;
+register: volatile i32;
 values: readonly i32[4];
 ```
 
@@ -70,8 +71,7 @@ win_callback: cfn(call=win64, c_int) -> c_int;
 missing: cfn(c_int) -> c_int = null;
 ```
 
-`readonly` does not qualify a bare `cfn` value. As with any other base type, it
-may qualify an explicit pointer layer following the function-pointer type.
+`readonly`/`volatile` do not qualify a bare `cfn` value. As with any other base type, they may qualify an explicit pointer layer following the function-pointer type.
 
 ### Initialization
 
@@ -108,25 +108,27 @@ For example, `-2147483648` is parsed as unary negation applied to the positive l
 
 ## Raw Object Pointers
 
-Pointer types use postfix `*`. The optional `readonly` keyword describes
-access through the first pointer layer.
+Pointer types use postfix `*`. The optional `readonly` and `volatile` qualifiers describe access through the first pointer layer.
 
 ```c
 value: i32 = 10;
 
 mutable: i32* = &value;
 view: readonly i32* = mutable;
+device: volatile i32* = mutable;
+status: readonly volatile i32* = mutable;
 ```
 
-`T*` grants mutable access to `T`. `readonly T*` grants read access without
-write permission through that pointer.
+`T*` grants mutable ordinary access to `T`. `readonly T*` grants read access without write permission. `volatile T*` remains writable but marks accesses through the pointer as volatile; `readonly volatile T*` combines both properties.
 
 Dereference and pointer indexing produce lvalues. Their storage access is
 determined by the pointer type:
 
 ```text
-T*            -> writable lvalue
-readonly T*   -> readonly lvalue
+T*                     -> writable ordinary lvalue
+readonly T*            -> readonly ordinary lvalue
+volatile T*            -> writable volatile lvalue
+readonly volatile T*   -> readonly volatile lvalue
 ```
 
 Address-of requires an lvalue and preserves its storage access. It does not
@@ -136,11 +138,10 @@ Postfix operators bind more tightly than prefix unary operators, so
 `*p.field` parses as `*(p.field)`, while `(*p).field` accesses a field through
 a pointer.
 
-Mutable pointers may adapt to matching readonly pointers. The reverse and
+Pointer qualification is monotonic. Matching pointers may add `readonly`, `volatile`, or both. Neither qualifier may be discarded implicitly. The reverse and
 recursive nested-pointer adaptations are rejected.
 
-Pointers with equal immediate pointee types may be compared despite an
-immediate mutable-versus-readonly difference. Both pointer forms may be
+Pointers with equal immediate pointee types may be compared despite immediate readonly/volatile qualifier differences. All raw-pointer qualifier forms may be
 compared with `null`.
 
 Arrays do not decay implicitly to pointers. General pointer arithmetic and
@@ -159,9 +160,7 @@ view: readonly opaque*;
 out: opaque**;
 ```
 
-`opaque*` and `readonly opaque*` may hold `null`, compare with `null`, compare
-with each other while ignoring only their immediate access difference, and
-adapt from mutable to readonly. They cannot be dereferenced or indexed.
+Opaque pointers may independently carry `readonly` and `volatile`, may hold `null`, and may compare while ignoring immediate qualifier differences. Qualifiers may be added monotonically but not discarded. Opaque pointers still cannot be dereferenced or indexed.
 
 Additional `*` layers are ordinary typed pointer layers. Consequently,
 `opaque**` may be dereferenced once to obtain an `opaque*`, but the resulting
@@ -703,7 +702,7 @@ conversion_expression =
 ```
 
 `cast(TargetType, expression)` is checked and value-preserving. It also permits
-the safe access conversion from `T*` to `readonly T*`, but not the reverse.
+safe qualification conversions from `T*` to `readonly T*`, `volatile T*`, or `readonly volatile T*`, but never qualifier removal.
 
 `truncate(TargetIntegerType, expression)` accepts only integer sources and
 concrete integer targets. It retains the low destination-width bits and
@@ -711,7 +710,7 @@ interprets them using the target signedness.
 
 `reinterpret(TargetPointerType, expression)` crosses only between a top-level
 typed raw pointer and a top-level opaque raw pointer. It preserves address bits,
-never removes readonly access, and is not a general `T*`-to-`U*` cast.
+never removes readonly or volatile access, and is not a general `T*`-to-`U*` cast.
 
 ## Switch
 

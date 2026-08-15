@@ -193,6 +193,7 @@ static const Keyword keywords[] = {
     {"truncate", TOK_TRUNCATE},
     {"reinterpret", TOK_REINTERPRET},
     {"readonly", TOK_READONLY},
+    {"volatile", TOK_VOLATILE},
     {"opaque", TOK_OPAQUE},
     {"cfn", TOK_CFN},
     {"null", TOK_NULL},
@@ -1111,6 +1112,7 @@ const char *token_type_name(TokenType type) {
         case TOK_TRUNCATE: return "TRUNCATE";
         case TOK_REINTERPRET: return "REINTERPRET";
         case TOK_READONLY: return "READONLY";
+        case TOK_VOLATILE: return "VOLATILE";
         case TOK_OPAQUE: return "OPAQUE";
         case TOK_CFN: return "CFN";
         case TOK_I8: return "I8";

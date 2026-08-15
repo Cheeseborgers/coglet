@@ -292,6 +292,9 @@ static const char *token_type_str(TokenType type)
         case TOK_READONLY:
             return "READONLY";
 
+        case TOK_VOLATILE:
+            return "VOLATILE";
+
         case TOK_OPAQUE:
             return "OPAQUE";
 
@@ -381,6 +384,8 @@ static void print_type(Type *t)
                     printf("readonly ");
                     break;
             }
+            if (t->pointer_is_volatile)
+                printf("volatile ");
             printf("opaque*");
             break;
 
@@ -393,6 +398,9 @@ static void print_type(Type *t)
                     printf("readonly ");
                     break;
             }
+
+            if (t->pointer_is_volatile)
+                printf("volatile ");
 
             print_type(t->element);
             printf("*");

@@ -1,0 +1,2 @@
+semantic error at line 2: reinterpret cannot discard volatile pointer access
+1 semantic error generated.

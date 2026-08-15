@@ -291,6 +291,9 @@ const char *token_debug_display_name(TokenType type)
         case TOK_READONLY:
             return "'readonly'";
 
+        case TOK_VOLATILE:
+            return "'volatile'";
+
         case TOK_OPAQUE:
             return "'opaque'";
 
@@ -870,11 +873,37 @@ static Node *parse_assignment(Parser *p) { return parse_assignment_from(p, parse
 static Type *parse_type(Parser *p)
 {
     int has_readonly     = 0;
+    int has_volatile     = 0;
     Token readonly_token = {0};
+    Token volatile_token = {0};
 
-    if (match(p, TOK_READONLY)) {
-        has_readonly = 1;
-        readonly_token = p->previous;
+    /*
+     * Pointer qualifiers may appear in either order:
+     *
+     *     readonly volatile T*
+     *     volatile readonly T*
+     *
+     * They qualify only the first raw-pointer layer, matching the existing
+     * `readonly` rule for nested pointers.
+     */
+    for (;;) {
+        if (match(p, TOK_READONLY)) {
+            if (has_readonly)
+                error_at(p, &p->previous, "duplicate 'readonly' pointer qualifier");
+            has_readonly = 1;
+            readonly_token = p->previous;
+            continue;
+        }
+
+        if (match(p, TOK_VOLATILE)) {
+            if (has_volatile)
+                error_at(p, &p->previous, "duplicate 'volatile' pointer qualifier");
+            has_volatile = 1;
+            volatile_token = p->previous;
+            continue;
+        }
+
+        break;
     }
 
     Type *base = arena_new(p->arena, Type);
@@ -1016,6 +1045,7 @@ static Type *parse_type(Parser *p)
         base->pointer_access = has_readonly
             ? POINTER_ACCESS_READONLY
             : POINTER_ACCESS_MUTABLE;
+        base->pointer_is_volatile = has_volatile;
         pointer_count = 1;
     } else if (match(p, TOK_I8)) {
         base->kind = TYPE_I8;
@@ -1082,6 +1112,8 @@ static Type *parse_type(Parser *p)
                 POINTER_ACCESS_MUTABLE;
         }
 
+        ptr->pointer_is_volatile = has_volatile && pointer_count == 0;
+
         base = ptr;
         pointer_count++;
     }
@@ -1091,6 +1123,14 @@ static Type *parse_type(Parser *p)
             p,
             &readonly_token,
             "'readonly' must qualify a pointer type"
+        );
+    }
+
+    if (has_volatile && pointer_count == 0) {
+        error_at(
+            p,
+            &volatile_token,
+            "'volatile' must qualify a pointer type"
         );
     }
 

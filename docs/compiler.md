@@ -250,9 +250,7 @@ permissions, or declaration identity matters.
 Type equality begins with pointer identity. Built-in scalars then compare by
 kind. Arrays and functions compare structurally. Function type equality also includes
 `FunctionAbi`, so an ordinary Coglet function signature is distinct from an
-otherwise identical native C callback signature. Pointer type equality includes
-both exact pointee-type equality and exact `PointerAccess` equality, so `T*`
-and `readonly T*` are distinct semantic types.
+otherwise identical native C callback signature. Pointer type equality includes exact pointee-type equality, exact `PointerAccess`, and the immediate volatile flag, so `T*`, `readonly T*`, `volatile T*`, and `readonly volatile T*` are distinct semantic types.
 
 Opaque raw pointers use the dedicated `TYPE_OPAQUE_POINTER` kind rather than
 `TYPE_POINTER(TYPE_OPAQUE)`. There is no standalone opaque value type. This
@@ -260,31 +258,30 @@ preserves the invariant that `TYPE_POINTER` always has a dereferenceable Coglet
 pointee. Additional pointer layers compose normally, so `opaque**` is
 `TYPE_POINTER` whose element is `TYPE_OPAQUE_POINTER`.
 
-`TYPE_OPAQUE_POINTER` carries the same immediate `PointerAccess` permission as
-typed pointers. Its type identity includes that permission, but it has no
-`element` pointee type.
+`TYPE_OPAQUE_POINTER` carries the same immediate `PointerAccess` permission and volatile flag as typed pointers. Its type identity includes both qualifiers, but it has no `element` pointee type.
 
-Directional compatibility is separate from type identity. The safe
-access-changing pointer conversion is:
+Directional compatibility is separate from type identity. Immediate raw-pointer qualification may safely add `readonly`, `volatile`, or both:
 
 ```text
-T* -> readonly T*
+T*          -> readonly T*
+T*          -> volatile T*
+T*          -> readonly volatile T*
+volatile T* -> readonly volatile T*
 ```
 
-The immediate pointee types must already be exactly equal. This prevents
-unsafe recursive conversions such as `T** -> readonly T**`.
+Neither qualifier may be removed implicitly. The immediate pointee types must already be exactly equal, preventing recursive qualifier insertion such as `T** -> volatile T**`.
 
-Pointer equality comparison may ignore only an immediate mutable-versus-
-readonly access difference within the same pointer family. Typed pointers must
+Pointer equality comparison may ignore immediate readonly and volatile qualifier differences within the same pointer family. Typed pointers must
 have exactly equal immediate pointee types; opaque pointers require no pointee
 comparison. Typed and opaque raw pointers are not directly comparable.
 Comparison does not alter either operand's permissions.
 
 Typed/opaque crossings use `CAST_REINTERPRET`. Semantic checking requires one
-side to be `TYPE_OPAQUE_POINTER` and the other to be `TYPE_POINTER`, and rejects
-any conversion that changes an immediate readonly source into a mutable target.
+side to be `TYPE_OPAQUE_POINTER` and the other to be `TYPE_POINTER`, and rejects any conversion that changes an immediate readonly source into a mutable target or discards an immediate volatile source qualifier.
 The operation is intentionally not a general typed-pointer-to-typed-pointer
 cast.
+
+`SemExprInfo` also records whether an lvalue is volatile. Dereference and pointer indexing derive that bit from the pointer type; field/array subobjects inherit it from their containing lvalue; address-of copies it back onto the resulting pointer type. This preserves volatile access intent even before the native backend grows direct memory-operation lowering.
 
 Structs and enums are nominal: the semantic `Type *` allocated for the
 declaration is its identity. Two different declarations remain different even

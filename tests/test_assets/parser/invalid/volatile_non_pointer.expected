@@ -1,0 +1,3 @@
+error: 'volatile' must qualify a pointer type
+value: volatile i32;
+       ^~~~~~~~

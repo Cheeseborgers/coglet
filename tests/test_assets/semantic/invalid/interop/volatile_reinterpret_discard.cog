@@ -1,0 +1,3 @@
+bad::(source: volatile opaque*) -> i32* {
+    return reinterpret(i32*, source);
+}

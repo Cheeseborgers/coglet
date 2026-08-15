@@ -1,0 +1,10 @@
+program
+  extern(c) func read_register -> c_uint
+    params:
+      param_decl reg: readonly volatile c_uint*
+  func probe -> void
+    params:
+      param_decl a: volatile i32*
+      param_decl b: readonly volatile opaque*
+    body:
+      block

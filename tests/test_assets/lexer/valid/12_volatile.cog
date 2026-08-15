@@ -1,0 +1,3 @@
+volatile i32*
+readonly volatile c_int*
+volatile readonly opaque*

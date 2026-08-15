@@ -807,6 +807,14 @@ static int verify_pointer_unary_info(Verifier *verifier, Node *expression, SemEx
             valid = 0;
         }
 
+        if (info->type &&
+            info->type->kind == TYPE_POINTER &&
+            info->type->pointer_is_volatile != operand_info->value_is_volatile) {
+            verifier_error(verifier, expression,
+                "address-of result does not preserve operand volatile access");
+            valid = 0;
+        }
+
         return valid;
     }
 
@@ -864,6 +872,12 @@ static int verify_pointer_unary_info(Verifier *verifier, Node *expression, SemEx
         valid = 0;
     }
 
+    if (info->value_is_volatile != operand_info->type->pointer_is_volatile) {
+        verifier_error(verifier, expression,
+            "dereference result does not preserve volatile pointer access");
+        valid = 0;
+    }
+
     return valid;
 }
 
@@ -910,6 +924,12 @@ static int verify_field_access_info(Verifier *verifier, Node *expression, SemExp
             valid = 0;
         }
 
+        if (info->value_is_volatile != object_info->value_is_volatile) {
+            verifier_error(verifier, expression,
+                "field access does not preserve volatile storage access");
+            valid = 0;
+        }
+
     } else {
         if (info->value_category != VALUE_CATEGORY_RVALUE) {
             verifier_error(verifier, expression,
@@ -923,6 +943,12 @@ static int verify_field_access_info(Verifier *verifier, Node *expression, SemExp
                 "rvalue field has storage access %s",
                 value_access_name(info->value_access));
 
+            valid = 0;
+        }
+
+        if (info->value_is_volatile) {
+            verifier_error(verifier, expression,
+                "rvalue field unexpectedly has volatile storage access");
             valid = 0;
         }
     }
@@ -994,6 +1020,12 @@ static int verify_index_access_info(Verifier *verifier, Node *expression, SemExp
                 value_access_name(info->value_access),
                 value_access_name(expected_access));
 
+            valid = 0;
+        }
+
+        if (info->value_is_volatile != object_type->pointer_is_volatile) {
+            verifier_error(verifier, expression,
+                "pointer index does not preserve volatile pointer access");
             valid = 0;
         }
 

@@ -1,0 +1,3 @@
+error: duplicate 'volatile' pointer qualifier
+value: volatile volatile i32*;
+                ^~~~~~~~

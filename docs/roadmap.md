@@ -309,13 +309,15 @@ layouts.
 Native C callbacks/function pointers are now implemented with explicit
 `cfn(...) -> T` types and top-level `#repr(c)` Coglet callback definitions. The
 host-C backend emits real function-pointer typedefs and executable tests exercise
-a C helper calling back into Coglet.
+a C helper calling back into Coglet. C variadic declarations and variadic `cfn`
+types are also implemented for the supported ABI value subset; the host C
+compiler performs the standard default argument promotions. Native Coglet
+variadics remain a separate future language-design problem.
 
 Remaining C interoperability work includes:
 
 - explicit target/C-ABI selection for cross compilation;
 - richer linker/toolchain configuration beyond `-L` / `-l`;
-- variadic functions;
 - unions and incomplete/opaque named C aggregate declarations;
 - mapping C null pointers to Coglet `null` at additional lowering boundaries.
 

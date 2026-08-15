@@ -275,6 +275,9 @@ struct Node {
              */
             int is_repr_c;
 
+            /* C-ABI variadic declaration: fixed parameters followed by `...`. */
+            int is_variadic;
+
             /*
              * Optional external linker symbol for FUNCTION_LINKAGE_EXTERN_C.
              * Empty means the Coglet declaration name is used unchanged.

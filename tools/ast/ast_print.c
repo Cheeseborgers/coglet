@@ -157,6 +157,9 @@ static const char *token_type_str(TokenType type)
         case TOK_DOT:
             return ".";
 
+        case TOK_ELLIPSIS:
+            return "...";
+
         case TOK_LBRACKET:
             return "[";
 
@@ -412,6 +415,11 @@ static void print_type(Type *t)
             for (int i = 0; i < t->parameter_count; i++) {
                 if (i > 0) printf(", ");
                 print_type(t->parameters[i]);
+            }
+
+            if (t->function_is_variadic) {
+                if (t->parameter_count > 0) printf(", ");
+                printf("...");
             }
 
             printf(") -> ");
@@ -808,9 +816,13 @@ static void print_node(Node *node)
             {
                 print_node(node->as.func_decl.params.items[i]);
 
-                if (i + 1 < node->as.func_decl.params.count)
+                if (i + 1 < node->as.func_decl.params.count ||
+                    node->as.func_decl.is_variadic)
                     printf(" ");
             }
+
+            if (node->as.func_decl.is_variadic)
+                printf("...");
 
             printf(") -> ");
             print_type(node->as.func_decl.return_type);
@@ -1362,6 +1374,11 @@ static void print_node_pretty(Node *node, int depth)
                         depth + 2
                     );
                 }
+            }
+
+            if (node->as.func_decl.is_variadic) {
+                indent(depth + 1);
+                printf("variadic: c\n");
             }
 
             if (node->as.func_decl.body) {

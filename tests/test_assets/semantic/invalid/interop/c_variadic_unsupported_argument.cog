@@ -1,0 +1,11 @@
+#repr(c)
+Packet::struct {
+    value: c_int;
+}
+
+#extern(c)
+sink::(tag: c_int, ...) -> c_int;
+
+bad::(packet: Packet) -> c_int {
+    return sink(1, packet);
+}

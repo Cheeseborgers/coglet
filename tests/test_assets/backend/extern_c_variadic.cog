@@ -1,0 +1,26 @@
+#extern(c)
+coglet_backend_varargs_probe::(marker: c_int, ...) -> c_int;
+
+#extern(c)
+unused_variadic_callback::(callback: cfn(c_int, ...) -> c_int) -> c_int;
+
+#repr(c)
+identity::(value: c_int) -> c_int {
+    return value;
+}
+
+forward::(small: c_short, single: c_float) -> c_int {
+    return coglet_backend_varargs_probe(
+        91,
+        small,
+        true,
+        single,
+        -2.5,
+        "ok",
+        identity
+    );
+}
+
+main::() -> c_int {
+    return forward(-3, 1.25);
+}

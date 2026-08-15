@@ -1,0 +1,17 @@
+#extern(c)
+printf::(format: readonly c_char*, ...) -> c_int;
+
+#extern(c)
+accept_variadic_callback::(callback: cfn(c_int, ...) -> c_int) -> c_int;
+
+#extern(c)
+variadic_target::(tag: c_int, ...) -> c_int;
+
+forward::(callback: cfn(c_int, ...) -> c_int, small: c_short, single: c_float) -> c_int {
+    callback(7, small, true, single, "ok");
+    return printf("value=%d %f %s\n", 7, 1.5, "ok");
+}
+
+keep_callback::() -> c_int {
+    return accept_variadic_callback(variadic_target);
+}

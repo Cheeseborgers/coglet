@@ -1,0 +1,11 @@
+#extern(c)
+accept::(callback: cfn(c_int, ...) -> c_int) -> c_int;
+
+#repr(c)
+fixed::(value: c_int) -> c_int {
+    return value;
+}
+
+bad::() -> c_int {
+    return accept(fixed);
+}

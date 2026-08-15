@@ -1,0 +1,2 @@
+semantic error at line 1: C variadics are currently allowed only on #extern(c) declarations and cfn types
+1 semantic error generated.

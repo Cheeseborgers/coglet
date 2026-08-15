@@ -1,0 +1,6 @@
+#extern(c)
+printf::(format: readonly c_char*, ...) -> c_int;
+
+use_callback::(callback: cfn(c_int, ...) -> c_int) -> void {
+    callback(1, true, 2.5);
+}

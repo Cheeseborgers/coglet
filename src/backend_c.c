@@ -318,6 +318,19 @@ static const char *register_c_type(CBackend *backend, const Type *type, const No
                 }
                 used += (size_t)written;
             }
+
+            if (type->function_is_variadic) {
+                written = snprintf(
+                    alias->definition + used,
+                    sizeof(alias->definition) - used,
+                    ", ..."
+                );
+                if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
+                    backend_error(backend, owner, "generated C callback typedef is too long");
+                    return NULL;
+                }
+                used += (size_t)written;
+            }
         }
 
         written = snprintf(
@@ -973,6 +986,9 @@ static void emit_parameter_type_list(CBackend *backend, Node *func, int with_nam
         if (with_names)
             fprintf(backend->out, " cg_p_%d", i);
     }
+
+    if (func->as.func_decl.is_variadic)
+        fputs(", ...", backend->out);
 }
 
 static int emit_enum_definitions(CBackend *backend)

@@ -1,3 +1,5 @@
+#include <stdarg.h>
+
 int coglet_backend_link_probe(void)
 {
     return 23;
@@ -182,4 +184,34 @@ int coglet_backend_callback_probe(
         return 55;
 
     return 53;
+}
+
+typedef int (*CogletBackendVariadicCallback)(int);
+
+int coglet_backend_varargs_probe(int marker, ...)
+{
+    va_list args;
+    va_start(args, marker);
+
+    int promoted_short = va_arg(args, int);
+    int promoted_bool = va_arg(args, int);
+    double promoted_float = va_arg(args, double);
+    double direct_double = va_arg(args, double);
+    const char *text = va_arg(args, const char *);
+    CogletBackendVariadicCallback callback =
+        va_arg(args, CogletBackendVariadicCallback);
+
+    va_end(args);
+
+    if (marker != 91 ||
+        promoted_short != -3 ||
+        promoted_bool != 1 ||
+        promoted_float != 1.25 ||
+        direct_double != -2.5 ||
+        !text || text[0] != 'o' || text[1] != 'k' || text[2] != '\0' ||
+        !callback || callback(57) != 57) {
+        return 58;
+    }
+
+    return 57;
 }

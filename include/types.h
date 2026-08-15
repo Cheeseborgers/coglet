@@ -108,6 +108,7 @@ struct Type {
     int parameter_count;
     Type *return_type;
     FunctionAbi function_abi;
+    int function_is_variadic;
 
     StringView enum_name;    // TYPE_ENUM
     int enum_is_repr_c;

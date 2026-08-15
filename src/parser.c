@@ -455,6 +455,9 @@ const char *token_debug_display_name(TokenType type)
         case TOK_DOT:
             return "'.'";
 
+        case TOK_ELLIPSIS:
+            return "'...'";
+
         case TOK_ARROW:
             return "'->'";
 
@@ -890,7 +893,20 @@ static Type *parse_type(Parser *p)
         int parameter_capacity = 0;
 
         if (!check(p, TOK_RPAREN)) {
-            do {
+            for (;;) {
+                if (match(p, TOK_ELLIPSIS)) {
+                    if (parameter_count == 0) {
+                        error_at(
+                            p,
+                            &p->previous,
+                            "C variadic function types require at least one fixed parameter"
+                        );
+                    }
+
+                    base->function_is_variadic = 1;
+                    break;
+                }
+
                 Type *parameter = parse_type(p);
 
                 if (parameter_count >= parameter_capacity) {
@@ -915,7 +931,10 @@ static Type *parse_type(Parser *p)
                 }
 
                 parameters[parameter_count++] = parameter;
-            } while (match(p, TOK_COMMA));
+
+                if (!match(p, TOK_COMMA))
+                    break;
+            }
         }
 
         consume(p, TOK_RPAREN);
@@ -1269,12 +1288,28 @@ static Node *parse_function_signature_rest(Parser *p, Token name, int line) {
     Node *func = ast_new_func_decl(p->arena, name.start, name.length, NULL, line);
 
     if (!check(p, TOK_RPAREN)) {
-        do {
+        for (;;) {
+            if (match(p, TOK_ELLIPSIS)) {
+                if (func->as.func_decl.params.count == 0) {
+                    error_at(
+                        p,
+                        &p->previous,
+                        "C variadic declarations require at least one fixed parameter"
+                    );
+                }
+
+                func->as.func_decl.is_variadic = 1;
+                break;
+            }
+
             if (!parse_parameter_group(p, func)) {
                 synchronize(p);
                 return ast_new_error(p->arena, p->current);
             }
-        } while (match(p, TOK_COMMA));
+
+            if (!match(p, TOK_COMMA))
+                break;
+        }
     }
 
     if (!consume(p, TOK_RPAREN)) {

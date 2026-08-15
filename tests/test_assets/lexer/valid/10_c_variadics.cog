@@ -1,0 +1,3 @@
+#extern(c)
+printf::(format: readonly c_char*, ...) -> c_int;
+callback: cfn(c_int, ...) -> c_int;

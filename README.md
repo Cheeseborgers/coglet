@@ -104,8 +104,10 @@ including struct dependencies reached through array fields, are cycle-checked an
 need not follow source order. Native C callbacks use explicit `cfn(...) -> T`
 types, and Coglet-defined callbacks opt into the C ABI with top-level `#repr(c)`
 functions. The host-C backend emits real function-pointer typedefs and supports C
-calling back into those Coglet functions. Explicit cross-target ABI selection and
-variadics remain future work.
+calling back into those Coglet functions. C-variadic extern declarations and
+variadic `cfn` types are supported for the current scalar/pointer ABI subset,
+with standard C default argument promotions performed by the native compiler.
+Explicit cross-target ABI selection and native Coglet variadics remain future work.
 
 For the current executable slice:
 
@@ -684,7 +686,7 @@ with weaker C behavior.
 
 Near-term work should combine C interoperability with careful backend expansion:
 
-1. Continue C ABI coverage with variadics, unions/incomplete types, and remaining ABI controls.
+1. Continue C ABI coverage with unions/incomplete types and remaining ABI controls.
 2. Add explicit target/C-ABI selection before cross-compilation claims are made.
 3. Lower core storage/control-flow and checked runtime arithmetic correctly.
 4. Design byte views/slices without introducing unrestricted array decay.

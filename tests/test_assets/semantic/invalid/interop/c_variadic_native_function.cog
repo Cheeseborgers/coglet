@@ -1,0 +1,3 @@
+bad::(value: c_int, ...) -> c_int {
+    return value;
+}

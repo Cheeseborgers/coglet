@@ -1138,6 +1138,7 @@ static int check_assignment_statement(SemanticContext *ctx, Node *node);
 static int check_compound_assignment_statement(SemanticContext *ctx, Node *node);
 static int check_inc_dec_statement(SemanticContext *ctx, Node *node);
 static int check_initializer_against_type(SemanticContext *ctx, Type *expected, Node *initializer);
+static int check_c_variadic_argument(SemanticContext *ctx, Node *argument);
 static void format_type_name(Type *type, char *buffer, size_t buffer_size);
 static int source_type_is_readonly_c_char_pointer(const Type *type);
 static int check_extern_c_string_argument(SemanticContext *ctx, Type *expected, Node *argument);
@@ -1216,7 +1217,12 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
         case TYPE_FUNCTION: {
             const char *prefix =
                 type->function_abi == FUNCTION_ABI_C ? "cfn" : "fn";
-            snprintf(buffer, buffer_size, "%s(...)", prefix);
+            snprintf(
+                buffer,
+                buffer_size,
+                type->function_is_variadic ? "%s(..., ...)" : "%s(...)",
+                prefix
+            );
             return;
         }
         case TYPE_UNTYPED_INT: snprintf(buffer, buffer_size, "untyped-int"); return;
@@ -1398,7 +1404,8 @@ static int type_equal(const Type *a, const Type *b) {
                         type_equal(a->element, b->element);
 
         case TYPE_FUNCTION:
-            if (a->function_abi != b->function_abi)
+            if (a->function_abi != b->function_abi ||
+                a->function_is_variadic != b->function_is_variadic)
                 return 0;
 
             if (a->parameter_count != b->parameter_count) {
@@ -6464,13 +6471,23 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
             int argc = node->as.call.arguments.count;
 
-            if (argc != callee->parameter_count) {
-                semantic_error_fmt(
-                    ctx, node,
-                    "wrong number of arguments: expected %d, got %d",
-                    callee->parameter_count,
-                    argc
-                );
+            if ((!callee->function_is_variadic && argc != callee->parameter_count) ||
+                (callee->function_is_variadic && argc < callee->parameter_count)) {
+                if (callee->function_is_variadic) {
+                    semantic_error_fmt(
+                        ctx, node,
+                        "wrong number of arguments: expected at least %d, got %d",
+                        callee->parameter_count,
+                        argc
+                    );
+                } else {
+                    semantic_error_fmt(
+                        ctx, node,
+                        "wrong number of arguments: expected %d, got %d",
+                        callee->parameter_count,
+                        argc
+                    );
+                }
                 return NULL;
             }
 
@@ -6492,7 +6509,17 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 callee_decl->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C;
 
             for (int i = 0; i < argc; i++) {
-                Node *arg        = node->as.call.arguments.items[i];
+                Node *arg = node->as.call.arguments.items[i];
+
+                if (i >= callee->parameter_count) {
+                    assert(callee->function_is_variadic);
+
+                    if (!check_c_variadic_argument(ctx, arg))
+                        ok = 0;
+
+                    continue;
+                }
+
                 Type *param_type = callee->parameters[i];
 
                 if (is_extern_c &&
@@ -7852,6 +7879,125 @@ static int check_extern_c_string_argument(
     return 1;
 }
 
+static int check_c_variadic_argument(SemanticContext *ctx, Node *argument) {
+
+    if (!argument)
+        return 0;
+
+    /*
+     * A direct string literal in a C variadic position has the same
+     * readonly byte-string intent as the fixed #extern(c) string conversion,
+     * but there is no expected parameter type to supply context. Record a
+     * readonly native-c-char pointer type explicitly; the host C compiler then
+     * performs the ordinary array-to-pointer conversion at the ABI boundary.
+     */
+    if (argument->type == NODE_STRING) {
+        Type *c_char = fixed_integer_type_for_c_abi(
+            ctx,
+            sizeof(char),
+            CHAR_MIN < 0
+        );
+
+        if (!c_char) {
+            semantic_error(ctx, argument,
+                "native C char type is not representable for variadic call");
+            return 0;
+        }
+
+        Type *pointer = new_type(ctx, TYPE_POINTER);
+        pointer->element = c_char;
+        pointer->pointer_access = POINTER_ACCESS_READONLY;
+
+        return check_extern_c_string_argument(ctx, pointer, argument);
+    }
+
+    Type *actual = check_value_expression(ctx, argument);
+    if (!actual)
+        return 0;
+
+    /*
+     * Coglet integer literals have no C suffix/type spelling. Keep the first
+     * variadic slice conservative and context-independent: an untyped integer
+     * literal is accepted only when it fits native C int, matching the most
+     * common default-promoted C argument type. Wider integer values must first
+     * acquire an explicit concrete type once backend cast lowering supports
+     * that expression form.
+     */
+    if (actual->kind == TYPE_UNTYPED_INT) {
+        Type *c_int = fixed_integer_type_for_c_abi(ctx, sizeof(int), 1);
+
+        if (!c_int ||
+            !check_constant_value_against_type(
+                ctx,
+                argument,
+                c_int,
+                "C variadic integer literal does not fit native c_int",
+                "C variadic integer argument must be integral"
+            )) {
+            return 0;
+        }
+
+        return 1;
+    }
+
+    /* Unsuffixed C floating literals are double, which is the required
+     * default-promotion destination for Coglet's untyped/f32 values. */
+    if (actual->kind == TYPE_UNTYPED_FLOAT)
+        return 1;
+
+    switch (actual->kind) {
+        case TYPE_BOOL:
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+        case TYPE_F32:
+        case TYPE_F64:
+        case TYPE_POINTER:
+        case TYPE_OPAQUE_POINTER:
+            if (extern_c_type_supported(actual, 0))
+                return 1;
+            break;
+
+        case TYPE_ENUM:
+            if (actual->enum_is_repr_c)
+                return 1;
+            break;
+
+        case TYPE_FUNCTION:
+            if (actual->function_abi == FUNCTION_ABI_C &&
+                extern_c_type_supported(actual, 0)) {
+                return 1;
+            }
+            break;
+
+        case TYPE_VOID:
+        case TYPE_NULL:
+        case TYPE_ARRAY:
+        case TYPE_NAMED:
+        case TYPE_STRUCT:
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
+            break;
+    }
+
+    char actual_name[128];
+    format_type_name(actual, actual_name, sizeof(actual_name));
+
+    semantic_error_fmt(
+        ctx,
+        argument,
+        "type '%s' is not supported as a C variadic argument",
+        actual_name
+    );
+
+    return 0;
+}
+
 static int check_argument_against_parameter(SemanticContext *ctx, Type *expected, Node *argument) {
 
     if (!expected || !argument) return 0;
@@ -8508,6 +8654,7 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
             : FUNCTION_ABI_COGLET;
 
     type->parameter_count = func->as.func_decl.params.count;
+    type->function_is_variadic = func->as.func_decl.is_variadic;
 
     if (type->parameter_count > 0) {
         type->parameters = arena_alloc(
@@ -8573,6 +8720,16 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
 
     if (!func_type)
         return 0;
+
+    if (node->as.func_decl.is_variadic &&
+        node->as.func_decl.linkage != FUNCTION_LINKAGE_EXTERN_C) {
+        semantic_error(
+            ctx,
+            node,
+            "C variadics are currently allowed only on #extern(c) declarations and cfn types"
+        );
+        return 0;
+    }
 
     if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C &&
         !validate_c_abi_function_signature(ctx, node, func_type, "#extern(c)")) {

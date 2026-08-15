@@ -82,6 +82,7 @@ typedef enum {
     TOK_SEMICOLON,
     TOK_COMMA,
     TOK_DOT,
+    TOK_ELLIPSIS,
     TOK_ARROW,
     TOK_COLON,
     TOK_COLON_COLON,

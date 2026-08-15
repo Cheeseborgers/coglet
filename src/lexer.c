@@ -691,6 +691,18 @@ Token lexer_next(Lexer *lx) {
             );
 
         case '.':
+            if (peek(lx) == '.' && peek_next(lx) == '.') {
+                advance(lx);
+                advance(lx);
+                return make_token(
+                    TOK_ELLIPSIS,
+                    start,
+                    3,
+                    start_line,
+                    start_column
+                );
+            }
+
             return make_token(
                 TOK_DOT,
                 start,
@@ -1262,6 +1274,9 @@ const char *token_type_name(TokenType type) {
 
         case TOK_DOT:
             return "DOT";
+
+        case TOK_ELLIPSIS:
+            return "ELLIPSIS";
 
         case TOK_ARROW:
             return "ARROW";

@@ -158,9 +158,12 @@ the actual linker symbol without requiring that symbol to be a safe C identifier
 The backend is intentionally smaller than the frontend. It currently lowers
 direct named function calls, direct calls through function-pointer parameters,
 integer/floating/Boolean/null literals, parameter and function-symbol references,
-literal numeric negation, expression statements, returns, and string literals
-that semantic analysis has admitted as direct `readonly c_char*` arguments to
-`#extern(c)` calls. String escapes are decoded using Coglet's literal rules and
+literal numeric negation, expression statements, returns, C-variadic calls,
+and string literals admitted at supported C ABI boundaries. For C variadic
+arguments the generated C expression types intentionally let the native C
+compiler perform its standard default argument promotions (for example
+`float -> double` and narrow integer/Boolean promotion). String escapes are
+decoded using Coglet's literal rules and
 re-escaped into the generated C translation unit, where the C literal supplies
 the trailing NUL byte. It requires `main::() -> c_int` for a host executable.
 Runtime arithmetic, locals, control flow, aggregate values, general array decay,
@@ -189,8 +192,9 @@ remains independent of linker options.
 
 There is not yet an explicit cross-compilation target model. A future driver
 configuration should provide the C ABI map instead of deriving it from the host.
-Variadics, richer callback lifetime/closure machinery, custom native compiler
-selection, raw linker flags, and non-C calling-convention details remain deferred.
+Native Coglet variadics, richer callback lifetime/closure machinery, custom
+native compiler selection, raw linker flags, and non-C calling-convention
+details remain deferred.
 
 ## Semantic Type Identity
 

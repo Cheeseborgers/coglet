@@ -14,7 +14,7 @@ type =
     (
         base_type {"*"}
       | "opaque" "*" {"*"}
-      | "cfn" "(" [type {"," type}] ")" ["->" type] {"*"}
+      | "cfn" "(" [type {"," type} ["," "..."]] ")" ["->" type] {"*"}
     )
     ["[" integer_constant "]"];
 ```
@@ -51,9 +51,11 @@ Fixed-size array bounds must currently be compile-time integer constants.
 
 `cfn(...) -> T` is a native C function-pointer type. Callback type parameters
 are types only; names and defaults are not part of function-pointer type syntax.
-Omitting `-> T` means `-> void`. `cfn` values are nullable and callable. An
-ordinary Coglet function does not implicitly become a `cfn`; a Coglet-defined
-callback must opt into the C ABI with `#repr(c)` on the function declaration.
+A trailing `...` marks a C-variadic function-pointer type and requires at least
+one fixed parameter, for example `cfn(c_int, ...) -> c_int`. Omitting `-> T`
+means `-> void`. `cfn` values are nullable and callable. An ordinary Coglet
+function does not implicitly become a `cfn`; a Coglet-defined callback must opt
+into the C ABI with `#repr(c)` on the function declaration.
 
 ```c
 callback: cfn(c_int, opaque*) -> c_int;
@@ -299,7 +301,7 @@ coglet_function_declaration =
 extern_c_function_declaration =
     "#" "extern" "(" "c" ")"
     identifier "::"
-    "(" [parameter_list] ")"
+    "(" [parameter_list ["," "..."]] ")"
     ["->" type]
     ";";
 ```
@@ -318,6 +320,9 @@ External C declaration:
 #extern(c)
 puts::(s: readonly c_char*) -> c_int;
 
+#extern(c)
+printf::(format: readonly c_char*, ...) -> c_int;
+
 #extern(c, name="SDL_CreateWindow")
 create_window::(title: readonly c_char*) -> opaque*;
 ```
@@ -326,6 +331,9 @@ The optional `name="..."` option overrides the external C/linker symbol while
 leaving the Coglet function identifier unchanged. Without it, the Coglet name
 is used as the external symbol. `#extern(c)` declarations have no Coglet body,
 are terminated by `;`, and are currently restricted semantically to top level.
+A trailing `...` is available only for the C ABI; ordinary Coglet function
+definitions remain non-variadic. C-variadic declarations require at least one
+fixed parameter.
 
 C-compatible struct representation uses the same declaration-annotation shape:
 

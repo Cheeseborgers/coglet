@@ -1529,6 +1529,41 @@ uses a separate C object that invokes the pointer and returns the Coglet
 callback's result. Callback closures/capture are not introduced: `#repr(c)`
 functions are top-level and therefore have no enclosing local state to capture.
 
+### C variadic calls
+
+C variadics are an FFI-only feature. A declaration may place `...` after one or
+more fixed parameters:
+
+```c
+#extern(c)
+printf::(format: readonly c_char*, ...) -> c_int;
+```
+
+The fixed arguments are checked exactly like an ordinary `#extern(c)` call.
+Arguments after `...` are restricted to values whose C variadic ABI behavior is
+currently defined: scalar integer/Boolean/floating values, supported raw
+pointers, explicit `#repr(c)` enums, native C function pointers, and direct
+string literals. Aggregate struct/array values, ordinary Coglet function values,
+and bare `null` are rejected in the variadic tail.
+
+The host-C backend intentionally delegates the standard C default argument
+promotions to the native C compiler. Thus Coglet `bool` and narrow integer
+values are promoted according to the host C integer-promotion rules, and `f32`
+is passed as C `double`. Untyped floating literals are already emitted as C
+`double` literals. Untyped integer literals are conservatively accepted only
+when their value fits native `c_int`; wider literal typing remains explicit
+future work rather than guessing a C suffix/type at the variadic boundary.
+
+Variadic native C function-pointer types use the corresponding syntax:
+
+```c
+callback: cfn(c_int, ...) -> c_int;
+```
+
+Variadic and non-variadic `cfn` types are distinct. Native Coglet variadics are
+not introduced by this feature; Coglet-defined functions, including
+`#repr(c)` callback definitions, remain non-variadic for now.
+
 Opaque pointers provide the C `void*`-style representation boundary:
 
 ```c

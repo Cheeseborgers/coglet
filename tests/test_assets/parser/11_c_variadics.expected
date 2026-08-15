@@ -1,0 +1,15 @@
+program
+  extern(c) func printf -> c_int
+    params:
+      param_decl format: readonly c_char*
+    variadic: c
+  func use_callback -> void
+    params:
+      param_decl callback: cfn(c_int, ...) -> c_int
+    body:
+      block
+        call
+          callback
+          1
+          true
+          2.5

@@ -1,0 +1,2 @@
+semantic error at line 10: type 'Packet' is not supported as a C variadic argument
+1 semantic error generated.

@@ -298,6 +298,18 @@ struct Node {
             int is_repr_c;
 
             /*
+             * Optional native-C layout controls for represented aggregates:
+             *
+             *     #repr(c, packed)
+             *     #repr(c, align=16)
+             *     #repr(c, packed, align=8)
+             *
+             * repr_c_align == 0 means no explicit minimum alignment.
+             */
+            int repr_c_packed;
+            int repr_c_align;
+
+            /*
              * `union` shares the aggregate field representation with structs
              * but has native C union layout when this flag is set.
              */

@@ -1494,6 +1494,37 @@ arrays. Arrays remain rejected as `#extern(c)` parameters and returns because C
 function-parameter array syntax decays to pointers rather than representing a
 by-value array ABI.
 
+Represented structs and unions may request native layout controls:
+
+```c
+#repr(c, packed)
+WireHeader::struct {
+    tag: c_uchar;
+    value: c_uint;
+}
+
+#repr(c, align=16)
+AlignedValue::struct {
+    value: c_int;
+}
+
+#repr(c, packed, align=8)
+PackedAligned::struct {
+    tag: c_uchar;
+    value: c_uint;
+}
+```
+
+`packed` reduces member alignment using the native C toolchain's packed-layout
+mechanism. `align=N` requests a **minimum** aggregate alignment; it does not
+promise to reduce a larger natural alignment. `N` must be a positive power of
+two. Combining the options gives packed member placement while retaining the
+requested aggregate alignment. These controls are rejected on incomplete C
+structs because there is no Coglet-owned layout to modify. The current host-C
+backend implements them with GNU-compatible `packed`/`aligned` attributes and
+emits a compile-time error on a host compiler that does not provide those
+attributes; broader toolchain-specific lowering is deferred.
+
 A native C union uses explicit represented syntax:
 
 ```c

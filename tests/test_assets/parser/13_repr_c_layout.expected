@@ -1,0 +1,10 @@
+program
+  #repr(c, packed) struct Packed
+    struct_field_decl tag: c_uchar
+    struct_field_decl value: c_uint
+  #repr(c, align=16) union Aligned
+    struct_field_decl integer: c_int
+    struct_field_decl real: c_double
+  #repr(c, packed, align=8) struct Packet
+    struct_field_decl tag: c_uchar
+    struct_field_decl value: c_uint

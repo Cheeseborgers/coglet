@@ -1,0 +1,9 @@
+error: #repr(c) layout options apply only to struct or union declarations
+Mode::enum(c_int) {
+      ^~~~
+error: expected expression
+}
+^
+error: expected ';' before '}'
+}
+^

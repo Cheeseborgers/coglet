@@ -321,11 +321,18 @@ types are also implemented for the supported ABI value subset; the host C
 compiler performs the standard default argument promotions. Native Coglet
 variadics remain a separate future language-design problem.
 
+Aggregate layout controls now include `#repr(c, packed)`, `#repr(c, align=N)`,
+and their combination for complete structs/unions. Alignment values are positive
+powers of two and denote minimum aggregate alignment; packed layout reduces
+member alignment. The host-C bootstrap lowers these through guarded
+GNU-compatible C attributes and executable tests verify size, alignment, field
+offsets, and by-value calls.
+
 Remaining C interoperability work includes:
 
 - explicit target/C-ABI selection for cross compilation;
 - richer linker/toolchain configuration beyond `-L` / `-l`;
-- remaining aggregate/ABI representation controls (alignment/packing/calling conventions);
+- remaining ABI representation controls (calling conventions, volatile, and other platform-specific cases);
 - mapping C null pointers to Coglet `null` at additional lowering boundaries.
 
 ### 2. Slices and Pointer-Length Views

@@ -1,0 +1,17 @@
+#repr(c, packed)
+Packed::struct {
+    tag: c_uchar;
+    value: c_uint;
+}
+
+#repr(c, align=16)
+Aligned::union {
+    integer: c_int;
+    real: c_double;
+}
+
+#repr(c, packed, align=8)
+Packet::struct {
+    tag: c_uchar;
+    value: c_uint;
+}

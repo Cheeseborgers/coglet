@@ -1,0 +1,4 @@
+#repr(c, packed)
+Mode::enum(c_int) {
+    Ready = 1,
+}

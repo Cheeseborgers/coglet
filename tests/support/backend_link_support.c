@@ -1,4 +1,5 @@
 #include <stdarg.h>
+#include <stddef.h>
 
 int coglet_backend_link_probe(void)
 {
@@ -276,3 +277,62 @@ int coglet_backend_union_packet_probe(CogletBackendUnionPacket packet)
 
     return 71;
 }
+
+
+#if defined(__GNUC__) || defined(__clang__)
+typedef struct __attribute__((packed)) CogletBackendPackedLayout {
+    unsigned char tag;
+    unsigned int value;
+} CogletBackendPackedLayout;
+
+typedef struct __attribute__((aligned(16))) CogletBackendAlignedLayout {
+    int value;
+} CogletBackendAlignedLayout;
+
+typedef struct __attribute__((packed, aligned(8))) CogletBackendPackedAlignedLayout {
+    unsigned char tag;
+    unsigned int value;
+} CogletBackendPackedAlignedLayout;
+
+CogletBackendPackedLayout coglet_backend_make_packed_layout(void)
+{
+    CogletBackendPackedLayout value = {7, 101};
+    return value;
+}
+
+CogletBackendAlignedLayout coglet_backend_make_aligned_layout(void)
+{
+    CogletBackendAlignedLayout value = {103};
+    return value;
+}
+
+CogletBackendPackedAlignedLayout coglet_backend_make_packed_aligned_layout(void)
+{
+    CogletBackendPackedAlignedLayout value = {11, 107};
+    return value;
+}
+
+int coglet_backend_layout_probe(
+    CogletBackendPackedLayout packed,
+    CogletBackendAlignedLayout aligned,
+    CogletBackendPackedAlignedLayout both
+)
+{
+    if (sizeof(CogletBackendPackedLayout) != 5 ||
+        __alignof__(CogletBackendPackedLayout) != 1 ||
+        offsetof(CogletBackendPackedLayout, value) != 1 ||
+        sizeof(CogletBackendAlignedLayout) != 16 ||
+        __alignof__(CogletBackendAlignedLayout) != 16 ||
+        sizeof(CogletBackendPackedAlignedLayout) != 8 ||
+        __alignof__(CogletBackendPackedAlignedLayout) != 8 ||
+        offsetof(CogletBackendPackedAlignedLayout, value) != 1 ||
+        packed.tag != 7 || packed.value != 101 ||
+        aligned.value != 103 ||
+        both.tag != 11 || both.value != 107) {
+        return 74;
+    }
+
+    return 73;
+}
+
+#endif

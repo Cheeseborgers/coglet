@@ -1,0 +1,9 @@
+error: unknown #repr(c) option; expected 'packed' or 'align'
+#repr(c, mystery)
+         ^~~~~~~
+error: expected expression
+}
+^
+error: expected ';' before '}'
+}
+^

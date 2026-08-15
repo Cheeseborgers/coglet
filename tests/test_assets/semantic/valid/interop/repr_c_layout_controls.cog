@@ -1,0 +1,19 @@
+#repr(c, packed)
+Packed::struct {
+    tag: c_uchar;
+    value: c_uint;
+}
+
+#repr(c, align=16)
+Aligned::struct {
+    value: c_int;
+}
+
+#repr(c, packed, align=8)
+PackedAligned::union {
+    integer: c_int;
+    real: c_double;
+}
+
+#extern(c)
+consume_layout::(a: Packed, b: Aligned, c: PackedAligned) -> c_int;

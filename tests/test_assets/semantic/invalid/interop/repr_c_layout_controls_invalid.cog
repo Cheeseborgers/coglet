@@ -1,0 +1,7 @@
+#repr(c, align=3)
+BadAlignment::struct {
+    value: c_int;
+}
+
+#repr(c, packed)
+Opaque::struct;

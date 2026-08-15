@@ -139,9 +139,16 @@ forward typedefs before pointer aliases, and topologically emits complete
 aggregate definitions so by-value dependencies do not depend on Coglet source
 order. Fixed array fields are emitted as native C array declarators; fields
 otherwise remain in source order and use source-level C ABI spellings. Arrays are
-still rejected in `#extern(c)` parameters and returns. Direct Coglet-side union
-member access/construction is deliberately rejected until active-member
-semantics are specified.
+still rejected in `#extern(c)` parameters and returns. Complete represented
+structs/unions may also carry `packed` and/or `align=N` metadata. Semantic
+analysis requires `N` to be a positive power of two and rejects layout controls
+on incomplete structs. The host-C backend lowers these controls through guarded
+GNU-compatible `__attribute__((packed))` / `__attribute__((aligned(N)))`
+annotations; generated C fails explicitly on host compilers without that
+attribute model rather than silently using the wrong ABI layout. `align=N` is a
+minimum alignment request, while `packed` controls member placement. Direct
+Coglet-side union member access/construction is deliberately rejected until
+active-member semantics are specified.
 
 A body-less `#repr(c) Name::struct;` declaration is represented as a nominal
 `TYPE_STRUCT` marked incomplete. Semantic analysis permits that type only behind

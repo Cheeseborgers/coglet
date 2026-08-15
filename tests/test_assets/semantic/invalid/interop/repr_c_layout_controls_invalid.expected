@@ -1,0 +1,3 @@
+semantic error at line 1: #repr(c) alignment must be a power of two
+semantic error at line 6: incomplete #repr(c) structs cannot specify packed or alignment controls
+2 semantic errors generated.

@@ -8979,9 +8979,11 @@ static int declare_struct_shell(SemanticContext *ctx, Node *node) {
 
     type->struct_name.data   = node->as.struct_decl.name.data;
     type->struct_name.length = node->as.struct_decl.name.length;
-    type->struct_is_repr_c      = node->as.struct_decl.is_repr_c;
-    type->struct_is_union       = node->as.struct_decl.is_union;
-    type->struct_is_incomplete  = node->as.struct_decl.is_incomplete;
+    type->struct_is_repr_c       = node->as.struct_decl.is_repr_c;
+    type->struct_repr_c_packed   = node->as.struct_decl.repr_c_packed;
+    type->struct_repr_c_align    = node->as.struct_decl.repr_c_align;
+    type->struct_is_union        = node->as.struct_decl.is_union;
+    type->struct_is_incomplete   = node->as.struct_decl.is_incomplete;
 
     node->as.struct_decl.resolved_type = type;
 
@@ -9177,10 +9179,30 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
             semantic_error(ctx, node, "incomplete struct declarations require #repr(c)");
         }
 
+        if (node->as.struct_decl.repr_c_packed ||
+            node->as.struct_decl.repr_c_align > 0) {
+            semantic_error(
+                ctx,
+                node,
+                "incomplete #repr(c) structs cannot specify packed or alignment controls"
+            );
+        }
+
         /* An incomplete declaration intentionally has no Coglet field layout. */
         type->field_count = 0;
         type->fields = NULL;
         return;
+    }
+
+    if (node->as.struct_decl.repr_c_align > 0) {
+        unsigned align = (unsigned)node->as.struct_decl.repr_c_align;
+        if ((align & (align - 1u)) != 0) {
+            semantic_error(
+                ctx,
+                node,
+                "#repr(c) alignment must be a power of two"
+            );
+        }
     }
 
     if (node->as.struct_decl.is_repr_c &&

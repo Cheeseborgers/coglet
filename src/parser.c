@@ -1431,6 +1431,12 @@ static Node *parse_attribute_decl(Parser *p)
     Token attribute = p->previous;
 
     if (token_text_equals(attribute, "repr")) {
+        int repr_packed = 0;
+        int repr_align = 0;
+        int saw_packed = 0;
+        int saw_align = 0;
+        int saw_layout_option = 0;
+
         if (!consume(p, TOK_LPAREN) || !consume(p, TOK_IDENT)) {
             synchronize(p);
             return ast_new_error(p->arena, p->current);
@@ -1441,6 +1447,65 @@ static Node *parse_attribute_decl(Parser *p)
             error_at(p, &abi, "unsupported representation ABI; expected 'c'");
             synchronize(p);
             return ast_new_error(p->arena, abi);
+        }
+
+        while (match(p, TOK_COMMA)) {
+            if (!consume(p, TOK_IDENT)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
+            }
+
+            Token option = p->previous;
+            saw_layout_option = 1;
+
+            if (token_text_equals(option, "packed")) {
+                if (saw_packed) {
+                    error_at(p, &option, "duplicate #repr(c) option 'packed'");
+                    synchronize(p);
+                    return ast_new_error(p->arena, option);
+                }
+
+                saw_packed = 1;
+                repr_packed = 1;
+                continue;
+            }
+
+            if (token_text_equals(option, "align")) {
+                if (saw_align) {
+                    error_at(p, &option, "duplicate #repr(c) option 'align'");
+                    synchronize(p);
+                    return ast_new_error(p->arena, option);
+                }
+
+                if (!consume(p, TOK_EQUAL) || !consume(p, TOK_NUMBER_INT)) {
+                    synchronize(p);
+                    return ast_new_error(p->arena, p->current);
+                }
+
+                Token align_token = p->previous;
+                uint64_t align_value = 0;
+
+                if (!parse_integer_u64(align_token, &align_value) ||
+                    align_value > INT_MAX) {
+                    error_at(p, &align_token, "#repr(c) alignment exceeds compiler limit");
+                    synchronize(p);
+                    return ast_new_error(p->arena, align_token);
+                }
+
+                if (align_value == 0) {
+                    error_at(p, &align_token, "#repr(c) alignment must be greater than zero");
+                    synchronize(p);
+                    return ast_new_error(p->arena, align_token);
+                }
+
+                saw_align = 1;
+                repr_align = (int)align_value;
+                continue;
+            }
+
+            error_at(p, &option, "unknown #repr(c) option; expected 'packed' or 'align'");
+            synchronize(p);
+            return ast_new_error(p->arena, option);
         }
 
         if (!consume(p, TOK_RPAREN) || !consume(p, TOK_IDENT)) {
@@ -1458,9 +1523,22 @@ static Node *parse_attribute_decl(Parser *p)
 
         if (check(p, TOK_STRUCT) || check(p, TOK_UNION)) {
             decl = parse_struct_decl_rest(p, name, hash.line);
-            if (decl && decl->type == NODE_STRUCT_DECL)
+            if (decl && decl->type == NODE_STRUCT_DECL) {
                 decl->as.struct_decl.is_repr_c = 1;
+                decl->as.struct_decl.repr_c_packed = repr_packed;
+                decl->as.struct_decl.repr_c_align = repr_align;
+            }
             return decl;
+        }
+
+        if (saw_layout_option) {
+            error_at(
+                p,
+                &p->current,
+                "#repr(c) layout options apply only to struct or union declarations"
+            );
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
         }
 
         if (check(p, TOK_ENUM)) {

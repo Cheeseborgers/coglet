@@ -349,8 +349,12 @@ Conceptually:
 
 ```text
 repr_c_decl :=
-    "#" "repr" "(" "c" ")"
+    "#" "repr" "(" "c" [repr_c_layout_option {"," repr_c_layout_option}] ")"
     identifier "::" (repr_c_struct_body | repr_c_union_body | repr_c_enum_body);
+
+repr_c_layout_option :=
+      "packed"
+    | "align" "=" integer_literal;
 
 repr_c_struct_body :=
     "struct" ("{" {struct_field_decl} "}" | ";");
@@ -364,7 +368,11 @@ repr_c_enum_body :=
 
 `repr` and `c` remain identifiers at the lexer level. `union` is a language
 keyword. `#repr(c)` applies to top-level struct, union, and enum declarations.
-C-represented enums require an explicit native C integer backing alias. A
+The optional `packed` and `align=N` layout controls apply only to complete struct
+and union declarations. `align=N` requires a positive power of two and requests a
+minimum aggregate alignment; `packed` reduces member alignment. They may be
+combined as `#repr(c, packed, align=8)`. Incomplete structs cannot carry layout
+controls. C-represented enums require an explicit native C integer backing alias. A
 represented struct or union may contain another complete `#repr(c)` aggregate by
 value or a positive-length fixed array of supported C field types, including
 `#repr(c)` enum values and arrays of those enums. Inline aggregate dependencies

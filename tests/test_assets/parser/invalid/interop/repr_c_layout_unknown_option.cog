@@ -1,0 +1,4 @@
+#repr(c, mystery)
+Thing::struct {
+    value: c_int;
+}

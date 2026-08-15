@@ -107,10 +107,15 @@ functions. The host-C backend emits real function-pointer typedefs and supports 
 calling back into those Coglet functions. C-variadic extern declarations and
 variadic `cfn` types are supported for the current scalar/pointer ABI subset,
 with standard C default argument promotions performed by the native compiler.
-Body-less `#repr(c) Name::struct;` declarations model incomplete/opaque named C
-structs: they may cross C boundaries only through raw pointers, while by-value
-storage, construction, dereference/indexing, and field access are rejected.
-Explicit cross-target ABI selection and native Coglet variadics remain future work.
+Complete represented structs/unions also support `#repr(c, packed)`,
+`#repr(c, align=N)`, or both. `align=N` is a positive-power-of-two minimum
+alignment request; the current host-C backend lowers these controls with guarded
+GNU-compatible layout attributes and refuses unsupported host compilers rather
+than silently changing ABI layout. Body-less `#repr(c) Name::struct;`
+declarations model incomplete/opaque named C structs: they may cross C
+boundaries only through raw pointers, while by-value storage, construction,
+dereference/indexing, and field access are rejected. Explicit cross-target ABI
+selection and native Coglet variadics remain future work.
 
 For the current executable slice:
 
@@ -690,7 +695,7 @@ with weaker C behavior.
 
 Near-term work should combine C interoperability with careful backend expansion:
 
-1. Continue C ABI coverage with remaining ABI/layout controls (alignment, packing, calling conventions).
+1. Continue C ABI coverage with calling conventions and other platform-specific ABI controls.
 2. Add explicit target/C-ABI selection before cross-compilation claims are made.
 3. Lower core storage/control-flow and checked runtime arithmetic correctly.
 4. Design byte views/slices without introducing unrestricted array decay.

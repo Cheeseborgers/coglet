@@ -1,0 +1,36 @@
+#repr(c, packed)
+PackedLayout::struct {
+    tag: c_uchar;
+    value: c_uint;
+}
+
+#repr(c, align=16)
+AlignedLayout::struct {
+    value: c_int;
+}
+
+#repr(c, packed, align=8)
+PackedAlignedLayout::struct {
+    tag: c_uchar;
+    value: c_uint;
+}
+
+#extern(c, name="coglet_backend_make_packed_layout")
+make_packed::() -> PackedLayout;
+
+#extern(c, name="coglet_backend_make_aligned_layout")
+make_aligned::() -> AlignedLayout;
+
+#extern(c, name="coglet_backend_make_packed_aligned_layout")
+make_packed_aligned::() -> PackedAlignedLayout;
+
+#extern(c, name="coglet_backend_layout_probe")
+probe_layout::(
+    packed: PackedLayout,
+    aligned: AlignedLayout,
+    both: PackedAlignedLayout
+) -> c_int;
+
+main::() -> c_int {
+    return probe_layout(make_packed(), make_aligned(), make_packed_aligned());
+}

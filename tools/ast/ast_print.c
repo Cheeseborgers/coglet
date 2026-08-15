@@ -840,8 +840,14 @@ static void print_node(Node *node)
 
         case NODE_STRUCT_DECL:
             printf(node->as.struct_decl.is_union ? "(union " : "(struct ");
-            if (node->as.struct_decl.is_repr_c)
-                printf("#repr(c) ");
+            if (node->as.struct_decl.is_repr_c) {
+                printf("#repr(c");
+                if (node->as.struct_decl.repr_c_packed)
+                    printf(", packed");
+                if (node->as.struct_decl.repr_c_align > 0)
+                    printf(", align=%d", node->as.struct_decl.repr_c_align);
+                printf(") ");
+            }
             print_string_view(node->as.struct_decl.name);
             if (node->as.struct_decl.is_incomplete)
                 printf(" incomplete");
@@ -1401,8 +1407,14 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_STRUCT_DECL:
             indent(depth);
 
-            if (node->as.struct_decl.is_repr_c)
-                printf("#repr(c) ");
+            if (node->as.struct_decl.is_repr_c) {
+                printf("#repr(c");
+                if (node->as.struct_decl.repr_c_packed)
+                    printf(", packed");
+                if (node->as.struct_decl.repr_c_align > 0)
+                    printf(", align=%d", node->as.struct_decl.repr_c_align);
+                printf(") ");
+            }
             printf(node->as.struct_decl.is_union ? "union " : "struct ");
             print_string_view(node->as.struct_decl.name);
             if (node->as.struct_decl.is_incomplete)

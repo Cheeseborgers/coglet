@@ -1,0 +1,9 @@
+error: #repr(c) alignment must be greater than zero
+#repr(c, align=0)
+               ^
+error: expected expression
+}
+^
+error: expected ';' before '}'
+}
+^

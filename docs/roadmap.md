@@ -299,9 +299,11 @@ are decoded/re-emitted by the host-C backend without enabling general
 array-to-pointer decay. Explicit cross-target ABI selection is still deferred.
 
 The C aggregate representation slice now supports `#repr(c)` structs with
-scalar/raw-pointer fields and nested `#repr(c)` structs by value. Inline struct
-dependencies are checked for cycles and emitted in dependency order, so source
-declaration order does not constrain valid C layouts.
+scalar/raw-pointer fields, positive-length fixed arrays of supported field types,
+and nested `#repr(c)` structs by value. Inline struct dependencies, including
+dependencies reached through array elements, are checked for cycles and emitted
+in dependency order, so source declaration order does not constrain valid C
+layouts.
 
 Remaining C interoperability work includes:
 
@@ -309,7 +311,6 @@ Remaining C interoperability work includes:
 - richer linker/toolchain configuration beyond `-L` / `-l`;
 - variadic functions;
 - C callbacks/function pointers;
-- fixed-size C-compatible array fields inside `#repr(c)` aggregates;
 - enum backing representation;
 - extending `#repr(c)` to enums once those representation rules are defined;
 - mapping C null pointers to Coglet `null` at lowering boundaries.

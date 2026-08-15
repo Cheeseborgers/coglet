@@ -8647,11 +8647,20 @@ static int repr_c_struct_field_type_supported(const Type *type)
         case TYPE_STRUCT:
             return type->struct_is_repr_c;
 
+        case TYPE_ARRAY:
+            /*
+             * C-compatible aggregate fields may contain fixed-size arrays.
+             * Unsized and zero-length arrays do not have a portable standard-C
+             * object layout, so keep them outside the ABI subset.
+             */
+            return type->array_size > 0 &&
+                   type->element != NULL &&
+                   repr_c_struct_field_type_supported(type->element);
+
         case TYPE_VOID:
         case TYPE_UNTYPED_INT:
         case TYPE_UNTYPED_FLOAT:
         case TYPE_NULL:
-        case TYPE_ARRAY:
         case TYPE_NAMED:
         case TYPE_ENUM:
         case TYPE_FUNCTION:
@@ -8695,9 +8704,14 @@ static void validate_repr_c_struct_layout_dfs(
             Type *field_type = type->fields[i].type;
 
             /*
-             * Only direct struct-valued fields contribute to inline layout.
-             * Raw pointers may participate in arbitrary recursive graphs.
+             * Direct struct-valued fields and fixed arrays of structs both
+             * contribute to inline layout. Raw pointers may participate in
+             * arbitrary recursive graphs because their pointee is not laid
+             * out inline.
              */
+            while (field_type && field_type->kind == TYPE_ARRAY)
+                field_type = field_type->element;
+
             if (!field_type || field_type->kind != TYPE_STRUCT)
                 continue;
 

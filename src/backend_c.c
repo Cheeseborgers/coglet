@@ -341,6 +341,25 @@ static int collect_functions(CBackend *backend)
     return !backend->had_error;
 }
 
+static int prepare_struct_field_type(CBackend *backend, const Type *type, const Node *owner)
+{
+    if (!type) {
+        backend_error(backend, owner, "missing struct field type during C lowering");
+        return 0;
+    }
+
+    if (type->kind == TYPE_ARRAY) {
+        if (type->array_size <= 0 || !type->element) {
+            backend_error(backend, owner, "invalid #repr(c) array field during C lowering");
+            return 0;
+        }
+
+        return prepare_struct_field_type(backend, type->element, owner);
+    }
+
+    return register_c_type(backend, type, owner) != NULL;
+}
+
 static int prepare_struct_types(CBackend *backend)
 {
     for (int i = 0; i < backend->struct_count; i++) {
@@ -348,7 +367,7 @@ static int prepare_struct_types(CBackend *backend)
 
         for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
             Node *field = decl->as.struct_decl.fields.items[f];
-            if (!register_c_type(backend, field->as.struct_field_decl.var_type, field))
+            if (!prepare_struct_field_type(backend, field->as.struct_field_decl.var_type, field))
                 return 0;
         }
     }
@@ -714,6 +733,43 @@ static void emit_struct_forward_declarations(CBackend *backend)
         fputc('\n', backend->out);
 }
 
+static int emit_struct_field_declaration(
+    CBackend *backend,
+    const Type *type,
+    const Node *field,
+    int field_index
+) {
+    if (!type) {
+        backend_error(backend, field, "missing struct field type during C lowering");
+        return 0;
+    }
+
+    if (type->kind == TYPE_ARRAY) {
+        if (type->array_size <= 0 || !type->element) {
+            backend_error(backend, field, "invalid #repr(c) array field during C lowering");
+            return 0;
+        }
+
+        const char *element_type = register_c_type(backend, type->element, field);
+        if (!element_type) return 0;
+
+        fprintf(
+            backend->out,
+            "    %s cg_f_%d[%d];\n",
+            element_type,
+            field_index,
+            type->array_size
+        );
+        return 1;
+    }
+
+    const char *type_name = register_c_type(backend, type, field);
+    if (!type_name) return 0;
+
+    fprintf(backend->out, "    %s cg_f_%d;\n", type_name, field_index);
+    return 1;
+}
+
 static int emit_struct_definition(CBackend *backend, int index)
 {
     CStruct *structure = &backend->structs[index];
@@ -740,6 +796,9 @@ static int emit_struct_definition(CBackend *backend, int index)
     for (int f = 0; f < structure->type->field_count; f++) {
         const Type *field_type = structure->type->fields[f].type;
 
+        while (field_type && field_type->kind == TYPE_ARRAY)
+            field_type = field_type->element;
+
         if (!field_type || field_type->kind != TYPE_STRUCT)
             continue;
 
@@ -763,11 +822,13 @@ static int emit_struct_definition(CBackend *backend, int index)
 
     for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
         Node *field = decl->as.struct_decl.fields.items[f];
-        const char *type_name =
-            register_c_type(backend, field->as.struct_field_decl.var_type, field);
-        if (!type_name) return 0;
-
-        fprintf(backend->out, "    %s cg_f_%d;\n", type_name, f);
+        if (!emit_struct_field_declaration(
+                backend,
+                field->as.struct_field_decl.var_type,
+                field,
+                f)) {
+            return 0;
+        }
     }
 
     fputs("};\n\n", backend->out);

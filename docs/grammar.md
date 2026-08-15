@@ -332,8 +332,10 @@ repr_c_struct_decl :=
 
 `repr` and `c` remain identifiers at the lexer level. `#repr(c)` currently
 applies only to top-level struct declarations. A represented struct may contain
-another `#repr(c)` struct by value, provided the resulting inline layout graph
-is acyclic.
+another `#repr(c)` struct by value or a positive-length fixed array of supported
+C field types. Struct dependencies reached directly or through array elements
+must form an acyclic inline layout graph. Unsized and zero-length C-layout array
+fields are rejected.
 
 The C scalar-ABI names `c_char`, `c_schar`, `c_uchar`, `c_short`,
 `c_ushort`, `c_int`, `c_uint`, `c_long`, `c_ulong`, `c_longlong`,

@@ -1449,11 +1449,16 @@ consume_point::(point: CPoint) -> c_int;
 ```
 
 `#repr(c)` is top-level only. C-compatible scalar/raw-pointer fields are
-accepted, including pointers to other `#repr(c)` structs and other `#repr(c)`
-structs embedded directly by value. By-value struct dependencies may be declared
-in any source order; their inline layout graph must be acyclic. Raw-pointer
-cycles remain valid because the pointee is not laid out inline. Empty structs,
-arrays, enums, and ordinary Coglet structs are rejected as fields for now.
+accepted, including pointers to other `#repr(c)` structs, other `#repr(c)` structs
+embedded directly by value, and fixed-size arrays whose element type is itself a
+supported C field type. Array lengths must be greater than zero; unsized and
+zero-length arrays are rejected. By-value struct dependencies may be declared in
+any source order, including dependencies reached through an array element; their
+inline layout graph must be acyclic. Raw-pointer cycles remain valid because the
+pointee is not laid out inline. Empty structs, enums, and ordinary Coglet structs
+remain rejected as fields. Arrays remain rejected as `#extern(c)` parameters and
+returns because C function-parameter array syntax decays to pointers rather than
+representing a by-value array ABI.
 
 Opaque pointers provide the C `void*`-style representation boundary:
 
@@ -1530,9 +1535,9 @@ literal. It does not yet lower locals, control flow, runtime checked arithmetic,
 general casts, or general array storage/decay. Host executables currently use
 `main::() -> c_int` as the entry-point contract.
 
-Fixed-size C array fields, variadic functions, C callbacks/function pointers,
-enum representation attributes, calling-convention selection, and cross-target
-lowering are still deferred.
+Variadic functions, C callbacks/function pointers, enum representation
+attributes, calling-convention selection, and cross-target lowering are still
+deferred.
 
 ## Current Semantic Architecture
 

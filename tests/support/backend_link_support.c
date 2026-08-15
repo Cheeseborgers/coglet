@@ -94,3 +94,43 @@ int coglet_backend_nested_struct_probe(CogletBackendNestedPacket packet)
 
     return 41;
 }
+
+typedef struct CogletBackendArrayPoint {
+    int x;
+    double y;
+} CogletBackendArrayPoint;
+
+typedef struct CogletBackendArrayPacket {
+    char name[4];
+    CogletBackendArrayPoint points[2];
+    int values[3];
+} CogletBackendArrayPacket;
+
+CogletBackendArrayPacket coglet_backend_make_array_packet(void)
+{
+    CogletBackendArrayPacket packet = {
+        {'c', 'o', 'g', '\0'},
+        {{11, 1.5}, {13, 2.5}},
+        {17, 19, 23}
+    };
+    return packet;
+}
+
+int coglet_backend_array_struct_probe(CogletBackendArrayPacket packet)
+{
+    if (packet.name[0] != 'c' ||
+        packet.name[1] != 'o' ||
+        packet.name[2] != 'g' ||
+        packet.name[3] != '\0' ||
+        packet.points[0].x != 11 ||
+        packet.points[0].y != 1.5 ||
+        packet.points[1].x != 13 ||
+        packet.points[1].y != 2.5 ||
+        packet.values[0] != 17 ||
+        packet.values[1] != 19 ||
+        packet.values[2] != 23) {
+        return 46;
+    }
+
+    return 45;
+}

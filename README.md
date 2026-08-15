@@ -97,10 +97,11 @@ deliberately small executable subset and resolve direct external C calls through
 the native `cc` toolchain. Direct string literals may bind to `readonly c_char*`
 parameters of `#extern(c)` functions without enabling general array-to-pointer
 decay. `#repr(c)` provides a C-compatible aggregate layout contract for
-top-level structs with supported scalar/raw-pointer fields and nested `#repr(c)`
-structs by value; those structs may cross extern parameters and returns by value.
-By-value layout dependencies are cycle-checked and need not follow source order.
-Fixed-size aggregate arrays, explicit cross-target ABI selection, variadics, and
+top-level structs with supported scalar/raw-pointer fields, fixed-size arrays of
+supported field types, and nested `#repr(c)` structs by value; those structs may
+cross extern parameters and returns by value. By-value layout dependencies,
+including struct dependencies reached through array fields, are cycle-checked and
+need not follow source order. Explicit cross-target ABI selection, variadics, and
 callbacks remain future work.
 
 For the current executable slice:

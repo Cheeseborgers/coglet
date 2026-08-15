@@ -8,9 +8,12 @@ Kind::enum(c_int) {
 
 #repr(c)
 Bad::struct {
-    array: i32[4];
+    unsized: i32[];
+    zero: i32[0];
     nested: Plain;
+    plain_array: Plain[2];
     enumeration: Kind;
+    enum_array: Kind[2];
     plain_pointer: Plain*;
 }
 

@@ -1,0 +1,4 @@
+#repr(c)
+RecursiveArray::struct {
+    children: RecursiveArray[1];
+}

@@ -1,0 +1,20 @@
+#repr(c)
+ArrayPacket::struct {
+    name: c_char[16];
+    points: ArrayPoint[2];
+    values: c_int[3];
+    handles: opaque*[2];
+}
+
+#repr(c)
+ArrayPoint::struct {
+    x: c_int;
+    y: c_double;
+}
+
+#extern(c)
+inspect_array_packet::(packet: ArrayPacket) -> c_int;
+
+forward_array_packet::(packet: ArrayPacket) -> c_int {
+    return inspect_array_packet(packet);
+}

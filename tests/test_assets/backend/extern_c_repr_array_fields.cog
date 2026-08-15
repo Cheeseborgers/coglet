@@ -1,0 +1,24 @@
+#repr(c)
+ArrayPacket::struct {
+    name: c_char[4];
+    points: ArrayPoint[2];
+    values: c_int[3];
+}
+
+#repr(c)
+ArrayPoint::struct {
+    x: c_int;
+    y: c_double;
+}
+
+#extern(c)
+coglet_backend_make_array_packet::() -> ArrayPacket;
+
+#extern(c)
+coglet_backend_array_struct_probe::(packet: ArrayPacket) -> c_int;
+
+main::() -> c_int {
+    return coglet_backend_array_struct_probe(
+        coglet_backend_make_array_packet()
+    );
+}

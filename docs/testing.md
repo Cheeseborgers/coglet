@@ -64,10 +64,13 @@ tests/test_assets/backend/
 ```
 
 The executable tests run the Coglet compiler with `-o`, invoke the generated
-program, and verify its process exit status. The first C-interoperability cases
-cover both default external symbols and `#extern(c, name="...")` overrides. A
-separate negative backend test verifies that runtime checked arithmetic is
-rejected until its trapping semantics are lowered correctly.
+program, and verify its process exit status. The C-interoperability cases cover
+default external symbols, `#extern(c, name="...")` overrides, and explicit
+`-L`/`-l` resolution against a test-only static library using both split and
+joined flag forms. A separate driver-negative test verifies that linker flags
+are rejected without `-o`, and a backend-negative test verifies that runtime
+checked arithmetic is rejected until its trapping semantics are lowered
+correctly.
 
 Run the backend suite with:
 

@@ -10,7 +10,7 @@ static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [-o <executable>] [--emit-c <file>]\n",
+        "usage: %s <file> [-o <executable>] [--emit-c <file>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n",
         program
     );
 }
@@ -25,6 +25,12 @@ int main(int argc, char **argv)
     const char *input_path = argv[1];
     const char *output_path = NULL;
     const char *emit_c_path = NULL;
+
+    /* argc is an upper bound for each repeated option category. */
+    const char *library_dirs[argc];
+    const char *libraries[argc];
+    int library_dir_count = 0;
+    int library_count = 0;
 
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "-o") == 0) {
@@ -45,8 +51,43 @@ int main(int argc, char **argv)
             continue;
         }
 
+        if (strcmp(argv[i], "-L") == 0) {
+            if (i + 1 >= argc || argv[i + 1][0] == '\0') {
+                fprintf(stderr, "error: -L requires a non-empty library directory\n");
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+            }
+            library_dirs[library_dir_count++] = argv[++i];
+            continue;
+        }
+
+        if (strncmp(argv[i], "-L", 2) == 0 && argv[i][2] != '\0') {
+            library_dirs[library_dir_count++] = argv[i] + 2;
+            continue;
+        }
+
+        if (strcmp(argv[i], "-l") == 0) {
+            if (i + 1 >= argc || argv[i + 1][0] == '\0') {
+                fprintf(stderr, "error: -l requires a non-empty library name\n");
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+            }
+            libraries[library_count++] = argv[++i];
+            continue;
+        }
+
+        if (strncmp(argv[i], "-l", 2) == 0 && argv[i][2] != '\0') {
+            libraries[library_count++] = argv[i] + 2;
+            continue;
+        }
+
         fprintf(stderr, "error: unknown option '%s'\n", argv[i]);
         print_usage(argv[0]);
+        return COMPILE_STATUS_DRIVER_ERROR;
+    }
+
+    if (!output_path && (library_dir_count > 0 || library_count > 0)) {
+        fprintf(stderr, "error: -L/-l linker options require -o <executable>\n");
         return COMPILE_STATUS_DRIVER_ERROR;
     }
 
@@ -74,11 +115,19 @@ int main(int argc, char **argv)
     }
 
     if (exit_code == 0 && output_path) {
+        CBackendLinkOptions link_options = {
+            .library_dirs = library_dirs,
+            .library_dir_count = library_dir_count,
+            .libraries = libraries,
+            .library_count = library_count,
+        };
+
         CBackendStatus backend_status = c_backend_build_executable(
             output_path,
             result.filename,
             result.program,
-            &result.sem
+            &result.sem,
+            &link_options
         );
 
         if (backend_status != C_BACKEND_STATUS_OK)

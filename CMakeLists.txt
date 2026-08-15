@@ -415,3 +415,56 @@ set_tests_properties(
         backend_extern_c_pointer_types
         PROPERTIES LABELS "backend;backend.c;interop"
 )
+
+# Explicit library/linker selection for the host-C executable backend. The
+# support library is intentionally outside the default link set so these tests
+# prove that -L/-l forwarding is doing real work.
+add_library(coglet_backend_link_support STATIC
+        tests/support/backend_link_support.c
+)
+
+add_test(
+        NAME backend_explicit_library_split_flags
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_explicit_library.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_explicit_library_split_flags
+        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
+        -DLIB_NAME=coglet_backend_link_support
+        -DSTYLE=split
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+)
+set_tests_properties(
+        backend_explicit_library_split_flags
+        PROPERTIES LABELS "backend;backend.c;interop;linker"
+)
+
+add_test(
+        NAME backend_explicit_library_joined_flags
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_explicit_library.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_explicit_library_joined_flags
+        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
+        -DLIB_NAME=coglet_backend_link_support
+        -DSTYLE=joined
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+)
+set_tests_properties(
+        backend_explicit_library_joined_flags
+        PROPERTIES LABELS "backend;backend.c;interop;linker"
+)
+
+add_test(
+        NAME driver_link_options_require_output
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_explicit_library.cog
+        -DEXPECT_EXIT=3
+        "-DEXPECT_SUBSTRING=linker options require -o <executable>"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_failure_test.cmake"
+)
+set_tests_properties(
+        driver_link_options_require_output
+        PROPERTIES LABELS "driver;backend;linker;invalid"
+)

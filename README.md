@@ -88,17 +88,24 @@ create_window::(title: readonly c_char*) -> opaque*;
 accept the scalar/raw-pointer ABI subset. `name="..."` optionally changes the
 external symbol without changing the Coglet identifier. `c_char`, `c_int`,
 `c_uint`, and `c_size` are transparent aliases selected from the native C ABI
-used to build the compiler. The initial host-C backend can now compile a deliberately small executable subset
-and resolve direct external C calls through the native `cc` toolchain. Explicit
-cross-target ABI selection, aggregate layout, strings at the C boundary,
-variadics, callbacks, and library-selection flags remain future work.
+used to build the compiler. The initial host-C backend can now compile a
+deliberately small executable subset and resolve direct external C calls through
+the native `cc` toolchain. Explicit cross-target ABI selection, aggregate
+layout, strings at the C boundary, variadics, and callbacks remain future work.
 
 For the current executable slice:
 
 ```sh
 coglet program.cog -o program
+coglet program.cog -o program -L/path/to/lib -lfoo
+coglet program.cog -o program -L /path/to/lib -l foo
 coglet program.cog --emit-c program.c
 ```
+
+`-L` adds a native library search directory and `-l` requests a native library.
+Both joined and split spellings are accepted, both options may be repeated, and
+they are valid only when `-o` requests an executable link step. They are passed
+directly to `cc` without invoking a shell.
 
 Host executables currently require `main::() -> c_int`. Running `coglet` with
 only the input filename still performs frontend parse/semantic checking without

@@ -712,7 +712,8 @@ CBackendStatus c_backend_build_executable(
     const char *output_path,
     const char *source_filename,
     Node *program,
-    SemanticContext *sem
+    SemanticContext *sem,
+    const CBackendLinkOptions *link_options
 ) {
 #if defined(__unix__) || defined(__APPLE__)
     if (!output_path) {
@@ -753,27 +754,59 @@ CBackendStatus c_backend_build_executable(
         return emit_status;
     }
 
+    int library_dir_count = link_options ? link_options->library_dir_count : 0;
+    int library_count = link_options ? link_options->library_count : 0;
+
+    /*
+     * Build the complete compiler argv before fork(). Each -L/-l entry is
+     * passed as a separate argv pair. No shell is involved, so paths and
+     * library names are not subject to shell expansion or command
+     * interpretation.
+     *
+     * Keep libraries after the generated source/output options: static
+     * archive resolution is order-sensitive on common Unix linkers.
+     */
+    int cc_arg_count = 9 + (library_dir_count * 2) + (library_count * 2);
+    char **cc_argv = calloc((size_t)cc_arg_count + 1, sizeof(*cc_argv));
+    if (!cc_argv) {
+        fprintf(stderr, "error: could not allocate native C compiler arguments\n");
+        unlink(temp_path);
+        return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
+    }
+
+    int arg = 0;
+    cc_argv[arg++] = "cc";
+    cc_argv[arg++] = "-std=c99";
+    cc_argv[arg++] = "-Wall";
+    cc_argv[arg++] = "-Wextra";
+    cc_argv[arg++] = "-x";
+    cc_argv[arg++] = "c";
+    cc_argv[arg++] = temp_path;
+    cc_argv[arg++] = "-o";
+    cc_argv[arg++] = (char *)output_path;
+
+    for (int i = 0; i < library_dir_count; i++) {
+        cc_argv[arg++] = "-L";
+        cc_argv[arg++] = (char *)link_options->library_dirs[i];
+    }
+
+    for (int i = 0; i < library_count; i++) {
+        cc_argv[arg++] = "-l";
+        cc_argv[arg++] = (char *)link_options->libraries[i];
+    }
+
+    cc_argv[arg] = NULL;
+
     pid_t child = fork();
     if (child < 0) {
         fprintf(stderr, "error: could not start native C compiler: %s\n", strerror(errno));
+        free(cc_argv);
         unlink(temp_path);
         return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
     }
 
     if (child == 0) {
-        execlp(
-            "cc",
-            "cc",
-            "-std=c99",
-            "-Wall",
-            "-Wextra",
-            "-x",
-            "c",
-            temp_path,
-            "-o",
-            output_path,
-            (char *)NULL
-        );
+        execvp("cc", cc_argv);
 
         fprintf(stderr, "error: could not execute native C compiler 'cc': %s\n", strerror(errno));
         _exit(127);
@@ -782,10 +815,12 @@ CBackendStatus c_backend_build_executable(
     int wait_status = 0;
     if (waitpid(child, &wait_status, 0) < 0) {
         fprintf(stderr, "error: failed waiting for native C compiler: %s\n", strerror(errno));
+        free(cc_argv);
         unlink(temp_path);
         return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
     }
 
+    free(cc_argv);
     unlink(temp_path);
 
     if (!WIFEXITED(wait_status) || WEXITSTATUS(wait_status) != 0) {
@@ -799,6 +834,7 @@ CBackendStatus c_backend_build_executable(
     (void)source_filename;
     (void)program;
     (void)sem;
+    (void)link_options;
     fprintf(stderr, "error: executable host-C backend is not implemented on this host platform\n");
     return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
 #endif

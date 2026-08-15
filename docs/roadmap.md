@@ -288,14 +288,16 @@ constructs whose runtime semantics have not been lowered correctly yet.
 The first native C scalar aliases are also implemented: `c_char`, `c_int`,
 `c_uint`, and `c_size`. They transparently resolve to fixed-width Coglet integer
 types from the native C ABI used to build the compiler. External symbol-name
-overrides are implemented with `#extern(c, name="...")`. Explicit cross-target
-ABI selection is still deferred.
+overrides are implemented with `#extern(c, name="...")`. The host driver now
+also accepts repeated `-L` search paths and `-l` libraries in joined or split
+form and forwards them directly to `cc` for executable links. Explicit
+cross-target ABI selection is still deferred.
 
 Remaining C interoperability work includes:
 
 - explicit target/C-ABI selection for cross compilation;
 - the remaining C integer-family aliases and `_Bool` policy;
-- library/linker selection in the driver or build interface;
+- richer linker/toolchain configuration beyond `-L` / `-l`;
 - variadic functions;
 - C callbacks/function pointers;
 - C-compatible struct layout;

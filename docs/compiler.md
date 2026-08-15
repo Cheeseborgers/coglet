@@ -129,10 +129,25 @@ would introduce undefined behavior instead of Coglet's required trap.
 for inspection. Running `coglet input.cog` without `-o` or `--emit-c` preserves
 the previous frontend-only parse/check behavior.
 
+Executable linking accepts repeated native library search paths and libraries in
+both conventional forms:
+
+```text
+-L/path/to/lib     -L /path/to/lib
+-lfoo              -l foo
+```
+
+The driver preserves library order, places explicit libraries after the
+generated C source in the native compiler invocation, and passes every argument
+directly through `execvp()` rather than constructing a shell command. `-L` and
+`-l` are rejected unless `-o` requests an executable link step. `--emit-c`
+remains independent of linker options.
+
 There is not yet an explicit cross-compilation target model. A future driver
 configuration should provide the C ABI map instead of deriving it from the host.
-Library-selection flags, C `_Bool`, wider C integer-family aliases, variadics,
-and calling-convention details remain deferred.
+C `_Bool`, wider C integer-family aliases, variadics, callbacks, custom native
+compiler selection, raw linker flags, and calling-convention details remain
+deferred.
 
 ## Semantic Type Identity
 

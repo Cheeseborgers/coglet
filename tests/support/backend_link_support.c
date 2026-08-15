@@ -39,3 +39,24 @@ int coglet_backend_scalar_alias_probe(
 
     return 31;
 }
+
+typedef struct CogletBackendProbePair {
+    int left;
+    double weight;
+} CogletBackendProbePair;
+
+CogletBackendProbePair coglet_backend_make_pair(int left, double weight)
+{
+    CogletBackendProbePair pair;
+    pair.left = left;
+    pair.weight = weight;
+    return pair;
+}
+
+int coglet_backend_struct_probe(CogletBackendProbePair pair)
+{
+    if (pair.left != 17 || pair.weight != 2.5)
+        return 38;
+
+    return 37;
+}

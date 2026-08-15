@@ -276,6 +276,15 @@ struct Node {
         struct {
             StringView name;
             NodeList fields;      // list of NODE_STRUCT_FIELD_DECL
+
+            /*
+             * Explicit native C aggregate representation contract:
+             *
+             *     #repr(c)
+             *     Point::struct { ... }
+             */
+            int is_repr_c;
+            Type *resolved_type;  // semantic TYPE_STRUCT, NULL if declaration failed
         } struct_decl;
 
         struct {

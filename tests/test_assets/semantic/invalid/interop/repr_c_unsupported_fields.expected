@@ -1,0 +1,6 @@
+semantic error at line 11: #repr(c) struct field type 'i32[4]' is not supported by the current C ABI subset
+semantic error at line 12: #repr(c) struct field type 'Plain' is not supported by the current C ABI subset
+semantic error at line 13: #repr(c) struct field type 'Kind' is not supported by the current C ABI subset
+semantic error at line 14: #repr(c) struct field type 'Plain*' is not supported by the current C ABI subset
+semantic error at line 17: #repr(c) structs must contain at least one field
+5 semantic errors generated.

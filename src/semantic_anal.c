@@ -8325,19 +8325,19 @@ static int extern_c_type_supported(const Type *type, int allow_void)
 
         case TYPE_POINTER:
             /*
-             * For the first C-ABI milestone, typed raw pointers are allowed
-             * only when their pointee is itself in the supported scalar/raw-
-             * pointer subset. Struct, enum, array, and function-pointer ABI
-             * rules are deliberately deferred.
+             * Typed raw pointers may point at supported scalar/raw-pointer
+             * types or explicitly C-represented structs.
              */
             return extern_c_type_supported(type->element, 0);
+
+        case TYPE_STRUCT:
+            return type->struct_is_repr_c;
 
         case TYPE_UNTYPED_INT:
         case TYPE_UNTYPED_FLOAT:
         case TYPE_NULL:
         case TYPE_ARRAY:
         case TYPE_NAMED:
-        case TYPE_STRUCT:
         case TYPE_ENUM:
         case TYPE_FUNCTION:
             return 0;
@@ -8598,10 +8598,59 @@ static int declare_struct_shell(SemanticContext *ctx, Node *node) {
 
     type->struct_name.data   = node->as.struct_decl.name.data;
     type->struct_name.length = node->as.struct_decl.name.length;
+    type->struct_is_repr_c   = node->as.struct_decl.is_repr_c;
+
+    node->as.struct_decl.resolved_type = type;
 
     scope_define(ctx, node->as.struct_decl.name, SYMBOL_TYPE, type);
 
     return 1;
+}
+
+static int repr_c_struct_field_type_supported(const Type *type)
+{
+    if (!type) return 0;
+
+    switch (type->kind) {
+        case TYPE_BOOL:
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+        case TYPE_F32:
+        case TYPE_F64:
+        case TYPE_OPAQUE_POINTER:
+            return 1;
+
+        case TYPE_POINTER:
+            /*
+             * Pointer fields may reference supported scalar types and other
+             * #repr(c) structs, including the struct currently being filled.
+             * The pointee itself is not laid out inline.
+             */
+            if (!type->element) return 0;
+            if (type->element->kind == TYPE_STRUCT)
+                return type->element->struct_is_repr_c;
+            return repr_c_struct_field_type_supported(type->element);
+
+        case TYPE_VOID:
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
+        case TYPE_NULL:
+        case TYPE_ARRAY:
+        case TYPE_NAMED:
+        case TYPE_STRUCT:
+        case TYPE_ENUM:
+        case TYPE_FUNCTION:
+            return 0;
+    }
+
+    assert(!"unhandled TypeKind in repr_c_struct_field_type_supported");
+    return 0;
 }
 
 static void fill_struct_fields(SemanticContext *ctx, Node *node) {
@@ -8616,6 +8665,10 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
     if (!sym) return;
 
     Type *type = sym->type;
+
+    if (node->as.struct_decl.is_repr_c && node->as.struct_decl.fields.count == 0) {
+        semantic_error(ctx, node, "#repr(c) structs must contain at least one field");
+    }
 
     // A duplicate struct name means declare_struct_shell already reported
     // the error and left the *first* declaration's symbol in place. Don't
@@ -8651,6 +8704,22 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
 
             semantic_error(ctx, field,
                 "struct field cannot have type void");
+
+            type->fields[i].type = NULL;
+            continue;
+        }
+
+        if (node->as.struct_decl.is_repr_c &&
+            !repr_c_struct_field_type_supported(field_type)) {
+            char type_name[128];
+            format_type_name(field_type, type_name, sizeof(type_name));
+
+            semantic_error_fmt(
+                ctx,
+                field,
+                "#repr(c) struct field type '%s' is not supported by the current C ABI subset",
+                type_name
+            );
 
             type->fields[i].type = NULL;
             continue;
@@ -9062,6 +9131,11 @@ static void check_node(SemanticContext *ctx,Node *node) {
         case NODE_EXPR_STMT:       check_statement_expression(ctx, node->as.expr_stmt.expr); break;
 
         case NODE_STRUCT_DECL: {
+            if (node->as.struct_decl.is_repr_c && ctx->function_depth > 0) {
+                semantic_error(ctx, node, "#repr(c) struct declarations must be at top level");
+                break;
+            }
+
             declare_struct_shell(ctx, node);
             fill_struct_fields(ctx, node);
             break;

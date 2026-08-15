@@ -18,6 +18,7 @@
 #include "utils/string_view.h"
 
 #define C_BACKEND_MAX_FUNCTIONS 512
+#define C_BACKEND_MAX_STRUCTS 256
 #define C_BACKEND_MAX_TYPE_ALIASES 1024
 #define C_BACKEND_NAME_SIZE 48
 #define C_BACKEND_TYPE_DEF_SIZE 192
@@ -33,6 +34,12 @@ typedef struct CTypeAlias {
     char definition[C_BACKEND_TYPE_DEF_SIZE];
 } CTypeAlias;
 
+typedef struct CStruct {
+    Node *node;
+    const Type *type;
+    char generated_name[C_BACKEND_NAME_SIZE];
+} CStruct;
+
 typedef struct CBackend {
     FILE *out;
     const char *source_filename;
@@ -41,6 +48,9 @@ typedef struct CBackend {
 
     CFunction functions[C_BACKEND_MAX_FUNCTIONS];
     int function_count;
+
+    CStruct structs[C_BACKEND_MAX_STRUCTS];
+    int struct_count;
 
     CTypeAlias type_aliases[C_BACKEND_MAX_TYPE_ALIASES];
     int type_alias_count;
@@ -75,6 +85,28 @@ static const CTypeAlias *find_type_alias(CBackend *backend, const Type *type)
     for (int i = 0; i < backend->type_alias_count; i++) {
         if (backend->type_aliases[i].type == type)
             return &backend->type_aliases[i];
+    }
+
+    return NULL;
+}
+
+static const CStruct *find_c_struct_by_name(CBackend *backend, StringView name)
+{
+    for (int i = 0; i < backend->struct_count; i++) {
+        StringView candidate = backend->structs[i].node->as.struct_decl.name;
+        if (candidate.length == name.length &&
+            memcmp(candidate.data, name.data, name.length) == 0)
+            return &backend->structs[i];
+    }
+
+    return NULL;
+}
+
+static const CStruct *find_c_struct_by_type(CBackend *backend, const Type *type)
+{
+    for (int i = 0; i < backend->struct_count; i++) {
+        if (backend->structs[i].type == type)
+            return &backend->structs[i];
     }
 
     return NULL;
@@ -142,6 +174,16 @@ static const char *register_c_type(CBackend *backend, const Type *type, const No
     if (!type) {
         backend_error(backend, owner, "missing type during C lowering");
         return NULL;
+    }
+
+    if (type->kind == TYPE_NAMED) {
+        const CStruct *structure = find_c_struct_by_name(backend, type->named_name);
+        if (structure) return structure->generated_name;
+    }
+
+    if (type->kind == TYPE_STRUCT) {
+        const CStruct *structure = find_c_struct_by_type(backend, type);
+        if (structure) return structure->generated_name;
     }
 
     if (type->kind != TYPE_POINTER && type->kind != TYPE_OPAQUE_POINTER) {
@@ -223,6 +265,46 @@ static CFunction *find_function(CBackend *backend, StringView name)
     return NULL;
 }
 
+static int collect_structs(CBackend *backend)
+{
+    if (!backend->program || backend->program->type != NODE_PROGRAM) {
+        backend_error(backend, backend->program, "expected program node");
+        return 0;
+    }
+
+    NodeList statements = backend->program->as.program.statements;
+
+    for (int i = 0; i < statements.count; i++) {
+        Node *node = statements.items[i];
+        if (!node || node->type != NODE_STRUCT_DECL || !node->as.struct_decl.is_repr_c)
+            continue;
+
+        if (backend->struct_count >= C_BACKEND_MAX_STRUCTS) {
+            backend_error(backend, node, "too many #repr(c) structs for current C backend");
+            return 0;
+        }
+
+        if (!node->as.struct_decl.resolved_type) {
+            backend_error(backend, node, "missing resolved #repr(c) struct type during C lowering");
+            return 0;
+        }
+
+        CStruct *structure = &backend->structs[backend->struct_count];
+        memset(structure, 0, sizeof(*structure));
+        structure->node = node;
+        structure->type = node->as.struct_decl.resolved_type;
+        snprintf(
+            structure->generated_name,
+            sizeof(structure->generated_name),
+            "cg_struct_%d",
+            backend->struct_count
+        );
+        backend->struct_count++;
+    }
+
+    return !backend->had_error;
+}
+
 static int collect_functions(CBackend *backend)
 {
     if (!backend->program || backend->program->type != NODE_PROGRAM) {
@@ -253,6 +335,21 @@ static int collect_functions(CBackend *backend)
         );
 
         backend->function_count++;
+    }
+
+    return !backend->had_error;
+}
+
+static int prepare_struct_types(CBackend *backend)
+{
+    for (int i = 0; i < backend->struct_count; i++) {
+        Node *decl = backend->structs[i].node;
+
+        for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
+            Node *field = decl->as.struct_decl.fields.items[f];
+            if (!register_c_type(backend, field->as.struct_field_decl.var_type, field))
+                return 0;
+        }
     }
 
     return !backend->had_error;
@@ -605,6 +702,40 @@ static void emit_parameter_type_list(CBackend *backend, Node *func, int with_nam
     }
 }
 
+static void emit_struct_forward_declarations(CBackend *backend)
+{
+    for (int i = 0; i < backend->struct_count; i++) {
+        const char *name = backend->structs[i].generated_name;
+        fprintf(backend->out, "typedef struct %s %s;\n", name, name);
+    }
+
+    if (backend->struct_count > 0)
+        fputc('\n', backend->out);
+}
+
+static int emit_struct_definitions(CBackend *backend)
+{
+    for (int i = 0; i < backend->struct_count; i++) {
+        CStruct *structure = &backend->structs[i];
+        Node *decl = structure->node;
+
+        fprintf(backend->out, "struct %s {\n", structure->generated_name);
+
+        for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
+            Node *field = decl->as.struct_decl.fields.items[f];
+            const char *type_name =
+                register_c_type(backend, field->as.struct_field_decl.var_type, field);
+            if (!type_name) return 0;
+
+            fprintf(backend->out, "    %s cg_f_%d;\n", type_name, f);
+        }
+
+        fputs("};\n\n", backend->out);
+    }
+
+    return !backend->had_error;
+}
+
 static StringView external_symbol_name(Node *func)
 {
     if (!string_view_is_empty(func->as.func_decl.external_name))
@@ -719,11 +850,16 @@ static CBackendStatus c_backend_emit_stream(
     backend.program = program;
     backend.sem = sem;
 
-    if (!collect_functions(&backend) || !prepare_function_types(&backend))
+    if (!collect_structs(&backend) ||
+        !collect_functions(&backend) ||
+        !prepare_struct_types(&backend) ||
+        !prepare_function_types(&backend))
         return C_BACKEND_STATUS_UNSUPPORTED;
 
     fputs("/* Generated by Coglet's initial host-C backend. */\n", out);
     fputs("#include <stddef.h>\n#include <stdint.h>\n\n", out);
+
+    emit_struct_forward_declarations(&backend);
 
     for (int i = 0; i < backend.type_alias_count; i++) {
         fputs(backend.type_aliases[i].definition, out);
@@ -733,7 +869,8 @@ static CBackendStatus c_backend_emit_stream(
     if (backend.type_alias_count > 0)
         fputc('\n', out);
 
-    if (!emit_function_declarations(&backend) ||
+    if (!emit_struct_definitions(&backend) ||
+        !emit_function_declarations(&backend) ||
         !emit_function_bodies(&backend) ||
         !emit_entrypoint(&backend)) {
         return C_BACKEND_STATUS_UNSUPPORTED;

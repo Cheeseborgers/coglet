@@ -1192,7 +1192,7 @@ BAD   :: cast(Color, 9); // invalid
 
 Runtime integer-to-enum casts are currently rejected. A future checked conversion may validate the incoming value at runtime.
 
-A future `#repr_c` annotation is planned to make the backing representation and ABI contract explicit. `#repr_c` will not change closed-enum validity or switch exhaustiveness.
+A future `#repr(c)` enum annotation is planned to make the backing representation and ABI contract explicit. It will not change closed-enum validity or switch exhaustiveness.
 
 ## Switch Statements
 
@@ -1412,7 +1412,7 @@ External C declarations:
 - end with `;`;
 - may be called through the ordinary Coglet function-call rules;
 - may not use parameter default values;
-- currently accept only scalar and raw-pointer ABI candidates;
+- accept scalar/raw-pointer ABI candidates and explicitly `#repr(c)` structs;
 - do not introduce C's implicit `void*` conversions into Coglet.
 
 The currently accepted frontend type subset is:
@@ -1430,12 +1430,30 @@ c_bool c_float c_double
 T* and readonly T* when T is recursively in this subset
 opaque* and readonly opaque*
 additional raw-pointer layers such as opaque**
+#repr(c) structs by value or through raw pointers
 void as a return type only
 ```
 
-Arrays, structs, enums, and function types are rejected in `#extern(c)`
-signatures for now. Their ABI contracts require additional design such as
-C-compatible aggregate layout, enum representation, and function-pointer rules.
+Arrays, ordinary Coglet structs, enums, and function types remain rejected in
+`#extern(c)` signatures. A struct must opt into the C ABI contract explicitly:
+
+```c
+#repr(c)
+CPoint::struct {
+    x: c_int;
+    y: c_double;
+}
+
+#extern(c)
+consume_point::(point: CPoint) -> c_int;
+```
+
+`#repr(c)` is top-level only. The first aggregate-layout subset preserves field
+order and accepts C-compatible scalar/raw-pointer fields, including pointers to
+other `#repr(c)` structs. Empty structs, arrays, enums, ordinary Coglet structs,
+and nested structs by value are rejected as fields for now. These restrictions
+keep the initial layout contract within portable C99 behavior while aggregate
+dependency/layout rules are expanded deliberately.
 
 Opaque pointers provide the C `void*`-style representation boundary:
 
@@ -1505,15 +1523,15 @@ Fixed-width Coglet types remain valid in C declarations when the corresponding
 C interface itself uses a representation-compatible fixed-width type.
 
 The current executable backend is intentionally a small conformance slice. It
-can emit and link direct external C calls using scalar/raw-pointer signatures,
+can emit and link direct external C calls using scalar/raw-pointer and `#repr(c)` struct signatures,
 including external symbol-name overrides, and lowers direct C-string literal
 arguments by decoding Coglet escapes and emitting an equivalent C string
 literal. It does not yet lower locals, control flow, runtime checked arithmetic,
 general casts, or general array storage/decay. Host executables currently use
 `main::() -> c_int` as the entry-point contract.
 
-Variadic functions, C callbacks/function pointers, C-compatible aggregate
-layout, enum representation attributes, calling-convention selection, and
+Nested aggregate-by-value layout, variadic functions, C callbacks/function
+pointers, enum representation attributes, calling-convention selection, and
 cross-target lowering are still deferred.
 
 ## Current Semantic Architecture

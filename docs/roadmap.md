@@ -205,7 +205,7 @@ Current cast rules:
 - compile-time integer to enum: allowed only for a declared member value
 - runtime integer to enum: rejected until checked runtime conversion exists
 
-This makes enum switch exhaustiveness sound. A future `#repr_c` attribute is planned for explicit C ABI representation; it will not make enums open.
+This makes enum switch exhaustiveness sound. A future `#repr(c)` attribute is planned for explicit C ABI representation; it will not make enums open.
 
 ### Bitwise and Shift Operators
 
@@ -298,15 +298,20 @@ literals can now bind to `readonly c_char*` parameters of `#extern(c)` calls and
 are decoded/re-emitted by the host-C backend without enabling general
 array-to-pointer decay. Explicit cross-target ABI selection is still deferred.
 
+The first C aggregate representation slice is now implemented with `#repr(c)`.
+Top-level structs with supported scalar/raw-pointer fields can cross `#extern(c)`
+parameters and returns by value, and the host-C backend emits matching native C
+struct definitions. Nested structs by value remain deferred.
+
 Remaining C interoperability work includes:
 
 - explicit target/C-ABI selection for cross compilation;
 - richer linker/toolchain configuration beyond `-L` / `-l`;
 - variadic functions;
 - C callbacks/function pointers;
-- C-compatible struct layout;
+- nested C-compatible aggregate-by-value layout beyond the first `#repr(c)` struct subset;
 - enum backing representation;
-- `#repr_c` or an equivalent representation attribute;
+- extending `#repr(c)` to enums once those representation rules are defined;
 - mapping C null pointers to Coglet `null` at lowering boundaries.
 
 ### 2. Slices and Pointer-Length Views

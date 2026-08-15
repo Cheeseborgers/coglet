@@ -1,0 +1,8 @@
+program
+  #repr(c) struct CPoint
+    struct_field_decl x: c_int
+    struct_field_decl y: c_double
+    struct_field_decl next: readonly CPoint*
+  extern(c) func consume_point -> c_int
+    params:
+      param_decl point: CPoint

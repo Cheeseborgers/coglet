@@ -312,6 +312,27 @@ leaving the Coglet function identifier unchanged. Without it, the Coglet name
 is used as the external symbol. `#extern(c)` declarations have no Coglet body,
 are terminated by `;`, and are currently restricted semantically to top level.
 
+C-compatible struct representation uses the same declaration-annotation shape:
+
+```c
+#repr(c)
+CPoint::struct {
+    x: c_int;
+    y: c_double;
+}
+```
+
+Conceptually:
+
+```text
+repr_c_struct_decl :=
+    "#" "repr" "(" "c" ")"
+    identifier "::" "struct" "{" {struct_field_decl} "}";
+```
+
+`repr` and `c` remain identifiers at the lexer level. `#repr(c)` currently
+applies only to top-level struct declarations.
+
 The C scalar-ABI names `c_char`, `c_schar`, `c_uchar`, `c_short`,
 `c_ushort`, `c_int`, `c_uint`, `c_long`, `c_ulong`, `c_longlong`,
 `c_ulonglong`, `c_size`, `c_bool`, `c_float`, and `c_double` are builtin type
@@ -691,7 +712,8 @@ A compile-time integer-to-enum cast must name a declared value. Runtime integer-
 A future representation annotation may use syntax such as:
 
 ```c
-Color :: enum(u16) #repr_c {
+#repr(c)
+Color :: enum(u16) {
     Red = 0,
     Green = 1,
     Blue = 2,

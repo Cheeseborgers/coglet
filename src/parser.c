@@ -32,7 +32,7 @@ static Node *finish_inferred_const_decl(Parser *p, Token name);
 static Node *finish_inferred_var_decl(Parser *p, Token name);
 static Node *parse_decl_after_name(Parser *p, Token name);
 static Node *parse_proc_decl_rest(Parser *p, Token name, int line);
-static Node *parse_extern_decl(Parser *p);
+static Node *parse_attribute_decl(Parser *p);
 
 static Node *parse_struct_decl_rest(Parser *p, Token name, int line);
 static Node *parse_struct_field(Parser *p);
@@ -1311,7 +1311,7 @@ static int decode_extern_name(Parser *p, Token token, StringView *out)
  * than globally reserved keywords. Empty external_name means the Coglet
  * declaration name is also the linker symbol.
  */
-static Node *parse_extern_decl(Parser *p)
+static Node *parse_attribute_decl(Parser *p)
 {
     Token hash = p->current;
     StringView external_name = string_view_empty();
@@ -1327,8 +1327,45 @@ static Node *parse_extern_decl(Parser *p)
 
     Token attribute = p->previous;
 
+    if (token_text_equals(attribute, "repr")) {
+        if (!consume(p, TOK_LPAREN) || !consume(p, TOK_IDENT)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        Token abi = p->previous;
+        if (!token_text_equals(abi, "c")) {
+            error_at(p, &abi, "unsupported representation ABI; expected 'c'");
+            synchronize(p);
+            return ast_new_error(p->arena, abi);
+        }
+
+        if (!consume(p, TOK_RPAREN) || !consume(p, TOK_IDENT)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        Token name = p->previous;
+        if (!consume(p, TOK_COLON_COLON)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        if (!check(p, TOK_STRUCT)) {
+            error_at(p, &p->current, "#repr(c) applies only to struct declarations");
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        Node *decl = parse_struct_decl_rest(p, name, hash.line);
+        if (decl && decl->type == NODE_STRUCT_DECL)
+            decl->as.struct_decl.is_repr_c = 1;
+
+        return decl;
+    }
+
     if (!token_text_equals(attribute, "extern")) {
-        error_at(p, &attribute, "unknown declaration attribute; expected '#extern(c)'");
+        error_at(p, &attribute, "unknown declaration attribute; expected '#extern(c)' or '#repr(c)'");
         synchronize(p);
         return ast_new_error(p->arena, attribute);
     }
@@ -1851,7 +1888,7 @@ static Node *parse_for_statement(Parser *p) {
 
 static Node *parse_statement(Parser *p) {
 
-    if (check(p, TOK_HASH))   return parse_extern_decl(p);
+    if (check(p, TOK_HASH))   return parse_attribute_decl(p);
     if (match(p, TOK_IF))     return parse_if_statement(p);
     if (match(p, TOK_WHILE))  return parse_while_statement(p);
     if (match(p, TOK_FOR))    return parse_for_statement(p);

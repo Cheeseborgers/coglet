@@ -1,0 +1,9 @@
+#repr(c)
+CPoint::struct {
+    x: c_int;
+    y: c_double;
+    next: readonly CPoint*;
+}
+
+#extern(c)
+consume_point::(point: CPoint) -> c_int;

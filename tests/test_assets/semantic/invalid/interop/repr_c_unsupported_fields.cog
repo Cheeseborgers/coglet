@@ -1,0 +1,19 @@
+Plain::struct {
+    value: c_int;
+}
+
+Kind::enum(c_int) {
+    A = 0,
+}
+
+#repr(c)
+Bad::struct {
+    array: i32[4];
+    nested: Plain;
+    enumeration: Kind;
+    plain_pointer: Plain*;
+}
+
+#repr(c)
+Empty::struct {
+}

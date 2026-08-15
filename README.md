@@ -85,7 +85,8 @@ create_window::(title: readonly c_char*) -> opaque*;
 ```
 
 `#extern(c)` declarations are top-level, have no Coglet body, and currently
-accept the scalar/raw-pointer ABI subset. `name="..."` optionally changes the
+accept the scalar/raw-pointer ABI subset plus structs explicitly marked
+`#repr(c)`. `name="..."` optionally changes the
 external symbol without changing the Coglet identifier. The native C scalar
 family is available through transparent aliases such as `c_char`, `c_short`,
 `c_int`, `c_long`, `c_longlong`, their unsigned forms, `c_size`, `c_bool`,
@@ -95,8 +96,10 @@ The initial host-C backend can now compile a
 deliberately small executable subset and resolve direct external C calls through
 the native `cc` toolchain. Direct string literals may bind to `readonly c_char*`
 parameters of `#extern(c)` functions without enabling general array-to-pointer
-decay. Explicit cross-target ABI selection, aggregate layout, variadics, and
-callbacks remain future work.
+decay. `#repr(c)` provides the first C-compatible aggregate layout contract for
+top-level structs with supported scalar/raw-pointer fields; those structs may
+cross extern parameters and returns by value. Nested structs by value, explicit
+cross-target ABI selection, variadics, and callbacks remain future work.
 
 For the current executable slice:
 
@@ -649,7 +652,7 @@ with weaker C behavior.
 
 Near-term work should combine C interoperability with careful backend expansion:
 
-1. Continue C ABI coverage with aggregate layout, callbacks, and variadics.
+1. Continue C ABI coverage with nested aggregate layout, callbacks, and variadics.
 2. Add explicit target/C-ABI selection before cross-compilation claims are made.
 3. Lower core storage/control-flow and checked runtime arithmetic correctly.
 4. Design byte views/slices without introducing unrestricted array decay.

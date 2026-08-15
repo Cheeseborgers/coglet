@@ -1,0 +1,15 @@
+#repr(c)
+ProbePair::struct {
+    left: c_int;
+    weight: c_double;
+}
+
+#extern(c)
+coglet_backend_make_pair::(left: c_int, weight: c_double) -> ProbePair;
+
+#extern(c)
+coglet_backend_struct_probe::(pair: ProbePair) -> c_int;
+
+main::() -> c_int {
+    return coglet_backend_struct_probe(coglet_backend_make_pair(17, 2.5));
+}

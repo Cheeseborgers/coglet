@@ -94,6 +94,7 @@ struct Type {
     StringView struct_name;  // TYPE_STRUCT
     StructField *fields;
     int field_count;
+    int struct_is_repr_c;
 
     Type **parameters;       // TYPE_FUNCTION
     int parameter_count;

@@ -1,0 +1,3 @@
+error: #repr(c) applies only to struct declarations
+value:: 1;
+        ^

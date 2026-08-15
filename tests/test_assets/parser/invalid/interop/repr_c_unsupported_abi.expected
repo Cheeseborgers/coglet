@@ -1,0 +1,9 @@
+error: unsupported representation ABI; expected 'c'
+#repr(cpp)
+      ^~~
+error: expected expression
+}
+^
+error: expected ';' before '}'
+}
+^

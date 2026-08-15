@@ -1,0 +1,20 @@
+#repr(c)
+CPoint::struct {
+    x: c_int;
+    y: c_double;
+    user_data: opaque*;
+    next: readonly CPoint*;
+}
+
+#extern(c)
+make_point::(x: c_int, y: c_double) -> CPoint;
+
+#extern(c)
+inspect_point::(point: CPoint) -> c_int;
+
+#extern(c)
+inspect_point_ptr::(point: readonly CPoint*) -> c_int;
+
+forward_point::(point: CPoint) -> c_int {
+    return inspect_point(point);
+}

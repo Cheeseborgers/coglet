@@ -272,6 +272,8 @@ Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int l
     Node *node = new_node(arena, NODE_STRUCT_DECL, line);
     node->as.struct_decl.name.data   = name;
     node->as.struct_decl.name.length = name_length;
+    node->as.struct_decl.is_repr_c   = 0;
+    node->as.struct_decl.resolved_type = NULL;
 
     node->as.struct_decl.fields.items    = NULL;
     node->as.struct_decl.fields.count    = 0;
@@ -529,6 +531,8 @@ Node *ast_clone(Arena *arena, const Node *node)
         case NODE_STRUCT_DECL:
             clone->as.struct_decl.name.data   = node->as.struct_decl.name.data;
             clone->as.struct_decl.name.length = node->as.struct_decl.name.length;
+            clone->as.struct_decl.is_repr_c   = node->as.struct_decl.is_repr_c;
+            clone->as.struct_decl.resolved_type = NULL;
 
             clone->as.struct_decl.fields.items = NULL;
             clone->as.struct_decl.fields.count = 0;

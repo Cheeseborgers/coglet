@@ -85,7 +85,7 @@ Callers must not print these diagnostics again.
 The parser keeps `extern`, `c`, and option names such as `name` as ordinary
 identifiers. Only `#` is new punctuation. This means the annotation syntax does
 not consume globally useful identifier names and can coexist with future
-declaration metadata such as `#repr_c`.
+declaration metadata such as `#repr(c)`.
 
 `NODE_FUNC_DECL.external_name` stores an optional decoded external symbol name.
 An empty view means the source-level Coglet function name is also the external
@@ -103,10 +103,20 @@ every representation-equivalent `readonly i8*`/`readonly u8*` as a C string.
 Body checking is skipped for external declarations.
 
 The current C-ABI eligibility check permits concrete scalar types, raw typed
-pointers recursively over supported pointees, opaque raw pointers, and `void`
-returns. It rejects arrays, structs, enums, and function types until their ABI
-representation is specified. External declarations are restricted to top level
-and parameter defaults are rejected.
+pointers recursively over supported pointees, opaque raw pointers, explicitly
+`#repr(c)` structs, and `void` returns. It rejects arrays, ordinary Coglet
+structs, enums, and function types. External declarations are restricted to top
+level and parameter defaults are rejected.
+
+`#repr(c)` is stored on `NODE_STRUCT_DECL` and propagated to the semantic
+`TYPE_STRUCT`. C-represented structs are top-level only. The first field-layout
+subset accepts scalar/raw-pointer fields and pointers to other `#repr(c)`
+structs; empty structs, arrays, enums, ordinary structs, and nested struct values
+are rejected. The host-C backend assigns generated C struct tags, emits forward
+typedefs before pointer aliases, then emits fields in source order using the
+source-level C ABI spellings. This allows `#repr(c)` structs to cross extern C
+parameters and returns by value without changing ordinary Coglet struct layout
+semantics.
 
 Semantic startup registers the native C scalar family as builtin type aliases:
 `c_char`, `c_schar`, `c_uchar`, `c_short`, `c_ushort`, `c_int`, `c_uint`,

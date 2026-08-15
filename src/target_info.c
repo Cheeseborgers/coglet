@@ -1,0 +1,137 @@
+#include "target_info.h"
+
+#include <float.h>
+#include <limits.h>
+#include <stddef.h>
+#include <stdio.h>
+
+static TargetFloatFormat host_float_format(
+    unsigned bits,
+    int mantissa_bits,
+    int min_exponent,
+    int max_exponent
+) {
+    if (FLT_RADIX != 2)
+        return TARGET_FLOAT_FORMAT_UNSUPPORTED;
+
+    if (
+        bits == 32 &&
+        mantissa_bits == 24 &&
+        min_exponent == -125 &&
+        max_exponent == 128
+    ) {
+        return TARGET_FLOAT_FORMAT_IEEE_BINARY32;
+    }
+
+    if (
+        bits == 64 &&
+        mantissa_bits == 53 &&
+        min_exponent == -1021 &&
+        max_exponent == 1024
+    ) {
+        return TARGET_FLOAT_FORMAT_IEEE_BINARY64;
+    }
+
+    return TARGET_FLOAT_FORMAT_UNSUPPORTED;
+}
+
+TargetInfo target_info_host(void) {
+    TargetInfo target;
+
+    target.pointer_bits = (unsigned)(sizeof(void *) * CHAR_BIT);
+
+    target.c_char_bits = (unsigned)(sizeof(char) * CHAR_BIT);
+    target.c_char_is_signed = CHAR_MIN < 0;
+
+    target.c_bool_bits = (unsigned)(sizeof(_Bool) * CHAR_BIT);
+    target.c_short_bits = (unsigned)(sizeof(short) * CHAR_BIT);
+    target.c_int_bits = (unsigned)(sizeof(int) * CHAR_BIT);
+    target.c_long_bits = (unsigned)(sizeof(long) * CHAR_BIT);
+    target.c_long_long_bits = (unsigned)(sizeof(long long) * CHAR_BIT);
+    target.c_size_bits = (unsigned)(sizeof(size_t) * CHAR_BIT);
+
+    target.c_float_format = host_float_format(
+        (unsigned)(sizeof(float) * CHAR_BIT),
+        FLT_MANT_DIG,
+        FLT_MIN_EXP,
+        FLT_MAX_EXP
+    );
+    target.c_double_format = host_float_format(
+        (unsigned)(sizeof(double) * CHAR_BIT),
+        DBL_MANT_DIG,
+        DBL_MIN_EXP,
+        DBL_MAX_EXP
+    );
+
+    return target;
+}
+
+static int fail(
+    char *message,
+    size_t message_size,
+    const char *text
+) {
+    if (message && message_size > 0)
+        snprintf(message, message_size, "%s", text);
+    return 0;
+}
+
+int target_info_validate(
+    const TargetInfo *target,
+    char *message,
+    size_t message_size
+) {
+    if (!target)
+        return fail(message, message_size, "target description is null");
+
+    if (target->pointer_bits == 0)
+        return fail(message, message_size, "pointer width must be non-zero");
+
+    if (target->c_char_bits == 0)
+        return fail(message, message_size, "C char width must be non-zero");
+
+    if (target->c_bool_bits == 0)
+        return fail(message, message_size, "C _Bool width must be non-zero");
+
+    if (target->c_short_bits == 0 ||
+        target->c_int_bits == 0 ||
+        target->c_long_bits == 0 ||
+        target->c_long_long_bits == 0 ||
+        target->c_size_bits == 0) {
+        return fail(message, message_size, "C integer widths must be non-zero");
+    }
+
+    if (target->c_short_bits > target->c_int_bits ||
+        target->c_int_bits > target->c_long_bits ||
+        target->c_long_bits > target->c_long_long_bits) {
+        return fail(
+            message,
+            message_size,
+            "C signed integer widths must be non-decreasing"
+        );
+    }
+
+    if (message && message_size > 0)
+        message[0] = '\0';
+
+    return 1;
+}
+
+
+int target_info_equal(const TargetInfo *a, const TargetInfo *b) {
+    if (!a || !b)
+        return 0;
+
+    return
+        a->pointer_bits == b->pointer_bits &&
+        a->c_char_bits == b->c_char_bits &&
+        a->c_char_is_signed == b->c_char_is_signed &&
+        a->c_bool_bits == b->c_bool_bits &&
+        a->c_short_bits == b->c_short_bits &&
+        a->c_int_bits == b->c_int_bits &&
+        a->c_long_bits == b->c_long_bits &&
+        a->c_long_long_bits == b->c_long_long_bits &&
+        a->c_size_bits == b->c_size_bits &&
+        a->c_float_format == b->c_float_format &&
+        a->c_double_format == b->c_double_format;
+}

@@ -1375,6 +1375,422 @@ static void verify_expression_info(Verifier *verifier, Node *expression) {
     verify_value_info(verifier, expression, info);
 }
 
+static SemCScalarKind expected_c_scalar_kind(const Type *source_type)
+{
+    if (!source_type || source_type->kind != TYPE_NAMED)
+        return SEM_C_SCALAR_NONE;
+
+#define EXPECT_C_SCALAR(text, kind) \
+    if (string_view_equals_cstr(source_type->named_name, text)) return kind
+
+    EXPECT_C_SCALAR("c_char",      SEM_C_SCALAR_CHAR);
+    EXPECT_C_SCALAR("c_schar",     SEM_C_SCALAR_SCHAR);
+    EXPECT_C_SCALAR("c_uchar",     SEM_C_SCALAR_UCHAR);
+    EXPECT_C_SCALAR("c_short",     SEM_C_SCALAR_SHORT);
+    EXPECT_C_SCALAR("c_ushort",    SEM_C_SCALAR_USHORT);
+    EXPECT_C_SCALAR("c_int",       SEM_C_SCALAR_INT);
+    EXPECT_C_SCALAR("c_uint",      SEM_C_SCALAR_UINT);
+    EXPECT_C_SCALAR("c_long",      SEM_C_SCALAR_LONG);
+    EXPECT_C_SCALAR("c_ulong",     SEM_C_SCALAR_ULONG);
+    EXPECT_C_SCALAR("c_longlong",  SEM_C_SCALAR_LONGLONG);
+    EXPECT_C_SCALAR("c_ulonglong", SEM_C_SCALAR_ULONGLONG);
+    EXPECT_C_SCALAR("c_size",      SEM_C_SCALAR_SIZE);
+    EXPECT_C_SCALAR("c_bool",      SEM_C_SCALAR_BOOL);
+    EXPECT_C_SCALAR("c_float",     SEM_C_SCALAR_FLOAT);
+    EXPECT_C_SCALAR("c_double",    SEM_C_SCALAR_DOUBLE);
+
+#undef EXPECT_C_SCALAR
+
+    return SEM_C_SCALAR_NONE;
+}
+
+static int verify_abi_type(
+    Verifier *verifier,
+    Node *owner,
+    const Type *source_type,
+    Type *semantic_type,
+    const SemAbiType *abi_type
+) {
+    if (!abi_type) {
+        verifier_error(verifier, owner,
+            "C ABI surface has no normalized SemAbiType");
+        return 0;
+    }
+
+    int valid = 1;
+
+    if (abi_type->semantic_type != semantic_type) {
+        verifier_error(verifier, owner,
+            "normalized ABI type does not reference the resolved semantic type");
+        valid = 0;
+    }
+
+    SemCScalarKind c_scalar = expected_c_scalar_kind(source_type);
+    if (c_scalar != SEM_C_SCALAR_NONE) {
+        if (abi_type->kind != SEM_ABI_TYPE_C_SCALAR ||
+            abi_type->c_scalar_kind != c_scalar) {
+            verifier_error(verifier, owner,
+                "normalized ABI type lost the native-C scalar spelling");
+            valid = 0;
+        }
+
+        return valid;
+    }
+
+    switch (source_type->kind) {
+        case TYPE_POINTER:
+            if (abi_type->kind != SEM_ABI_TYPE_POINTER) {
+                verifier_error(verifier, owner,
+                    "normalized pointer ABI type has the wrong kind");
+                return 0;
+            }
+
+            if (!semantic_type || semantic_type->kind != TYPE_POINTER) {
+                verifier_error(verifier, owner,
+                    "normalized pointer ABI type has a non-pointer semantic type");
+                return 0;
+            }
+
+            if (!verify_abi_type(
+                    verifier,
+                    owner,
+                    source_type->element,
+                    semantic_type->element,
+                    abi_type->element)) {
+                valid = 0;
+            }
+            break;
+
+        case TYPE_OPAQUE_POINTER:
+            if (abi_type->kind != SEM_ABI_TYPE_OPAQUE_POINTER) {
+                verifier_error(verifier, owner,
+                    "normalized opaque-pointer ABI type has the wrong kind");
+                valid = 0;
+            }
+            break;
+
+        case TYPE_ARRAY:
+            if (abi_type->kind != SEM_ABI_TYPE_ARRAY) {
+                verifier_error(verifier, owner,
+                    "normalized array ABI type has the wrong kind");
+                return 0;
+            }
+
+            if (!semantic_type || semantic_type->kind != TYPE_ARRAY) {
+                verifier_error(verifier, owner,
+                    "normalized array ABI type has a non-array semantic type");
+                return 0;
+            }
+
+            if (!verify_abi_type(
+                    verifier,
+                    owner,
+                    source_type->element,
+                    semantic_type->element,
+                    abi_type->element)) {
+                valid = 0;
+            }
+            break;
+
+        case TYPE_FUNCTION:
+            if (abi_type->kind != SEM_ABI_TYPE_FUNCTION) {
+                verifier_error(verifier, owner,
+                    "normalized function ABI type has the wrong kind");
+                return 0;
+            }
+
+            if (!semantic_type || semantic_type->kind != TYPE_FUNCTION) {
+                verifier_error(verifier, owner,
+                    "normalized function ABI type has a non-function semantic type");
+                return 0;
+            }
+
+            if (abi_type->parameter_count != semantic_type->parameter_count ||
+                abi_type->parameter_count != source_type->parameter_count) {
+                verifier_error(verifier, owner,
+                    "normalized function ABI type has the wrong parameter count");
+                valid = 0;
+            } else {
+                for (int i = 0; i < abi_type->parameter_count; i++) {
+                    if (!verify_abi_type(
+                            verifier,
+                            owner,
+                            source_type->parameters[i],
+                            semantic_type->parameters[i],
+                            abi_type->parameters[i])) {
+                        valid = 0;
+                    }
+                }
+            }
+
+            if (!verify_abi_type(
+                    verifier,
+                    owner,
+                    source_type->return_type,
+                    semantic_type->return_type,
+                    abi_type->return_type)) {
+                valid = 0;
+            }
+            break;
+
+        case TYPE_VOID:
+        case TYPE_BOOL:
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+        case TYPE_F32:
+        case TYPE_F64:
+        case TYPE_NAMED:
+        case TYPE_STRUCT:
+        case TYPE_ENUM:
+            if (abi_type->kind != SEM_ABI_TYPE_SEMANTIC) {
+                verifier_error(verifier, owner,
+                    "normalized semantic ABI leaf has the wrong kind");
+                valid = 0;
+            }
+            break;
+
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
+        case TYPE_NULL:
+            verifier_error(verifier, owner,
+                "non-concrete source type reached normalized ABI metadata");
+            valid = 0;
+            break;
+    }
+
+    return valid;
+}
+
+static int string_views_equal(StringView a, StringView b)
+{
+    return a.length == b.length &&
+           (a.length == 0 || memcmp(a.data, b.data, a.length) == 0);
+}
+
+static void verify_function_abi_info(
+    Verifier *verifier,
+    Node *declaration,
+    SemDeclInfo *info
+) {
+    Type *type = info->type;
+    if (!type || type->kind != TYPE_FUNCTION)
+        return;
+
+    if (info->abi_kind != SEM_DECL_ABI_FUNCTION) {
+        verifier_error(verifier, declaration,
+            "function declaration has no normalized function ABI metadata");
+        return;
+    }
+
+    SemFunctionAbiInfo *abi = &info->abi.function;
+    FunctionAbi expected_abi =
+        (declaration->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C ||
+         declaration->as.func_decl.is_repr_c)
+            ? FUNCTION_ABI_C
+            : FUNCTION_ABI_COGLET;
+
+    if (abi->abi != expected_abi || abi->abi != type->function_abi) {
+        verifier_error(verifier, declaration,
+            "normalized function ABI differs from the resolved function type");
+    }
+
+    SemFunctionLinkage expected_linkage =
+        declaration->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C
+            ? SEM_FUNCTION_LINKAGE_EXTERNAL
+            : SEM_FUNCTION_LINKAGE_INTERNAL;
+
+    if (abi->linkage != expected_linkage) {
+        verifier_error(verifier, declaration,
+            "normalized function linkage differs from the declaration contract");
+    }
+
+    if (abi->c_call_conv != type->function_call_conv ||
+        abi->c_call_conv !=
+            (expected_abi == FUNCTION_ABI_C
+                ? declaration->as.func_decl.c_call_conv
+                : C_CALL_DEFAULT)) {
+        verifier_error(verifier, declaration,
+            "normalized C calling convention differs from the resolved contract");
+    }
+
+    if (abi->is_variadic != type->function_is_variadic ||
+        abi->is_variadic != declaration->as.func_decl.is_variadic) {
+        verifier_error(verifier, declaration,
+            "normalized variadic flag differs from the resolved contract");
+    }
+
+    if (expected_linkage == SEM_FUNCTION_LINKAGE_EXTERNAL) {
+        StringView expected_symbol =
+            declaration->as.func_decl.external_name.length > 0
+                ? declaration->as.func_decl.external_name
+                : declaration->as.func_decl.name;
+
+        if (!string_views_equal(abi->external_symbol, expected_symbol)) {
+            verifier_error(verifier, declaration,
+                "normalized external symbol name differs from #extern(c)");
+        }
+    } else if (abi->external_symbol.length != 0) {
+        verifier_error(verifier, declaration,
+            "internal function unexpectedly carries an external linker symbol");
+    }
+
+    if (expected_abi == FUNCTION_ABI_C) {
+        verify_abi_type(
+            verifier,
+            declaration,
+            declaration->as.func_decl.return_type,
+            type->return_type,
+            abi->return_abi_type
+        );
+    } else if (abi->return_abi_type) {
+        verifier_error(verifier, declaration,
+            "ordinary Coglet function unexpectedly carries a C ABI return spelling");
+    }
+
+    for (int i = 0; i < declaration->as.func_decl.params.count; i++) {
+        Node *param = declaration->as.func_decl.params.items[i];
+        SemDeclInfo *param_info = semantic_get_decl_info(verifier->sem, param);
+
+        if (!param_info)
+            continue;
+
+        if (expected_abi == FUNCTION_ABI_C) {
+            verify_abi_type(
+                verifier,
+                param,
+                param->as.param_decl.var_type,
+                type->parameters[i],
+                param_info->abi_type
+            );
+        } else if (param_info->abi_type) {
+            verifier_error(verifier, param,
+                "ordinary Coglet parameter unexpectedly carries a C ABI spelling");
+        }
+    }
+}
+
+static void verify_aggregate_abi_info(
+    Verifier *verifier,
+    Node *declaration,
+    SemDeclInfo *info
+) {
+    Type *type = info->type;
+    if (!type || type->kind != TYPE_STRUCT)
+        return;
+
+    if (info->abi_kind != SEM_DECL_ABI_AGGREGATE) {
+        verifier_error(verifier, declaration,
+            "aggregate declaration has no normalized ABI metadata");
+        return;
+    }
+
+    SemAggregateAbiInfo *abi = &info->abi.aggregate;
+    SemAbiRepresentation expected_repr =
+        declaration->as.struct_decl.is_repr_c
+            ? SEM_ABI_REPR_C
+            : SEM_ABI_REPR_COGLET;
+
+    if (abi->representation != expected_repr ||
+        (type->struct_is_repr_c ? SEM_ABI_REPR_C : SEM_ABI_REPR_COGLET) != expected_repr) {
+        verifier_error(verifier, declaration,
+            "normalized aggregate representation differs from semantic type");
+    }
+
+    SemAggregateKind expected_kind =
+        declaration->as.struct_decl.is_union
+            ? SEM_AGGREGATE_UNION
+            : SEM_AGGREGATE_STRUCT;
+
+    if (abi->aggregate_kind != expected_kind ||
+        (type->struct_is_union ? SEM_AGGREGATE_UNION : SEM_AGGREGATE_STRUCT) != expected_kind) {
+        verifier_error(verifier, declaration,
+            "normalized aggregate kind differs from semantic type");
+    }
+
+    if (abi->is_incomplete != declaration->as.struct_decl.is_incomplete ||
+        abi->is_incomplete != type->struct_is_incomplete ||
+        abi->is_packed != declaration->as.struct_decl.repr_c_packed ||
+        abi->is_packed != type->struct_repr_c_packed ||
+        abi->explicit_alignment !=
+            (unsigned)(declaration->as.struct_decl.repr_c_align > 0
+                ? declaration->as.struct_decl.repr_c_align
+                : 0) ||
+        abi->explicit_alignment !=
+            (unsigned)(type->struct_repr_c_align > 0
+                ? type->struct_repr_c_align
+                : 0)) {
+        verifier_error(verifier, declaration,
+            "normalized aggregate layout controls differ from semantic type");
+    }
+
+    for (int i = 0; i < declaration->as.struct_decl.fields.count; i++) {
+        Node *field = declaration->as.struct_decl.fields.items[i];
+        SemDeclInfo *field_info = semantic_get_decl_info(verifier->sem, field);
+
+        if (!field_info)
+            continue;
+
+        if (expected_repr == SEM_ABI_REPR_C) {
+            verify_abi_type(
+                verifier,
+                field,
+                field->as.struct_field_decl.var_type,
+                field_info->type,
+                field_info->abi_type
+            );
+        } else if (field_info->abi_type) {
+            verifier_error(verifier, field,
+                "ordinary Coglet struct field unexpectedly carries a C ABI spelling");
+        }
+    }
+}
+
+static void verify_enum_abi_info(
+    Verifier *verifier,
+    Node *declaration,
+    SemDeclInfo *info
+) {
+    Type *type = info->type;
+    if (!type || type->kind != TYPE_ENUM)
+        return;
+
+    if (info->abi_kind != SEM_DECL_ABI_ENUM) {
+        verifier_error(verifier, declaration,
+            "enum declaration has no normalized ABI metadata");
+        return;
+    }
+
+    SemAbiRepresentation expected_repr =
+        declaration->as.enum_decl.is_repr_c
+            ? SEM_ABI_REPR_C
+            : SEM_ABI_REPR_COGLET;
+
+    if (info->abi.enumeration.representation != expected_repr ||
+        (type->enum_is_repr_c ? SEM_ABI_REPR_C : SEM_ABI_REPR_COGLET) != expected_repr) {
+        verifier_error(verifier, declaration,
+            "normalized enum representation differs from semantic type");
+    }
+
+    if (expected_repr == SEM_ABI_REPR_C) {
+        verify_abi_type(
+            verifier,
+            declaration,
+            declaration->as.enum_decl.backing_type,
+            type->enum_backing_type,
+            info->abi.enumeration.backing_abi_type
+        );
+    } else if (info->abi.enumeration.backing_abi_type) {
+        verifier_error(verifier, declaration,
+            "ordinary Coglet enum unexpectedly carries a C ABI backing spelling");
+    }
+}
+
 static void verify_declaration_info(Verifier *verifier, Node *declaration) {
 
     SemDeclInfo *info =
@@ -1426,14 +1842,58 @@ static void verify_declaration_info(Verifier *verifier, Node *declaration) {
 
     switch (declaration->type) {
         case NODE_VAR_DECL:
-        case NODE_FUNC_DECL:
         case NODE_CONST_DECL:
+            if (!info->symbol) {
+                verifier_error(verifier, declaration,
+                    "lexical declaration has no resolved Symbol");
+            }
+
+            if (info->abi_kind != SEM_DECL_ABI_NONE || info->abi_type) {
+                verifier_error(verifier, declaration,
+                    "ordinary value declaration unexpectedly carries ABI metadata");
+            }
+            break;
+
+        case NODE_FUNC_DECL:
+            if (!info->symbol) {
+                verifier_error(verifier, declaration,
+                    "lexical declaration has no resolved Symbol");
+            }
+
+            if (info->abi_type) {
+                verifier_error(verifier, declaration,
+                    "function declaration unexpectedly carries a direct ABI type spelling");
+            }
+
+            verify_function_abi_info(verifier, declaration, info);
+            break;
+
         case NODE_STRUCT_DECL:
+            if (!info->symbol) {
+                verifier_error(verifier, declaration,
+                    "lexical declaration has no resolved Symbol");
+            }
+
+            if (info->abi_type) {
+                verifier_error(verifier, declaration,
+                    "aggregate declaration unexpectedly carries a direct ABI type spelling");
+            }
+
+            verify_aggregate_abi_info(verifier, declaration, info);
+            break;
+
         case NODE_ENUM_DECL:
             if (!info->symbol) {
                 verifier_error(verifier, declaration,
                     "lexical declaration has no resolved Symbol");
             }
+
+            if (info->abi_type) {
+                verifier_error(verifier, declaration,
+                    "enum declaration unexpectedly carries a direct ABI type spelling");
+            }
+
+            verify_enum_abi_info(verifier, declaration, info);
             break;
 
         case NODE_STRUCT_FIELD_DECL:
@@ -1442,13 +1902,23 @@ static void verify_declaration_info(Verifier *verifier, Node *declaration) {
                 verifier_error(verifier, declaration,
                     "aggregate member unexpectedly has a lexical Symbol");
             }
+
+            if (info->abi_kind != SEM_DECL_ABI_NONE) {
+                verifier_error(verifier, declaration,
+                    "aggregate member unexpectedly carries declaration-level ABI metadata");
+            }
             break;
 
         case NODE_FUNC_PARAM_DECL:
             /*
              * Parameters of body-less declarations (notably #extern(c)) have
              * semantic identity/type but intentionally no lexical Symbol.
+             * Their optional abi_type is verified from the owning function.
              */
+            if (info->abi_kind != SEM_DECL_ABI_NONE) {
+                verifier_error(verifier, declaration,
+                    "function parameter unexpectedly carries declaration-level ABI metadata");
+            }
             break;
 
         default:

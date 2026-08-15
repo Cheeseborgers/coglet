@@ -34,6 +34,15 @@ static void report_semantic_error_summary(const CompileResult *result) {
 }
 
 CompileStatus compile_parse_and_check(const char *filename, CompileResult *out) {
+    TargetInfo target = target_info_host();
+    return compile_parse_and_check_for_target(filename, &target, out);
+}
+
+CompileStatus compile_parse_and_check_for_target(
+    const char *filename,
+    const TargetInfo *target,
+    CompileResult *out
+) {
 
     if (!out) return COMPILE_STATUS_DRIVER_ERROR;
 
@@ -47,6 +56,19 @@ CompileStatus compile_parse_and_check(const char *filename, CompileResult *out) 
 
     out->status = COMPILE_STATUS_DRIVER_ERROR;
     out->filename = filename;
+
+    if (!target) {
+        fprintf(stderr, "error: no target description\n");
+        return out->status;
+    }
+
+    char target_error[160];
+    if (!target_info_validate(target, target_error, sizeof(target_error))) {
+        fprintf(stderr, "error: invalid target description: %s\n", target_error);
+        return out->status;
+    }
+
+    out->target = *target;
 
     if (!filename) {
         fprintf(stderr, "error: no input file\n");
@@ -91,7 +113,7 @@ CompileStatus compile_parse_and_check(const char *filename, CompileResult *out) 
 
     out->sem.arena = out->arena;
 
-    semantic_check(out->program, &out->sem);
+    semantic_check(out->program, &out->sem, &out->target);
 
     if (out->sem.had_error) {
         report_semantic_error_summary(out);

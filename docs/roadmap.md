@@ -30,8 +30,43 @@ Implemented areas include:
 - constant array-index bounds checking
 - IEEE-754 constant behavior for `f32` and `f64`, including infinity, NaN, and signed zero
 - deterministic semantic-information verification and dumps
+- stable semantic declaration identities and normalized native-C ABI metadata
+- explicit frontend `TargetInfo` with host-default and synthetic cross-target semantic tests
 
 ## Recently Completed
+
+### Declaration Identity and ABI Normalization
+
+The frontend-to-lowering boundary is being hardened before CogIR work begins.
+Successful declarations now receive stable per-semantic-check IDs independent
+of AST and symbol addresses, including parameters and aggregate members.
+
+Native-C ABI intent is also normalized into semantic declaration metadata:
+
+- function ABI, linkage, calling convention, variadics, and effective linker symbol;
+- struct/union representation, incompleteness, packing, and alignment;
+- represented-enum backing ABI type;
+- recursive C-facing type spelling for ABI parameters and represented fields,
+  preserving aliases such as `c_int`, `c_long`, and `c_char` after semantic type
+  canonicalization.
+
+The host-C backend consumes these normalized ABI facts rather than interpreting
+`#extern(c)`/`#repr(c)` annotation fields directly. Semantic-info verification
+checks the metadata against the successfully resolved program. This keeps the
+next CogIR lowering phase focused on translation rather than re-performing name,
+type, or ABI interpretation.
+
+### Explicit Frontend Target Description
+
+Semantic C-scalar resolution now consumes an explicit `TargetInfo` rather than
+querying `sizeof`, `CHAR_MIN`, or floating-format macros directly. The target
+contract records pointer width, the C integer-family widths, plain-`char`
+signedness, `_Bool` width, and C floating formats. The normal driver constructs
+a host description for unchanged behavior, while a target-aware driver entry
+point accepts synthetic/future targets. Tests compile the same source with two
+different target descriptions and verify that `c_long`, `c_size`, and `c_char`
+resolve differently. CLI target triples and non-host backend/toolchain selection
+remain future work. The host-C backend explicitly rejects semantic state for a non-host target so an explicit frontend target cannot silently produce ABI-mismatched generated C.
 
 ### Definite Assignment and Unified Reachability
 
@@ -289,14 +324,15 @@ The native C scalar aliases are also implemented: `c_char`, `c_schar`,
 `c_uchar`, `c_short`, `c_ushort`, `c_int`, `c_uint`, `c_long`, `c_ulong`,
 `c_longlong`, `c_ulonglong`, and `c_size`, plus `c_bool`, `c_float`, and
 `c_double`. They transparently resolve to canonical Coglet scalar types from the
-native C ABI used to build the compiler. C floating aliases are enabled only
-when the host formats match Coglet's IEEE binary32/binary64 contracts. External
+selected frontend `TargetInfo`; the default driver supplies the native host
+ABI. C floating aliases are enabled only when the selected target reports the
+required IEEE binary32/binary64 formats. External
 symbol-name overrides are implemented with `#extern(c, name="...")`. The host driver now
 also accepts repeated `-L` search paths and `-l` libraries in joined or split
 form and forwards them directly to `cc` for executable links. Direct string
 literals can now bind to `readonly c_char*` parameters of `#extern(c)` calls and
 are decoded/re-emitted by the host-C backend without enabling general
-array-to-pointer decay. Explicit cross-target ABI selection is still deferred.
+array-to-pointer decay. CLI cross-target selection and non-host backend/toolchain execution are still deferred.
 
 The C aggregate representation slice now supports `#repr(c)` structs and unions
 with scalar/raw-pointer fields, positive-length fixed arrays of supported field
@@ -334,7 +370,7 @@ includes that convention, and an x86-64 executable regression crosses the
 
 The manual/native-host C interop surface is now intentionally paused at this stage. Remaining C interoperability work includes:
 
-- explicit target/C-ABI selection for cross compilation;
+- CLI target triples/C-ABI presets and cross-compilation toolchain selection;
 - richer linker/toolchain configuration beyond `-L` / `-l`;
 - additional platform-specific ABI controls beyond the current `volatile`, layout, and calling-convention surface;
 - mapping C null pointers to Coglet `null` at additional lowering boundaries.

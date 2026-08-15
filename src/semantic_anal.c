@@ -886,13 +886,11 @@ static Symbol *scope_define_builtin(SemanticContext *ctx, const char *name, Buil
         NULL);
 }
 
-static Type *fixed_integer_type_for_c_abi(
+static Type *fixed_integer_type_for_c_abi_bits(
     SemanticContext *ctx,
-    size_t byte_width,
+    unsigned bit_width,
     int is_signed
 ) {
-    size_t bit_width = byte_width * (size_t)CHAR_BIT;
-
     switch (bit_width) {
         case 8:  return is_signed ? ctx->type_i8  : ctx->type_u8;
         case 16: return is_signed ? ctx->type_i16 : ctx->type_u16;
@@ -907,14 +905,14 @@ static int register_c_abi_type_alias(
     SemanticContext *ctx,
     const char *name,
     Type *type,
-    size_t byte_width
+    unsigned bit_width
 ) {
     if (!type) {
         fprintf(
             stderr,
-            "semantic error: native C ABI type '%s' has unsupported width %zu bits\n",
+            "semantic error: target C ABI type '%s' has unsupported width %u bits\n",
             name,
-            byte_width * (size_t)CHAR_BIT
+            bit_width
         );
         ctx->had_error = 1;
         ctx->error_count++;
@@ -932,48 +930,35 @@ static int register_c_abi_type_alias(
 }
 
 /*
- * Registers the native C integer-family ABI aliases.
+ * Registers target C integer-family ABI aliases.
  *
- * The compiler does not have an explicit cross-compilation target yet, so the
- * selected ABI for this milestone is the native C ABI used to build Coglet.
- * Each source-level alias is transparent after resolution: for example, on a
- * conventional LP64 host `c_int` resolves to canonical `i32` and `c_size` to
- * canonical `u64`. A future target configuration can replace this mapping
- * without changing source syntax or the rest of semantic analysis.
+ * Source-level aliases remain transparent after semantic resolution, but their
+ * exact spelling is retained separately by SemAbiType when a declaration sits
+ * on a C ABI boundary. TargetInfo is the sole authority for deciding which
+ * canonical Coglet integer type an alias resolves to.
  */
-static void register_native_c_integer_alias(
+static void register_target_c_integer_alias(
     SemanticContext *ctx,
     const char *name,
-    size_t byte_width,
+    unsigned bit_width,
     int is_signed
 ) {
-    Type *type = fixed_integer_type_for_c_abi(ctx, byte_width, is_signed);
-    register_c_abi_type_alias(ctx, name, type, byte_width);
+    Type *type = fixed_integer_type_for_c_abi_bits(ctx, bit_width, is_signed);
+    register_c_abi_type_alias(ctx, name, type, bit_width);
 }
 
-static void register_native_c_float_alias(
+static void register_target_c_float_alias(
     SemanticContext *ctx,
     const char *name,
     Type *type,
-    size_t byte_width,
-    int mantissa_bits,
-    int min_exponent,
-    int max_exponent,
-    size_t expected_bits,
-    int expected_mantissa_bits,
-    int expected_min_exponent,
-    int expected_max_exponent
+    TargetFloatFormat actual_format,
+    TargetFloatFormat expected_format,
+    unsigned expected_bits
 ) {
-    size_t bit_width = byte_width * (size_t)CHAR_BIT;
-
-    if (FLT_RADIX != 2 ||
-        bit_width != expected_bits ||
-        mantissa_bits != expected_mantissa_bits ||
-        min_exponent != expected_min_exponent ||
-        max_exponent != expected_max_exponent) {
+    if (actual_format != expected_format) {
         fprintf(
             stderr,
-            "semantic error: native C ABI type '%s' is not compatible with Coglet's IEEE binary%zu type\n",
+            "semantic error: target C ABI type '%s' is not compatible with Coglet's IEEE binary%u type\n",
             name,
             expected_bits
         );
@@ -990,25 +975,29 @@ static void register_native_c_float_alias(
     );
 }
 
-static void register_native_c_abi_type_aliases(SemanticContext *ctx) {
-    register_native_c_integer_alias(ctx, "c_char", sizeof(char), CHAR_MIN < 0);
-    register_native_c_integer_alias(ctx, "c_schar", sizeof(signed char), 1);
-    register_native_c_integer_alias(ctx, "c_uchar", sizeof(unsigned char), 0);
+static void register_target_c_abi_type_aliases(SemanticContext *ctx) {
+    const TargetInfo *target = &ctx->target;
 
-    register_native_c_integer_alias(ctx, "c_short", sizeof(short), 1);
-    register_native_c_integer_alias(ctx, "c_ushort", sizeof(unsigned short), 0);
-    register_native_c_integer_alias(ctx, "c_int", sizeof(int), 1);
-    register_native_c_integer_alias(ctx, "c_uint", sizeof(unsigned int), 0);
-    register_native_c_integer_alias(ctx, "c_long", sizeof(long), 1);
-    register_native_c_integer_alias(ctx, "c_ulong", sizeof(unsigned long), 0);
-    register_native_c_integer_alias(ctx, "c_longlong", sizeof(long long), 1);
-    register_native_c_integer_alias(ctx, "c_ulonglong", sizeof(unsigned long long), 0);
+    register_target_c_integer_alias(
+        ctx, "c_char", target->c_char_bits, target->c_char_is_signed
+    );
+    register_target_c_integer_alias(ctx, "c_schar", target->c_char_bits, 1);
+    register_target_c_integer_alias(ctx, "c_uchar", target->c_char_bits, 0);
 
-    register_native_c_integer_alias(ctx, "c_size", sizeof(size_t), 0);
+    register_target_c_integer_alias(ctx, "c_short", target->c_short_bits, 1);
+    register_target_c_integer_alias(ctx, "c_ushort", target->c_short_bits, 0);
+    register_target_c_integer_alias(ctx, "c_int", target->c_int_bits, 1);
+    register_target_c_integer_alias(ctx, "c_uint", target->c_int_bits, 0);
+    register_target_c_integer_alias(ctx, "c_long", target->c_long_bits, 1);
+    register_target_c_integer_alias(ctx, "c_ulong", target->c_long_bits, 0);
+    register_target_c_integer_alias(ctx, "c_longlong", target->c_long_long_bits, 1);
+    register_target_c_integer_alias(ctx, "c_ulonglong", target->c_long_long_bits, 0);
+
+    register_target_c_integer_alias(ctx, "c_size", target->c_size_bits, 0);
 
     /*
      * C `_Bool` has the same logical value domain Coglet exposes through
-     * `bool`; the host-C backend preserves the source ABI spelling as `_Bool`.
+     * `bool`; ABI layout is retained in TargetInfo for later native lowering.
      */
     scope_define(
         ctx,
@@ -1017,43 +1006,28 @@ static void register_native_c_abi_type_aliases(SemanticContext *ctx) {
         ctx->type_bool
     );
 
-    /*
-     * Coglet specifies f32/f64 as IEEE-754 binary32/binary64. Only expose the
-     * native C floating aliases when the host C formats match those contracts.
-     * This avoids silently treating an unusual C floating ABI as Coglet f32/f64.
-     */
-    register_native_c_float_alias(
+    register_target_c_float_alias(
         ctx,
         "c_float",
         ctx->type_f32,
-        sizeof(float),
-        FLT_MANT_DIG,
-        FLT_MIN_EXP,
-        FLT_MAX_EXP,
-        32,
-        24,
-        -125,
-        128
+        target->c_float_format,
+        TARGET_FLOAT_FORMAT_IEEE_BINARY32,
+        32
     );
 
-    register_native_c_float_alias(
+    register_target_c_float_alias(
         ctx,
         "c_double",
         ctx->type_f64,
-        sizeof(double),
-        DBL_MANT_DIG,
-        DBL_MIN_EXP,
-        DBL_MAX_EXP,
-        64,
-        53,
-        -1021,
-        1024
+        target->c_double_format,
+        TARGET_FLOAT_FORMAT_IEEE_BINARY64,
+        64
     );
 }
 
 static void register_builtin_symbols(SemanticContext *ctx) {
 
-    register_native_c_abi_type_aliases(ctx);
+    register_target_c_abi_type_aliases(ctx);
 
     scope_define_builtin(ctx, "wrapping_add", BUILTIN_WRAPPING_ADD);
     scope_define_builtin(ctx, "wrapping_sub", BUILTIN_WRAPPING_SUB);
@@ -1227,6 +1201,152 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
     }
 
     return type;
+}
+
+static SemCScalarKind native_c_scalar_kind(const Type *source_type)
+{
+    if (!source_type || source_type->kind != TYPE_NAMED)
+        return SEM_C_SCALAR_NONE;
+
+    StringView name = source_type->named_name;
+
+#define C_SCALAR_ALIAS(text, kind) \
+    if (names_equal(name.data, name.length, text, sizeof(text) - 1)) return kind
+
+    C_SCALAR_ALIAS("c_char",      SEM_C_SCALAR_CHAR);
+    C_SCALAR_ALIAS("c_schar",     SEM_C_SCALAR_SCHAR);
+    C_SCALAR_ALIAS("c_uchar",     SEM_C_SCALAR_UCHAR);
+    C_SCALAR_ALIAS("c_short",     SEM_C_SCALAR_SHORT);
+    C_SCALAR_ALIAS("c_ushort",    SEM_C_SCALAR_USHORT);
+    C_SCALAR_ALIAS("c_int",       SEM_C_SCALAR_INT);
+    C_SCALAR_ALIAS("c_uint",      SEM_C_SCALAR_UINT);
+    C_SCALAR_ALIAS("c_long",      SEM_C_SCALAR_LONG);
+    C_SCALAR_ALIAS("c_ulong",     SEM_C_SCALAR_ULONG);
+    C_SCALAR_ALIAS("c_longlong",  SEM_C_SCALAR_LONGLONG);
+    C_SCALAR_ALIAS("c_ulonglong", SEM_C_SCALAR_ULONGLONG);
+    C_SCALAR_ALIAS("c_size",      SEM_C_SCALAR_SIZE);
+    C_SCALAR_ALIAS("c_bool",      SEM_C_SCALAR_BOOL);
+    C_SCALAR_ALIAS("c_float",     SEM_C_SCALAR_FLOAT);
+    C_SCALAR_ALIAS("c_double",    SEM_C_SCALAR_DOUBLE);
+
+#undef C_SCALAR_ALIAS
+
+    return SEM_C_SCALAR_NONE;
+}
+
+/*
+ * Captures the source spelling needed to cross a native-C ABI boundary while
+ * retaining the fully resolved semantic type beside it. This is intentionally
+ * not another type checker: all legality and type resolution has already
+ * happened before this helper is called.
+ */
+static SemAbiType *make_sem_abi_type(
+    SemanticContext *ctx,
+    const Type *source_type,
+    Type *semantic_type
+) {
+    assert(ctx);
+    assert(source_type);
+    assert(semantic_type);
+
+    SemAbiType *abi_type = arena_alloc(ctx->arena, sizeof(*abi_type));
+    memset(abi_type, 0, sizeof(*abi_type));
+    abi_type->semantic_type = semantic_type;
+
+    SemCScalarKind c_scalar = native_c_scalar_kind(source_type);
+    if (c_scalar != SEM_C_SCALAR_NONE) {
+        abi_type->kind = SEM_ABI_TYPE_C_SCALAR;
+        abi_type->c_scalar_kind = c_scalar;
+        return abi_type;
+    }
+
+    switch (source_type->kind) {
+        case TYPE_POINTER:
+            assert(semantic_type->kind == TYPE_POINTER);
+            assert(source_type->element);
+            assert(semantic_type->element);
+
+            abi_type->kind = SEM_ABI_TYPE_POINTER;
+            abi_type->element = make_sem_abi_type(
+                ctx,
+                source_type->element,
+                semantic_type->element
+            );
+            return abi_type;
+
+        case TYPE_OPAQUE_POINTER:
+            assert(semantic_type->kind == TYPE_OPAQUE_POINTER);
+            abi_type->kind = SEM_ABI_TYPE_OPAQUE_POINTER;
+            return abi_type;
+
+        case TYPE_ARRAY:
+            assert(semantic_type->kind == TYPE_ARRAY);
+            assert(source_type->element);
+            assert(semantic_type->element);
+
+            abi_type->kind = SEM_ABI_TYPE_ARRAY;
+            abi_type->element = make_sem_abi_type(
+                ctx,
+                source_type->element,
+                semantic_type->element
+            );
+            return abi_type;
+
+        case TYPE_FUNCTION:
+            assert(semantic_type->kind == TYPE_FUNCTION);
+            assert(source_type->parameter_count == semantic_type->parameter_count);
+
+            abi_type->kind = SEM_ABI_TYPE_FUNCTION;
+            abi_type->parameter_count = semantic_type->parameter_count;
+
+            if (abi_type->parameter_count > 0) {
+                abi_type->parameters = arena_alloc(
+                    ctx->arena,
+                    sizeof(SemAbiType *) * (size_t)abi_type->parameter_count
+                );
+
+                for (int i = 0; i < abi_type->parameter_count; i++) {
+                    abi_type->parameters[i] = make_sem_abi_type(
+                        ctx,
+                        source_type->parameters[i],
+                        semantic_type->parameters[i]
+                    );
+                }
+            }
+
+            abi_type->return_type = make_sem_abi_type(
+                ctx,
+                source_type->return_type,
+                semantic_type->return_type
+            );
+            return abi_type;
+
+        case TYPE_VOID:
+        case TYPE_BOOL:
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+        case TYPE_F32:
+        case TYPE_F64:
+        case TYPE_NAMED:
+        case TYPE_STRUCT:
+        case TYPE_ENUM:
+            abi_type->kind = SEM_ABI_TYPE_SEMANTIC;
+            return abi_type;
+
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
+        case TYPE_NULL:
+            assert(!"non-concrete type cannot appear in normalized ABI metadata");
+            break;
+    }
+
+    return abi_type;
 }
 
 // ============================================================
@@ -8135,10 +8255,10 @@ static int check_c_variadic_argument(SemanticContext *ctx, Node *argument) {
      * performs the ordinary array-to-pointer conversion at the ABI boundary.
      */
     if (argument->type == NODE_STRING) {
-        Type *c_char = fixed_integer_type_for_c_abi(
+        Type *c_char = fixed_integer_type_for_c_abi_bits(
             ctx,
-            sizeof(char),
-            CHAR_MIN < 0
+            ctx->target.c_char_bits,
+            ctx->target.c_char_is_signed
         );
 
         if (!c_char) {
@@ -8167,7 +8287,11 @@ static int check_c_variadic_argument(SemanticContext *ctx, Node *argument) {
      * that expression form.
      */
     if (actual->kind == TYPE_UNTYPED_INT) {
-        Type *c_int = fixed_integer_type_for_c_abi(ctx, sizeof(int), 1);
+        Type *c_int = fixed_integer_type_for_c_abi_bits(
+            ctx,
+            ctx->target.c_int_bits,
+            1
+        );
 
         if (!c_int ||
             !check_constant_value_against_type(
@@ -9056,6 +9180,34 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
 
     node->as.func_decl.resolved_type = func_type;
 
+    SemDeclInfo *func_info = sem_find_decl_info(ctx, node);
+    assert(func_info);
+    assert(func_info->abi_kind == SEM_DECL_ABI_NONE);
+
+    func_info->abi_kind = SEM_DECL_ABI_FUNCTION;
+    func_info->abi.function.abi = func_type->function_abi;
+    func_info->abi.function.linkage =
+        node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C
+            ? SEM_FUNCTION_LINKAGE_EXTERNAL
+            : SEM_FUNCTION_LINKAGE_INTERNAL;
+    func_info->abi.function.c_call_conv = func_type->function_call_conv;
+    func_info->abi.function.is_variadic = func_type->function_is_variadic;
+
+    if (func_info->abi.function.linkage == SEM_FUNCTION_LINKAGE_EXTERNAL) {
+        func_info->abi.function.external_symbol =
+            string_view_is_empty(node->as.func_decl.external_name)
+                ? node->as.func_decl.name
+                : node->as.func_decl.external_name;
+    }
+
+    if (func_type->function_abi == FUNCTION_ABI_C) {
+        func_info->abi.function.return_abi_type = make_sem_abi_type(
+            ctx,
+            node->as.func_decl.return_type,
+            func_type->return_type
+        );
+    }
+
     /*
      * Parameter declarations have semantic identity as part of the function
      * signature even when there is no body (for example #extern(c)). A body
@@ -9063,12 +9215,21 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
      * record rather than allocating a second identity.
      */
     for (int i = 0; i < node->as.func_decl.params.count; i++) {
-        sem_record_decl_info(
+        Node *param = node->as.func_decl.params.items[i];
+        SemDeclInfo *param_info = sem_record_decl_info(
             ctx,
-            node->as.func_decl.params.items[i],
+            param,
             func_type->parameters[i],
             NULL
         );
+
+        if (func_type->function_abi == FUNCTION_ABI_C) {
+            param_info->abi_type = make_sem_abi_type(
+                ctx,
+                param->as.param_decl.var_type,
+                func_type->parameters[i]
+            );
+        }
     }
 
     return 1;
@@ -9220,6 +9381,22 @@ static int declare_struct_shell(SemanticContext *ctx, Node *node) {
         SYMBOL_TYPE,
         type
     );
+
+    SemDeclInfo *decl_info = sem_find_decl_info(ctx, node);
+    assert(decl_info);
+    assert(decl_info->abi_kind == SEM_DECL_ABI_NONE);
+
+    decl_info->abi_kind = SEM_DECL_ABI_AGGREGATE;
+    decl_info->abi.aggregate.representation =
+        type->struct_is_repr_c ? SEM_ABI_REPR_C : SEM_ABI_REPR_COGLET;
+    decl_info->abi.aggregate.aggregate_kind =
+        type->struct_is_union ? SEM_AGGREGATE_UNION : SEM_AGGREGATE_STRUCT;
+    decl_info->abi.aggregate.is_incomplete = type->struct_is_incomplete;
+    decl_info->abi.aggregate.is_packed = type->struct_repr_c_packed;
+    decl_info->abi.aggregate.explicit_alignment =
+        type->struct_repr_c_align > 0
+            ? (unsigned)type->struct_repr_c_align
+            : 0u;
 
     return 1;
 }
@@ -9520,7 +9697,16 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
         }
 
         type->fields[i].type = field_type;
-        sem_record_decl_info(ctx, field, field_type, NULL);
+        SemDeclInfo *field_info =
+            sem_record_decl_info(ctx, field, field_type, NULL);
+
+        if (type->struct_is_repr_c) {
+            field_info->abi_type = make_sem_abi_type(
+                ctx,
+                field->as.struct_field_decl.var_type,
+                field_type
+            );
+        }
     }
 }
 
@@ -9552,6 +9738,14 @@ static int declare_enum_shell(SemanticContext *ctx, Node *node) {
     );
 
     node->as.enum_decl.resolved_type = type;
+
+    SemDeclInfo *decl_info = sem_find_decl_info(ctx, node);
+    assert(decl_info);
+    assert(decl_info->abi_kind == SEM_DECL_ABI_NONE);
+
+    decl_info->abi_kind = SEM_DECL_ABI_ENUM;
+    decl_info->abi.enumeration.representation =
+        type->enum_is_repr_c ? SEM_ABI_REPR_C : SEM_ABI_REPR_COGLET;
 
     return 1;
 }
@@ -9657,6 +9851,18 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
 
     type->enum_backing_type = backing_type;
     assert_canonical_builtin_type(ctx, backing_type);
+
+    if (type->enum_is_repr_c) {
+        SemDeclInfo *decl_info = sem_find_decl_info(ctx, node);
+        assert(decl_info);
+        assert(decl_info->abi_kind == SEM_DECL_ABI_ENUM);
+
+        decl_info->abi.enumeration.backing_abi_type = make_sem_abi_type(
+            ctx,
+            node->as.enum_decl.backing_type,
+            backing_type
+        );
+    }
 
     int count = node->as.enum_decl.members.count;
 
@@ -10098,7 +10304,14 @@ static void check_node(SemanticContext *ctx,Node *node) {
 // ============================================================
 // public entry
 // ============================================================
-void semantic_check(Node *program, SemanticContext *ctx) {
+void semantic_check(
+    Node *program,
+    SemanticContext *ctx,
+    const TargetInfo *target
+) {
+
+    assert(target);
+    ctx->target = *target;
 
     ctx->had_error          = 0;
     ctx->loop_depth         = 0;

@@ -2,6 +2,7 @@
 
 #include "backend_c.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -26,17 +27,20 @@
 
 typedef struct CFunction {
     Node *node;
+    SemDeclInfo *decl_info;
     char generated_name[C_BACKEND_NAME_SIZE];
 } CFunction;
 
 typedef struct CTypeAlias {
     const Type *type;
+    const SemAbiType *abi_type;
     char name[C_BACKEND_NAME_SIZE];
     char definition[C_BACKEND_TYPE_DEF_SIZE];
 } CTypeAlias;
 
 typedef struct CStruct {
     Node *node;
+    SemDeclInfo *decl_info;
     const Type *type;
     char generated_name[C_BACKEND_NAME_SIZE];
     unsigned char definition_state;
@@ -44,6 +48,7 @@ typedef struct CStruct {
 
 typedef struct CEnum {
     Node *node;
+    SemDeclInfo *decl_info;
     const Type *type;
     char generated_name[C_BACKEND_NAME_SIZE];
 } CEnum;
@@ -107,7 +112,21 @@ static void backend_error(CBackend *backend, const Node *node, const char *messa
 static const CTypeAlias *find_type_alias(CBackend *backend, const Type *type)
 {
     for (int i = 0; i < backend->type_alias_count; i++) {
-        if (backend->type_aliases[i].type == type)
+        if (backend->type_aliases[i].type == type &&
+            backend->type_aliases[i].abi_type == NULL) {
+            return &backend->type_aliases[i];
+        }
+    }
+
+    return NULL;
+}
+
+static const CTypeAlias *find_abi_type_alias(
+    CBackend *backend,
+    const SemAbiType *abi_type
+) {
+    for (int i = 0; i < backend->type_alias_count; i++) {
+        if (backend->type_aliases[i].abi_type == abi_type)
             return &backend->type_aliases[i];
     }
 
@@ -439,6 +458,268 @@ static const char *register_c_type(CBackend *backend, const Type *type, const No
     return alias->name;
 }
 
+static const char *c_scalar_type_name(SemCScalarKind kind)
+{
+    switch (kind) {
+        case SEM_C_SCALAR_CHAR:      return "char";
+        case SEM_C_SCALAR_SCHAR:     return "signed char";
+        case SEM_C_SCALAR_UCHAR:     return "unsigned char";
+        case SEM_C_SCALAR_SHORT:     return "short";
+        case SEM_C_SCALAR_USHORT:    return "unsigned short";
+        case SEM_C_SCALAR_INT:       return "int";
+        case SEM_C_SCALAR_UINT:      return "unsigned int";
+        case SEM_C_SCALAR_LONG:      return "long";
+        case SEM_C_SCALAR_ULONG:     return "unsigned long";
+        case SEM_C_SCALAR_LONGLONG:  return "long long";
+        case SEM_C_SCALAR_ULONGLONG: return "unsigned long long";
+        case SEM_C_SCALAR_SIZE:      return "size_t";
+        case SEM_C_SCALAR_BOOL:      return "_Bool";
+        case SEM_C_SCALAR_FLOAT:     return "float";
+        case SEM_C_SCALAR_DOUBLE:    return "double";
+        case SEM_C_SCALAR_NONE:      return NULL;
+    }
+
+    return NULL;
+}
+
+static const char *register_abi_c_type(
+    CBackend *backend,
+    const SemAbiType *abi_type,
+    const Node *owner
+) {
+    if (!abi_type || !abi_type->semantic_type) {
+        backend_error(backend, owner, "missing normalized ABI type during C lowering");
+        return NULL;
+    }
+
+    switch (abi_type->kind) {
+        case SEM_ABI_TYPE_C_SCALAR: {
+            const char *name = c_scalar_type_name(abi_type->c_scalar_kind);
+            if (!name) {
+                backend_error(backend, owner, "invalid normalized native-C scalar type");
+                return NULL;
+            }
+            return name;
+        }
+
+        case SEM_ABI_TYPE_SEMANTIC:
+            return register_c_type(backend, abi_type->semantic_type, owner);
+
+        case SEM_ABI_TYPE_ARRAY:
+            backend_error(backend, owner,
+                "array ABI type must be lowered by its owning aggregate field");
+            return NULL;
+
+        case SEM_ABI_TYPE_POINTER:
+        case SEM_ABI_TYPE_OPAQUE_POINTER:
+        case SEM_ABI_TYPE_FUNCTION:
+            break;
+    }
+
+    const CTypeAlias *existing = find_abi_type_alias(backend, abi_type);
+    if (existing)
+        return existing->name;
+
+    const Type *type = abi_type->semantic_type;
+
+    if (abi_type->kind == SEM_ABI_TYPE_FUNCTION) {
+        if (type->kind != TYPE_FUNCTION || type->function_abi != FUNCTION_ABI_C) {
+            backend_error(backend, owner,
+                "normalized callback ABI type is not a native C function type");
+            return NULL;
+        }
+
+        const char *return_name = register_abi_c_type(
+            backend,
+            abi_type->return_type,
+            owner
+        );
+        if (!return_name) return NULL;
+
+        for (int i = 0; i < abi_type->parameter_count; i++) {
+            if (!register_abi_c_type(backend, abi_type->parameters[i], owner))
+                return NULL;
+        }
+
+        if (backend->type_alias_count >= C_BACKEND_MAX_TYPE_ALIASES) {
+            backend_error(backend, owner, "too many generated C callback types");
+            return NULL;
+        }
+
+        int index = backend->type_alias_count;
+        CTypeAlias *alias = &backend->type_aliases[backend->type_alias_count++];
+        memset(alias, 0, sizeof(*alias));
+        alias->abi_type = abi_type;
+        snprintf(alias->name, sizeof(alias->name), "cg_type_%d", index);
+
+        char return_copy[C_BACKEND_NAME_SIZE];
+        char alias_copy[C_BACKEND_NAME_SIZE];
+
+        if (strlen(return_name) >= sizeof(return_copy) ||
+            strlen(alias->name) >= sizeof(alias_copy)) {
+            backend_error(backend, owner, "generated C callback type name is too long");
+            return NULL;
+        }
+
+        strcpy(return_copy, return_name);
+        strcpy(alias_copy, alias->name);
+
+        const char *call_macro = c_call_macro_name(type->function_call_conv);
+
+        int written;
+        if (type->function_call_conv == C_CALL_DEFAULT) {
+            written = snprintf(
+                alias->definition,
+                sizeof(alias->definition),
+                "typedef %s (*%s)(",
+                return_copy,
+                alias_copy
+            );
+        } else {
+            written = snprintf(
+                alias->definition,
+                sizeof(alias->definition),
+                "typedef %s (%s *%s)(",
+                return_copy,
+                call_macro,
+                alias_copy
+            );
+        }
+
+        if (written < 0 || (size_t)written >= sizeof(alias->definition)) {
+            backend_error(backend, owner, "generated C callback typedef is too long");
+            return NULL;
+        }
+
+        size_t used = (size_t)written;
+
+        if (abi_type->parameter_count == 0) {
+            written = snprintf(
+                alias->definition + used,
+                sizeof(alias->definition) - used,
+                "void"
+            );
+            if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
+                backend_error(backend, owner, "generated C callback typedef is too long");
+                return NULL;
+            }
+            used += (size_t)written;
+        } else {
+            for (int i = 0; i < abi_type->parameter_count; i++) {
+                const char *parameter_name = register_abi_c_type(
+                    backend,
+                    abi_type->parameters[i],
+                    owner
+                );
+                if (!parameter_name) return NULL;
+
+                written = snprintf(
+                    alias->definition + used,
+                    sizeof(alias->definition) - used,
+                    "%s%s",
+                    i > 0 ? ", " : "",
+                    parameter_name
+                );
+
+                if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
+                    backend_error(backend, owner, "generated C callback typedef is too long");
+                    return NULL;
+                }
+                used += (size_t)written;
+            }
+
+            if (type->function_is_variadic) {
+                written = snprintf(
+                    alias->definition + used,
+                    sizeof(alias->definition) - used,
+                    ", ..."
+                );
+                if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
+                    backend_error(backend, owner, "generated C callback typedef is too long");
+                    return NULL;
+                }
+                used += (size_t)written;
+            }
+        }
+
+        written = snprintf(
+            alias->definition + used,
+            sizeof(alias->definition) - used,
+            ");"
+        );
+        if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
+            backend_error(backend, owner, "generated C callback typedef is too long");
+            return NULL;
+        }
+
+        return alias->name;
+    }
+
+    if ((abi_type->kind == SEM_ABI_TYPE_POINTER && type->kind != TYPE_POINTER) ||
+        (abi_type->kind == SEM_ABI_TYPE_OPAQUE_POINTER &&
+         type->kind != TYPE_OPAQUE_POINTER)) {
+        backend_error(backend, owner,
+            "normalized pointer ABI type differs from semantic pointer type");
+        return NULL;
+    }
+
+    if (backend->type_alias_count >= C_BACKEND_MAX_TYPE_ALIASES) {
+        backend_error(backend, owner, "too many generated C pointer types");
+        return NULL;
+    }
+
+    char element_name[C_BACKEND_NAME_SIZE];
+    element_name[0] = '\0';
+
+    if (abi_type->kind == SEM_ABI_TYPE_POINTER) {
+        const char *resolved_element = register_abi_c_type(
+            backend,
+            abi_type->element,
+            owner
+        );
+        if (!resolved_element) return NULL;
+
+        if (strlen(resolved_element) >= sizeof(element_name)) {
+            backend_error(backend, owner, "generated C element type name is too long");
+            return NULL;
+        }
+
+        strcpy(element_name, resolved_element);
+    }
+
+    int index = backend->type_alias_count;
+    CTypeAlias *alias = &backend->type_aliases[backend->type_alias_count++];
+    memset(alias, 0, sizeof(*alias));
+    alias->abi_type = abi_type;
+    snprintf(alias->name, sizeof(alias->name), "cg_type_%d", index);
+
+    char alias_name[C_BACKEND_NAME_SIZE];
+    strcpy(alias_name, alias->name);
+
+    if (abi_type->kind == SEM_ABI_TYPE_OPAQUE_POINTER) {
+        snprintf(
+            alias->definition,
+            sizeof(alias->definition),
+            "typedef %s%svoid *%s;",
+            type->pointer_access == POINTER_ACCESS_READONLY ? "const " : "",
+            type->pointer_is_volatile ? "volatile " : "",
+            alias_name
+        );
+    } else {
+        snprintf(
+            alias->definition,
+            sizeof(alias->definition),
+            "typedef %s%s%s *%s;",
+            element_name,
+            type->pointer_access == POINTER_ACCESS_READONLY ? " const" : "",
+            type->pointer_is_volatile ? " volatile" : "",
+            alias_name
+        );
+    }
+
+    return alias->name;
+}
+
 static CFunction *find_function(CBackend *backend, StringView name)
 {
     for (int i = 0; i < backend->function_count; i++) {
@@ -465,7 +746,16 @@ static int collect_enums(CBackend *backend)
 
     for (int i = 0; i < statements.count; i++) {
         Node *node = statements.items[i];
-        if (!node || node->type != NODE_ENUM_DECL || !node->as.enum_decl.is_repr_c)
+        if (!node || node->type != NODE_ENUM_DECL)
+            continue;
+
+        SemDeclInfo *decl_info = semantic_get_decl_info(backend->sem, node);
+        if (!decl_info || decl_info->abi_kind != SEM_DECL_ABI_ENUM) {
+            backend_error(backend, node, "missing normalized enum ABI metadata during C lowering");
+            return 0;
+        }
+
+        if (decl_info->abi.enumeration.representation != SEM_ABI_REPR_C)
             continue;
 
         if (backend->enum_count >= C_BACKEND_MAX_ENUMS) {
@@ -473,7 +763,7 @@ static int collect_enums(CBackend *backend)
             return 0;
         }
 
-        if (!node->as.enum_decl.resolved_type) {
+        if (!decl_info->type || decl_info->type->kind != TYPE_ENUM) {
             backend_error(backend, node, "missing resolved #repr(c) enum type during C lowering");
             return 0;
         }
@@ -481,7 +771,8 @@ static int collect_enums(CBackend *backend)
         CEnum *enumeration = &backend->enums[backend->enum_count];
         memset(enumeration, 0, sizeof(*enumeration));
         enumeration->node = node;
-        enumeration->type = node->as.enum_decl.resolved_type;
+        enumeration->decl_info = decl_info;
+        enumeration->type = decl_info->type;
         snprintf(
             enumeration->generated_name,
             sizeof(enumeration->generated_name),
@@ -505,7 +796,16 @@ static int collect_structs(CBackend *backend)
 
     for (int i = 0; i < statements.count; i++) {
         Node *node = statements.items[i];
-        if (!node || node->type != NODE_STRUCT_DECL || !node->as.struct_decl.is_repr_c)
+        if (!node || node->type != NODE_STRUCT_DECL)
+            continue;
+
+        SemDeclInfo *decl_info = semantic_get_decl_info(backend->sem, node);
+        if (!decl_info || decl_info->abi_kind != SEM_DECL_ABI_AGGREGATE) {
+            backend_error(backend, node, "missing normalized aggregate ABI metadata during C lowering");
+            return 0;
+        }
+
+        if (decl_info->abi.aggregate.representation != SEM_ABI_REPR_C)
             continue;
 
         if (backend->struct_count >= C_BACKEND_MAX_STRUCTS) {
@@ -513,7 +813,7 @@ static int collect_structs(CBackend *backend)
             return 0;
         }
 
-        if (!node->as.struct_decl.resolved_type) {
+        if (!decl_info->type || decl_info->type->kind != TYPE_STRUCT) {
             backend_error(backend, node, "missing resolved #repr(c) struct type during C lowering");
             return 0;
         }
@@ -521,11 +821,14 @@ static int collect_structs(CBackend *backend)
         CStruct *structure = &backend->structs[backend->struct_count];
         memset(structure, 0, sizeof(*structure));
         structure->node = node;
-        structure->type = node->as.struct_decl.resolved_type;
+        structure->decl_info = decl_info;
+        structure->type = decl_info->type;
         snprintf(
             structure->generated_name,
             sizeof(structure->generated_name),
-            node->as.struct_decl.is_union ? "cg_union_%d" : "cg_struct_%d",
+            decl_info->abi.aggregate.aggregate_kind == SEM_AGGREGATE_UNION
+                ? "cg_union_%d"
+                : "cg_struct_%d",
             backend->struct_count
         );
         backend->struct_count++;
@@ -553,9 +856,16 @@ static int collect_functions(CBackend *backend)
             return 0;
         }
 
+        SemDeclInfo *decl_info = semantic_get_decl_info(backend->sem, node);
+        if (!decl_info || decl_info->abi_kind != SEM_DECL_ABI_FUNCTION) {
+            backend_error(backend, node, "missing normalized function ABI metadata during C lowering");
+            return 0;
+        }
+
         CFunction *function = &backend->functions[backend->function_count];
         memset(function, 0, sizeof(*function));
         function->node = node;
+        function->decl_info = decl_info;
         snprintf(
             function->generated_name,
             sizeof(function->generated_name),
@@ -569,23 +879,33 @@ static int collect_functions(CBackend *backend)
     return !backend->had_error;
 }
 
-static int prepare_struct_field_type(CBackend *backend, const Type *type, const Node *owner)
-{
-    if (!type) {
-        backend_error(backend, owner, "missing struct field type during C lowering");
+static int prepare_struct_field_abi_type(
+    CBackend *backend,
+    const SemAbiType *abi_type,
+    const Node *owner
+) {
+    if (!abi_type || !abi_type->semantic_type) {
+        backend_error(backend, owner, "missing normalized struct field ABI type during C lowering");
         return 0;
     }
 
-    if (type->kind == TYPE_ARRAY) {
-        if (type->array_size <= 0 || !type->element) {
+    if (abi_type->kind == SEM_ABI_TYPE_ARRAY) {
+        const Type *type = abi_type->semantic_type;
+        if (type->kind != TYPE_ARRAY ||
+            type->array_size <= 0 ||
+            !abi_type->element) {
             backend_error(backend, owner, "invalid #repr(c) array field during C lowering");
             return 0;
         }
 
-        return prepare_struct_field_type(backend, type->element, owner);
+        return prepare_struct_field_abi_type(
+            backend,
+            abi_type->element,
+            owner
+        );
     }
 
-    return register_c_type(backend, type, owner) != NULL;
+    return register_abi_c_type(backend, abi_type, owner) != NULL;
 }
 
 static int prepare_struct_types(CBackend *backend)
@@ -595,8 +915,15 @@ static int prepare_struct_types(CBackend *backend)
 
         for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
             Node *field = decl->as.struct_decl.fields.items[f];
-            if (!prepare_struct_field_type(backend, field->as.struct_field_decl.var_type, field))
+            SemDeclInfo *field_info = semantic_get_decl_info(backend->sem, field);
+
+            if (!field_info ||
+                !prepare_struct_field_abi_type(
+                    backend,
+                    field_info->abi_type,
+                    field)) {
                 return 0;
+            }
         }
     }
 
@@ -606,15 +933,32 @@ static int prepare_struct_types(CBackend *backend)
 static int prepare_function_types(CBackend *backend)
 {
     for (int i = 0; i < backend->function_count; i++) {
-        Node *func = backend->functions[i].node;
+        CFunction *entry = &backend->functions[i];
+        Node *func = entry->node;
+        const SemFunctionAbiInfo *abi = &entry->decl_info->abi.function;
 
-        if (!register_c_type(backend, func->as.func_decl.return_type, func))
+        if (abi->abi == FUNCTION_ABI_C) {
+            if (!register_abi_c_type(backend, abi->return_abi_type, func))
+                return 0;
+        } else if (!register_c_type(backend, func->as.func_decl.return_type, func)) {
             return 0;
+        }
 
         for (int p = 0; p < func->as.func_decl.params.count; p++) {
             Node *param = func->as.func_decl.params.items[p];
-            if (!register_c_type(backend, param->as.param_decl.var_type, param))
+            SemDeclInfo *param_info = semantic_get_decl_info(backend->sem, param);
+
+            if (abi->abi == FUNCTION_ABI_C) {
+                if (!param_info ||
+                    !register_abi_c_type(backend, param_info->abi_type, param)) {
+                    return 0;
+                }
+            } else if (!register_c_type(
+                    backend,
+                    param->as.param_decl.var_type,
+                    param)) {
                 return 0;
+            }
         }
     }
 
@@ -988,11 +1332,26 @@ static int emit_block(CBackend *backend, Node *block)
 
 static const char *function_return_type(CBackend *backend, Node *func)
 {
+    SemDeclInfo *info = semantic_get_decl_info(backend->sem, func);
+    if (info &&
+        info->abi_kind == SEM_DECL_ABI_FUNCTION &&
+        info->abi.function.abi == FUNCTION_ABI_C) {
+        return register_abi_c_type(
+            backend,
+            info->abi.function.return_abi_type,
+            func
+        );
+    }
+
     return register_c_type(backend, func->as.func_decl.return_type, func);
 }
 
 static const char *parameter_type(CBackend *backend, Node *param)
 {
+    SemDeclInfo *info = semantic_get_decl_info(backend->sem, param);
+    if (info && info->abi_type)
+        return register_abi_c_type(backend, info->abi_type, param);
+
     return register_c_type(backend, param->as.param_decl.var_type, param);
 }
 
@@ -1016,8 +1375,12 @@ static void emit_parameter_type_list(CBackend *backend, Node *func, int with_nam
             fprintf(backend->out, " cg_p_%d", i);
     }
 
-    if (func->as.func_decl.is_variadic)
+    SemDeclInfo *func_info = semantic_get_decl_info(backend->sem, func);
+    if (func_info &&
+        func_info->abi_kind == SEM_DECL_ABI_FUNCTION &&
+        func_info->abi.function.is_variadic) {
         fputs(", ...", backend->out);
+    }
 }
 
 static int emit_enum_definitions(CBackend *backend)
@@ -1025,7 +1388,11 @@ static int emit_enum_definitions(CBackend *backend)
     for (int i = 0; i < backend->enum_count; i++) {
         CEnum *enumeration = &backend->enums[i];
         Node *decl = enumeration->node;
-        const char *backing = base_c_type_name(decl->as.enum_decl.backing_type);
+        const char *backing = register_abi_c_type(
+            backend,
+            enumeration->decl_info->abi.enumeration.backing_abi_type,
+            decl
+        );
 
         if (!backing) {
             backend_error(backend, decl, "invalid #repr(c) enum backing type during C lowering");
@@ -1052,12 +1419,20 @@ static int uses_c_calling_convention(
 )
 {
     for (int i = 0; i < backend->function_count; i++) {
-        if (backend->functions[i].node->as.func_decl.c_call_conv == convention)
+        SemDeclInfo *info = backend->functions[i].decl_info;
+        if (info &&
+            info->abi_kind == SEM_DECL_ABI_FUNCTION &&
+            info->abi.function.c_call_conv == convention) {
             return 1;
+        }
     }
 
     for (int i = 0; i < backend->type_alias_count; i++) {
-        const Type *type = backend->type_aliases[i].type;
+        const CTypeAlias *alias = &backend->type_aliases[i];
+        const Type *type = alias->type
+            ? alias->type
+            : (alias->abi_type ? alias->abi_type->semantic_type : NULL);
+
         if (type && type->kind == TYPE_FUNCTION &&
             type->function_call_conv == convention) {
             return 1;
@@ -1125,9 +1500,11 @@ static void emit_c_calling_convention_support(CBackend *backend)
 static int has_repr_c_layout_controls(const CBackend *backend)
 {
     for (int i = 0; i < backend->struct_count; i++) {
-        const Node *decl = backend->structs[i].node;
-        if (decl->as.struct_decl.repr_c_packed ||
-            decl->as.struct_decl.repr_c_align > 0) {
+        const SemDeclInfo *info = backend->structs[i].decl_info;
+        if (info &&
+            info->abi_kind == SEM_DECL_ABI_AGGREGATE &&
+            (info->abi.aggregate.is_packed ||
+             info->abi.aggregate.explicit_alignment > 0)) {
             return 1;
         }
     }
@@ -1158,7 +1535,7 @@ static void emit_struct_forward_declarations(CBackend *backend)
     for (int i = 0; i < backend->struct_count; i++) {
         const char *name = backend->structs[i].generated_name;
         const char *kind =
-            backend->structs[i].node->as.struct_decl.is_union
+            backend->structs[i].decl_info->abi.aggregate.aggregate_kind == SEM_AGGREGATE_UNION
                 ? "union"
                 : "struct";
         fprintf(backend->out, "typedef %s %s %s;\n", kind, name, name);
@@ -1170,22 +1547,29 @@ static void emit_struct_forward_declarations(CBackend *backend)
 
 static int emit_struct_field_declaration(
     CBackend *backend,
-    const Type *type,
+    const SemAbiType *abi_type,
     const Node *field,
     int field_index
 ) {
-    if (!type) {
-        backend_error(backend, field, "missing struct field type during C lowering");
+    if (!abi_type || !abi_type->semantic_type) {
+        backend_error(backend, field, "missing normalized struct field ABI type during C lowering");
         return 0;
     }
 
-    if (type->kind == TYPE_ARRAY) {
-        if (type->array_size <= 0 || !type->element) {
+    if (abi_type->kind == SEM_ABI_TYPE_ARRAY) {
+        const Type *type = abi_type->semantic_type;
+        if (type->kind != TYPE_ARRAY ||
+            type->array_size <= 0 ||
+            !abi_type->element) {
             backend_error(backend, field, "invalid #repr(c) array field during C lowering");
             return 0;
         }
 
-        const char *element_type = register_c_type(backend, type->element, field);
+        const char *element_type = register_abi_c_type(
+            backend,
+            abi_type->element,
+            field
+        );
         if (!element_type) return 0;
 
         fprintf(
@@ -1198,7 +1582,7 @@ static int emit_struct_field_declaration(
         return 1;
     }
 
-    const char *type_name = register_c_type(backend, type, field);
+    const char *type_name = register_abi_c_type(backend, abi_type, field);
     if (!type_name) return 0;
 
     fprintf(backend->out, "    %s cg_f_%d;\n", type_name, field_index);
@@ -1217,7 +1601,7 @@ static int emit_struct_definition(CBackend *backend, int index)
      * Their only supported ABI use is behind pointers, so no object layout is
      * emitted into the host-C translation unit.
      */
-    if (structure->node->as.struct_decl.is_incomplete) {
+    if (structure->decl_info->abi.aggregate.is_incomplete) {
         structure->definition_state = 2;
         return 1;
     }
@@ -1266,15 +1650,19 @@ static int emit_struct_definition(CBackend *backend, int index)
     fprintf(
         backend->out,
         "%s %s {\n",
-        decl->as.struct_decl.is_union ? "union" : "struct",
+        structure->decl_info->abi.aggregate.aggregate_kind == SEM_AGGREGATE_UNION
+            ? "union"
+            : "struct",
         structure->generated_name
     );
 
     for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
         Node *field = decl->as.struct_decl.fields.items[f];
-        if (!emit_struct_field_declaration(
+        SemDeclInfo *field_info = semantic_get_decl_info(backend->sem, field);
+        if (!field_info ||
+            !emit_struct_field_declaration(
                 backend,
-                field->as.struct_field_decl.var_type,
+                field_info->abi_type,
                 field,
                 f)) {
             return 0;
@@ -1283,14 +1671,14 @@ static int emit_struct_definition(CBackend *backend, int index)
 
     fputs("}", backend->out);
 
-    if (decl->as.struct_decl.repr_c_packed)
+    if (structure->decl_info->abi.aggregate.is_packed)
         fputs(" CG_REPR_C_PACKED", backend->out);
 
-    if (decl->as.struct_decl.repr_c_align > 0) {
+    if (structure->decl_info->abi.aggregate.explicit_alignment > 0) {
         fprintf(
             backend->out,
-            " CG_REPR_C_ALIGNED(%d)",
-            decl->as.struct_decl.repr_c_align
+            " CG_REPR_C_ALIGNED(%u)",
+            structure->decl_info->abi.aggregate.explicit_alignment
         );
     }
 
@@ -1309,12 +1697,14 @@ static int emit_struct_definitions(CBackend *backend)
     return !backend->had_error;
 }
 
-static StringView external_symbol_name(Node *func)
+static StringView external_symbol_name(const CFunction *function)
 {
-    if (!string_view_is_empty(func->as.func_decl.external_name))
-        return func->as.func_decl.external_name;
+    assert(function);
+    assert(function->decl_info);
+    assert(function->decl_info->abi_kind == SEM_DECL_ABI_FUNCTION);
+    assert(function->decl_info->abi.function.linkage == SEM_FUNCTION_LINKAGE_EXTERNAL);
 
-    return func->as.func_decl.name;
+    return function->decl_info->abi.function.external_symbol;
 }
 
 static int emit_function_declarations(CBackend *backend)
@@ -1325,10 +1715,11 @@ static int emit_function_declarations(CBackend *backend)
         const char *return_type = function_return_type(backend, func);
         if (!return_type) return 0;
 
-        const char *call_macro = c_call_macro_name(func->as.func_decl.c_call_conv);
-        const char *call_sep = func->as.func_decl.c_call_conv == C_CALL_DEFAULT ? "" : " ";
+        const SemFunctionAbiInfo *abi = &entry->decl_info->abi.function;
+        const char *call_macro = c_call_macro_name(abi->c_call_conv);
+        const char *call_sep = abi->c_call_conv == C_CALL_DEFAULT ? "" : " ";
 
-        if (func->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C) {
+        if (abi->linkage == SEM_FUNCTION_LINKAGE_EXTERNAL) {
             fprintf(
                 backend->out,
                 "extern %s%s%s %s(",
@@ -1339,7 +1730,7 @@ static int emit_function_declarations(CBackend *backend)
             );
             emit_parameter_type_list(backend, func, 0);
             fputs(") __asm__(", backend->out);
-            emit_c_string_literal(backend->out, external_symbol_name(func));
+            emit_c_string_literal(backend->out, external_symbol_name(entry));
             fputs(");\n", backend->out);
         } else {
             fprintf(
@@ -1365,7 +1756,7 @@ static int emit_function_bodies(CBackend *backend)
         CFunction *entry = &backend->functions[i];
         Node *func = entry->node;
 
-        if (func->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C)
+        if (entry->decl_info->abi.function.linkage == SEM_FUNCTION_LINKAGE_EXTERNAL)
             continue;
 
         const char *return_type = function_return_type(backend, func);
@@ -1373,8 +1764,9 @@ static int emit_function_bodies(CBackend *backend)
 
         backend->current_function = func;
 
-        const char *call_macro = c_call_macro_name(func->as.func_decl.c_call_conv);
-        const char *call_sep = func->as.func_decl.c_call_conv == C_CALL_DEFAULT ? "" : " ";
+        const SemFunctionAbiInfo *abi = &entry->decl_info->abi.function;
+        const char *call_macro = c_call_macro_name(abi->c_call_conv);
+        const char *call_sep = abi->c_call_conv == C_CALL_DEFAULT ? "" : " ";
 
         fprintf(
             backend->out,
@@ -1408,7 +1800,8 @@ static int emit_entrypoint(CBackend *backend)
     CFunction *main_function = find_function(backend, main_name);
 
     if (!main_function ||
-        main_function->node->as.func_decl.linkage != FUNCTION_LINKAGE_COGLET) {
+        main_function->decl_info->abi.function.linkage != SEM_FUNCTION_LINKAGE_INTERNAL ||
+        main_function->decl_info->abi.function.abi != FUNCTION_ABI_COGLET) {
         backend_error(
             backend,
             backend->program,
@@ -1449,6 +1842,15 @@ static CBackendStatus c_backend_emit_stream(
     backend.source_filename = source_filename;
     backend.program = program;
     backend.sem = sem;
+
+    TargetInfo host_target = target_info_host();
+    if (!target_info_equal(&sem->target, &host_target)) {
+        fprintf(
+            stderr,
+            "C backend error: host-C backend cannot emit a non-host target\n"
+        );
+        return C_BACKEND_STATUS_UNSUPPORTED;
+    }
 
     if (!collect_enums(&backend) ||
         !collect_structs(&backend) ||

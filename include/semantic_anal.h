@@ -3,6 +3,7 @@
 
 #include "ast.h"
 #include "semantic_info.h"
+#include "target_info.h"
 
 typedef enum BuiltinKind {
     /*
@@ -144,6 +145,8 @@ typedef struct LoopFlowContext LoopFlowContext;
 typedef struct {
     Arena *arena;
 
+    TargetInfo target;
+
     int had_error;
     int error_count;
 
@@ -187,7 +190,11 @@ typedef struct {
     SemExprInfo *expr_infos;
 } SemanticContext;
 
-void semantic_check(Node *program, SemanticContext *ctx);
+void semantic_check(
+    Node *program,
+    SemanticContext *ctx,
+    const TargetInfo *target
+);
 SemDeclInfo *semantic_get_decl_info(SemanticContext *ctx, Node *node);
 SemDeclInfo *semantic_get_decl_info_by_id(SemanticContext *ctx, SemDeclId id);
 SemExprInfo *semantic_get_expr_info(SemanticContext *ctx, Node *node);

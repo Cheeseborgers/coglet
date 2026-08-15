@@ -166,12 +166,13 @@ such as `SDL_Window *` without importing the foreign layout into Coglet.
 Semantic startup registers the native C scalar family as builtin type aliases:
 `c_char`, `c_schar`, `c_uchar`, `c_short`, `c_ushort`, `c_int`, `c_uint`,
 `c_long`, `c_ulong`, `c_longlong`, `c_ulonglong`, `c_size`, `c_bool`, `c_float`,
-and `c_double`. Integer widths come from the build C implementation (`CHAR_BIT`
-and `sizeof`), while plain-`char` signedness comes from `CHAR_MIN`. `c_bool`
-resolves to canonical Coglet `bool`. C `float`/`double` are admitted only when
-the host format macros match Coglet's IEEE binary32/binary64 contracts, then
-resolve to canonical `f32`/`f64`. This keeps the rest of type checking
-target-agnostic while preserving source-level ABI intent for backend emission.
+and `c_double`. Their semantic mappings now come exclusively from `TargetInfo`,
+not from `sizeof`/`CHAR_MIN` inside semantic analysis. The target description
+supplies pointer width, C integer widths, plain-`char` signedness, `_Bool` width,
+and C floating formats. `c_bool` resolves to canonical Coglet `bool`; `c_float`
+and `c_double` are admitted only when the selected target reports IEEE
+binary32/binary64 respectively. This keeps type checking target-explicit while
+preserving source-level ABI intent for backend emission.
 
 Explicit C calling conventions are lowered at the generated-C type/declaration
 level. Callback typedefs carry the convention as part of the function-pointer
@@ -224,11 +225,38 @@ directly through `execvp()` rather than constructing a shell command. `-L` and
 `-l` are rejected unless `-o` requests an executable link step. `--emit-c`
 remains independent of linker options.
 
-There is not yet an explicit cross-compilation target model. A future driver
-configuration should provide the C ABI map instead of deriving it from the host.
+The frontend now has an explicit target model. `compile_parse_and_check()`
+constructs a host `TargetInfo` for compatibility, while
+`compile_parse_and_check_for_target()` accepts an explicit description and
+copies it into `CompileResult`/`SemanticContext`. Synthetic-target tests compile
+the same source under different C scalar mappings to ensure semantic analysis
+is not consulting the build host. CLI target selection, target triples,
+backend-specific data layout, cross toolchain selection, and actual cross-linking
+remain deferred; the current C backend is still intentionally a host backend and rejects semantic state whose `TargetInfo` does not exactly match the build host.
 Native Coglet variadics, richer callback lifetime/closure machinery, custom
 native compiler selection, raw linker flags, and non-C calling-convention
-details remain deferred.
+details also remain deferred.
+
+## Target Description
+
+`TargetInfo` is the backend-neutral target contract needed by the frontend. Its
+fields are expressed in bits and currently cover:
+
+- pointer width;
+- C `char` width and signedness;
+- C `_Bool`, `short`, `int`, `long`, `long long`, and `size_t` widths;
+- C `float` and `double` format classification.
+
+The host target constructor is isolated in `src/target_info.c`; this is the only
+frontend-support code that queries the C implementation used to build Coglet.
+`semantic_anal.c` consumes only the copied `TargetInfo`. LLVM data layout,
+register information, object format, relocation model, and calling-convention
+lowering are intentionally not part of this structure. Those belong to backend
+or later target-lowering layers.
+
+The structure is expected to grow as native ABI layout needs become concrete;
+the current milestone only moves facts already required by semantic C-scalar
+resolution behind an explicit target boundary.
 
 ## Semantic Type Identity
 
@@ -703,6 +731,63 @@ semantic_get_decl_info_by_id(ctx, id);
 The declaration IDs are deterministic for a given semantic traversal but are
 compiler-internal identities, not persistent source/module IDs.
 
+## Normalized ABI Declaration Metadata
+
+Semantic analysis also normalizes declaration-level ABI contracts into
+`SemDeclInfo`. Later lowering/backend phases therefore do not need to interpret
+`#extern(c)` or `#repr(c)` syntax directly.
+
+Function declarations record:
+
+- Coglet versus native-C calling ABI;
+- internal definition versus external linker declaration;
+- the normalized C calling convention;
+- C variadic status;
+- the effective external linker symbol, with omitted `name=` normalized to the
+  Coglet declaration name;
+- a normalized C-facing return type for native-C ABI functions.
+
+Represented aggregates record:
+
+- Coglet versus C representation;
+- struct versus union layout;
+- incomplete status;
+- packed layout;
+- explicit minimum alignment.
+
+Enums record Coglet versus C representation and, for `#repr(c)` enums, the
+normalized native-C backing type.
+
+C ABI parameters and `#repr(c)` aggregate fields carry a `SemAbiType`. This is
+not a second semantic type system: every node in the ABI type tree points at its
+already-resolved semantic `Type *`. The additional tree preserves only source
+ABI spelling that canonical semantic resolution intentionally erases. For
+example:
+
+```text
+source type        semantic type       normalized ABI spelling
+-----------        -------------       -----------------------
+c_int              i32                 C int
+readonly c_char*   readonly i8*        pointer -> C char
+cfn(c_int)->c_int  cfn(i32)->i32        cfn(C int) -> C int
+```
+
+Native-C scalar aliases are represented by `SemCScalarKind`; pointer, opaque
+pointer, array, and C-function-pointer structure is retained recursively.
+Nominal types and ordinary fixed-width Coglet scalars reuse their resolved
+semantic type directly.
+
+The host-C backend now consumes this normalized metadata for C linkage,
+calling conventions, external symbols, represented aggregate layout, C enum
+backing types, and C-facing function/field type spelling. Its remaining direct
+source-type reads are ordinary Coglet implementation details plus the current
+host-executable `main::() -> c_int` policy, not interpretation of ABI
+annotations.
+
+This is the intended pre-IR boundary: CogIR lowering can copy these facts into
+IR-owned declarations once, after which native/LLVM/host-C backends will not
+need syntax nodes to recover ABI intent.
+
 ## Semantic-Information Verification
 
 `check_semantic_info` uses the same compiler-driver frontend pipeline and then
@@ -725,6 +810,8 @@ The verifier checks:
 - completeness, duplicate entries, and orphan entries for expressions and declarations;
 - stable declaration-ID uniqueness and reverse lookup;
 - declaration/Symbol/type consistency;
+- normalized function/aggregate/enum ABI metadata;
+- recursive preservation of native-C scalar spellings at ABI surfaces;
 - type, symbol, and value-category invariants;
 - valid `ValueCategory`/`ValueAccess` combinations;
 - readonly and writable dereference propagation;

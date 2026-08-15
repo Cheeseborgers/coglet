@@ -4,6 +4,7 @@
 #include "ast.h"
 #include "parser.h"
 #include "semantic_anal.h"
+#include "target_info.h"
 #include "utils/arena.h"
 
 typedef enum CompileStatus {
@@ -24,6 +25,8 @@ typedef struct CompileResult {
 
     Parser parser;
     Node *program;
+
+    TargetInfo target;
     SemanticContext sem;
 } CompileResult;
 
@@ -34,6 +37,7 @@ typedef struct CompileResult {
  *   - out->filename is borrowed
  *   - out->source is owned by out
  *   - out->arena and out->scratch are owned by out
+ *   - out->target is the copied frontend target description
  *   - out->program, parser diagnostics, and semantic data remain valid until
  *     compile_result_destroy(out)
  *
@@ -57,6 +61,16 @@ typedef struct CompileResult {
  *   - this function prints the semantic error summary
  */
 CompileStatus compile_parse_and_check(const char *filename, CompileResult *out);
+
+/*
+ * Same frontend pipeline using an explicit target description. The target is
+ * copied into the result; the caller does not need to keep it alive.
+ */
+CompileStatus compile_parse_and_check_for_target(
+    const char *filename,
+    const TargetInfo *target,
+    CompileResult *out
+);
 
 /*
  * Releases all resources owned by result.

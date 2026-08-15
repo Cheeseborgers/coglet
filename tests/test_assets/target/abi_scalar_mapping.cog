@@ -1,0 +1,3 @@
+probe::(long_value: c_long, size_value: c_size, char_value: c_char) -> c_int {
+    return 0;
+}

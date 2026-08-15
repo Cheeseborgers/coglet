@@ -46,6 +46,126 @@ typedef enum ValueAccess {
     VALUE_ACCESS_WRITABLE,
 } ValueAccess;
 
+typedef enum SemAbiRepresentation {
+    SEM_ABI_REPR_COGLET,
+    SEM_ABI_REPR_C,
+} SemAbiRepresentation;
+
+typedef enum SemFunctionLinkage {
+    /* Definition emitted by the current Coglet compilation unit. */
+    SEM_FUNCTION_LINKAGE_INTERNAL,
+
+    /* Declaration whose definition is supplied by the native linker/ABI. */
+    SEM_FUNCTION_LINKAGE_EXTERNAL,
+} SemFunctionLinkage;
+
+typedef enum SemAggregateKind {
+    SEM_AGGREGATE_STRUCT,
+    SEM_AGGREGATE_UNION,
+} SemAggregateKind;
+
+/*
+ * Exact source-level native-C scalar spelling retained at an ABI boundary.
+ *
+ * Semantic type resolution intentionally erases these aliases to Coglet's
+ * concrete runtime scalar types. Keeping the spelling here lets later lowering
+ * distinguish, for example, source `c_int` from source `i32` without consulting
+ * the AST again.
+ */
+typedef enum SemCScalarKind {
+    SEM_C_SCALAR_NONE,
+
+    SEM_C_SCALAR_CHAR,
+    SEM_C_SCALAR_SCHAR,
+    SEM_C_SCALAR_UCHAR,
+    SEM_C_SCALAR_SHORT,
+    SEM_C_SCALAR_USHORT,
+    SEM_C_SCALAR_INT,
+    SEM_C_SCALAR_UINT,
+    SEM_C_SCALAR_LONG,
+    SEM_C_SCALAR_ULONG,
+    SEM_C_SCALAR_LONGLONG,
+    SEM_C_SCALAR_ULONGLONG,
+    SEM_C_SCALAR_SIZE,
+    SEM_C_SCALAR_BOOL,
+    SEM_C_SCALAR_FLOAT,
+    SEM_C_SCALAR_DOUBLE,
+} SemCScalarKind;
+
+typedef enum SemAbiTypeKind {
+    /* No source-level native-C scalar override; use semantic_type. */
+    SEM_ABI_TYPE_SEMANTIC,
+
+    /* Exact `c_*` scalar spelling selected by c_scalar_kind. */
+    SEM_ABI_TYPE_C_SCALAR,
+
+    SEM_ABI_TYPE_POINTER,
+    SEM_ABI_TYPE_OPAQUE_POINTER,
+    SEM_ABI_TYPE_ARRAY,
+    SEM_ABI_TYPE_FUNCTION,
+} SemAbiTypeKind;
+
+typedef struct SemAbiType SemAbiType;
+
+/*
+ * Normalized type spelling for a C ABI surface.
+ *
+ * semantic_type is always the already-resolved runtime semantic type. The
+ * recursive shape exists only where source spelling matters to the native ABI;
+ * it is not a second semantic type system.
+ */
+struct SemAbiType {
+    SemAbiTypeKind kind;
+    Type *semantic_type;
+
+    SemCScalarKind c_scalar_kind;
+
+    SemAbiType *element;
+
+    SemAbiType **parameters;
+    int parameter_count;
+    SemAbiType *return_type;
+};
+
+typedef enum SemDeclAbiKind {
+    SEM_DECL_ABI_NONE,
+    SEM_DECL_ABI_FUNCTION,
+    SEM_DECL_ABI_AGGREGATE,
+    SEM_DECL_ABI_ENUM,
+} SemDeclAbiKind;
+
+typedef struct SemFunctionAbiInfo {
+    FunctionAbi abi;
+    SemFunctionLinkage linkage;
+    CCallingConvention c_call_conv;
+    int is_variadic;
+
+    /*
+     * Effective native linker symbol for an external declaration. This is
+     * normalized to the Coglet function name when #extern(c) omits name=.
+     * Internal definitions leave it empty.
+     */
+    StringView external_symbol;
+
+    /* Exact C-facing return spelling when abi == FUNCTION_ABI_C. */
+    SemAbiType *return_abi_type;
+} SemFunctionAbiInfo;
+
+typedef struct SemAggregateAbiInfo {
+    SemAbiRepresentation representation;
+    SemAggregateKind aggregate_kind;
+    int is_incomplete;
+    int is_packed;
+    unsigned explicit_alignment;
+} SemAggregateAbiInfo;
+
+typedef struct SemEnumAbiInfo {
+    SemAbiRepresentation representation;
+
+    /* Exact C-facing backing spelling for #repr(c) enums. */
+    SemAbiType *backing_abi_type;
+} SemEnumAbiInfo;
+
 typedef struct SemDeclInfo {
     SemDeclId id;
     Node *node;
@@ -57,6 +177,21 @@ typedef struct SemDeclInfo {
      */
     Symbol *symbol;
     Type *type;
+
+    /*
+     * Exact C-facing type spelling for declarations that sit directly on a
+     * C ABI surface, currently #extern(c)/#repr(c) parameters and #repr(c)
+     * aggregate fields. NULL for declarations where no native-C spelling must
+     * survive semantic type canonicalization.
+     */
+    SemAbiType *abi_type;
+
+    SemDeclAbiKind abi_kind;
+    union {
+        SemFunctionAbiInfo function;
+        SemAggregateAbiInfo aggregate;
+        SemEnumAbiInfo enumeration;
+    } abi;
 
     struct SemDeclInfo *next;
 } SemDeclInfo;

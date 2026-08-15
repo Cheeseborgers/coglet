@@ -24,6 +24,7 @@ add_library(compiler_core STATIC
         src/utils/arena.c
         src/parser_diag.c
         src/semantic_anal.c
+        src/target_info.c
         src/string_decode.c
         src/compiler_driver.c
         src/backend_c.c
@@ -46,6 +47,10 @@ target_link_libraries(check_semantic_info PRIVATE compiler_core)
 add_executable(check_semantics tools/tests/check_semantics.c)
 target_link_libraries(check_semantics PRIVATE compiler_core)
 
+# --- Target description / cross-target semantic mapping checker. ---
+add_executable(check_target_info tools/tests/check_target_info.c)
+target_link_libraries(check_target_info PRIVATE compiler_core)
+
 # --- Standalone lexer test tool (Stage 1 harness). ---
 add_executable(dump_tokens tools/dump_tokens.c ${COMMON_SOURCES})
 target_link_libraries(dump_tokens PRIVATE compiler_core)
@@ -56,6 +61,16 @@ target_link_libraries(dump_ast PRIVATE compiler_core)
 
 # --- Tests ---
 enable_testing()
+
+add_test(
+        NAME target_info_cross_target_scalar_mapping
+        COMMAND "$<TARGET_FILE:check_target_info>"
+                "${CMAKE_SOURCE_DIR}/tests/test_assets/target/abi_scalar_mapping.cog"
+)
+set_tests_properties(
+        target_info_cross_target_scalar_mapping
+        PROPERTIES LABELS "target;semantic;interop;abi"
+)
 
 # Registers one ctest per <name>.cog / <name>.expected pair found in
 # `dir`, running `exe_target` on the .cog and diffing stdout against

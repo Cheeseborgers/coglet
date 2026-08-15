@@ -53,3 +53,18 @@ if(NOT run_result EQUAL EXPECT_EXIT)
         "stderr:\n${run_stderr}"
     )
 endif()
+
+if(DEFINED EXPECT_STDOUT_FILE)
+    file(READ "${EXPECT_STDOUT_FILE}" expected_stdout)
+
+    string(REPLACE "\r\n" "\n" run_stdout "${run_stdout}")
+    string(REPLACE "\r\n" "\n" expected_stdout "${expected_stdout}")
+
+    if(NOT run_stdout STREQUAL expected_stdout)
+        message(FATAL_ERROR
+            "generated executable stdout did not match ${EXPECT_STDOUT_FILE}\n"
+            "expected:\n${expected_stdout}\n"
+            "actual:\n${run_stdout}"
+        )
+    endif()
+endif()

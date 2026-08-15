@@ -14,6 +14,7 @@
 #include <unistd.h>
 #endif
 
+#include "string_decode.h"
 #include "utils/string_view.h"
 
 #define C_BACKEND_MAX_FUNCTIONS 512
@@ -420,13 +421,54 @@ static int emit_expression(CBackend *backend, Node *node)
         case NODE_CALL:
             return emit_call(backend, node);
 
-        case NODE_STRING:
-            backend_error(
-                backend,
-                node,
-                "string lowering is not implemented yet; C string interoperability is a later milestone"
+        case NODE_STRING: {
+            StringDecodeInfo info =
+                string_analyze(node->as.string_literal);
+
+            if (!info.ok) {
+                backend_error(
+                    backend,
+                    node,
+                    "invalid string literal reached C lowering after semantic checking"
+                );
+                return 0;
+            }
+
+            size_t decoded_size =
+                info.decoded_length > 0
+                    ? (size_t)info.decoded_length
+                    : 1;
+
+            char *decoded = malloc(decoded_size);
+            if (!decoded) {
+                backend_error(backend, node, "out of memory while lowering string literal");
+                return 0;
+            }
+
+            StringDecodeInfo decoded_info =
+                string_decode_into(node->as.string_literal, decoded);
+
+            if (!decoded_info.ok) {
+                free(decoded);
+                backend_error(
+                    backend,
+                    node,
+                    "invalid string literal reached C lowering after semantic checking"
+                );
+                return 0;
+            }
+
+            emit_c_string_literal(
+                backend->out,
+                (StringView){
+                    .data = decoded,
+                    .length = (size_t)decoded_info.decoded_length,
+                }
             );
-            return 0;
+
+            free(decoded);
+            return 1;
+        }
 
         case NODE_CAST:
             backend_error(

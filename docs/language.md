@@ -979,10 +979,18 @@ values := [1, 2, 3];
 
 String literals represent immutable compile-time byte data.
 
-They are currently contextual initializers for fixed-size byte arrays.
+They are contextual initializers for fixed-size byte arrays and, at the C FFI
+boundary, may also bind directly to a `readonly c_char*` parameter of a
+`#extern(c)` function. These are two explicit contexts; Coglet does not perform
+general array-to-pointer decay.
 
 ```c
 name: u8[6] = "hello";
+
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+
+puts("hello");
 ```
 
 The literal contains five visible bytes and one trailing null byte:
@@ -1022,6 +1030,30 @@ name: i32[6] = "hello";  // destination element type is not u8
 name := "hello";         // no expected byte-array type
 "hello";                 // bare string literal is not a general expression
 ```
+
+The C-boundary conversion is intentionally narrower than C array decay:
+
+```c
+normal::(s: readonly c_char*) -> void { }
+
+#extern(c)
+mutable_text::(s: c_char*) -> void;
+
+#extern(c)
+bytes::(s: readonly u8*) -> void;
+
+normal("hello");       // invalid: ordinary Coglet call
+mutable_text("hello"); // invalid: literal cannot grant mutable access
+bytes("hello");        // invalid: parameter is not spelled readonly c_char*
+
+array: u8[6] = "hello";
+puts(array);            // invalid: arrays do not decay to pointers
+```
+
+Only a direct string-literal argument to a `#extern(c)` parameter whose source
+type is exactly `readonly c_char*` receives this conversion. The semantic value
+is readonly pointer-like for that call only; this does not turn string literals
+into general pointer expressions.
 
 The required array length is based on decoded bytes plus the trailing null byte.
 
@@ -1449,10 +1481,12 @@ Fixed-width Coglet types remain valid in C declarations when the corresponding
 C interface itself uses a representation-compatible fixed-width type.
 
 The current executable backend is intentionally a small conformance slice. It
-can already emit and link direct external C calls using scalar/raw-pointer
-signatures, including external symbol-name overrides, but it does not yet lower
-strings, locals, control flow, runtime checked arithmetic, or general casts.
-Host executables currently use `main::() -> c_int` as the entry-point contract.
+can emit and link direct external C calls using scalar/raw-pointer signatures,
+including external symbol-name overrides, and lowers direct C-string literal
+arguments by decoding Coglet escapes and emitting an equivalent C string
+literal. It does not yet lower locals, control flow, runtime checked arithmetic,
+general casts, or general array storage/decay. Host executables currently use
+`main::() -> c_int` as the entry-point contract.
 
 Variadic functions, C callbacks/function pointers, C-compatible aggregate
 layout, enum representation attributes, calling-convention selection,

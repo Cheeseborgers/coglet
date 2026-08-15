@@ -1,0 +1,6 @@
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+
+bad::() -> void {
+    puts("bad\x");
+}

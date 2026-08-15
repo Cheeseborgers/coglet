@@ -92,6 +92,13 @@ typedef struct Symbol {
 
     Type *type;
 
+    /*
+     * Source declaration for ordinary declared symbols when semantic checks
+     * need syntax-level metadata that is intentionally erased by type
+     * resolution. Currently populated for SYMBOL_FUNCTION.
+     */
+    Node *declaration;
+
     VariableStorage variable_storage;
 
     /*

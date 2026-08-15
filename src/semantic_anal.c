@@ -1000,6 +1000,8 @@ static int check_compound_assignment_statement(SemanticContext *ctx, Node *node)
 static int check_inc_dec_statement(SemanticContext *ctx, Node *node);
 static int check_initializer_against_type(SemanticContext *ctx, Type *expected, Node *initializer);
 static void format_type_name(Type *type, char *buffer, size_t buffer_size);
+static int source_type_is_readonly_c_char_pointer(const Type *type);
+static int check_extern_c_string_argument(SemanticContext *ctx, Type *expected, Node *argument);
 static int check_argument_against_parameter(SemanticContext *ctx, Type *expected, Node *argument);
 static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 static int declare_enum_shell(SemanticContext *ctx, Node *node);
@@ -6318,9 +6320,36 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
             int ok = 1;
 
+            SemExprInfo *callee_info =
+                sem_find_expr_info(ctx, node->as.call.callee);
+
+            Node *callee_decl =
+                callee_info &&
+                callee_info->symbol &&
+                callee_info->symbol->kind == SYMBOL_FUNCTION
+                    ? callee_info->symbol->declaration
+                    : NULL;
+
+            const int is_extern_c =
+                callee_decl &&
+                callee_decl->type == NODE_FUNC_DECL &&
+                callee_decl->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C;
+
             for (int i = 0; i < argc; i++) {
                 Node *arg        = node->as.call.arguments.items[i];
                 Type *param_type = callee->parameters[i];
+
+                if (is_extern_c &&
+                    arg->type == NODE_STRING &&
+                    source_type_is_readonly_c_char_pointer(
+                        callee_decl->as.func_decl.params.items[i]
+                            ->as.param_decl.var_type
+                    )) {
+                    if (!check_extern_c_string_argument(ctx, param_type, arg))
+                        ok = 0;
+
+                    continue;
+                }
 
                 if (!check_argument_against_parameter(ctx, param_type, arg))
                     ok = 0;
@@ -7606,6 +7635,67 @@ static int check_initializer_against_type(SemanticContext *ctx, Type *expected, 
     return 1;
 }
 
+static int source_type_is_readonly_c_char_pointer(const Type *type) {
+
+    return type &&
+           type->kind == TYPE_POINTER &&
+           type->pointer_access == POINTER_ACCESS_READONLY &&
+           type->element &&
+           type->element->kind == TYPE_NAMED &&
+           names_equal(
+               type->element->named_name.data,
+               type->element->named_name.length,
+               "c_char",
+               sizeof("c_char") - 1
+           );
+}
+
+/*
+ * C string literals are a deliberately narrow contextual conversion. They do
+ * not introduce general array-to-pointer decay: only a direct string-literal
+ * argument to a #extern(c) parameter spelled `readonly c_char*` gets this
+ * treatment. The resulting semantic type is the resolved pointer parameter.
+ */
+static int check_extern_c_string_argument(
+    SemanticContext *ctx,
+    Type *expected,
+    Node *argument
+) {
+    assert(expected);
+    assert(argument && argument->type == NODE_STRING);
+
+    StringDecodeInfo info = string_analyze(argument->as.string_literal);
+
+    if (!info.ok) {
+        if (info.invalid_escape) {
+            semantic_error_fmt(
+                ctx,
+                argument,
+                "invalid escape sequence '\\%c' in string literal",
+                info.invalid_escape
+            );
+        } else {
+            semantic_error(
+                ctx,
+                argument,
+                "unterminated escape sequence in string literal"
+            );
+        }
+
+        return 0;
+    }
+
+    sem_record_expr_info(
+        ctx,
+        argument,
+        expected,
+        NULL,
+        VALUE_CATEGORY_RVALUE
+    );
+
+    return 1;
+}
+
 static int check_argument_against_parameter(SemanticContext *ctx, Type *expected, Node *argument) {
 
     if (!expected || !argument) return 0;
@@ -8301,8 +8391,10 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
         return 0;
     }
 
-    scope_define(ctx, node->as.func_decl.name, SYMBOL_FUNCTION, func_type);
+    Symbol *symbol =
+        scope_define(ctx, node->as.func_decl.name, SYMBOL_FUNCTION, func_type);
 
+    symbol->declaration = node;
     node->as.func_decl.resolved_type = func_type;
 
     return 1;

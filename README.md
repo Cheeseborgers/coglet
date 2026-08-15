@@ -90,8 +90,10 @@ external symbol without changing the Coglet identifier. `c_char`, `c_int`,
 `c_uint`, and `c_size` are transparent aliases selected from the native C ABI
 used to build the compiler. The initial host-C backend can now compile a
 deliberately small executable subset and resolve direct external C calls through
-the native `cc` toolchain. Explicit cross-target ABI selection, aggregate
-layout, strings at the C boundary, variadics, and callbacks remain future work.
+the native `cc` toolchain. Direct string literals may bind to `readonly c_char*`
+parameters of `#extern(c)` functions without enabling general array-to-pointer
+decay. Explicit cross-target ABI selection, aggregate layout, variadics, and
+callbacks remain future work.
 
 For the current executable slice:
 
@@ -644,10 +646,10 @@ with weaker C behavior.
 
 Near-term work should combine C interoperability with careful backend expansion:
 
-1. Add library/linker selection and continue the remaining C ABI surface.
+1. Continue the remaining C ABI surface beyond library selection and direct C strings.
 2. Add explicit target/C-ABI selection before cross-compilation claims are made.
 3. Lower core storage/control-flow and checked runtime arithmetic correctly.
-4. Design C string/byte-view interoperability, then slices.
+4. Design byte views/slices without introducing unrestricted array decay.
 5. Reassess imports, modules, and multi-file compilation.
 6. Continue improving diagnostics, tests, and documentation.
 

@@ -416,6 +416,21 @@ set_tests_properties(
         PROPERTIES LABELS "backend;backend.c;interop"
 )
 
+add_test(
+        NAME backend_extern_c_string_literal
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_string_literal.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_string_literal
+        -DEXPECT_EXIT=0
+        -DEXPECT_STDOUT_FILE=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_string_literal.stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(
+        backend_extern_c_string_literal
+        PROPERTIES LABELS "backend;backend.c;interop;strings"
+)
+
 # Explicit library/linker selection for the host-C executable backend. The
 # support library is intentionally outside the default link set so these tests
 # prove that -L/-l forwarding is doing real work.

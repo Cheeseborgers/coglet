@@ -1,0 +1,20 @@
+ordinary::(s: readonly c_char*) -> void {
+}
+
+#extern(c)
+consume_mutable::(s: c_char*) -> void;
+
+#extern(c)
+consume_bytes::(s: readonly u8*) -> void;
+
+#extern(c)
+consume_chars::(s: readonly c_char*) -> void;
+
+bad::() -> void {
+    ordinary("ordinary");
+    consume_mutable("mutable");
+    consume_bytes("bytes");
+
+    bytes: u8[4] = "abc";
+    consume_chars(bytes);
+}

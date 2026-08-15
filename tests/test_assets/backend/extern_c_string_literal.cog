@@ -1,0 +1,10 @@
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+
+main::() -> c_int {
+    puts("Hello from Coglet");
+    puts("line\nnext");
+    puts("quote: \"Coglet\"");
+    puts("slash: \\");
+    return 0;
+}

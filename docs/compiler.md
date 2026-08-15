@@ -95,7 +95,12 @@ option. AST cloning preserves this metadata.
 
 Semantic analysis registers external function signatures in the same function
 namespace as ordinary functions, so duplicate-declaration and call-resolution
-rules remain shared. Body checking is skipped for external declarations.
+rules remain shared. Function symbols retain their source declaration node when
+syntax-level metadata is semantically significant after type aliases have been
+resolved. The first use is C-string binding: the checker can require that an
+extern parameter was actually spelled `readonly c_char*`, rather than treating
+every representation-equivalent `readonly i8*`/`readonly u8*` as a C string.
+Body checking is skipped for external declarations.
 
 The current C-ABI eligibility check permits concrete scalar types, raw typed
 pointers recursively over supported pointees, opaque raw pointers, and `void`
@@ -117,13 +122,17 @@ identifiers with `__asm__("symbol")` labels, so `name="..."` overrides affect
 the actual linker symbol without requiring that symbol to be a safe C identifier.
 
 The backend is intentionally smaller than the frontend. It currently lowers
-only direct named function calls, integer/Boolean/null literals, parameter
-references, literal integer negation, expression statements, and returns. It
-requires `main::() -> c_int` for a host executable. Runtime arithmetic, strings,
-locals, control flow, aggregate values, and casts are rejected by the backend
-until their Coglet semantics can be preserved correctly. In particular, checked
-signed arithmetic is not lowered to raw C signed operators because C overflow
-would introduce undefined behavior instead of Coglet's required trap.
+direct named function calls, integer/Boolean/null literals, parameter references,
+literal integer negation, expression statements, returns, and string literals
+that semantic analysis has admitted as direct `readonly c_char*` arguments to
+`#extern(c)` calls. String escapes are decoded using Coglet's literal rules and
+re-escaped into the generated C translation unit, where the C literal supplies
+the trailing NUL byte. It requires `main::() -> c_int` for a host executable.
+Runtime arithmetic, locals, control flow, aggregate values, general array decay,
+and casts are rejected until their Coglet semantics can be preserved correctly.
+In particular, checked signed arithmetic is not lowered to raw C signed operators
+because C overflow would introduce undefined behavior instead of Coglet's
+required trap.
 
 `coglet input.cog --emit-c generated.c` exposes the generated translation unit
 for inspection. Running `coglet input.cog` without `-o` or `--emit-c` preserves

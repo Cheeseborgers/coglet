@@ -1,0 +1,5 @@
+semantic error at line 14: string literal can only initialize a byte array
+semantic error at line 15: string literal can only initialize a byte array
+semantic error at line 16: string literal can only initialize a byte array
+semantic error at line 19: argument type does not match parameter type: expected readonly i8*, got u8[4]
+4 semantic errors generated.

@@ -1,0 +1,11 @@
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+
+#extern(c, name="puts")
+print_line::(s: readonly c_char*) -> c_int;
+
+use_c_strings::() -> void {
+    puts("hello");
+    print_line("line\nnext");
+    puts("");
+}

@@ -15,7 +15,7 @@ Implemented areas include:
 - canonical primitive numeric and boolean semantic types
 - mutable and readonly raw object pointers with dedicated `null`, fixed arrays, nominal structs, nominal enums, and function types
 - arithmetic, bitwise operations, shifts, comparisons, logic, calls, fields, indexes, casts, and aggregate initializers
-- contextual fixed-array and null-terminated `u8` string literals
+- contextual fixed-array string literals plus direct readonly C-string literal arguments at `#extern(c)` call boundaries
 - assignment, arithmetic/bitwise/shift compound assignment, and increment/decrement as statement-only
   mutations
 - lvalue/rvalue/no-value tracking with writable/readonly storage access
@@ -290,8 +290,10 @@ The first native C scalar aliases are also implemented: `c_char`, `c_int`,
 types from the native C ABI used to build the compiler. External symbol-name
 overrides are implemented with `#extern(c, name="...")`. The host driver now
 also accepts repeated `-L` search paths and `-l` libraries in joined or split
-form and forwards them directly to `cc` for executable links. Explicit
-cross-target ABI selection is still deferred.
+form and forwards them directly to `cc` for executable links. Direct string
+literals can now bind to `readonly c_char*` parameters of `#extern(c)` calls and
+are decoded/re-emitted by the host-C backend without enabling general
+array-to-pointer decay. Explicit cross-target ABI selection is still deferred.
 
 Remaining C interoperability work includes:
 
@@ -342,7 +344,8 @@ control flow, storage, strings, and pointer operations.
 Longer-term alternatives remain possible, including a custom IR/native backend,
 LLVM or another existing backend, or an interpreter for tooling and compile-time
 execution. The host-C path provides executable feedback without closing those
-options.
+options. Direct C-string literal lowering is now part of that bootstrap path;
+general storage and pointer/view lowering remain separate work.
 
 ## Self-Hosting Direction
 

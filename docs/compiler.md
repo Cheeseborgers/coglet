@@ -108,12 +108,15 @@ returns. It rejects arrays, structs, enums, and function types until their ABI
 representation is specified. External declarations are restricted to top level
 and parameter defaults are rejected.
 
-Semantic startup registers the native C integer family as builtin type aliases:
+Semantic startup registers the native C scalar family as builtin type aliases:
 `c_char`, `c_schar`, `c_uchar`, `c_short`, `c_ushort`, `c_int`, `c_uint`,
-`c_long`, `c_ulong`, `c_longlong`, `c_ulonglong`, and `c_size`. The widths come
-from the build C implementation (`CHAR_BIT` and `sizeof`), while plain-`char`
-signedness comes from `CHAR_MIN`. Each alias resolves to an existing canonical
-Coglet fixed-width integer type, keeping the rest of type checking target-agnostic.
+`c_long`, `c_ulong`, `c_longlong`, `c_ulonglong`, `c_size`, `c_bool`, `c_float`,
+and `c_double`. Integer widths come from the build C implementation (`CHAR_BIT`
+and `sizeof`), while plain-`char` signedness comes from `CHAR_MIN`. `c_bool`
+resolves to canonical Coglet `bool`. C `float`/`double` are admitted only when
+the host format macros match Coglet's IEEE binary32/binary64 contracts, then
+resolve to canonical `f32`/`f64`. This keeps the rest of type checking
+target-agnostic while preserving source-level ABI intent for backend emission.
 
 A deliberately narrow **host-C backend** now provides the first executable
 lowering path. `coglet input.cog -o program` emits a temporary C translation
@@ -123,8 +126,9 @@ identifiers with `__asm__("symbol")` labels, so `name="..."` overrides affect
 the actual linker symbol without requiring that symbol to be a safe C identifier.
 
 The backend is intentionally smaller than the frontend. It currently lowers
-direct named function calls, integer/Boolean/null literals, parameter references,
-literal integer negation, expression statements, returns, and string literals
+direct named function calls, integer/floating/Boolean/null literals, parameter
+references, literal numeric negation, expression statements, returns, and string
+literals
 that semantic analysis has admitted as direct `readonly c_char*` arguments to
 `#extern(c)` calls. String escapes are decoded using Coglet's literal rules and
 re-escaped into the generated C translation unit, where the C literal supplies
@@ -155,9 +159,8 @@ remains independent of linker options.
 
 There is not yet an explicit cross-compilation target model. A future driver
 configuration should provide the C ABI map instead of deriving it from the host.
-C `_Bool`, wider C integer-family aliases, variadics, callbacks, custom native
-compiler selection, raw linker flags, and calling-convention details remain
-deferred.
+Variadics, callbacks, custom native compiler selection, raw linker flags, and
+calling-convention details remain deferred.
 
 ## Semantic Type Identity
 

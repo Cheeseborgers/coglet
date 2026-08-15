@@ -51,3 +51,19 @@ use_remaining_c_integer_aliases::(
     );
     return longlong_value;
 }
+
+#extern(c)
+consume_c_scalar_family::(
+    flag: c_bool,
+    single_value: c_float,
+    double_value: c_double
+) -> c_int;
+
+use_c_scalar_family::(
+    flag: c_bool,
+    single_value: c_float,
+    double_value: c_double
+) -> c_double {
+    consume_c_scalar_family(flag, single_value, double_value);
+    return double_value;
+}

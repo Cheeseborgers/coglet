@@ -312,11 +312,11 @@ leaving the Coglet function identifier unchanged. Without it, the Coglet name
 is used as the external symbol. `#extern(c)` declarations have no Coglet body,
 are terminated by `;`, and are currently restricted semantically to top level.
 
-The C integer-family names `c_char`, `c_schar`, `c_uchar`, `c_short`,
+The C scalar-ABI names `c_char`, `c_schar`, `c_uchar`, `c_short`,
 `c_ushort`, `c_int`, `c_uint`, `c_long`, `c_ulong`, `c_longlong`,
-`c_ulonglong`, and `c_size` are builtin type aliases resolved through the
-selected native C ABI. They are ordinary identifiers at the lexer level, so
-adding them does not expand the keyword set.
+`c_ulonglong`, `c_size`, `c_bool`, `c_float`, and `c_double` are builtin type
+aliases resolved through the selected native C ABI. They are ordinary
+identifiers at the lexer level, so adding them does not expand the keyword set.
 
 A missing return type defaults to `void`.
 

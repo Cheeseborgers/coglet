@@ -1426,6 +1426,7 @@ c_char c_schar c_uchar
 c_short c_ushort c_int c_uint
 c_long c_ulong c_longlong c_ulonglong
 c_size
+c_bool c_float c_double
 T* and readonly T* when T is recursively in this subset
 opaque* and readonly opaque*
 additional raw-pointer layers such as opaque**
@@ -1448,7 +1449,7 @@ representation, while Coglet still requires explicit `reinterpret()` when
 crossing between typed and opaque raw pointers. Readonly access remains
 monotonic across that conversion.
 
-Coglet provides transparent aliases for the native C integer family:
+Coglet provides transparent aliases for the native C scalar ABI family:
 
 ```text
 c_char      -> native C char representation and signedness
@@ -1463,22 +1464,32 @@ c_ulong     -> unsigned long
 c_longlong  -> long long
 c_ulonglong -> unsigned long long
 c_size      -> size_t
+c_bool      -> _Bool
+c_float     -> float
+c_double    -> double
 ```
 
-These names are semantic builtin type aliases rather than lexer keywords. Once
-resolved, they use the matching canonical Coglet fixed-width integer type, so
-ordinary arithmetic, literal contextualization, casts, and pointer composition
-continue to use the existing integer semantics. Plain `c_char` remains distinct
-from `c_schar`/`c_uchar` because native C decides whether plain `char` is signed.
-For example, on a conventional LP64 host `c_int` resolves to `i32`, `c_long`
-resolves to `i64`, and `c_size` resolves to `u64`.
+These names are semantic builtin type aliases rather than lexer keywords. The
+integer-family aliases resolve to matching canonical Coglet fixed-width integer
+types; `c_bool` resolves to `bool`; `c_float` and `c_double` resolve to `f32` and
+`f64` when the native C formats match Coglet's IEEE-754 binary32/binary64
+contracts. Ordinary arithmetic, literal contextualization, casts, and pointer
+composition therefore continue to use the existing Coglet semantics. Plain
+`c_char` remains distinct from `c_schar`/`c_uchar` because native C decides
+whether plain `char` is signed. For example, on a conventional LP64 host
+`c_int` resolves to `i32`, `c_long` resolves to `i64`, and `c_size` resolves to
+`u64`.
 
 The compiler does not yet expose an explicit cross-compilation target. For this
 milestone the selected C ABI is therefore the **native C ABI used to build
-Coglet**, derived from `CHAR_BIT`, C type widths, and plain-`char` signedness.
-Only native C integer widths that map to Coglet's 8/16/32/64-bit integers are
-supported. Explicit target selection can replace this mapping later without
-changing source syntax.
+Coglet**, derived from `CHAR_BIT`, C type widths, plain-`char` signedness, and C
+floating-format macros. Only native C integer widths that map to Coglet's
+8/16/32/64-bit integers are supported. `c_float`/`c_double` are exposed only
+when native C `float`/`double` match IEEE binary32/binary64 respectively.
+Explicit target selection can replace this mapping later without changing source
+syntax. C `long double` does not currently have a Coglet alias because the
+language has no scalar type whose representation and precision can model it
+portably.
 
 This makes common declarations portable across native targets:
 
@@ -1502,8 +1513,8 @@ general casts, or general array storage/decay. Host executables currently use
 `main::() -> c_int` as the entry-point contract.
 
 Variadic functions, C callbacks/function pointers, C-compatible aggregate
-layout, enum representation attributes, calling-convention selection,
-non-default library selection, and cross-target lowering are still deferred.
+layout, enum representation attributes, calling-convention selection, and
+cross-target lowering are still deferred.
 
 ## Current Semantic Architecture
 
@@ -1557,7 +1568,7 @@ defined at the frontend level and should guide each backend expansion.
 
 Near-term candidate areas include:
 
-- explicit target/C-ABI selection and broader C primitive alias coverage;
+- explicit target/C-ABI selection for cross compilation;
 - C-compatible aggregate and enum layout;
 - mutable and readonly slices and byte views;
 - ownership and lifetime rules only when justified by concrete use cases;

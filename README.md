@@ -86,10 +86,12 @@ create_window::(title: readonly c_char*) -> opaque*;
 
 `#extern(c)` declarations are top-level, have no Coglet body, and currently
 accept the scalar/raw-pointer ABI subset. `name="..."` optionally changes the
-external symbol without changing the Coglet identifier. The native C integer
+external symbol without changing the Coglet identifier. The native C scalar
 family is available through transparent aliases such as `c_char`, `c_short`,
-`c_int`, `c_long`, `c_longlong`, their unsigned forms, and `c_size`, selected
-from the native C ABI used to build the compiler. The initial host-C backend can now compile a
+`c_int`, `c_long`, `c_longlong`, their unsigned forms, `c_size`, `c_bool`,
+`c_float`, and `c_double`, selected from the native C ABI used to build the
+compiler. C floating aliases require native IEEE binary32/binary64 compatibility.
+The initial host-C backend can now compile a
 deliberately small executable subset and resolve direct external C calls through
 the native `cc` toolchain. Direct string literals may bind to `readonly c_char*`
 parameters of `#extern(c)` functions without enabling general array-to-pointer
@@ -647,7 +649,7 @@ with weaker C behavior.
 
 Near-term work should combine C interoperability with careful backend expansion:
 
-1. Continue the remaining C ABI surface beyond library selection and direct C strings.
+1. Continue C ABI coverage with aggregate layout, callbacks, and variadics.
 2. Add explicit target/C-ABI selection before cross-compilation claims are made.
 3. Lower core storage/control-flow and checked runtime arithmetic correctly.
 4. Design byte views/slices without introducing unrestricted array decay.

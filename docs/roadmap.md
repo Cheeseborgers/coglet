@@ -285,11 +285,13 @@ invoke native `cc`, resolve default C runtime/libc symbols, and honor
 and overridden external symbols. The backend deliberately rejects language
 constructs whose runtime semantics have not been lowered correctly yet.
 
-The native C integer-family aliases are also implemented: `c_char`, `c_schar`,
+The native C scalar aliases are also implemented: `c_char`, `c_schar`,
 `c_uchar`, `c_short`, `c_ushort`, `c_int`, `c_uint`, `c_long`, `c_ulong`,
-`c_longlong`, `c_ulonglong`, and `c_size`. They transparently resolve to
-fixed-width Coglet integer types from the native C ABI used to build the compiler. External symbol-name
-overrides are implemented with `#extern(c, name="...")`. The host driver now
+`c_longlong`, `c_ulonglong`, and `c_size`, plus `c_bool`, `c_float`, and
+`c_double`. They transparently resolve to canonical Coglet scalar types from the
+native C ABI used to build the compiler. C floating aliases are enabled only
+when the host formats match Coglet's IEEE binary32/binary64 contracts. External
+symbol-name overrides are implemented with `#extern(c, name="...")`. The host driver now
 also accepts repeated `-L` search paths and `-l` libraries in joined or split
 form and forwards them directly to `cc` for executable links. Direct string
 literals can now bind to `readonly c_char*` parameters of `#extern(c)` calls and
@@ -299,7 +301,6 @@ array-to-pointer decay. Explicit cross-target ABI selection is still deferred.
 Remaining C interoperability work includes:
 
 - explicit target/C-ABI selection for cross compilation;
-- the `_Bool` policy and any source-level C floating aliases;
 - richer linker/toolchain configuration beyond `-L` / `-l`;
 - variadic functions;
 - C callbacks/function pointers;

@@ -27,3 +27,15 @@ int coglet_backend_integer_alias_probe(
 
     return 29;
 }
+
+int coglet_backend_scalar_alias_probe(
+    _Bool flag,
+    float single_value,
+    double double_value
+)
+{
+    if (!flag || single_value != 1.25f || double_value != -2.5)
+        return 32;
+
+    return 31;
+}

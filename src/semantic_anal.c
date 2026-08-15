@@ -852,6 +852,45 @@ static void register_native_c_integer_alias(
     register_c_abi_type_alias(ctx, name, type, byte_width);
 }
 
+static void register_native_c_float_alias(
+    SemanticContext *ctx,
+    const char *name,
+    Type *type,
+    size_t byte_width,
+    int mantissa_bits,
+    int min_exponent,
+    int max_exponent,
+    size_t expected_bits,
+    int expected_mantissa_bits,
+    int expected_min_exponent,
+    int expected_max_exponent
+) {
+    size_t bit_width = byte_width * (size_t)CHAR_BIT;
+
+    if (FLT_RADIX != 2 ||
+        bit_width != expected_bits ||
+        mantissa_bits != expected_mantissa_bits ||
+        min_exponent != expected_min_exponent ||
+        max_exponent != expected_max_exponent) {
+        fprintf(
+            stderr,
+            "semantic error: native C ABI type '%s' is not compatible with Coglet's IEEE binary%zu type\n",
+            name,
+            expected_bits
+        );
+        ctx->had_error = 1;
+        ctx->error_count++;
+        return;
+    }
+
+    scope_define(
+        ctx,
+        string_view_from_cstr(name),
+        SYMBOL_TYPE,
+        type
+    );
+}
+
 static void register_native_c_abi_type_aliases(SemanticContext *ctx) {
     register_native_c_integer_alias(ctx, "c_char", sizeof(char), CHAR_MIN < 0);
     register_native_c_integer_alias(ctx, "c_schar", sizeof(signed char), 1);
@@ -867,6 +906,50 @@ static void register_native_c_abi_type_aliases(SemanticContext *ctx) {
     register_native_c_integer_alias(ctx, "c_ulonglong", sizeof(unsigned long long), 0);
 
     register_native_c_integer_alias(ctx, "c_size", sizeof(size_t), 0);
+
+    /*
+     * C `_Bool` has the same logical value domain Coglet exposes through
+     * `bool`; the host-C backend preserves the source ABI spelling as `_Bool`.
+     */
+    scope_define(
+        ctx,
+        string_view_from_cstr("c_bool"),
+        SYMBOL_TYPE,
+        ctx->type_bool
+    );
+
+    /*
+     * Coglet specifies f32/f64 as IEEE-754 binary32/binary64. Only expose the
+     * native C floating aliases when the host C formats match those contracts.
+     * This avoids silently treating an unusual C floating ABI as Coglet f32/f64.
+     */
+    register_native_c_float_alias(
+        ctx,
+        "c_float",
+        ctx->type_f32,
+        sizeof(float),
+        FLT_MANT_DIG,
+        FLT_MIN_EXP,
+        FLT_MAX_EXP,
+        32,
+        24,
+        -125,
+        128
+    );
+
+    register_native_c_float_alias(
+        ctx,
+        "c_double",
+        ctx->type_f64,
+        sizeof(double),
+        DBL_MANT_DIG,
+        DBL_MIN_EXP,
+        DBL_MAX_EXP,
+        64,
+        53,
+        -1021,
+        1024
+    );
 }
 
 static void register_builtin_symbols(SemanticContext *ctx) {

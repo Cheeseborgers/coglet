@@ -1,0 +1,10 @@
+#extern(c)
+coglet_backend_scalar_alias_probe::(
+    flag: c_bool,
+    single_value: c_float,
+    double_value: c_double
+) -> c_int;
+
+main::() -> c_int {
+    return coglet_backend_scalar_alias_probe(true, 1.25, -2.5);
+}

@@ -114,6 +114,9 @@ static const char *base_c_type_name(const Type *type)
             if (sv_equals(type->named_name, "c_longlong"))  return "long long";
             if (sv_equals(type->named_name, "c_ulonglong")) return "unsigned long long";
             if (sv_equals(type->named_name, "c_size"))      return "size_t";
+            if (sv_equals(type->named_name, "c_bool"))      return "_Bool";
+            if (sv_equals(type->named_name, "c_float"))     return "float";
+            if (sv_equals(type->named_name, "c_double"))    return "double";
             return NULL;
 
         case TYPE_UNTYPED_INT:
@@ -318,6 +321,18 @@ static int emit_integer_literal(CBackend *backend, Node *node)
     return 1;
 }
 
+static int emit_float_literal(CBackend *backend, Node *node)
+{
+    /*
+     * `%a` is a C99 hexadecimal floating literal representation. It round-
+     * trips the AST's host-double value exactly and avoids locale-sensitive
+     * decimal formatting. Contextual conversion to a C `float` parameter or
+     * return type performs the same binary32 rounding required by Coglet f32.
+     */
+    fprintf(backend->out, "%a", node->as.number.value.floating);
+    return 1;
+}
+
 static int emit_parameter_identifier(CBackend *backend, Node *node)
 {
     if (!backend->current_function)
@@ -378,15 +393,14 @@ static int emit_expression(CBackend *backend, Node *node)
 
     switch (node->type) {
         case NODE_NUMBER:
-            if (node->as.number.kind != NUMBER_LITERAL_INTEGER) {
-                backend_error(
-                    backend,
-                    node,
-                    "floating-point expressions are not lowered by the first host-C backend subset"
-                );
-                return 0;
-            }
-            return emit_integer_literal(backend, node);
+            if (node->as.number.kind == NUMBER_LITERAL_INTEGER)
+                return emit_integer_literal(backend, node);
+
+            if (node->as.number.kind == NUMBER_LITERAL_FLOAT)
+                return emit_float_literal(backend, node);
+
+            backend_error(backend, node, "unknown numeric literal kind during C lowering");
+            return 0;
 
         case NODE_BOOL:
             fputs(node->as.boolean.value ? "1" : "0", backend->out);
@@ -410,11 +424,20 @@ static int emit_expression(CBackend *backend, Node *node)
         case NODE_UNARY:
             if (node->as.unary.op == TOK_MINUS &&
                 node->as.unary.operand &&
-                node->as.unary.operand->type == NODE_NUMBER &&
-                node->as.unary.operand->as.number.kind == NUMBER_LITERAL_INTEGER) {
+                node->as.unary.operand->type == NODE_NUMBER) {
                 fputs("(-", backend->out);
-                if (!emit_integer_literal(backend, node->as.unary.operand))
+
+                if (node->as.unary.operand->as.number.kind == NUMBER_LITERAL_INTEGER) {
+                    if (!emit_integer_literal(backend, node->as.unary.operand))
+                        return 0;
+                } else if (node->as.unary.operand->as.number.kind == NUMBER_LITERAL_FLOAT) {
+                    if (!emit_float_literal(backend, node->as.unary.operand))
+                        return 0;
+                } else {
+                    backend_error(backend, node, "unknown numeric literal kind during C lowering");
                     return 0;
+                }
+
                 fputc(')', backend->out);
                 return 1;
             }

@@ -488,6 +488,23 @@ set_tests_properties(
 )
 
 add_test(
+        NAME backend_extern_c_scalar_aliases
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_scalar_aliases.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_scalar_aliases
+        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
+        -DLIB_NAME=coglet_backend_link_support
+        -DSTYLE=joined
+        -DEXPECT_EXIT=31
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+)
+set_tests_properties(
+        backend_extern_c_scalar_aliases
+        PROPERTIES LABELS "backend;backend.c;interop;abi"
+)
+
+add_test(
         NAME driver_link_options_require_output
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>

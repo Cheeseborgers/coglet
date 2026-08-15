@@ -1448,12 +1448,12 @@ CPoint::struct {
 consume_point::(point: CPoint) -> c_int;
 ```
 
-`#repr(c)` is top-level only. The first aggregate-layout subset preserves field
-order and accepts C-compatible scalar/raw-pointer fields, including pointers to
-other `#repr(c)` structs. Empty structs, arrays, enums, ordinary Coglet structs,
-and nested structs by value are rejected as fields for now. These restrictions
-keep the initial layout contract within portable C99 behavior while aggregate
-dependency/layout rules are expanded deliberately.
+`#repr(c)` is top-level only. C-compatible scalar/raw-pointer fields are
+accepted, including pointers to other `#repr(c)` structs and other `#repr(c)`
+structs embedded directly by value. By-value struct dependencies may be declared
+in any source order; their inline layout graph must be acyclic. Raw-pointer
+cycles remain valid because the pointee is not laid out inline. Empty structs,
+arrays, enums, and ordinary Coglet structs are rejected as fields for now.
 
 Opaque pointers provide the C `void*`-style representation boundary:
 
@@ -1530,9 +1530,9 @@ literal. It does not yet lower locals, control flow, runtime checked arithmetic,
 general casts, or general array storage/decay. Host executables currently use
 `main::() -> c_int` as the entry-point contract.
 
-Nested aggregate-by-value layout, variadic functions, C callbacks/function
-pointers, enum representation attributes, calling-convention selection, and
-cross-target lowering are still deferred.
+Fixed-size C array fields, variadic functions, C callbacks/function pointers,
+enum representation attributes, calling-convention selection, and cross-target
+lowering are still deferred.
 
 ## Current Semantic Architecture
 

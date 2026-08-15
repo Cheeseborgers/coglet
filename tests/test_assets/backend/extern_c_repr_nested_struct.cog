@@ -1,0 +1,23 @@
+#repr(c)
+NestedPacket::struct {
+    point: NestedPoint;
+    tag: c_ushort;
+}
+
+#repr(c)
+NestedPoint::struct {
+    x: c_int;
+    y: c_double;
+}
+
+#extern(c)
+coglet_backend_make_nested_packet::(x: c_int, y: c_double, tag: c_ushort) -> NestedPacket;
+
+#extern(c)
+coglet_backend_nested_struct_probe::(packet: NestedPacket) -> c_int;
+
+main::() -> c_int {
+    return coglet_backend_nested_struct_probe(
+        coglet_backend_make_nested_packet(19, 3.5, 23)
+    );
+}

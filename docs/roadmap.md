@@ -298,10 +298,10 @@ literals can now bind to `readonly c_char*` parameters of `#extern(c)` calls and
 are decoded/re-emitted by the host-C backend without enabling general
 array-to-pointer decay. Explicit cross-target ABI selection is still deferred.
 
-The first C aggregate representation slice is now implemented with `#repr(c)`.
-Top-level structs with supported scalar/raw-pointer fields can cross `#extern(c)`
-parameters and returns by value, and the host-C backend emits matching native C
-struct definitions. Nested structs by value remain deferred.
+The C aggregate representation slice now supports `#repr(c)` structs with
+scalar/raw-pointer fields and nested `#repr(c)` structs by value. Inline struct
+dependencies are checked for cycles and emitted in dependency order, so source
+declaration order does not constrain valid C layouts.
 
 Remaining C interoperability work includes:
 
@@ -309,7 +309,7 @@ Remaining C interoperability work includes:
 - richer linker/toolchain configuration beyond `-L` / `-l`;
 - variadic functions;
 - C callbacks/function pointers;
-- nested C-compatible aggregate-by-value layout beyond the first `#repr(c)` struct subset;
+- fixed-size C-compatible array fields inside `#repr(c)` aggregates;
 - enum backing representation;
 - extending `#repr(c)` to enums once those representation rules are defined;
 - mapping C null pointers to Coglet `null` at lowering boundaries.

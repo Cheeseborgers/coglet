@@ -1,0 +1,22 @@
+#repr(c)
+Packet::struct {
+    header: Header;
+    payload: Payload;
+}
+
+#repr(c)
+Payload::struct {
+    value: c_double;
+}
+
+#repr(c)
+Header::struct {
+    kind: c_int;
+}
+
+#extern(c)
+inspect_packet::(packet: Packet) -> c_int;
+
+forward_packet::(packet: Packet) -> c_int {
+    return inspect_packet(packet);
+}

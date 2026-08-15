@@ -1,0 +1,14 @@
+#repr(c)
+Direct::struct {
+    self: Direct;
+}
+
+#repr(c)
+Left::struct {
+    right: Right;
+}
+
+#repr(c)
+Right::struct {
+    left: Left;
+}

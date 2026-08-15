@@ -109,14 +109,15 @@ structs, enums, and function types. External declarations are restricted to top
 level and parameter defaults are rejected.
 
 `#repr(c)` is stored on `NODE_STRUCT_DECL` and propagated to the semantic
-`TYPE_STRUCT`. C-represented structs are top-level only. The first field-layout
-subset accepts scalar/raw-pointer fields and pointers to other `#repr(c)`
-structs; empty structs, arrays, enums, ordinary structs, and nested struct values
-are rejected. The host-C backend assigns generated C struct tags, emits forward
-typedefs before pointer aliases, then emits fields in source order using the
-source-level C ABI spellings. This allows `#repr(c)` structs to cross extern C
-parameters and returns by value without changing ordinary Coglet struct layout
-semantics.
+`TYPE_STRUCT`. C-represented structs are top-level only. Fields may use
+scalar/raw-pointer ABI types, pointers to other `#repr(c)` structs, or other
+`#repr(c)` structs directly by value. Semantic analysis rejects direct and
+indirect by-value layout cycles while allowing recursive pointer graphs. Empty
+structs, arrays, enums, and ordinary structs remain rejected. The host-C backend
+assigns generated C struct tags, emits forward typedefs before pointer aliases,
+and topologically emits complete struct definitions so by-value dependencies do
+not depend on Coglet source order. Fields themselves remain in source order and
+use source-level C ABI spellings.
 
 Semantic startup registers the native C scalar family as builtin type aliases:
 `c_char`, `c_schar`, `c_uchar`, `c_short`, `c_ushort`, `c_int`, `c_uint`,

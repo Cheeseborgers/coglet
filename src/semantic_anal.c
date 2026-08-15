@@ -1069,6 +1069,7 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
 static void check_node(SemanticContext *ctx, Node *node);
 static int  declare_struct_shell(SemanticContext *ctx, Node *node);
 static void fill_struct_fields(SemanticContext *ctx, Node *node);
+static void validate_repr_c_struct_layouts(SemanticContext *ctx, Node *program);
 static int  declare_function_signature(SemanticContext *ctx, Node *node);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
@@ -8094,6 +8095,12 @@ static void check_program(SemanticContext *ctx, Node *node)
     }
 
     /*
+     * C-represented structs may contain other #repr(c) structs by value,
+     * but such inline layout dependencies must remain acyclic.
+     */
+    validate_repr_c_struct_layouts(ctx, node);
+
+    /*
      * Pass 3:
      * Register function signatures.
      */
@@ -8637,13 +8644,15 @@ static int repr_c_struct_field_type_supported(const Type *type)
                 return type->element->struct_is_repr_c;
             return repr_c_struct_field_type_supported(type->element);
 
+        case TYPE_STRUCT:
+            return type->struct_is_repr_c;
+
         case TYPE_VOID:
         case TYPE_UNTYPED_INT:
         case TYPE_UNTYPED_FLOAT:
         case TYPE_NULL:
         case TYPE_ARRAY:
         case TYPE_NAMED:
-        case TYPE_STRUCT:
         case TYPE_ENUM:
         case TYPE_FUNCTION:
             return 0;
@@ -8651,6 +8660,108 @@ static int repr_c_struct_field_type_supported(const Type *type)
 
     assert(!"unhandled TypeKind in repr_c_struct_field_type_supported");
     return 0;
+}
+
+static int find_repr_c_struct_node_index(Node **nodes, int count, const Type *type)
+{
+    for (int i = 0; i < count; i++) {
+        if (nodes[i]->as.struct_decl.resolved_type == type)
+            return i;
+    }
+
+    return -1;
+}
+
+static void validate_repr_c_struct_layout_dfs(
+    SemanticContext *ctx,
+    Node **nodes,
+    int count,
+    unsigned char *states,
+    int index
+) {
+    if (states[index] == 2)
+        return;
+
+    if (states[index] == 1)
+        return;
+
+    states[index] = 1;
+
+    Node *decl = nodes[index];
+    Type *type = decl->as.struct_decl.resolved_type;
+
+    if (type && type->fields) {
+        for (int i = 0; i < type->field_count; i++) {
+            Type *field_type = type->fields[i].type;
+
+            /*
+             * Only direct struct-valued fields contribute to inline layout.
+             * Raw pointers may participate in arbitrary recursive graphs.
+             */
+            if (!field_type || field_type->kind != TYPE_STRUCT)
+                continue;
+
+            int dependency =
+                find_repr_c_struct_node_index(nodes, count, field_type);
+
+            if (dependency < 0)
+                continue;
+
+            Node *field = decl->as.struct_decl.fields.items[i];
+
+            if (states[dependency] == 1) {
+                semantic_error_fmt(
+                    ctx,
+                    field,
+                    "#repr(c) by-value field '%.*s' creates a recursive struct layout",
+                    (int)field->as.struct_field_decl.name.length,
+                    field->as.struct_field_decl.name.data
+                );
+                continue;
+            }
+
+            validate_repr_c_struct_layout_dfs(
+                ctx,
+                nodes,
+                count,
+                states,
+                dependency
+            );
+        }
+    }
+
+    states[index] = 2;
+}
+
+static void validate_repr_c_struct_layouts(SemanticContext *ctx, Node *program)
+{
+    NodeList *stmts = &program->as.program.statements;
+    int count = 0;
+
+    for (int i = 0; i < stmts->count; i++) {
+        Node *stmt = stmts->items[i];
+        if (stmt->type == NODE_STRUCT_DECL && stmt->as.struct_decl.is_repr_c)
+            count++;
+    }
+
+    if (count == 0)
+        return;
+
+    Node **nodes = arena_alloc(ctx->arena, sizeof(Node *) * (size_t)count);
+    unsigned char *states = arena_alloc(ctx->arena, (size_t)count);
+    memset(states, 0, (size_t)count);
+
+    int at = 0;
+    for (int i = 0; i < stmts->count; i++) {
+        Node *stmt = stmts->items[i];
+        if (stmt->type == NODE_STRUCT_DECL && stmt->as.struct_decl.is_repr_c)
+            nodes[at++] = stmt;
+    }
+
+    for (int i = 0; i < count; i++) {
+        if (states[i] == 0)
+            validate_repr_c_struct_layout_dfs(ctx, nodes, count, states, i);
+    }
 }
 
 static void fill_struct_fields(SemanticContext *ctx, Node *node) {

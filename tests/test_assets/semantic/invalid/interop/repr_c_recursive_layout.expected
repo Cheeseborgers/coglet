@@ -1,0 +1,3 @@
+semantic error at line 3: #repr(c) by-value field 'self' creates a recursive struct layout
+semantic error at line 13: #repr(c) by-value field 'left' creates a recursive struct layout
+2 semantic errors generated.

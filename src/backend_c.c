@@ -38,6 +38,7 @@ typedef struct CStruct {
     Node *node;
     const Type *type;
     char generated_name[C_BACKEND_NAME_SIZE];
+    unsigned char definition_state;
 } CStruct;
 
 typedef struct CBackend {
@@ -713,24 +714,72 @@ static void emit_struct_forward_declarations(CBackend *backend)
         fputc('\n', backend->out);
 }
 
+static int emit_struct_definition(CBackend *backend, int index)
+{
+    CStruct *structure = &backend->structs[index];
+
+    if (structure->definition_state == 2)
+        return 1;
+
+    if (structure->definition_state == 1) {
+        backend_error(
+            backend,
+            structure->node,
+            "recursive #repr(c) by-value struct layout reached C lowering"
+        );
+        return 0;
+    }
+
+    structure->definition_state = 1;
+
+    /*
+     * C permits pointers to forward-declared structs, but a struct embedded
+     * by value must already be complete. Emit inline aggregate dependencies
+     * first regardless of Coglet source declaration order.
+     */
+    for (int f = 0; f < structure->type->field_count; f++) {
+        const Type *field_type = structure->type->fields[f].type;
+
+        if (!field_type || field_type->kind != TYPE_STRUCT)
+            continue;
+
+        const CStruct *dependency = find_c_struct_by_type(backend, field_type);
+        if (!dependency) {
+            backend_error(
+                backend,
+                structure->node,
+                "missing #repr(c) struct dependency during C lowering"
+            );
+            return 0;
+        }
+
+        int dependency_index = (int)(dependency - backend->structs);
+        if (!emit_struct_definition(backend, dependency_index))
+            return 0;
+    }
+
+    Node *decl = structure->node;
+    fprintf(backend->out, "struct %s {\n", structure->generated_name);
+
+    for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
+        Node *field = decl->as.struct_decl.fields.items[f];
+        const char *type_name =
+            register_c_type(backend, field->as.struct_field_decl.var_type, field);
+        if (!type_name) return 0;
+
+        fprintf(backend->out, "    %s cg_f_%d;\n", type_name, f);
+    }
+
+    fputs("};\n\n", backend->out);
+    structure->definition_state = 2;
+    return 1;
+}
+
 static int emit_struct_definitions(CBackend *backend)
 {
     for (int i = 0; i < backend->struct_count; i++) {
-        CStruct *structure = &backend->structs[i];
-        Node *decl = structure->node;
-
-        fprintf(backend->out, "struct %s {\n", structure->generated_name);
-
-        for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
-            Node *field = decl->as.struct_decl.fields.items[f];
-            const char *type_name =
-                register_c_type(backend, field->as.struct_field_decl.var_type, field);
-            if (!type_name) return 0;
-
-            fprintf(backend->out, "    %s cg_f_%d;\n", type_name, f);
-        }
-
-        fputs("};\n\n", backend->out);
+        if (!emit_struct_definition(backend, i))
+            return 0;
     }
 
     return !backend->had_error;

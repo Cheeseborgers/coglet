@@ -13,3 +13,6 @@ CMode::enum(c_int) {
     Idle = -1,
     Running = 3,
 }
+
+#repr(c)
+CHandle::struct;

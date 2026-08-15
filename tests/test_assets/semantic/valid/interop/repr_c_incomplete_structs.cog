@@ -1,0 +1,25 @@
+#repr(c)
+ForeignHandle::struct;
+
+#repr(c)
+HandleSlot::struct {
+    handle: ForeignHandle*;
+    readonly_handle: readonly ForeignHandle*;
+}
+
+#extern(c)
+get_handle::() -> ForeignHandle*;
+
+#extern(c)
+inspect_handle::(handle: readonly ForeignHandle*) -> c_int;
+
+probe::(handle: ForeignHandle*) -> bool {
+    return handle != null;
+}
+
+use_callback::() -> void {
+    callback: cfn(ForeignHandle*) -> void = null;
+    if callback != null {
+        callback(get_handle());
+    }
+}

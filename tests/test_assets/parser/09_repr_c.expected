@@ -17,3 +17,4 @@ program
       EnumMember Running
         Explicit value
           3
+  #repr(c) struct CHandle incomplete

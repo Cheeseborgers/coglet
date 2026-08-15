@@ -306,6 +306,12 @@ dependencies reached through array elements, are checked for cycles and emitted
 in dependency order, so source declaration order does not constrain valid C
 layouts.
 
+Incomplete named C structs are now represented with body-less declarations such
+as `#repr(c) SDL_Window::struct;`. They are nominal, pointer-only foreign types:
+the semantic layer rejects by-value storage/access and the host-C backend emits
+only a forward declaration. This covers the common opaque-handle pattern used by
+C libraries without conflating it with `void *`.
+
 Native C callbacks/function pointers are now implemented with explicit
 `cfn(...) -> T` types and top-level `#repr(c)` Coglet callback definitions. The
 host-C backend emits real function-pointer typedefs and executable tests exercise
@@ -318,7 +324,7 @@ Remaining C interoperability work includes:
 
 - explicit target/C-ABI selection for cross compilation;
 - richer linker/toolchain configuration beyond `-L` / `-l`;
-- unions and incomplete/opaque named C aggregate declarations;
+- unions and remaining aggregate/ABI representation controls;
 - mapping C null pointers to Coglet `null` at additional lowering boundaries.
 
 ### 2. Slices and Pointer-Length Views

@@ -1571,9 +1571,20 @@ static Node *parse_attribute_decl(Parser *p)
 static Node *parse_struct_decl_rest(Parser *p,Token name,int line) {
 
     consume(p, TOK_STRUCT);
-    consume(p, TOK_LBRACE);
 
     Node *decl = ast_new_struct_decl(p->arena, name.start,name.length, line);
+
+    /*
+     * A semicolon spells an incomplete named struct. Semantic analysis
+     * restricts this form to #repr(c), where it models C APIs that expose
+     * only `struct T *` handles without publishing T's layout.
+     */
+    if (match(p, TOK_SEMICOLON)) {
+        decl->as.struct_decl.is_incomplete = 1;
+        return decl;
+    }
+
+    consume(p, TOK_LBRACE);
 
     while (!check(p, TOK_RBRACE) && !check(p, TOK_EOF)) {
         Node *field = parse_struct_field(p);

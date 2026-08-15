@@ -840,6 +840,8 @@ static void print_node(Node *node)
             if (node->as.struct_decl.is_repr_c)
                 printf("#repr(c) ");
             print_string_view(node->as.struct_decl.name);
+            if (node->as.struct_decl.is_incomplete)
+                printf(" incomplete");
             printf(" ");
 
             for (int i = 0;
@@ -1399,7 +1401,10 @@ static void print_node_pretty(Node *node, int depth)
             if (node->as.struct_decl.is_repr_c)
                 printf("#repr(c) ");
             printf("struct ");
-            print_string_view_ln(node->as.struct_decl.name);
+            print_string_view(node->as.struct_decl.name);
+            if (node->as.struct_decl.is_incomplete)
+                printf(" incomplete");
+            printf("\n");
 
 
             for (int i = 0; i < node->as.struct_decl.fields.count; i++)

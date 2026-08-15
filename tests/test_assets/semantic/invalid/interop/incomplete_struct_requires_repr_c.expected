@@ -1,0 +1,2 @@
+semantic error at line 1: incomplete struct declarations require #repr(c)
+1 semantic error generated.

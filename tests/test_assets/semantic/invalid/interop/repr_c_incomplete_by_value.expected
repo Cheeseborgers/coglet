@@ -1,0 +1,6 @@
+semantic error at line 8: incomplete C struct cannot be stored by value; use a pointer
+semantic error at line 12: incomplete C struct cannot be passed by value; use a pointer
+semantic error at line 14: incomplete C struct cannot be returned by value; use a pointer
+semantic error at line 4: incomplete C struct cannot be stored by value; use a pointer
+semantic error at line 17: incomplete C struct cannot be stored by value; use a pointer
+5 semantic errors generated.

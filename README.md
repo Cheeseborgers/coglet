@@ -107,6 +107,9 @@ functions. The host-C backend emits real function-pointer typedefs and supports 
 calling back into those Coglet functions. C-variadic extern declarations and
 variadic `cfn` types are supported for the current scalar/pointer ABI subset,
 with standard C default argument promotions performed by the native compiler.
+Body-less `#repr(c) Name::struct;` declarations model incomplete/opaque named C
+structs: they may cross C boundaries only through raw pointers, while by-value
+storage, construction, dereference/indexing, and field access are rejected.
 Explicit cross-target ABI selection and native Coglet variadics remain future work.
 
 For the current executable slice:
@@ -686,7 +689,7 @@ with weaker C behavior.
 
 Near-term work should combine C interoperability with careful backend expansion:
 
-1. Continue C ABI coverage with unions/incomplete types and remaining ABI controls.
+1. Continue C ABI coverage with unions and remaining ABI/layout controls.
 2. Add explicit target/C-ABI selection before cross-compilation claims are made.
 3. Lower core storage/control-flow and checked runtime arithmetic correctly.
 4. Design byte views/slices without introducing unrestricted array decay.

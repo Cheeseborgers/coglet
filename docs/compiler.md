@@ -138,6 +138,14 @@ source order. Fixed array fields are emitted as native C array declarators; fiel
 otherwise remain in source order and use source-level C ABI spellings. Arrays are
 still rejected in `#extern(c)` parameters and returns.
 
+A body-less `#repr(c) Name::struct;` declaration is represented as a nominal
+`TYPE_STRUCT` marked incomplete. Semantic analysis permits that type only behind
+raw pointers; all by-value storage, dereference/index operations, construction,
+and field access are rejected. In the C backend the type participates in the
+same generated struct registry as complete represented structs, but only its
+forward typedef is emitted. This is sufficient for ABI-correct opaque C handles
+such as `SDL_Window *` without importing the foreign layout into Coglet.
+
 Semantic startup registers the native C scalar family as builtin type aliases:
 `c_char`, `c_schar`, `c_uchar`, `c_short`, `c_ushort`, `c_int`, `c_uint`,
 `c_long`, `c_ulong`, `c_longlong`, `c_ulonglong`, `c_size`, `c_bool`, `c_float`,

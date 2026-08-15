@@ -1484,6 +1484,23 @@ pointers, and inside fixed arrays. Arrays remain rejected as `#extern(c)` parame
 returns because C function-parameter array syntax decays to pointers rather than
 representing a by-value array ABI.
 
+An incomplete native C struct is declared without a body:
+
+```c
+#repr(c)
+SDL_Window::struct;
+
+#extern(c, name="SDL_DestroyWindow")
+destroy_window::(window: SDL_Window*) -> void;
+```
+
+This form models C APIs that publish a named `struct T` but keep its layout
+private. The type is nominal and may be used through mutable/readonly raw
+pointers (including nested pointer layers and `cfn` signatures). Coglet cannot
+store an incomplete struct by value, embed it inline, construct it, dereference
+or index a pointer to it, access fields, pass it by value, or return it by value.
+The host-C backend emits only a forward declaration for such a type.
+
 ### C function pointers and callbacks
 
 Native C callback pointers use the explicit structural type syntax:

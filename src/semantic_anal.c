@@ -1463,6 +1463,24 @@ static int type_equal(const Type *a, const Type *b) {
 
 static int invalid_value_type(Type *type) { return contains_void_type(type); }
 
+/*
+ * Incomplete #repr(c) structs model foreign object types whose layout is not
+ * available to Coglet. They may appear behind raw pointers, but never as
+ * inline/by-value storage (including through arrays).
+ */
+static int contains_incomplete_struct_by_value(const Type *type)
+{
+    if (!type) return 0;
+
+    if (type->kind == TYPE_STRUCT)
+        return type->struct_is_incomplete;
+
+    if (type->kind == TYPE_ARRAY)
+        return contains_incomplete_struct_by_value(type->element);
+
+    return 0;
+}
+
 static int invalid_return_type(Type *type) {
 
     if (!type) return 0;
@@ -5868,6 +5886,14 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         return NULL;
                     }
 
+                    if (operand->element &&
+                        operand->element->kind == TYPE_STRUCT &&
+                        operand->element->struct_is_incomplete) {
+                        semantic_error(ctx, node,
+                            "cannot dereference a pointer to an incomplete C struct");
+                        return NULL;
+                    }
+
                     sem_record_lvalue_info(
                         ctx,
                         node,
@@ -6664,6 +6690,12 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 return NULL;
             }
 
+            if (object_type->struct_is_incomplete) {
+                semantic_error(ctx, node,
+                    "cannot access fields of an incomplete C struct");
+                return NULL;
+            }
+
             Type *field_type =
                 find_struct_field(
                     object_type,
@@ -6773,6 +6805,15 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     "object is not indexable"
                 );
 
+                return NULL;
+            }
+
+            if (object_type->kind == TYPE_POINTER &&
+                object_type->element &&
+                object_type->element->kind == TYPE_STRUCT &&
+                object_type->element->struct_is_incomplete) {
+                semantic_error(ctx, node,
+                    "cannot index a pointer to an incomplete C struct");
                 return NULL;
             }
 
@@ -6948,6 +6989,12 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     node->as.struct_init.name.length
                 );
 
+                return NULL;
+            }
+
+            if (type->struct_is_incomplete) {
+                semantic_error(ctx, node,
+                    "cannot construct an incomplete C struct");
                 return NULL;
             }
 
@@ -8137,6 +8184,12 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
             semantic_error(ctx, node, "variable cannot have type void");
             return;
         }
+
+        if (contains_incomplete_struct_by_value(type)) {
+            semantic_error(ctx, node,
+                "incomplete C struct cannot be stored by value; use a pointer");
+            return;
+        }
     }
 
     if (init) {
@@ -8165,6 +8218,12 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
 
     if (invalid_value_type(type)) {
         semantic_error(ctx, node, "variable cannot have type void");
+        return;
+    }
+
+    if (contains_incomplete_struct_by_value(type)) {
+        semantic_error(ctx, node,
+            "incomplete C struct cannot be stored by value; use a pointer");
         return;
     }
 
@@ -8223,6 +8282,12 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
 
             return;
         }
+
+        if (contains_incomplete_struct_by_value(type)) {
+            semantic_error(ctx, node,
+                "incomplete C struct cannot be passed by value; use a pointer");
+            return;
+        }
     }
 
     Node *default_value = node->as.param_decl.default_value;
@@ -8263,6 +8328,12 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
         semantic_error(ctx, node,
             "parameter cannot have type void");
 
+        return;
+    }
+
+    if (contains_incomplete_struct_by_value(type)) {
+        semantic_error(ctx, node,
+            "incomplete C struct cannot be passed by value; use a pointer");
         return;
     }
 
@@ -8552,12 +8623,15 @@ static int extern_c_type_supported(const Type *type, int allow_void)
         case TYPE_POINTER:
             /*
              * Typed raw pointers may point at supported scalar/raw-pointer
-             * types or explicitly C-represented structs.
+             * types or explicitly C-represented structs. Incomplete C structs
+             * are specifically useful here: only their address crosses ABI.
              */
+            if (type->element && type->element->kind == TYPE_STRUCT)
+                return type->element->struct_is_repr_c;
             return extern_c_type_supported(type->element, 0);
 
         case TYPE_STRUCT:
-            return type->struct_is_repr_c;
+            return type->struct_is_repr_c && !type->struct_is_incomplete;
 
         case TYPE_ENUM:
             return type->enum_is_repr_c;
@@ -8678,6 +8752,12 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
             return NULL;
         }
 
+        if (contains_incomplete_struct_by_value(param_type)) {
+            semantic_error(ctx, param,
+                "incomplete C struct cannot be passed by value; use a pointer");
+            return NULL;
+        }
+
         type->parameters[i] = param_type;
     }
 
@@ -8691,6 +8771,12 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
         semantic_error(ctx, func,
             "function return type cannot contain void");
 
+        return NULL;
+    }
+
+    if (contains_incomplete_struct_by_value(type->return_type)) {
+        semantic_error(ctx, func,
+            "incomplete C struct cannot be returned by value; use a pointer");
         return NULL;
     }
 
@@ -8871,7 +8957,8 @@ static int declare_struct_shell(SemanticContext *ctx, Node *node) {
 
     type->struct_name.data   = node->as.struct_decl.name.data;
     type->struct_name.length = node->as.struct_decl.name.length;
-    type->struct_is_repr_c   = node->as.struct_decl.is_repr_c;
+    type->struct_is_repr_c      = node->as.struct_decl.is_repr_c;
+    type->struct_is_incomplete  = node->as.struct_decl.is_incomplete;
 
     node->as.struct_decl.resolved_type = type;
 
@@ -8902,8 +8989,8 @@ static int repr_c_struct_field_type_supported(const Type *type)
         case TYPE_POINTER:
             /*
              * Pointer fields may reference supported scalar types and other
-             * #repr(c) structs, including the struct currently being filled.
-             * The pointee itself is not laid out inline.
+             * #repr(c) structs, including incomplete foreign structs. The
+             * pointee itself is not laid out inline.
              */
             if (!type->element) return 0;
             if (type->element->kind == TYPE_STRUCT)
@@ -8911,7 +8998,7 @@ static int repr_c_struct_field_type_supported(const Type *type)
             return repr_c_struct_field_type_supported(type->element);
 
         case TYPE_STRUCT:
-            return type->struct_is_repr_c;
+            return type->struct_is_repr_c && !type->struct_is_incomplete;
 
         case TYPE_ENUM:
             return type->enum_is_repr_c;
@@ -9061,6 +9148,17 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
 
     Type *type = sym->type;
 
+    if (node->as.struct_decl.is_incomplete) {
+        if (!node->as.struct_decl.is_repr_c) {
+            semantic_error(ctx, node, "incomplete struct declarations require #repr(c)");
+        }
+
+        /* An incomplete declaration intentionally has no Coglet field layout. */
+        type->field_count = 0;
+        type->fields = NULL;
+        return;
+    }
+
     if (node->as.struct_decl.is_repr_c && node->as.struct_decl.fields.count == 0) {
         semantic_error(ctx, node, "#repr(c) structs must contain at least one field");
     }
@@ -9099,6 +9197,14 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
 
             semantic_error(ctx, field,
                 "struct field cannot have type void");
+
+            type->fields[i].type = NULL;
+            continue;
+        }
+
+        if (contains_incomplete_struct_by_value(field_type)) {
+            semantic_error(ctx, field,
+                "incomplete C struct cannot be stored by value; use a pointer");
 
             type->fields[i].type = NULL;
             continue;

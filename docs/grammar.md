@@ -353,7 +353,7 @@ repr_c_decl :=
     identifier "::" (repr_c_struct_body | repr_c_enum_body);
 
 repr_c_struct_body :=
-    "struct" "{" {struct_field_decl} "}";
+    "struct" ("{" {struct_field_decl} "}" | ";");
 
 repr_c_enum_body :=
     "enum" "(" c_integer_alias ")" "{" [enum_member {"," enum_member} [","]] "}";
@@ -366,7 +366,9 @@ another `#repr(c)` struct by value or a positive-length fixed array of supported
 C field types, including `#repr(c)` enum values and arrays of those enums.
 Struct dependencies reached directly or through array elements must form an
 acyclic inline layout graph. Unsized and zero-length C-layout array
-fields are rejected.
+fields are rejected. The semicolon form declares an incomplete foreign C
+struct, for example `#repr(c) SDL_Window::struct;`; incomplete structs have no
+Coglet field layout and may only be used behind raw pointers.
 
 The C scalar-ABI names `c_char`, `c_schar`, `c_uchar`, `c_short`,
 `c_ushort`, `c_int`, `c_uint`, `c_long`, `c_ulong`, `c_longlong`,

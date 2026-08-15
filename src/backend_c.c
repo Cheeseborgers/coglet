@@ -1072,6 +1072,16 @@ static int emit_struct_definition(CBackend *backend, int index)
     if (structure->definition_state == 2)
         return 1;
 
+    /*
+     * Incomplete #repr(c) structs intentionally remain forward declarations.
+     * Their only supported ABI use is behind pointers, so no object layout is
+     * emitted into the host-C translation unit.
+     */
+    if (structure->node->as.struct_decl.is_incomplete) {
+        structure->definition_state = 2;
+        return 1;
+    }
+
     if (structure->definition_state == 1) {
         backend_error(
             backend,

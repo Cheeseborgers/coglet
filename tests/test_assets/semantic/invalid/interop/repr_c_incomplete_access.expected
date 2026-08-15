@@ -1,0 +1,4 @@
+semantic error at line 5: cannot dereference a pointer to an incomplete C struct
+semantic error at line 6: cannot index a pointer to an incomplete C struct
+semantic error at line 7: cannot construct an incomplete C struct
+3 semantic errors generated.

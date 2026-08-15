@@ -1,0 +1,17 @@
+#repr(c)
+ForeignHandle::struct;
+
+bad_storage: ForeignHandle;
+
+#repr(c)
+BadField::struct {
+    handle: ForeignHandle;
+}
+
+#extern(c)
+bad_parameter::(handle: ForeignHandle) -> c_int;
+
+#extern(c)
+bad_return::() -> ForeignHandle;
+
+bad_array: ForeignHandle[2];

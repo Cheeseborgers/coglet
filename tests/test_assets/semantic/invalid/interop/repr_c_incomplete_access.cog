@@ -1,0 +1,8 @@
+#repr(c)
+ForeignHandle::struct;
+
+bad::(handle: ForeignHandle*) -> void {
+    *handle;
+    handle[0];
+    ForeignHandle{};
+}

@@ -215,3 +215,23 @@ int coglet_backend_varargs_probe(int marker, ...)
 
     return 57;
 }
+
+typedef struct CogletBackendIncompleteHandle {
+    int marker;
+} CogletBackendIncompleteHandle;
+
+CogletBackendIncompleteHandle *coglet_backend_get_incomplete_handle(void)
+{
+    static CogletBackendIncompleteHandle handle = {67};
+    return &handle;
+}
+
+int coglet_backend_incomplete_handle_probe(
+    const CogletBackendIncompleteHandle *handle
+)
+{
+    if (!handle || handle->marker != 67)
+        return 68;
+
+    return 67;
+}

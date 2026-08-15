@@ -296,6 +296,17 @@ struct Node {
              *     Point::struct { ... }
              */
             int is_repr_c;
+
+            /*
+             * Incomplete native-C struct declaration:
+             *
+             *     #repr(c)
+             *     SDL_Window::struct;
+             *
+             * The type may only be used behind raw pointers until a layout is
+             * provided by C; Coglet never defines or accesses its fields.
+             */
+            int is_incomplete;
             Type *resolved_type;  // semantic TYPE_STRUCT, NULL if declaration failed
         } struct_decl;
 

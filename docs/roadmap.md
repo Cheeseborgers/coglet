@@ -33,6 +33,7 @@ Implemented areas include:
 - stable semantic declaration identities and normalized native-C ABI metadata
 - explicit frontend `TargetInfo` with host-default and synthetic cross-target semantic tests
 - explicit contextual-conversion metadata for IR-ready expression lowering
+- centralized, post-semantic constant-value metadata for IR lowering
 
 ## Recently Completed
 
@@ -87,6 +88,23 @@ regression fixture exercises every current conversion kind.
 
 Already-concrete C-variadic default promotions remain part of ABI lowering
 rather than Coglet's implicit conversion system.
+
+### Centralized Semantic Constant Values
+
+Compile-time evaluation now has one exported `ConstValue` contract and one
+post-check retrieval API, `semantic_get_constant_value()`. Successful constant
+expressions are cached while semantic scopes are live, then exposed without
+re-running lexical lookup or evaluator logic. Retrieval normalizes expression
+values to the already-recorded effective contextual type.
+
+Constant declarations and enum-member declarations, including implicit enum
+values, carry their final compile-time value in `SemDeclInfo`; `Symbol` no longer
+duplicates constant payloads. The semantic-info verifier checks these caches and
+a dedicated regression exercises inferred and
+typed constants, integer-to-float materialization, typed null, constant switch
+labels, and implicit/explicit enum values. Fixed-array lengths remain literal
+syntax today; general constant-expression array lengths are intentionally not
+introduced by this milestone.
 
 ### Definite Assignment and Unified Reachability
 

@@ -25,6 +25,32 @@ typedef struct Type Type;
 typedef struct Symbol Symbol;
 
 /*
+ * Normalized compile-time value produced by semantic constant evaluation.
+ *
+ * The payload is independent of source spelling. `type` is the semantic type
+ * of the value before any use-site contextual conversion; callers should use
+ * semantic_get_constant_value() to obtain the effective value selected for the
+ * checked use-site.
+ */
+typedef enum ConstValueKind {
+    CONST_VALUE_INT,
+    CONST_VALUE_FLOAT,
+    CONST_VALUE_BOOL,
+    CONST_VALUE_NULL,
+} ConstValueKind;
+
+typedef struct ConstValue {
+    ConstValueKind kind;
+    Type *type;
+
+    union {
+        IntegerValue integer;
+        double floating;
+        int boolean;
+    } as;
+} ConstValue;
+
+/*
  * Stable identity for a successfully resolved source declaration.
  *
  * IDs are unique within one semantic_check() invocation. They are deliberately
@@ -227,6 +253,13 @@ typedef struct SemDeclInfo {
         SemEnumAbiInfo enumeration;
     } abi;
 
+    /*
+     * Compile-time value for constant-like declarations. This is populated for
+     * constant declarations and enum members, including implicit enum values.
+     */
+    int has_constant_value;
+    ConstValue constant_value;
+
     struct SemDeclInfo *next;
 } SemDeclInfo;
 
@@ -252,6 +285,14 @@ typedef struct SemExprInfo {
 
     /* True when an lvalue denotes volatile-qualified storage. */
     int value_is_volatile;
+
+    /*
+     * Intrinsic compile-time value cached while semantic checking still has
+     * lexical scope available. Retrieval applies any recorded contextual
+     * conversion without re-running name lookup or constant evaluation.
+     */
+    int has_constant_value;
+    ConstValue constant_value;
 
     struct SemExprInfo *next;
 } SemExprInfo;

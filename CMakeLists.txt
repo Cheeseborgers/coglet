@@ -55,6 +55,10 @@ target_link_libraries(check_target_info PRIVATE compiler_core)
 add_executable(check_contextual_conversions tools/tests/check_contextual_conversions.c)
 target_link_libraries(check_contextual_conversions PRIVATE compiler_core)
 
+# --- Centralized semantic constant-value checker. ---
+add_executable(check_constant_values tools/tests/check_constant_values.c)
+target_link_libraries(check_constant_values PRIVATE compiler_core)
+
 # --- Standalone lexer test tool (Stage 1 harness). ---
 add_executable(dump_tokens tools/dump_tokens.c ${COMMON_SOURCES})
 target_link_libraries(dump_tokens PRIVATE compiler_core)
@@ -84,6 +88,16 @@ add_test(
 set_tests_properties(
         semantic_contextual_conversion_metadata
         PROPERTIES LABELS "semantic;semantic.info;conversion"
+)
+
+add_test(
+        NAME semantic_constant_value_metadata
+        COMMAND "$<TARGET_FILE:check_constant_values>"
+                "${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/constant_value_metadata.cog"
+)
+set_tests_properties(
+        semantic_constant_value_metadata
+        PROPERTIES LABELS "semantic;semantic.info;constant"
 )
 
 # Registers one ctest per <name>.cog / <name>.expected pair found in

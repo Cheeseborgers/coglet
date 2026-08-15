@@ -1376,6 +1376,25 @@ static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *
     if (!verify_context_conversion_info(verifier, expression, info))
         valid = 0;
 
+    if (info->has_constant_value) {
+        ConstValue value;
+        Type *effective_type =
+            semantic_get_effective_expr_type(verifier->sem, expression);
+
+        if (!semantic_get_constant_value(
+                verifier->sem,
+                expression,
+                &value)) {
+            verifier_error(verifier, expression,
+                "cached constant expression is not retrievable through semantic API");
+            valid = 0;
+        } else if (effective_type && value.type != effective_type) {
+            verifier_error(verifier, expression,
+                "retrieved constant type does not match effective expression type");
+            valid = 0;
+        }
+    }
+
     if (!value_access_is_valid(info->value_access)) {
         verifier_error(verifier, expression,
             "expression has invalid value access %d",
@@ -1993,6 +2012,31 @@ static void verify_declaration_info(Verifier *verifier, Node *declaration) {
     if (semantic_get_decl_info_by_id(verifier->sem, info->id) != info) {
         verifier_error(verifier, declaration,
             "declaration ID does not resolve back to the same SemDeclInfo");
+    }
+
+    int declaration_must_have_constant =
+        declaration->type == NODE_CONST_DECL ||
+        declaration->type == NODE_ENUM_MEMBER;
+
+    if (declaration_must_have_constant) {
+        ConstValue value;
+
+        if (!info->has_constant_value) {
+            verifier_error(verifier, declaration,
+                "constant-like declaration has no cached compile-time value");
+        } else if (!semantic_get_constant_value(
+                       verifier->sem,
+                       declaration,
+                       &value)) {
+            verifier_error(verifier, declaration,
+                "constant-like declaration is not retrievable through semantic API");
+        } else if (value.type != info->type) {
+            verifier_error(verifier, declaration,
+                "declaration constant type differs from SemDeclInfo type");
+        }
+    } else if (info->has_constant_value) {
+        verifier_error(verifier, declaration,
+            "non-constant declaration unexpectedly carries a compile-time value");
     }
 
     if (info->symbol) {

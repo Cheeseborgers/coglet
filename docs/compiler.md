@@ -324,6 +324,34 @@ types use their canonical instances.
 
 ## Compile-Time Constant Evaluation
 
+Compile-time values now use one semantic `ConstValue` contract shared by
+constant declarations, enum members, constant-expression checking, and later
+lowering. The evaluator remains private to semantic analysis; successful
+results are cached in semantic side tables while lexical scope is still live.
+After `semantic_check()` returns, later phases retrieve them through:
+
+```c
+semantic_get_constant_value(ctx, node, &value)
+```
+
+The API accepts a checked constant expression, constant declaration, or enum
+member declaration. It does not re-run name lookup or evaluation. Expression
+results are normalized to `semantic_get_effective_expr_type()`, including
+integer/float materialization and typed `null`, so lowering receives the exact
+checked use-site representation. Constant declarations and enum members retain
+their resolved declaration type.
+
+`SemExprInfo` stores the intrinsic cached value, while `SemDeclInfo` stores the
+final value for constant-like declarations. `Symbol` no longer duplicates the
+constant payload: constant identifier evaluation follows the stable declaration
+ID back to `SemDeclInfo`. Implicit enum members are recorded too, so later
+phases do not have to reproduce enum auto-increment rules.
+
+Fixed-array lengths are currently parsed as integer literal syntax rather than
+general constant expressions, so there is no separate array-length evaluator
+to migrate at this stage. Expanding array lengths to arbitrary constant
+expressions would be a language feature, not part of this normalization.
+
 Integer constants use an exact sign-and-magnitude representation with a
 `uint64_t` magnitude. Constant arithmetic selects a concrete provisional
 operation kind, verifies operand representability, performs the mathematical
@@ -862,6 +890,8 @@ The verifier checks:
 - recursive preservation of native-C scalar spellings at ABI surfaces;
 - type, symbol, and value-category invariants;
 - contextual conversion kind/destination consistency and effective-type lookup;
+- cached constant-expression retrieval and effective constant type normalization;
+- constant/enum-member declaration values through the centralized semantic API;
 - valid `ValueCategory`/`ValueAccess` combinations;
 - readonly and writable dereference propagation;
 - pointer and array index access propagation;

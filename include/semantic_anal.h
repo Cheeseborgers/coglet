@@ -46,36 +46,6 @@ typedef enum {
 #define INVALID_VARIABLE_ID ((size_t)-1)
 #define INVALID_FLOW_OWNER_ID ((size_t)-1)
 
-typedef enum {
-    CONST_VALUE_INT,
-    CONST_VALUE_FLOAT,
-    CONST_VALUE_BOOL,
-    CONST_VALUE_NULL,
-} ConstValueKind;
-
-typedef struct ConstValue {
-    ConstValueKind kind;
-
-    /*
-     * Semantic type of this compile-time value.
-     *
-     * Examples:
-     *
-     *   123              -> untyped i32
-     *   3.14             -> untyped f64
-     *   true             -> bool
-     *   Color.Red        -> Color
-     *   DEFAULT_COLOR    -> Color
-     */
-    Type *type;
-
-    union {
-        IntegerValue integer;
-        double floating;
-        int boolean;
-    } as;
-} ConstValue;
-
 typedef struct Symbol {
     StringView name;
 
@@ -88,8 +58,6 @@ typedef struct Symbol {
     * SYMBOL_BUILTIN.
     */
     BuiltinKind builtin_kind;
-
-    ConstValue const_value;   // only meaningful when kind == SYMBOL_CONSTANT
 
     Type *type;
 
@@ -205,5 +173,17 @@ SemExprInfo *semantic_get_expr_info(SemanticContext *ctx, Node *node);
  * selected, otherwise the expression's intrinsic SemExprInfo.type.
  */
 Type *semantic_get_effective_expr_type(SemanticContext *ctx, Node *node);
+
+/*
+ * Returns a previously checked compile-time value without re-running semantic
+ * evaluation or lexical name lookup. `node` may be an expression, a constant
+ * declaration, or an enum-member declaration. The returned value is normalized
+ * to the expression's recorded contextual type when one exists.
+ */
+int semantic_get_constant_value(
+    SemanticContext *ctx,
+    Node *node,
+    ConstValue *out
+);
 
 #endif

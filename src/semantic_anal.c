@@ -206,6 +206,7 @@ static SemExprInfo *sem_get_or_create_expr_info(SemanticContext *ctx, Node *node
     info->value_category = VALUE_CATEGORY_NONE;
     info->value_access   = VALUE_ACCESS_NONE;
     info->value_is_volatile = 0;
+    info->has_constant_value = 0;
 
     info->next = ctx->expr_infos;
     ctx->expr_infos = info;
@@ -1420,6 +1421,11 @@ static int switch_case_values_are_exhaustive(
 static int eval_const_checked_cast(SemanticContext *ctx, Node *node, ConstValue *out);
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
 static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out);
+static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *out);
+static int try_coerce_constant_to_type(
+    const ConstValue *value,
+    Type *target_type,
+    ConstValue *out);
 static int check_string_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 static int eval_const_builtin_call(SemanticContext *ctx, Node *call, ConstValue *out);
 static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out);
@@ -3828,6 +3834,26 @@ static int eval_const_comparison(
 // Anything reaching outside that (function calls, variables, struct
 // inits, etc.) is rejected with a diagnostic.
 static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
+    ConstValue value;
+
+    if (!eval_const_expr_impl(ctx, node, &value))
+        return 0;
+
+    *out = value;
+
+    /*
+     * Cache the intrinsic result while lexical scope is still available.
+     * Later compiler stages must not re-run constant evaluation because local
+     * scopes have been popped by the time semantic_check() returns.
+     */
+    SemExprInfo *info = sem_get_or_create_expr_info(ctx, node);
+    info->has_constant_value = 1;
+    info->constant_value = value;
+
+    return 1;
+}
+
+static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *out) {
 
     if (!node) return 0;
 
@@ -3884,7 +3910,16 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
                 return 0;
             }
 
-            *out = symbol->const_value;
+            SemDeclInfo *declaration =
+                sem_find_decl_info_by_id(ctx, symbol->declaration_id);
+
+            if (!declaration || !declaration->has_constant_value) {
+                /* A SYMBOL_CONSTANT is created only after its value is known. */
+                assert(0 && "constant symbol has no semantic declaration value");
+                return 0;
+            }
+
+            *out = declaration->constant_value;
             return 1;
         }
 
@@ -4986,6 +5021,49 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
     UNREACHABLE("CastKind");
 }
 
+static int try_coerce_constant_to_type(
+    const ConstValue *value,
+    Type *target_type,
+    ConstValue *out
+) {
+    assert(value);
+    assert(target_type);
+    assert(out);
+
+    *out = *value;
+    out->type = target_type;
+
+    if (is_integer_kind(target_type->kind)) {
+        return value->kind == CONST_VALUE_INT &&
+               integer_value_fits_type(
+                   value->as.integer,
+                   target_type->kind
+               );
+    }
+
+    if (is_float_kind(target_type->kind)) {
+        double float_value;
+
+        if (!const_value_to_float_type(
+                value,
+                target_type->kind,
+                &float_value)) {
+            return 0;
+        }
+
+        out->kind = CONST_VALUE_FLOAT;
+        out->as.floating = float_value;
+        return 1;
+    }
+
+    /*
+     * Non-numeric constant conversions preserve the payload and only attach
+     * the already-approved semantic destination type. This covers enum values
+     * and null-to-pointer contextualization.
+     */
+    return 1;
+}
+
 static int coerce_constant_to_type(
     SemanticContext *ctx,
     Node *node,
@@ -4995,47 +5073,22 @@ static int coerce_constant_to_type(
     const char *float_range_message,
     ConstValue *out) {
 
-    *out = *value;
-    out->type = target_type;
-
-    if (is_integer_kind(target_type->kind)) {
-        if (value->kind != CONST_VALUE_INT ||
-            !integer_value_fits_type(
-                value->as.integer,
-                target_type->kind
-            )) {
-
-            semantic_error(ctx,node,
-                integer_range_message);
-
-            return 0;
-        }
-
+    if (try_coerce_constant_to_type(
+            value,
+            target_type,
+            out)) {
         return 1;
     }
 
-    if (is_float_kind(target_type->kind)) {
+    semantic_error(
+        ctx,
+        node,
+        is_float_kind(target_type->kind)
+            ? float_range_message
+            : integer_range_message
+    );
 
-        double float_value;
-
-        if (!const_value_to_float_type(
-                value,
-                target_type->kind,
-                &float_value)) {
-
-            semantic_error(ctx, node,
-                float_range_message);
-
-            return 0;
-        }
-
-        out->kind = CONST_VALUE_FLOAT;
-        out->as.floating = float_value;
-
-        return 1;
-    }
-
-    return 1;
+    return 0;
 }
 
 static int check_constant_value_against_type(
@@ -7728,14 +7781,17 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
         value.type = type;
     }
 
-    Symbol *sym = scope_define_declared(
+    scope_define_declared(
         ctx,
         node,
         node->as.const_decl.name,
         SYMBOL_CONSTANT,
         type);
 
-    sym->const_value = value;
+    SemDeclInfo *decl_info = sem_find_decl_info(ctx, node);
+    assert(decl_info);
+    decl_info->has_constant_value = 1;
+    decl_info->constant_value = value;
 }
 
 static void check_switch_statement(SemanticContext *ctx, Node *node) {
@@ -10183,7 +10239,15 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
         member_node->as.enum_member.resolved_value = value;
 
         if (!duplicate && value_is_valid) {
-            sem_record_decl_info(ctx, member_node, type, NULL);
+            SemDeclInfo *member_info =
+                sem_record_decl_info(ctx, member_node, type, NULL);
+
+            member_info->has_constant_value = 1;
+            member_info->constant_value = (ConstValue){
+                .kind = CONST_VALUE_INT,
+                .type = type,
+                .as.integer = value,
+            };
 
             IntegerValue one =
                 integer_value_make(1, 0);
@@ -10605,4 +10669,56 @@ Type *semantic_get_effective_expr_type(SemanticContext *ctx, Node *node) {
     return info->contextual_type
         ? info->contextual_type
         : info->type;
+}
+
+int semantic_get_constant_value(
+    SemanticContext *ctx,
+    Node *node,
+    ConstValue *out
+) {
+    if (!ctx || !node || !out)
+        return 0;
+
+    SemExprInfo *expr_info = sem_find_expr_info(ctx, node);
+
+    if (expr_info && expr_info->has_constant_value) {
+        ConstValue value = expr_info->constant_value;
+
+        if (expr_info->contextual_type) {
+            ConstValue converted;
+
+            if (!try_coerce_constant_to_type(
+                    &value,
+                    expr_info->contextual_type,
+                    &converted)) {
+                /*
+                 * Semantic analysis records contextual conversions only after
+                 * validating them. Failure here therefore indicates an internal
+                 * inconsistency, not a user-program diagnostic.
+                 */
+                return 0;
+            }
+
+            value = converted;
+        } else if (expr_info->type) {
+            /*
+             * Untyped constant evaluation may allocate an equivalent temporary
+             * semantic Type. Normalize the exported value to the exact checked
+             * expression type so downstream phases can use pointer identity.
+             */
+            value.type = expr_info->type;
+        }
+
+        *out = value;
+        return 1;
+    }
+
+    SemDeclInfo *decl_info = sem_find_decl_info(ctx, node);
+
+    if (decl_info && decl_info->has_constant_value) {
+        *out = decl_info->constant_value;
+        return 1;
+    }
+
+    return 0;
 }

@@ -1,0 +1,23 @@
+BASE :: 40 + 2;
+WIDE: i64 : 7;
+FROM_INT: f32 : 3;
+FROM_FLOAT: f32 : 1.25;
+NEGATIVE :: -5;
+NONE: i32* : null;
+
+Mode :: enum(u8) {
+    Zero,
+    Seven = 7,
+    Eight,
+}
+
+exercise_constants::(runtime: i32) -> i64 {
+    local: i64 = BASE;
+
+    switch runtime {
+        case BASE:
+            return WIDE;
+        default:
+            return local;
+    }
+}

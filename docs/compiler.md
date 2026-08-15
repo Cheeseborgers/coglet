@@ -731,6 +731,54 @@ semantic_get_decl_info_by_id(ctx, id);
 The declaration IDs are deterministic for a given semantic traversal but are
 compiler-internal identities, not persistent source/module IDs.
 
+## Contextual Conversion Metadata
+
+Semantic analysis now records implicit/contextual expression adaptation
+directly in `SemExprInfo`. The expression's existing `type` remains its
+intrinsic semantic type; when an enclosing use-site selects another concrete
+type, the side table records both the destination and the reason:
+
+```text
+SemExprInfo.type                  intrinsic expression type
+SemExprInfo.contextual_type       selected use-site type, or NULL
+SemExprInfo.contextual_conversion adaptation kind
+```
+
+Current conversion kinds cover:
+
+- adaptable `untyped-int` materialization to a concrete integer;
+- adaptable `untyped-int` materialization directly to `f32`/`f64`;
+- adaptable `untyped-float` materialization to `f32`/`f64`;
+- `null` adaptation to a concrete typed/opaque raw pointer or native C function
+  pointer;
+- monotonic immediate raw-pointer qualification (`readonly`/`volatile`
+  addition only);
+- the deliberately narrow direct string-literal binding to
+  `readonly c_char*` at supported C call boundaries.
+
+The public helper:
+
+```c
+semantic_get_effective_expr_type(ctx, node)
+```
+
+returns `contextual_type` when a conversion was selected, otherwise the
+intrinsic `type`. This is the API intended for CogIR lowering. Lowering should
+not repeat literal-range checks, infer a default type for an untyped value, or
+re-run pointer-qualification compatibility.
+
+The metadata is recorded at variable/parameter/constant initialization,
+assignment, returns, fixed call arguments, array/struct elements, numeric
+operations and comparisons, switch labels, inferred numeric storage, array
+indexes/shift counts that require default materialization, null comparisons,
+and supported C literal boundaries.
+
+Explicit casts are intentionally not represented as contextual conversions:
+their conversion kind and destination already exist explicitly in the
+`NODE_CAST` AST. Likewise, C default argument promotions for already-concrete
+variadic values (for example `f32` to C `double`) remain ABI-lowering rules.
+Only otherwise-untyped variadic literals receive semantic materialization.
+
 ## Normalized ABI Declaration Metadata
 
 Semantic analysis also normalizes declaration-level ABI contracts into
@@ -813,6 +861,7 @@ The verifier checks:
 - normalized function/aggregate/enum ABI metadata;
 - recursive preservation of native-C scalar spellings at ABI surfaces;
 - type, symbol, and value-category invariants;
+- contextual conversion kind/destination consistency and effective-type lookup;
 - valid `ValueCategory`/`ValueAccess` combinations;
 - readonly and writable dereference propagation;
 - pointer and array index access propagation;

@@ -1,0 +1,49 @@
+#extern(c)
+puts::(text: readonly c_char*) -> c_int;
+
+#extern(c)
+printf::(format: readonly c_char*, ...) -> c_int;
+
+return_wide::() -> i64 {
+    return 7;
+}
+
+exercise_contexts::(runtime: i32, pointer: i32*) -> i32 {
+    inferred := 1;
+    wide: i64 = 2;
+    from_integer: f32 = 3;
+    from_float: f32 = 1.25;
+
+    view: readonly volatile i32* = pointer;
+    empty: i32* = null;
+
+    arithmetic := runtime + 4;
+    comparison := runtime < 5;
+
+    values: i32[2] = [6, 7];
+    selected := values[1];
+
+    switch runtime {
+        case 8:
+            arithmetic = 9;
+        default:
+            arithmetic = 10;
+    }
+
+    puts("ok");
+    printf("%d %f\n", 11, 2.5);
+
+    if comparison {
+        return arithmetic + selected + inferred + cast(i32, wide) + cast(i32, from_integer) + cast(i32, from_float);
+    }
+
+    if view == null {
+        return 0;
+    }
+
+    if empty == null {
+        return 0;
+    }
+
+    return arithmetic;
+}

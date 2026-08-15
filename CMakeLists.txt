@@ -51,6 +51,10 @@ target_link_libraries(check_semantics PRIVATE compiler_core)
 add_executable(check_target_info tools/tests/check_target_info.c)
 target_link_libraries(check_target_info PRIVATE compiler_core)
 
+# --- Contextual-conversion semantic metadata checker. ---
+add_executable(check_contextual_conversions tools/tests/check_contextual_conversions.c)
+target_link_libraries(check_contextual_conversions PRIVATE compiler_core)
+
 # --- Standalone lexer test tool (Stage 1 harness). ---
 add_executable(dump_tokens tools/dump_tokens.c ${COMMON_SOURCES})
 target_link_libraries(dump_tokens PRIVATE compiler_core)
@@ -70,6 +74,16 @@ add_test(
 set_tests_properties(
         target_info_cross_target_scalar_mapping
         PROPERTIES LABELS "target;semantic;interop;abi"
+)
+
+add_test(
+        NAME semantic_contextual_conversion_metadata
+        COMMAND "$<TARGET_FILE:check_contextual_conversions>"
+                "${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/contextual_conversions.cog"
+)
+set_tests_properties(
+        semantic_contextual_conversion_metadata
+        PROPERTIES LABELS "semantic;semantic.info;conversion"
 )
 
 # Registers one ctest per <name>.cog / <name>.expected pair found in

@@ -46,6 +46,40 @@ typedef enum ValueAccess {
     VALUE_ACCESS_WRITABLE,
 } ValueAccess;
 
+/*
+ * Implicit/contextual conversion selected by semantic analysis for one
+ * expression use-site.
+ *
+ * `SemExprInfo.type` remains the expression's intrinsic semantic type. When a
+ * parent context requires a different concrete representation,
+ * `contextual_type` records that destination and `contextual_conversion`
+ * explains why the adaptation is legal.
+ *
+ * This is deliberately narrower than explicit casts. A NODE_CAST carries its
+ * conversion in the AST and therefore normally has SEM_CONTEXT_CONVERSION_NONE.
+ */
+typedef enum SemContextConversionKind {
+    SEM_CONTEXT_CONVERSION_NONE,
+
+    /* adaptable untyped-int -> concrete integer */
+    SEM_CONTEXT_CONVERSION_INT_MATERIALIZE,
+
+    /* adaptable untyped-int -> concrete floating-point */
+    SEM_CONTEXT_CONVERSION_INT_TO_FLOAT_MATERIALIZE,
+
+    /* adaptable untyped-float -> concrete floating-point */
+    SEM_CONTEXT_CONVERSION_FLOAT_MATERIALIZE,
+
+    /* dedicated null literal/value -> concrete nullable raw pointer/cfn */
+    SEM_CONTEXT_CONVERSION_NULL_TO_POINTER,
+
+    /* matching raw pointer with only monotonic immediate qualifier addition */
+    SEM_CONTEXT_CONVERSION_POINTER_QUALIFICATION,
+
+    /* direct string literal admitted at the narrow readonly c_char* C boundary */
+    SEM_CONTEXT_CONVERSION_C_STRING_TO_POINTER,
+} SemContextConversionKind;
+
 typedef enum SemAbiRepresentation {
     SEM_ABI_REPR_COGLET,
     SEM_ABI_REPR_C,
@@ -201,6 +235,17 @@ typedef struct SemExprInfo {
 
     Type *type;
     Symbol *symbol;
+
+    /*
+     * Concrete type selected by an enclosing semantic context when it differs
+     * from the expression's intrinsic type. NULL when no implicit/contextual
+     * adaptation occurs.
+     *
+     * Future lowering should use semantic_get_effective_expr_type() rather
+     * than re-deriving these decisions from AST syntax.
+     */
+    Type *contextual_type;
+    SemContextConversionKind contextual_conversion;
 
     ValueCategory value_category;
     ValueAccess value_access;

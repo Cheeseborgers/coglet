@@ -1736,16 +1736,16 @@ whether plain `char` is signed. For example, on a conventional LP64 host
 `c_int` resolves to `i32`, `c_long` resolves to `i64`, and `c_size` resolves to
 `u64`.
 
-The compiler does not yet expose an explicit cross-compilation target. For this
-milestone the selected C ABI is therefore the **native C ABI used to build
-Coglet**, derived from `CHAR_BIT`, C type widths, plain-`char` signedness, and C
-floating-format macros. Only native C integer widths that map to Coglet's
-8/16/32/64-bit integers are supported. `c_float`/`c_double` are exposed only
-when native C `float`/`double` match IEEE binary32/binary64 respectively.
-Explicit target selection can replace this mapping later without changing source
-syntax. C `long double` does not currently have a Coglet alias because the
-language has no scalar type whose representation and precision can model it
-portably.
+The frontend now receives an explicit `TargetInfo` describing the selected C
+ABI rather than consulting the compiler host directly during semantic analysis.
+The normal compiler driver constructs a host target by default, while
+target-aware compilation APIs may supply a different description. `TargetInfo`
+currently carries pointer width, C integer-family widths, plain-`char`
+signedness, `_Bool` width, and C floating formats. CLI target-triple selection
+and non-host native code generation remain future work; the existing host-C
+backend rejects a semantic target that does not match the build host. C `long
+double` does not currently have a Coglet alias because the language has no
+scalar type whose representation and precision can model it portably.
 
 This makes common declarations portable across native targets:
 

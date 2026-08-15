@@ -691,6 +691,172 @@ static const char *value_access_name(ValueAccess access) {
     return "<invalid>";
 }
 
+static const char *context_conversion_name(SemContextConversionKind conversion) {
+    switch (conversion) {
+        case SEM_CONTEXT_CONVERSION_NONE:
+            return "none";
+        case SEM_CONTEXT_CONVERSION_INT_MATERIALIZE:
+            return "int-materialize";
+        case SEM_CONTEXT_CONVERSION_INT_TO_FLOAT_MATERIALIZE:
+            return "int-to-float";
+        case SEM_CONTEXT_CONVERSION_FLOAT_MATERIALIZE:
+            return "float-materialize";
+        case SEM_CONTEXT_CONVERSION_NULL_TO_POINTER:
+            return "null-to-pointer";
+        case SEM_CONTEXT_CONVERSION_POINTER_QUALIFICATION:
+            return "pointer-qualification";
+        case SEM_CONTEXT_CONVERSION_C_STRING_TO_POINTER:
+            return "c-string-to-pointer";
+    }
+
+    return "<invalid>";
+}
+
+static int is_concrete_integer_type_kind(TypeKind kind) {
+    switch (kind) {
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+            return 1;
+
+        default:
+            return 0;
+    }
+}
+
+static int is_concrete_float_type_kind(TypeKind kind) {
+    return kind == TYPE_F32 || kind == TYPE_F64;
+}
+
+static int is_raw_pointer_type_kind(TypeKind kind) {
+    return kind == TYPE_POINTER || kind == TYPE_OPAQUE_POINTER;
+}
+
+static int verify_context_conversion_info(
+    Verifier *verifier,
+    Node *expression,
+    SemExprInfo *info
+) {
+    SemContextConversionKind conversion = info->contextual_conversion;
+    Type *target = info->contextual_type;
+
+    if (conversion == SEM_CONTEXT_CONVERSION_NONE) {
+        if (target) {
+            verifier_error(verifier, expression,
+                "expression has contextual type %s but no contextual conversion",
+                type_kind_name(target->kind));
+            return 0;
+        }
+
+        if (semantic_get_effective_expr_type(verifier->sem, expression) != info->type) {
+            verifier_error(verifier, expression,
+                "effective expression type differs without a contextual conversion");
+            return 0;
+        }
+
+        return 1;
+    }
+
+    if (!target || !info->type) {
+        verifier_error(verifier, expression,
+            "contextual conversion %s is missing source or destination type",
+            context_conversion_name(conversion));
+        return 0;
+    }
+
+    if (semantic_get_effective_expr_type(verifier->sem, expression) != target) {
+        verifier_error(verifier, expression,
+            "effective expression type does not use the recorded contextual destination");
+        return 0;
+    }
+
+    int valid = 1;
+
+    switch (conversion) {
+        case SEM_CONTEXT_CONVERSION_NONE:
+            break;
+
+        case SEM_CONTEXT_CONVERSION_INT_MATERIALIZE:
+            if (info->type->kind != TYPE_UNTYPED_INT ||
+                !is_concrete_integer_type_kind(target->kind)) {
+                verifier_error(verifier, expression,
+                    "int materialization does not map untyped-int to a concrete integer");
+                valid = 0;
+            }
+            break;
+
+        case SEM_CONTEXT_CONVERSION_INT_TO_FLOAT_MATERIALIZE:
+            if (info->type->kind != TYPE_UNTYPED_INT ||
+                !is_concrete_float_type_kind(target->kind)) {
+                verifier_error(verifier, expression,
+                    "integer-to-float materialization has invalid source or destination");
+                valid = 0;
+            }
+            break;
+
+        case SEM_CONTEXT_CONVERSION_FLOAT_MATERIALIZE:
+            if (info->type->kind != TYPE_UNTYPED_FLOAT ||
+                !is_concrete_float_type_kind(target->kind)) {
+                verifier_error(verifier, expression,
+                    "float materialization does not map untyped-float to a concrete float");
+                valid = 0;
+            }
+            break;
+
+        case SEM_CONTEXT_CONVERSION_NULL_TO_POINTER:
+            if (info->type->kind != TYPE_NULL ||
+                !(is_raw_pointer_type_kind(target->kind) ||
+                  (target->kind == TYPE_FUNCTION &&
+                   target->function_abi == FUNCTION_ABI_C))) {
+                verifier_error(verifier, expression,
+                    "null contextualization does not target a nullable raw pointer/cfn");
+                valid = 0;
+            }
+            break;
+
+        case SEM_CONTEXT_CONVERSION_POINTER_QUALIFICATION:
+            if (!is_raw_pointer_type_kind(info->type->kind) ||
+                info->type->kind != target->kind) {
+                verifier_error(verifier, expression,
+                    "pointer qualification conversion changes pointer family");
+                valid = 0;
+                break;
+            }
+
+            if (info->type->pointer_access == POINTER_ACCESS_READONLY &&
+                target->pointer_access == POINTER_ACCESS_MUTABLE) {
+                verifier_error(verifier, expression,
+                    "pointer qualification conversion removes readonly access");
+                valid = 0;
+            }
+
+            if (info->type->pointer_is_volatile &&
+                !target->pointer_is_volatile) {
+                verifier_error(verifier, expression,
+                    "pointer qualification conversion removes volatile access");
+                valid = 0;
+            }
+            break;
+
+        case SEM_CONTEXT_CONVERSION_C_STRING_TO_POINTER:
+            if (expression->type != NODE_STRING ||
+                target->kind != TYPE_POINTER ||
+                target->pointer_access != POINTER_ACCESS_READONLY) {
+                verifier_error(verifier, expression,
+                    "C-string contextualization does not target a readonly typed pointer");
+                valid = 0;
+            }
+            break;
+    }
+
+    return valid;
+}
+
 static int pointer_access_to_value_access(PointerAccess pointer_access, ValueAccess *out) {
 
     if (!out) return 0;
@@ -762,6 +928,9 @@ static int verify_mutation_info(Verifier *verifier, Node *expression, SemExprInf
 
         valid = 0;
     }
+
+    if (!verify_context_conversion_info(verifier, expression, info))
+        valid = 0;
 
     return valid;
 }
@@ -1203,6 +1372,9 @@ static int value_access_is_valid(ValueAccess access) {
 static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *info) {
 
     int valid = 1;
+
+    if (!verify_context_conversion_info(verifier, expression, info))
+        valid = 0;
 
     if (!value_access_is_valid(info->value_access)) {
         verifier_error(verifier, expression,
@@ -2044,6 +2216,8 @@ static void dump_expression(void *context, Node *expression)
     const char *category_name = "<missing>";
     const char *access_name   = "<missing>";
     const char *symbol_name   = "<missing>";
+    const char *context_name  = "<missing>";
+    const char *context_type_name = "<missing>";
 
     if (info) {
         type_name = info->type
@@ -2055,19 +2229,25 @@ static void dump_expression(void *context, Node *expression)
         symbol_name = info->symbol ? "yes" : "no";
 
         access_name = value_access_name(info->value_access);
+        context_name = context_conversion_name(info->contextual_conversion);
+        context_type_name = info->contextual_type
+            ? type_kind_name(info->contextual_type->kind)
+            : "<none>";
     }
 
     fprintf(
         dump->output,
         "  %4d  line %-4d node=%-18s "
         "type=%-18s category=%-6s "
-        "access=%-8s symbol=%s\n",
+        "access=%-8s convert=%-22s to=%-18s symbol=%s\n",
         dump->count,
         expression->line,
         node_type_name(expression->type),
         type_name,
         category_name,
         access_name,
+        context_name,
+        context_type_name,
         symbol_name);
 
     dump->count++;

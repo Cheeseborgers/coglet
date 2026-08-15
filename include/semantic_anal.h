@@ -199,4 +199,11 @@ SemDeclInfo *semantic_get_decl_info(SemanticContext *ctx, Node *node);
 SemDeclInfo *semantic_get_decl_info_by_id(SemanticContext *ctx, SemDeclId id);
 SemExprInfo *semantic_get_expr_info(SemanticContext *ctx, Node *node);
 
+/*
+ * Returns the type an expression has at its actual use site after semantic
+ * contextualization. This is contextual_type when an implicit adaptation was
+ * selected, otherwise the expression's intrinsic SemExprInfo.type.
+ */
+Type *semantic_get_effective_expr_type(SemanticContext *ctx, Node *node);
+
 #endif

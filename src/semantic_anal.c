@@ -201,6 +201,8 @@ static SemExprInfo *sem_get_or_create_expr_info(SemanticContext *ctx, Node *node
     memset(info, 0, sizeof(*info));
 
     info->node = node;
+    info->contextual_type = NULL;
+    info->contextual_conversion = SEM_CONTEXT_CONVERSION_NONE;
     info->value_category = VALUE_CATEGORY_NONE;
     info->value_access   = VALUE_ACCESS_NONE;
     info->value_is_volatile = 0;
@@ -209,6 +211,36 @@ static SemExprInfo *sem_get_or_create_expr_info(SemanticContext *ctx, Node *node
     ctx->expr_infos = info;
 
     return info;
+}
+
+static void sem_record_context_conversion(
+    SemanticContext *ctx,
+    Node *node,
+    Type *target_type,
+    SemContextConversionKind conversion
+) {
+    assert(ctx);
+    assert(node);
+    assert(target_type);
+    assert(conversion != SEM_CONTEXT_CONVERSION_NONE);
+
+    SemExprInfo *info = sem_find_expr_info(ctx, node);
+    assert(info);
+    assert(info->type);
+
+    /*
+     * One AST expression has exactly one parent/use-site in a valid parsed
+     * program. Re-recording is allowed only when a checker reaches the same
+     * semantic decision through a shared helper.
+     */
+    if (info->contextual_conversion != SEM_CONTEXT_CONVERSION_NONE) {
+        assert(info->contextual_conversion == conversion);
+        assert(info->contextual_type == target_type);
+        return;
+    }
+
+    info->contextual_type = target_type;
+    info->contextual_conversion = conversion;
 }
 
 static void sem_record_expr_info(
@@ -2824,6 +2856,55 @@ static int pointer_qualification_conversion_allowed(
            target->pointer_is_volatile != source->pointer_is_volatile;
 }
 
+static SemContextConversionKind classify_context_conversion(
+    Type *target,
+    Type *source
+) {
+    if (!target || !source || type_equal(target, source))
+        return SEM_CONTEXT_CONVERSION_NONE;
+
+    if (source->kind == TYPE_UNTYPED_INT) {
+        if (is_concrete_integer_kind(target->kind))
+            return SEM_CONTEXT_CONVERSION_INT_MATERIALIZE;
+
+        if (is_concrete_float_kind(target->kind))
+            return SEM_CONTEXT_CONVERSION_INT_TO_FLOAT_MATERIALIZE;
+    }
+
+    if (source->kind == TYPE_UNTYPED_FLOAT &&
+        is_concrete_float_kind(target->kind)) {
+        return SEM_CONTEXT_CONVERSION_FLOAT_MATERIALIZE;
+    }
+
+    if (is_null_type(source) && is_nullable_pointer_type(target))
+        return SEM_CONTEXT_CONVERSION_NULL_TO_POINTER;
+
+    if (pointer_qualification_conversion_allowed(target, source))
+        return SEM_CONTEXT_CONVERSION_POINTER_QUALIFICATION;
+
+    return SEM_CONTEXT_CONVERSION_NONE;
+}
+
+static void sem_record_context_conversion_if_needed(
+    SemanticContext *ctx,
+    Node *node,
+    Type *target,
+    Type *source
+) {
+    SemContextConversionKind conversion =
+        classify_context_conversion(target, source);
+
+    if (conversion == SEM_CONTEXT_CONVERSION_NONE)
+        return;
+
+    sem_record_context_conversion(
+        ctx,
+        node,
+        target,
+        conversion
+    );
+}
+
 /*
  * Pointer equality does not access the pointee, so immediate readonly/volatile
  * qualifier differences do not make otherwise identical raw pointers
@@ -4590,7 +4671,15 @@ static Type *concretize_inferred_type(SemanticContext *ctx, Node *expression, Ty
     if (!concrete) {
         semantic_error(ctx, expression,
             "could not determine a default concrete numeric type");
+        return NULL;
     }
+
+    sem_record_context_conversion_if_needed(
+        ctx,
+        expression,
+        concrete,
+        type
+    );
 
     return concrete;
 }
@@ -5021,6 +5110,14 @@ static int check_binary_constant_operands(
             )) {
             return 0;
         }
+
+
+        sem_record_context_conversion_if_needed(
+            ctx,
+            operands[i],
+            operation_type,
+            operand_types[i]
+        );
     }
 
     return 1;
@@ -6507,13 +6604,11 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     Type *result = left;
 
                     if (left->kind == TYPE_UNTYPED_INT) {
-                        ConstValue left_constant;
-
-                        if (!eval_const_expr(ctx, node->as.binary.left, &left_constant)) {
-                            return NULL;
-                        }
-
-                        result = default_concrete_type_for_constant(ctx, &left_constant);
+                        result = concretize_inferred_type(
+                            ctx,
+                            node->as.binary.left,
+                            left
+                        );
                     }
 
                     if (!result ||
@@ -6528,6 +6623,15 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                             ctx,
                             node->as.binary.right,
                             result)) {
+                        return NULL;
+                    }
+
+                    if (right->kind == TYPE_UNTYPED_INT &&
+                        !concretize_inferred_type(
+                            ctx,
+                            node->as.binary.right,
+                            right
+                        )) {
                         return NULL;
                     }
 
@@ -6593,6 +6697,22 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                             left,
                             right
                         )) {
+                        if (left_is_null) {
+                            sem_record_context_conversion_if_needed(
+                                ctx,
+                                node->as.binary.left,
+                                right,
+                                left
+                            );
+                        } else {
+                            sem_record_context_conversion_if_needed(
+                                ctx,
+                                node->as.binary.right,
+                                left,
+                                right
+                            );
+                        }
+
                         sem_record_expr_info(
                             ctx,
                             node,
@@ -7091,6 +7211,15 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 return NULL;
             }
 
+            if (index_type->kind == TYPE_UNTYPED_INT &&
+                !concretize_inferred_type(
+                    ctx,
+                    index_node,
+                    index_type
+                )) {
+                return NULL;
+            }
+
             if (object_type->kind == TYPE_OPAQUE_POINTER) {
                 semantic_error(
                     ctx,
@@ -7570,6 +7699,13 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
 
         value = converted;
 
+        sem_record_context_conversion_if_needed(
+            ctx,
+            node->as.const_decl.value,
+            type,
+            value_type
+        );
+
     } else {
         if (value_type->kind == TYPE_NULL) {
             semantic_error(ctx, node->as.const_decl.value,
@@ -7610,11 +7746,24 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
     if (!switch_type)
         return;
 
+    Type *comparison_type = switch_type;
+
+    if (switch_type->kind == TYPE_UNTYPED_INT) {
+        comparison_type = concretize_inferred_type(
+            ctx,
+            node->as.switch_stmt.expression,
+            switch_type
+        );
+
+        if (!comparison_type)
+            return;
+    }
+
     node->as.switch_stmt.resolved_type =
-        switch_type;
+        comparison_type;
 
     int switch_type_is_valid =
-        is_switchable_type(switch_type);
+        is_switchable_type(comparison_type);
 
     if (!switch_type_is_valid) {
         semantic_error(ctx, node,
@@ -7688,7 +7837,7 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
 
             if (switch_type_is_valid &&
                 case_type) {
-                if (!initializer_compatible(switch_type, case_type)) {
+                if (!initializer_compatible(comparison_type, case_type)) {
                     semantic_error(ctx, case_node,
                         "switch case type does not match switch expression type");
                 } else {
@@ -7702,11 +7851,18 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
                                 ctx,
                                 case_value_node,
                                 &case_value,
-                                switch_type,
+                                comparison_type,
                                 "switch case value does not fit switch expression type",
                                 "switch case value does not fit switch expression type",
                                 &converted_case
                             )) {
+
+                            sem_record_context_conversion_if_needed(
+                                ctx,
+                                case_value_node,
+                                comparison_type,
+                                case_type
+                            );
 
                             int duplicate_case = 0;
 
@@ -7772,7 +7928,7 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
 
     int is_exhaustive =
     switch_case_values_are_exhaustive(
-        switch_type,
+        comparison_type,
         checked_case_values,
         checked_case_value_count,
         seen_default
@@ -7958,6 +8114,13 @@ static int check_compound_assignment_statement(SemanticContext *ctx,Node *node) 
                 return 0;
             }
 
+            sem_record_context_conversion_if_needed(
+                ctx,
+                value_node,
+                target_type,
+                value_type
+            );
+
             if (!check_known_integer_divisor(
                     ctx,
                     operation,
@@ -8017,6 +8180,13 @@ static int check_compound_assignment_statement(SemanticContext *ctx,Node *node) 
                 return 0;
             }
 
+            sem_record_context_conversion_if_needed(
+                ctx,
+                value_node,
+                target_type,
+                value_type
+            );
+
             break;
         }
 
@@ -8042,6 +8212,15 @@ static int check_compound_assignment_statement(SemanticContext *ctx,Node *node) 
             }
 
             if (!check_known_shift_count(ctx, value_node, target_type)) {
+                return 0;
+            }
+
+            if (value_type->kind == TYPE_UNTYPED_INT &&
+                !concretize_inferred_type(
+                    ctx,
+                    value_node,
+                    value_type
+                )) {
                 return 0;
             }
 
@@ -8177,6 +8356,13 @@ static int check_initializer_against_type(SemanticContext *ctx, Type *expected, 
         return 0;
     }
 
+    sem_record_context_conversion_if_needed(
+        ctx,
+        initializer,
+        expected,
+        actual
+    );
+
     return 1;
 }
 
@@ -8237,6 +8423,13 @@ static int check_extern_c_string_argument(
         expected,
         NULL,
         VALUE_CATEGORY_RVALUE
+    );
+
+    sem_record_context_conversion(
+        ctx,
+        argument,
+        expected,
+        SEM_CONTEXT_CONVERSION_C_STRING_TO_POINTER
     );
 
     return 1;
@@ -8304,13 +8497,27 @@ static int check_c_variadic_argument(SemanticContext *ctx, Node *argument) {
             return 0;
         }
 
+        sem_record_context_conversion_if_needed(
+            ctx,
+            argument,
+            c_int,
+            actual
+        );
+
         return 1;
     }
 
     /* Unsuffixed C floating literals are double, which is the required
      * default-promotion destination for Coglet's untyped/f32 values. */
-    if (actual->kind == TYPE_UNTYPED_FLOAT)
+    if (actual->kind == TYPE_UNTYPED_FLOAT) {
+        sem_record_context_conversion_if_needed(
+            ctx,
+            argument,
+            ctx->type_f64,
+            actual
+        );
         return 1;
+    }
 
     switch (actual->kind) {
         case TYPE_BOOL:
@@ -8427,6 +8634,13 @@ static int check_argument_against_parameter(SemanticContext *ctx, Type *expected
 
         return 0;
     }
+
+    sem_record_context_conversion_if_needed(
+        ctx,
+        argument,
+        expected,
+        actual
+    );
 
     return 1;
 }
@@ -9950,6 +10164,20 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
             value_is_valid = 0;
         }
 
+        if (value_is_valid && member_node->as.enum_member.value) {
+            Node *value_node = member_node->as.enum_member.value;
+            SemExprInfo *value_info = sem_find_expr_info(ctx, value_node);
+
+            if (value_info && value_info->type) {
+                sem_record_context_conversion_if_needed(
+                    ctx,
+                    value_node,
+                    backing_type,
+                    value_info->type
+                );
+            }
+        }
+
         type->enum_members[i].name = member_name;
         type->enum_members[i].value = value;
         member_node->as.enum_member.resolved_value = value;
@@ -10366,4 +10594,15 @@ SemDeclInfo *semantic_get_decl_info_by_id(SemanticContext *ctx, SemDeclId id) {
 
 SemExprInfo *semantic_get_expr_info(SemanticContext *ctx, Node *node) {
     return sem_find_expr_info(ctx, node);
+}
+
+Type *semantic_get_effective_expr_type(SemanticContext *ctx, Node *node) {
+    SemExprInfo *info = sem_find_expr_info(ctx, node);
+
+    if (!info)
+        return NULL;
+
+    return info->contextual_type
+        ? info->contextual_type
+        : info->type;
 }

@@ -32,6 +32,7 @@ Implemented areas include:
 - deterministic semantic-information verification and dumps
 - stable semantic declaration identities and normalized native-C ABI metadata
 - explicit frontend `TargetInfo` with host-default and synthetic cross-target semantic tests
+- explicit contextual-conversion metadata for IR-ready expression lowering
 
 ## Recently Completed
 
@@ -67,6 +68,25 @@ point accepts synthetic/future targets. Tests compile the same source with two
 different target descriptions and verify that `c_long`, `c_size`, and `c_char`
 resolve differently. CLI target triples and non-host backend/toolchain selection
 remain future work. The host-C backend explicitly rejects semantic state for a non-host target so an explicit frontend target cannot silently produce ABI-mismatched generated C.
+
+### Explicit Contextual Conversion Decisions
+
+`SemExprInfo` now preserves the conversion decision made by semantic analysis
+instead of requiring a later backend to infer it from an AST expression and its
+parent context. The intrinsic expression type remains unchanged, while a
+separate contextual destination records materialization of adaptable numeric
+values, `null`-to-pointer adaptation, safe raw-pointer qualifier addition, and
+the narrow direct C-string call conversion.
+
+`semantic_get_effective_expr_type()` exposes the type lowering should consume.
+Inferred numeric variables/parameters, numeric operation operands, array
+indexes and shift counts, assignments, returns, arguments, switch labels, and
+typed constant/enum values now record their selected concrete use-site type.
+The semantic-info verifier validates conversion invariants, and a dedicated
+regression fixture exercises every current conversion kind.
+
+Already-concrete C-variadic default promotions remain part of ABI lowering
+rather than Coglet's implicit conversion system.
 
 ### Definite Assignment and Unified Reachability
 

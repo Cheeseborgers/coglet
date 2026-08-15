@@ -14,6 +14,7 @@ type =
     (
         base_type {"*"}
       | "opaque" "*" {"*"}
+      | "cfn" "(" [type {"," type}] ")" ["->" type] {"*"}
     )
     ["[" integer_constant "]"];
 ```
@@ -47,6 +48,20 @@ points: Point[8];
 ```
 
 Fixed-size array bounds must currently be compile-time integer constants.
+
+`cfn(...) -> T` is a native C function-pointer type. Callback type parameters
+are types only; names and defaults are not part of function-pointer type syntax.
+Omitting `-> T` means `-> void`. `cfn` values are nullable and callable. An
+ordinary Coglet function does not implicitly become a `cfn`; a Coglet-defined
+callback must opt into the C ABI with `#repr(c)` on the function declaration.
+
+```c
+callback: cfn(c_int, opaque*) -> c_int;
+missing: cfn(c_int) -> c_int = null;
+```
+
+`readonly` does not qualify a bare `cfn` value. As with any other base type, it
+may qualify an explicit pointer layer following the function-pointer type.
 
 ### Initialization
 

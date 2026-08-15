@@ -22,7 +22,7 @@
 #define C_BACKEND_MAX_ENUMS 256
 #define C_BACKEND_MAX_TYPE_ALIASES 1024
 #define C_BACKEND_NAME_SIZE 48
-#define C_BACKEND_TYPE_DEF_SIZE 192
+#define C_BACKEND_TYPE_DEF_SIZE 1024
 
 typedef struct CFunction {
     Node *node;
@@ -225,6 +225,112 @@ static const char *register_c_type(CBackend *backend, const Type *type, const No
     if (type->kind == TYPE_ENUM) {
         const CEnum *enumeration = find_c_enum_by_type(backend, type);
         if (enumeration) return enumeration->generated_name;
+    }
+
+    if (type->kind == TYPE_FUNCTION) {
+        if (type->function_abi != FUNCTION_ABI_C) {
+            backend_error(
+                backend,
+                owner,
+                "ordinary Coglet function types cannot be lowered as native C callbacks"
+            );
+            return NULL;
+        }
+
+        const CTypeAlias *existing_function = find_type_alias(backend, type);
+        if (existing_function) return existing_function->name;
+
+        const char *return_name = register_c_type(backend, type->return_type, owner);
+        if (!return_name) return NULL;
+
+        /* Register nested parameter types before allocating this alias. */
+        for (int i = 0; i < type->parameter_count; i++) {
+            if (!register_c_type(backend, type->parameters[i], owner))
+                return NULL;
+        }
+
+        if (backend->type_alias_count >= C_BACKEND_MAX_TYPE_ALIASES) {
+            backend_error(backend, owner, "too many generated C callback types");
+            return NULL;
+        }
+
+        int index = backend->type_alias_count;
+        CTypeAlias *alias = &backend->type_aliases[backend->type_alias_count++];
+        memset(alias, 0, sizeof(*alias));
+        alias->type = type;
+        snprintf(alias->name, sizeof(alias->name), "cg_type_%d", index);
+
+        char return_copy[C_BACKEND_NAME_SIZE];
+        char alias_copy[C_BACKEND_NAME_SIZE];
+
+        if (strlen(return_name) >= sizeof(return_copy) ||
+            strlen(alias->name) >= sizeof(alias_copy)) {
+            backend_error(backend, owner, "generated C callback type name is too long");
+            return NULL;
+        }
+
+        strcpy(return_copy, return_name);
+        strcpy(alias_copy, alias->name);
+
+        int written = snprintf(
+            alias->definition,
+            sizeof(alias->definition),
+            "typedef %s (*%s)(",
+            return_copy,
+            alias_copy
+        );
+
+        if (written < 0 || (size_t)written >= sizeof(alias->definition)) {
+            backend_error(backend, owner, "generated C callback typedef is too long");
+            return NULL;
+        }
+
+        size_t used = (size_t)written;
+
+        if (type->parameter_count == 0) {
+            written = snprintf(
+                alias->definition + used,
+                sizeof(alias->definition) - used,
+                "void"
+            );
+            if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
+                backend_error(backend, owner, "generated C callback typedef is too long");
+                return NULL;
+            }
+            used += (size_t)written;
+        } else {
+            for (int i = 0; i < type->parameter_count; i++) {
+                const char *parameter_name =
+                    register_c_type(backend, type->parameters[i], owner);
+                if (!parameter_name) return NULL;
+
+                written = snprintf(
+                    alias->definition + used,
+                    sizeof(alias->definition) - used,
+                    "%s%s",
+                    i > 0 ? ", " : "",
+                    parameter_name
+                );
+
+                if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
+                    backend_error(backend, owner, "generated C callback typedef is too long");
+                    return NULL;
+                }
+                used += (size_t)written;
+            }
+        }
+
+        written = snprintf(
+            alias->definition + used,
+            sizeof(alias->definition) - used,
+            ");"
+        );
+        if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
+            backend_error(backend, owner, "generated C callback typedef is too long");
+            return NULL;
+        }
+
+        return alias->name;
     }
 
     if (type->kind != TYPE_POINTER && type->kind != TYPE_OPAQUE_POINTER) {
@@ -613,12 +719,13 @@ static int emit_call(CBackend *backend, Node *node)
     }
 
     CFunction *function = find_function(backend, callee->as.ident);
-    if (!function) {
+    if (function) {
+        fputs(function->generated_name, backend->out);
+    } else if (!emit_parameter_identifier(backend, callee)) {
         backend_error(backend, node, "could not resolve call target during C lowering");
         return 0;
     }
 
-    fputs(function->generated_name, backend->out);
     fputc('(', backend->out);
 
     for (int i = 0; i < node->as.call.arguments.count; i++) {
@@ -661,10 +768,18 @@ static int emit_expression(CBackend *backend, Node *node)
             if (emit_parameter_identifier(backend, node))
                 return 1;
 
+            {
+                CFunction *function = find_function(backend, node->as.ident);
+                if (function) {
+                    fputs(function->generated_name, backend->out);
+                    return 1;
+                }
+            }
+
             backend_error(
                 backend,
                 node,
-                "current host-C backend only lowers parameter identifiers in value expressions"
+                "current host-C backend only lowers parameter and function identifiers in value expressions"
             );
             return 0;
 

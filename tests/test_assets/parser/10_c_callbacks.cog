@@ -1,0 +1,7 @@
+#repr(c)
+identity::(value: c_int) -> c_int {
+    return value;
+}
+
+#extern(c)
+invoke::(callback: cfn(c_int) -> c_int, value: c_int) -> c_int;

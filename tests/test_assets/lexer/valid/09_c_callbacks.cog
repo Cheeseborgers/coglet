@@ -1,0 +1,1 @@
+callback: cfn(c_int, opaque*) -> c_int;

@@ -1441,11 +1441,15 @@ T* and readonly T* when T is recursively in this subset
 opaque* and readonly opaque*
 additional raw-pointer layers such as opaque**
 #repr(c) structs by value or through raw pointers
+#repr(c) enums
+cfn(...) -> T native C function pointers with recursively supported signatures
 void as a return type only
 ```
 
-Arrays, ordinary Coglet structs, ordinary Coglet enums, and function types remain rejected in
-`#extern(c)` signatures. Structs and enums must opt into the C ABI contract explicitly:
+Arrays, ordinary Coglet structs, ordinary Coglet enums, and ordinary Coglet
+function types remain rejected in `#extern(c)` signatures. Structs and enums
+must opt into the C ABI contract explicitly; callbacks use the explicit `cfn`
+function-pointer type described below:
 
 ```c
 #repr(c)
@@ -1479,6 +1483,51 @@ remain rejected as fields. Explicit `#repr(c)` enums are accepted directly, thro
 pointers, and inside fixed arrays. Arrays remain rejected as `#extern(c)` parameters and
 returns because C function-parameter array syntax decays to pointers rather than
 representing a by-value array ABI.
+
+### C function pointers and callbacks
+
+Native C callback pointers use the explicit structural type syntax:
+
+```c
+cfn(c_int, opaque*) -> c_int
+```
+
+For example:
+
+```c
+#extern(c)
+run_callback::(callback: cfn(c_int) -> c_int, value: c_int) -> c_int;
+
+#repr(c)
+identity::(value: c_int) -> c_int {
+    return value;
+}
+
+main::() -> c_int {
+    return run_callback(identity, 7);
+}
+```
+
+`#repr(c)` on a Coglet-defined function is a calling-convention/ABI contract:
+its signature must use the current C-ABI-compatible type subset, it must be
+top-level, and its parameters may not have defaults. `#extern(c)` function
+symbols already have the C ABI and may also be used where a matching `cfn` is
+expected. Ordinary Coglet functions retain the Coglet function ABI and do not
+implicitly adapt to a `cfn`, even when their parameter and return types match.
+This prevents an accidental callback boundary from becoming ABI-compatible only
+because of the current bootstrap backend.
+
+`cfn` values are first-class callable values. They may be stored in variables,
+used as supported `#repr(c)` struct fields, passed to or returned from extern C
+functions, compared with a matching `cfn` or with `null`, and initialized from
+`null`. Integer zero is not a null callback pointer. Callback signatures are
+validated recursively against the same C ABI subset used by `#extern(c)`.
+
+The current host-C backend emits C function-pointer typedefs and can pass a
+`#repr(c)` Coglet function to native C. The executable callback regression test
+uses a separate C object that invokes the pointer and returns the Coglet
+callback's result. Callback closures/capture are not introduced: `#repr(c)`
+functions are top-level and therefore have no enclosing local state to capture.
 
 Opaque pointers provide the C `void*`-style representation boundary:
 
@@ -1555,8 +1604,8 @@ literal. It does not yet lower locals, control flow, runtime checked arithmetic,
 general casts, or general array storage/decay. Host executables currently use
 `main::() -> c_int` as the entry-point contract.
 
-Variadic functions, C callbacks/function pointers, enum representation
-attributes, calling-convention selection, and cross-target lowering are still
+Variadic functions, additional non-C calling conventions, callback lifetime
+policies beyond raw function pointers, and cross-target lowering are still
 deferred.
 
 ## Current Semantic Architecture

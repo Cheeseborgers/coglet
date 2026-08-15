@@ -1,0 +1,31 @@
+#repr(c)
+identity::(value: c_int) -> c_int {
+    return value;
+}
+
+#extern(c)
+invoke::(
+    callback: cfn(c_int) -> c_int,
+    missing: cfn(c_int) -> c_int,
+    value: c_int
+) -> c_int;
+
+#repr(c)
+CallbackSlot::struct {
+    callback: cfn(c_int) -> c_int;
+}
+
+use_callbacks::() -> c_int {
+    callback: cfn(c_int) -> c_int = identity;
+    missing: cfn(c_int) -> c_int = null;
+
+    if callback == null {
+        return 1;
+    }
+
+    if missing != null {
+        return 2;
+    }
+
+    return invoke(callback, missing, 7);
+}

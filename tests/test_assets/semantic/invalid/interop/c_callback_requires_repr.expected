@@ -1,0 +1,2 @@
+semantic error at line 9: argument type does not match parameter type: expected cfn(...), got fn(...)
+1 semantic error generated.

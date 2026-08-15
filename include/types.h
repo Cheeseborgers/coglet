@@ -61,6 +61,14 @@ typedef enum PointerAccess {
     POINTER_ACCESS_READONLY,
 } PointerAccess;
 
+typedef enum FunctionAbi {
+    /* Ordinary Coglet call ABI. */
+    FUNCTION_ABI_COGLET,
+
+    /* Native C function-pointer/callback ABI. */
+    FUNCTION_ABI_C,
+} FunctionAbi;
+
 typedef struct IntegerValue {
     uint64_t magnitude;
     int is_negative;
@@ -99,6 +107,7 @@ struct Type {
     Type **parameters;       // TYPE_FUNCTION
     int parameter_count;
     Type *return_type;
+    FunctionAbi function_abi;
 
     StringView enum_name;    // TYPE_ENUM
     int enum_is_repr_c;

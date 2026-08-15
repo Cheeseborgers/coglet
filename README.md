@@ -101,8 +101,11 @@ top-level structs with supported scalar/raw-pointer fields, fixed-size arrays of
 supported field types, and nested `#repr(c)` structs by value; those structs may
 cross extern parameters and returns by value. By-value layout dependencies,
 including struct dependencies reached through array fields, are cycle-checked and
-need not follow source order. Explicit cross-target ABI selection, variadics, and
-callbacks remain future work.
+need not follow source order. Native C callbacks use explicit `cfn(...) -> T`
+types, and Coglet-defined callbacks opt into the C ABI with top-level `#repr(c)`
+functions. The host-C backend emits real function-pointer typedefs and supports C
+calling back into those Coglet functions. Explicit cross-target ABI selection and
+variadics remain future work.
 
 For the current executable slice:
 
@@ -456,6 +459,22 @@ CResult::enum(c_int) {
 
 The annotation fixes the external ABI representation but does not make the enum open: Coglet still accepts only declared member values and keeps normal enum exhaustiveness rules.
 
+C callback pointers use an explicit structural type:
+
+```c
+#extern(c)
+run_callback::(callback: cfn(c_int) -> c_int, value: c_int) -> c_int;
+
+#repr(c)
+identity::(value: c_int) -> c_int {
+    return value;
+}
+```
+
+`cfn` values are nullable and callable. Ordinary Coglet functions do not
+implicitly adapt to them; `#repr(c)` marks a top-level Coglet function as using
+the native C callback ABI.
+
 ## Numeric Semantics
 
 Coglet keeps concrete numeric conversions explicit. Untyped literals adapt to
@@ -665,7 +684,7 @@ with weaker C behavior.
 
 Near-term work should combine C interoperability with careful backend expansion:
 
-1. Continue C ABI coverage with nested aggregate layout, callbacks, and variadics.
+1. Continue C ABI coverage with variadics, unions/incomplete types, and remaining ABI controls.
 2. Add explicit target/C-ABI selection before cross-compilation claims are made.
 3. Lower core storage/control-flow and checked runtime arithmetic correctly.
 4. Design byte views/slices without introducing unrestricted array decay.

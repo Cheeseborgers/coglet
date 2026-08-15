@@ -1,0 +1,8 @@
+outer::() -> c_int {
+    #repr(c)
+    inner::(value: c_int) -> c_int {
+        return value;
+    }
+
+    return 0;
+}

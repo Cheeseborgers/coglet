@@ -1,0 +1,12 @@
+program
+  #repr(c) func identity -> c_int
+    params:
+      param_decl value: c_int
+    body:
+      block
+        return
+          value
+  extern(c) func invoke -> c_int
+    params:
+      param_decl callback: cfn(c_int) -> c_int
+      param_decl value: c_int

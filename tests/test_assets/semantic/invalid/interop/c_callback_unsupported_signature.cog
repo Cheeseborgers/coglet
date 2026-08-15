@@ -1,0 +1,2 @@
+#extern(c)
+bad::(callback: cfn(c_int[2]) -> c_int) -> c_int;

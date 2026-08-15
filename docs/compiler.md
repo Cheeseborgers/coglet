@@ -80,7 +80,10 @@ Callers must not print these diagnostics again.
 
 `#extern(c)` is represented by the ordinary `NODE_FUNC_DECL` AST node with
 `FUNCTION_LINKAGE_EXTERN_C`. Its `body` is `NULL`; ordinary Coglet functions use
-`FUNCTION_LINKAGE_COGLET` and retain a block body.
+`FUNCTION_LINKAGE_COGLET` and retain a block body. `#repr(c)` on a Coglet-defined
+function sets `NODE_FUNC_DECL.is_repr_c`; the function keeps its Coglet body but
+its semantic `TYPE_FUNCTION` carries `FUNCTION_ABI_C` so it may cross a native C
+callback boundary. Unannotated Coglet functions carry `FUNCTION_ABI_COGLET`.
 
 The parser keeps `extern`, `c`, and option names such as `name` as ordinary
 identifiers. Only `#` is new punctuation. This means the annotation syntax does
@@ -104,25 +107,31 @@ Body checking is skipped for external declarations.
 
 The current C-ABI eligibility check permits concrete scalar types, raw typed
 pointers recursively over supported pointees, opaque raw pointers, explicitly
-`#repr(c)` structs/enums, and `void` returns. It rejects arrays, ordinary Coglet
-structs/enums, and function types. External declarations are restricted to top
-level and parameter defaults are rejected.
+`#repr(c)` structs/enums, native C function-pointer types (`cfn(...) -> T`), and
+`void` returns. Callback signatures are checked recursively against the same
+subset. Arrays, ordinary Coglet structs/enums, and ordinary Coglet function
+types remain rejected. External declarations are restricted to top level and
+parameter defaults are rejected. `#repr(c)` functions are likewise top-level,
+reject defaults, and must have a C-compatible signature.
 
-`#repr(c)` is stored on `NODE_STRUCT_DECL` / `NODE_ENUM_DECL` and propagated to
-the semantic `TYPE_STRUCT` / `TYPE_ENUM`. C-represented aggregates are top-level
-only. A `#repr(c)` enum requires an explicit native C integer alias as its backing
+Aggregate `#repr(c)` metadata is stored on `NODE_STRUCT_DECL` / `NODE_ENUM_DECL`
+and propagated to semantic `TYPE_STRUCT` / `TYPE_ENUM`; function `#repr(c)`
+metadata is stored separately on `NODE_FUNC_DECL` as described above.
+C-represented aggregates are top-level only. A `#repr(c)` enum requires an explicit
+native C integer alias as its backing
 type; the existing enum member range checks then apply to that resolved type.
 The enum remains closed and nominal. The host-C backend represents it with a
 typedef of the exact selected C integer spelling, avoiding C99's implementation-
 defined native-enum underlying representation.
 
 C-represented structs are top-level only. Fields may use
-scalar/raw-pointer ABI types, pointers to other `#repr(c)` structs, other
-`#repr(c)` structs directly by value, or positive-length fixed arrays of any
-supported field type. Semantic analysis rejects direct and indirect by-value
-layout cycles, including cycles reached through array elements, while allowing
-recursive pointer graphs. Empty structs, unsized/zero-length arrays, ordinary enums, and ordinary structs
-remain rejected; `#repr(c)` enums are valid field/array element types. The host-C backend assigns generated C struct
+scalar/raw-pointer ABI types, native C function pointers, pointers to other
+`#repr(c)` structs, other `#repr(c)` structs directly by value, or positive-length
+fixed arrays of any supported field type. Semantic analysis rejects direct and
+indirect by-value layout cycles, including cycles reached through array elements,
+while allowing recursive pointer graphs. Empty structs, unsized/zero-length
+arrays, ordinary enums, and ordinary structs remain rejected; `#repr(c)` enums
+and `cfn` values are valid field/array element types. The host-C backend assigns generated C struct
 tags, emits forward typedefs before pointer aliases, and topologically emits
 complete struct definitions so by-value dependencies do not depend on Coglet
 source order. Fixed array fields are emitted as native C array declarators; fields
@@ -147,9 +156,9 @@ identifiers with `__asm__("symbol")` labels, so `name="..."` overrides affect
 the actual linker symbol without requiring that symbol to be a safe C identifier.
 
 The backend is intentionally smaller than the frontend. It currently lowers
-direct named function calls, integer/floating/Boolean/null literals, parameter
-references, literal numeric negation, expression statements, returns, and string
-literals
+direct named function calls, direct calls through function-pointer parameters,
+integer/floating/Boolean/null literals, parameter and function-symbol references,
+literal numeric negation, expression statements, returns, and string literals
 that semantic analysis has admitted as direct `readonly c_char*` arguments to
 `#extern(c)` calls. String escapes are decoded using Coglet's literal rules and
 re-escaped into the generated C translation unit, where the C literal supplies
@@ -180,8 +189,8 @@ remains independent of linker options.
 
 There is not yet an explicit cross-compilation target model. A future driver
 configuration should provide the C ABI map instead of deriving it from the host.
-Variadics, callbacks, custom native compiler selection, raw linker flags, and
-calling-convention details remain deferred.
+Variadics, richer callback lifetime/closure machinery, custom native compiler
+selection, raw linker flags, and non-C calling-convention details remain deferred.
 
 ## Semantic Type Identity
 
@@ -201,7 +210,9 @@ represented by one generic canonical object because their structure,
 permissions, or declaration identity matters.
 
 Type equality begins with pointer identity. Built-in scalars then compare by
-kind. Arrays and functions compare structurally. Pointer type equality includes
+kind. Arrays and functions compare structurally. Function type equality also includes
+`FunctionAbi`, so an ordinary Coglet function signature is distinct from an
+otherwise identical native C callback signature. Pointer type equality includes
 both exact pointee-type equality and exact `PointerAccess` equality, so `T*`
 and `readonly T*` are distinct semantic types.
 

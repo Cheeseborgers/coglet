@@ -1003,6 +1003,8 @@ static Type *lookup_type(SemanticContext *ctx, const char *name, size_t length) 
     return sym->type;
 }
 
+static int extern_c_type_supported(const Type *type, int allow_void);
+
 // Resolves a parsed Type into its fully-realized form: struct types get
 // their name looked up against declared struct symbols (populating
 // fields/field_count), and pointer/array types get their element
@@ -1058,6 +1060,60 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
 
             return copy;
         }
+    }
+
+    if (type->kind == TYPE_FUNCTION) {
+        Type **resolved_parameters = type->parameters;
+        int changed = 0;
+
+        if (type->parameter_count > 0) {
+            resolved_parameters = arena_alloc(
+                ctx->arena,
+                sizeof(Type *) * (size_t)type->parameter_count
+            );
+
+            for (int i = 0; i < type->parameter_count; i++) {
+                resolved_parameters[i] =
+                    resolve_type(ctx, type->parameters[i], error_node);
+
+                if (!resolved_parameters[i])
+                    return NULL;
+
+                if (resolved_parameters[i] != type->parameters[i])
+                    changed = 1;
+            }
+        }
+
+        Type *resolved_return =
+            resolve_type(ctx, type->return_type, error_node);
+
+        if (!resolved_return)
+            return NULL;
+
+        if (resolved_return != type->return_type)
+            changed = 1;
+
+        Type *resolved_function = type;
+
+        if (changed) {
+            Type *copy = arena_alloc(ctx->arena, sizeof(Type));
+            *copy = *type;
+            copy->parameters = resolved_parameters;
+            copy->return_type = resolved_return;
+            resolved_function = copy;
+        }
+
+        if (resolved_function->function_abi == FUNCTION_ABI_C &&
+            !extern_c_type_supported(resolved_function, 0)) {
+            semantic_error(
+                ctx,
+                error_node,
+                "cfn signature contains a type not supported by the current C ABI subset"
+            );
+            return NULL;
+        }
+
+        return resolved_function;
     }
 
     return type;
@@ -1157,7 +1213,12 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
         case TYPE_F32:  snprintf(buffer, buffer_size, "f32");  return;
         case TYPE_F64:  snprintf(buffer, buffer_size, "f64");  return;
 
-        case TYPE_FUNCTION: snprintf(buffer, buffer_size, "function"); return;
+        case TYPE_FUNCTION: {
+            const char *prefix =
+                type->function_abi == FUNCTION_ABI_C ? "cfn" : "fn";
+            snprintf(buffer, buffer_size, "%s(...)", prefix);
+            return;
+        }
         case TYPE_UNTYPED_INT: snprintf(buffer, buffer_size, "untyped-int"); return;
         case TYPE_UNTYPED_FLOAT: snprintf(buffer, buffer_size, "untyped-float"); return;
 
@@ -1337,6 +1398,9 @@ static int type_equal(const Type *a, const Type *b) {
                         type_equal(a->element, b->element);
 
         case TYPE_FUNCTION:
+            if (a->function_abi != b->function_abi)
+                return 0;
+
             if (a->parameter_count != b->parameter_count) {
                 return 0;
             }
@@ -2374,6 +2438,14 @@ static int is_opaque_pointer_type(const Type *type) {
 static int is_raw_pointer_type(const Type *type) {
     return is_typed_pointer_type(type) || is_opaque_pointer_type(type);
 }
+static int is_c_function_pointer_type(const Type *type) {
+    return type &&
+           type->kind == TYPE_FUNCTION &&
+           type->function_abi == FUNCTION_ABI_C;
+}
+static int is_nullable_pointer_type(const Type *type) {
+    return is_raw_pointer_type(type) || is_c_function_pointer_type(type);
+}
 static int is_bool_cast_pair(Type *to, Type *from)       { return is_bool_type(to) && is_bool_type(from); }
 static int is_numeric_cast_pair(Type *to, Type *from)    { return is_numeric_type(to) && is_numeric_type(from); }
 static int is_enum_to_integer_cast(Type *to, Type *from) { return is_integer_kind(to->kind) && is_enum_type(from);}
@@ -2389,7 +2461,8 @@ static int is_equality_comparable_type(const Type *type) {
            is_float_kind(type->kind) ||
            type->kind == TYPE_BOOL ||
            type->kind == TYPE_ENUM ||
-           is_raw_pointer_type(type);
+           is_raw_pointer_type(type) ||
+           is_c_function_pointer_type(type);
 }
 
 static int is_switchable_type(Type *type) {
@@ -2402,7 +2475,7 @@ static int is_switchable_type(Type *type) {
 }
 
 static int is_null_to_pointer_cast(Type *to, Type *from) {
-    return is_raw_pointer_type(to) && is_null_type(from);
+    return is_nullable_pointer_type(to) && is_null_type(from);
 }
 
 /*
@@ -2546,10 +2619,10 @@ static int is_pointer_null_pair(const Type *left, const Type *right) {
     if (!left || !right) return 0;
 
     return
-        (is_raw_pointer_type(left) &&
+        (is_nullable_pointer_type(left) &&
          right->kind == TYPE_NULL) ||
         (left->kind == TYPE_NULL &&
-         is_raw_pointer_type(right));
+         is_nullable_pointer_type(right));
 }
 
 static int const_values_equal(ConstValue *a, ConstValue *b)
@@ -2758,7 +2831,7 @@ static Type *common_integer_type(Type *a, Type *b) {
 }
 
 static int is_integer_zero_to_pointer(const Type *expected, const Node *value) {
-    return is_raw_pointer_type(expected) &&
+    return is_nullable_pointer_type(expected) &&
            value &&
            value->type == NODE_NUMBER &&
            value->as.number.kind == NUMBER_LITERAL_INTEGER &&
@@ -2805,7 +2878,7 @@ static int initializer_compatible(Type *declared, Type *init_type) {
      *
      * TYPE_NULL is not globally equal to TYPE_POINTER.
      */
-    if (is_raw_pointer_type(declared) && is_null_type(init_type)) {
+    if (is_nullable_pointer_type(declared) && is_null_type(init_type)) {
         return 1;
     }
 
@@ -8348,15 +8421,30 @@ static int extern_c_type_supported(const Type *type, int allow_void)
         case TYPE_NULL:
         case TYPE_ARRAY:
         case TYPE_NAMED:
-        case TYPE_FUNCTION:
             return 0;
+
+        case TYPE_FUNCTION:
+            if (type->function_abi != FUNCTION_ABI_C)
+                return 0;
+
+            for (int i = 0; i < type->parameter_count; i++) {
+                if (!extern_c_type_supported(type->parameters[i], 0))
+                    return 0;
+            }
+
+            return extern_c_type_supported(type->return_type, 1);
     }
 
     assert(!"unhandled TypeKind in extern_c_type_supported");
     return 0;
 }
 
-static int validate_extern_c_signature(SemanticContext *ctx, Node *func, Type *type)
+static int validate_c_abi_function_signature(
+    SemanticContext *ctx,
+    Node *func,
+    Type *type,
+    const char *annotation
+)
 {
     assert(func);
     assert(type && type->kind == TYPE_FUNCTION);
@@ -8367,10 +8455,11 @@ static int validate_extern_c_signature(SemanticContext *ctx, Node *func, Type *t
         Node *param = func->as.func_decl.params.items[i];
 
         if (param->as.param_decl.default_value) {
-            semantic_error(
+            semantic_error_fmt(
                 ctx,
                 param,
-                "#extern(c) parameters cannot have default values"
+                "%s parameters cannot have default values",
+                annotation
             );
             ok = 0;
         }
@@ -8384,7 +8473,8 @@ static int validate_extern_c_signature(SemanticContext *ctx, Node *func, Type *t
         semantic_error_fmt(
             ctx,
             param,
-            "#extern(c) parameter type '%s' is not supported by the current C ABI subset",
+            "%s parameter type '%s' is not supported by the current C ABI subset",
+            annotation,
             type_name
         );
         ok = 0;
@@ -8397,7 +8487,8 @@ static int validate_extern_c_signature(SemanticContext *ctx, Node *func, Type *t
         semantic_error_fmt(
             ctx,
             func,
-            "#extern(c) return type '%s' is not supported by the current C ABI subset",
+            "%s return type '%s' is not supported by the current C ABI subset",
+            annotation,
             type_name
         );
         ok = 0;
@@ -8409,6 +8500,12 @@ static int validate_extern_c_signature(SemanticContext *ctx, Node *func, Type *t
 static Type *make_function_type(SemanticContext *ctx, Node *func)
 {
     Type *type = new_type(ctx, TYPE_FUNCTION);
+
+    type->function_abi =
+        (func->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C ||
+         func->as.func_decl.is_repr_c)
+            ? FUNCTION_ABI_C
+            : FUNCTION_ABI_COGLET;
 
     type->parameter_count = func->as.func_decl.params.count;
 
@@ -8478,7 +8575,12 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
         return 0;
 
     if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C &&
-        !validate_extern_c_signature(ctx, node, func_type)) {
+        !validate_c_abi_function_signature(ctx, node, func_type, "#extern(c)")) {
+        return 0;
+    }
+
+    if (node->as.func_decl.is_repr_c &&
+        !validate_c_abi_function_signature(ctx, node, func_type, "#repr(c) function")) {
         return 0;
     }
 
@@ -8588,6 +8690,11 @@ static void check_function(SemanticContext *ctx, Node *node)
         return;
     }
 
+    if (node->as.func_decl.is_repr_c && ctx->function_depth > 0) {
+        semantic_error(ctx, node, "#repr(c) functions must be at top level");
+        return;
+    }
+
     if (!declare_function_signature(ctx, node))
         return;
 
@@ -8667,8 +8774,10 @@ static int repr_c_struct_field_type_supported(const Type *type)
         case TYPE_UNTYPED_FLOAT:
         case TYPE_NULL:
         case TYPE_NAMED:
-        case TYPE_FUNCTION:
             return 0;
+
+        case TYPE_FUNCTION:
+            return extern_c_type_supported(type, 0);
     }
 
     assert(!"unhandled TypeKind in repr_c_struct_field_type_supported");

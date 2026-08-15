@@ -1,0 +1,15 @@
+#extern(c)
+coglet_backend_callback_probe::(
+    callback: cfn(c_int) -> c_int,
+    missing: cfn(c_int) -> c_int,
+    value: c_int
+) -> c_int;
+
+#repr(c)
+identity::(value: c_int) -> c_int {
+    return value;
+}
+
+main::() -> c_int {
+    return coglet_backend_callback_probe(identity, null, 53);
+}

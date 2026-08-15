@@ -1,0 +1,2 @@
+semantic error at line 2: cfn signature contains a type not supported by the current C ABI subset
+1 semantic error generated.

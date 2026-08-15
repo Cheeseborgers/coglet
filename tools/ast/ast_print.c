@@ -276,6 +276,9 @@ static const char *token_type_str(TokenType type)
         case TOK_OPAQUE:
             return "OPAQUE";
 
+        case TOK_CFN:
+            return "CFN";
+
         // Types
         case TOK_BOOL:
             return "BOOL";
@@ -398,6 +401,21 @@ static void print_type(Type *t)
         case TYPE_ENUM:
             printf("enum ");
             print_string_view(t->enum_name);
+            break;
+
+        case TYPE_FUNCTION:
+            if (t->function_abi == FUNCTION_ABI_C)
+                printf("cfn(");
+            else
+                printf("fn(");
+
+            for (int i = 0; i < t->parameter_count; i++) {
+                if (i > 0) printf(", ");
+                print_type(t->parameters[i]);
+            }
+
+            printf(") -> ");
+            print_type(t->return_type);
             break;
 
         default:
@@ -777,6 +795,8 @@ static void print_node(Node *node)
                 }
             } else {
                 printf("(func ");
+                if (node->as.func_decl.is_repr_c)
+                    printf("#repr(c) ");
             }
 
             print_string_view(node->as.func_decl.name);
@@ -1316,6 +1336,8 @@ static void print_node_pretty(Node *node, int depth)
                     printf(") func ");
                 }
             } else {
+                if (node->as.func_decl.is_repr_c)
+                    printf("#repr(c) ");
                 printf("func ");
             }
 

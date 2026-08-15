@@ -166,3 +166,20 @@ int coglet_backend_enum_packet_probe(CogletBackendMode mode, CogletBackendEnumPa
 
     return 49;
 }
+
+typedef int (*CogletBackendUnaryCallback)(int);
+
+int coglet_backend_callback_probe(
+    CogletBackendUnaryCallback callback,
+    CogletBackendUnaryCallback missing,
+    int value
+)
+{
+    if (!callback || missing != 0)
+        return 54;
+
+    if (callback(value) != value)
+        return 55;
+
+    return 53;
+}

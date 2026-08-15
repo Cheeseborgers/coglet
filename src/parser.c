@@ -25,6 +25,7 @@ static Node *parse_binary_from(Parser *p, Node *left, int min_prec);
 static Node *parse_assignment(Parser *p);
 static Node *parse_assignment_from(Parser *p, Node *left);
 static Type *parse_type(Parser *p);
+static Type *make_void_type(Arena *arena);
 
 static Node *parse_decl_or_expr_statement(Parser *p);
 static Node *finish_typed_decl(Parser *p, Token name);
@@ -279,6 +280,9 @@ const char *token_debug_display_name(TokenType type)
 
         case TOK_OPAQUE:
             return "'opaque'";
+
+        case TOK_CFN:
+            return "'cfn'";
 
         // Types
         case TOK_BOOL:
@@ -863,7 +867,68 @@ static Type *parse_type(Parser *p)
 
     int pointer_count = 0;
 
-    if (match(p, TOK_OPAQUE)) {
+    if (match(p, TOK_CFN)) {
+        /*
+         * Native C function-pointer type:
+         *
+         *     cfn(c_int, opaque*) -> c_int
+         *     cfn()                         // returns void
+         *
+         * Parameter names are intentionally absent in type syntax. The
+         * resulting TYPE_FUNCTION is a first-class pointer-sized callback
+         * value with FUNCTION_ABI_C.
+         */
+        base->kind = TYPE_FUNCTION;
+        base->function_abi = FUNCTION_ABI_C;
+
+        if (!consume(p, TOK_LPAREN)) {
+            return base;
+        }
+
+        Type **parameters = NULL;
+        int parameter_count = 0;
+        int parameter_capacity = 0;
+
+        if (!check(p, TOK_RPAREN)) {
+            do {
+                Type *parameter = parse_type(p);
+
+                if (parameter_count >= parameter_capacity) {
+                    int new_capacity = parameter_capacity == 0
+                        ? 4
+                        : parameter_capacity * 2;
+                    Type **grown = arena_alloc(
+                        p->arena,
+                        sizeof(Type *) * (size_t)new_capacity
+                    );
+
+                    if (parameters && parameter_count > 0) {
+                        memcpy(
+                            grown,
+                            parameters,
+                            sizeof(Type *) * (size_t)parameter_count
+                        );
+                    }
+
+                    parameters = grown;
+                    parameter_capacity = new_capacity;
+                }
+
+                parameters[parameter_count++] = parameter;
+            } while (match(p, TOK_COMMA));
+        }
+
+        consume(p, TOK_RPAREN);
+
+        base->parameters = parameters;
+        base->parameter_count = parameter_count;
+
+        if (match(p, TOK_ARROW)) {
+            base->return_type = parse_type(p);
+        } else {
+            base->return_type = make_void_type(p->arena);
+        }
+    } else if (match(p, TOK_OPAQUE)) {
         /*
          * `opaque*` is a dedicated non-dereferenceable raw pointer kind.
          * There is deliberately no standalone `opaque` value type.
@@ -1367,7 +1432,14 @@ static Node *parse_attribute_decl(Parser *p)
             return decl;
         }
 
-        error_at(p, &p->current, "#repr(c) applies only to struct or enum declarations");
+        if (check(p, TOK_LPAREN)) {
+            decl = parse_proc_decl_rest(p, name, hash.line);
+            if (decl && decl->type == NODE_FUNC_DECL)
+                decl->as.func_decl.is_repr_c = 1;
+            return decl;
+        }
+
+        error_at(p, &p->current, "#repr(c) applies only to struct, enum, or function declarations");
         synchronize(p);
         return ast_new_error(p->arena, p->current);
     }

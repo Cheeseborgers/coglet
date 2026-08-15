@@ -1,0 +1,13 @@
+1 IDENT callback
+1 COLON :
+1 CFN cfn
+1 LPAREN (
+1 IDENT c_int
+1 COMMA ,
+1 OPAQUE opaque
+1 STAR *
+1 RPAREN )
+1 ARROW ->
+1 IDENT c_int
+1 SEMICOLON ;
+2 EOF

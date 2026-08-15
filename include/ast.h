@@ -267,6 +267,15 @@ struct Node {
             FunctionLinkage linkage;
 
             /*
+             * Explicit native C callback/calling-convention contract for a
+             * Coglet-defined function:
+             *
+             *     #repr(c)
+             *     callback::(value: c_int) -> c_int { ... }
+             */
+            int is_repr_c;
+
+            /*
              * Optional external linker symbol for FUNCTION_LINKAGE_EXTERN_C.
              * Empty means the Coglet declaration name is used unchanged.
              */

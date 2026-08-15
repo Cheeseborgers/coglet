@@ -306,13 +306,18 @@ dependencies reached through array elements, are checked for cycles and emitted
 in dependency order, so source declaration order does not constrain valid C
 layouts.
 
+Native C callbacks/function pointers are now implemented with explicit
+`cfn(...) -> T` types and top-level `#repr(c)` Coglet callback definitions. The
+host-C backend emits real function-pointer typedefs and executable tests exercise
+a C helper calling back into Coglet.
+
 Remaining C interoperability work includes:
 
 - explicit target/C-ABI selection for cross compilation;
 - richer linker/toolchain configuration beyond `-L` / `-l`;
 - variadic functions;
-- C callbacks/function pointers;
-- mapping C null pointers to Coglet `null` at lowering boundaries.
+- unions and incomplete/opaque named C aggregate declarations;
+- mapping C null pointers to Coglet `null` at additional lowering boundaries.
 
 ### 2. Slices and Pointer-Length Views
 

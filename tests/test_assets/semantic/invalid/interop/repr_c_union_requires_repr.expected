@@ -1,0 +1,2 @@
+semantic error at line 1: union declarations currently require #repr(c)
+1 semantic error generated.

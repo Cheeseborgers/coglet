@@ -1,0 +1,5 @@
+#repr(c)
+Value::union {
+    integer: c_int;
+    real: c_double;
+}

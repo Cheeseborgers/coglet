@@ -103,6 +103,7 @@ struct Type {
     StructField *fields;
     int field_count;
     int struct_is_repr_c;
+    int struct_is_union;
     int struct_is_incomplete;
 
     Type **parameters;       // TYPE_FUNCTION

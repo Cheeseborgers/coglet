@@ -1,0 +1,19 @@
+1 HASH #
+1 IDENT repr
+1 LPAREN (
+1 IDENT c
+1 RPAREN )
+2 IDENT Value
+2 COLON_COLON ::
+2 UNION union
+2 LBRACE {
+3 IDENT integer
+3 COLON :
+3 IDENT c_int
+3 SEMICOLON ;
+4 IDENT real
+4 COLON :
+4 IDENT c_double
+4 SEMICOLON ;
+5 RBRACE }
+6 EOF

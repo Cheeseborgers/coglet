@@ -1,0 +1,3 @@
+semantic error at line 1: #repr(c) unions must contain at least one field
+semantic error at line 7: #repr(c) by-value field 'self' creates a recursive union layout
+2 semantic errors generated.

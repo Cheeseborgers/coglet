@@ -678,7 +678,8 @@ Recently completed work includes:
 - access-preserving dereference, indexing, fields, and address-of;
 - separate semantic facts for storage identity and write permission;
 - readonly-pointer compatibility and semantic-info verification;
-- rejection of unsupported nested-function captures.
+- rejection of unsupported nested-function captures;
+- native `#repr(c)` union ABI layout for FFI carrier values.
 
 A deliberately narrow host-C backend now provides the first executable path.
 It should expand only where the specified Coglet semantics can be preserved; the
@@ -689,7 +690,7 @@ with weaker C behavior.
 
 Near-term work should combine C interoperability with careful backend expansion:
 
-1. Continue C ABI coverage with unions and remaining ABI/layout controls.
+1. Continue C ABI coverage with remaining ABI/layout controls (alignment, packing, calling conventions).
 2. Add explicit target/C-ABI selection before cross-compilation claims are made.
 3. Lower core storage/control-flow and checked runtime arithmetic correctly.
 4. Design byte views/slices without introducing unrestricted array decay.

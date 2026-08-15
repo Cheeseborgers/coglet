@@ -1440,16 +1440,16 @@ c_bool c_float c_double
 T* and readonly T* when T is recursively in this subset
 opaque* and readonly opaque*
 additional raw-pointer layers such as opaque**
-#repr(c) structs by value or through raw pointers
+#repr(c) structs and unions by value or through raw pointers
 #repr(c) enums
 cfn(...) -> T native C function pointers with recursively supported signatures
 void as a return type only
 ```
 
 Arrays, ordinary Coglet structs, ordinary Coglet enums, and ordinary Coglet
-function types remain rejected in `#extern(c)` signatures. Structs and enums
-must opt into the C ABI contract explicitly; callbacks use the explicit `cfn`
-function-pointer type described below:
+function types remain rejected in `#extern(c)` signatures. Structs, unions, and
+enums must opt into the C ABI contract explicitly; callbacks use the explicit
+`cfn` function-pointer type described below:
 
 ```c
 #repr(c)
@@ -1469,20 +1469,49 @@ CMode::enum(c_int) {
 
 #extern(c)
 consume_mode::(mode: CMode) -> c_int;
+
+#repr(c)
+CValue::union {
+    integer: c_int;
+    real: c_double;
+}
+
+#extern(c)
+consume_value::(value: CValue) -> c_int;
 ```
 
 `#repr(c)` is top-level only. C-compatible scalar/raw-pointer fields are
-accepted, including pointers to other `#repr(c)` structs, other `#repr(c)` structs
-embedded directly by value, and fixed-size arrays whose element type is itself a
-supported C field type. Array lengths must be greater than zero; unsized and
-zero-length arrays are rejected. By-value struct dependencies may be declared in
-any source order, including dependencies reached through an array element; their
-inline layout graph must be acyclic. Raw-pointer cycles remain valid because the
-pointee is not laid out inline. Empty structs and ordinary Coglet structs/enums
-remain rejected as fields. Explicit `#repr(c)` enums are accepted directly, through
-pointers, and inside fixed arrays. Arrays remain rejected as `#extern(c)` parameters and
-returns because C function-parameter array syntax decays to pointers rather than
-representing a by-value array ABI.
+accepted, including pointers to represented aggregates, complete `#repr(c)`
+structs/unions embedded directly by value, and fixed-size arrays whose element
+type is itself a supported C field type. Array lengths must be greater than zero;
+unsized and zero-length arrays are rejected. By-value aggregate dependencies may
+be declared in any source order, including dependencies reached through an array
+element; their inline layout graph must be acyclic. Raw-pointer cycles remain
+valid because the pointee is not laid out inline. Empty structs/unions and
+ordinary Coglet structs/enums remain rejected as represented fields. Explicit
+`#repr(c)` enums are accepted directly, through pointers, and inside fixed
+arrays. Arrays remain rejected as `#extern(c)` parameters and returns because C
+function-parameter array syntax decays to pointers rather than representing a
+by-value array ABI.
+
+A native C union uses explicit represented syntax:
+
+```c
+#repr(c)
+CValue::union {
+    integer: c_int;
+    real: c_double;
+    pointer: opaque*;
+}
+```
+
+The union has native C size/alignment and may cross `#extern(c)` by value, appear
+behind raw pointers, or be embedded in another `#repr(c)` struct/union (including
+fixed arrays). Coglet intentionally does not yet expose direct union member
+construction or member access. Those operations need an explicit active-member
+policy rather than inheriting C's unchecked type-punning behavior accidentally.
+For now unions are ABI carrier types: values may be received from C, transported
+through Coglet, and passed back to C unchanged.
 
 An incomplete native C struct is declared without a body:
 

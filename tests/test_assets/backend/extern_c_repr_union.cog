@@ -1,0 +1,31 @@
+#repr(c)
+BackendValue::union {
+    integer: c_int;
+    real: c_double;
+    point: BackendUnionPoint;
+}
+
+#repr(c)
+BackendUnionPoint::struct {
+    x: c_int;
+    y: c_double;
+}
+
+#repr(c)
+BackendUnionPacket::struct {
+    tag: c_int;
+    value: BackendValue;
+    history: BackendValue[2];
+}
+
+#extern(c)
+coglet_backend_make_union_packet::(value: c_int) -> BackendUnionPacket;
+
+#extern(c)
+coglet_backend_union_packet_probe::(packet: BackendUnionPacket) -> c_int;
+
+main::() -> c_int {
+    return coglet_backend_union_packet_probe(
+        coglet_backend_make_union_packet(71)
+    );
+}

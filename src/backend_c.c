@@ -496,7 +496,7 @@ static int collect_structs(CBackend *backend)
         snprintf(
             structure->generated_name,
             sizeof(structure->generated_name),
-            "cg_struct_%d",
+            node->as.struct_decl.is_union ? "cg_union_%d" : "cg_struct_%d",
             backend->struct_count
         );
         backend->struct_count++;
@@ -1021,7 +1021,11 @@ static void emit_struct_forward_declarations(CBackend *backend)
 {
     for (int i = 0; i < backend->struct_count; i++) {
         const char *name = backend->structs[i].generated_name;
-        fprintf(backend->out, "typedef struct %s %s;\n", name, name);
+        const char *kind =
+            backend->structs[i].node->as.struct_decl.is_union
+                ? "union"
+                : "struct";
+        fprintf(backend->out, "typedef %s %s %s;\n", kind, name, name);
     }
 
     if (backend->struct_count > 0)
@@ -1086,7 +1090,7 @@ static int emit_struct_definition(CBackend *backend, int index)
         backend_error(
             backend,
             structure->node,
-            "recursive #repr(c) by-value struct layout reached C lowering"
+            "recursive #repr(c) by-value aggregate layout reached C lowering"
         );
         return 0;
     }
@@ -1123,7 +1127,12 @@ static int emit_struct_definition(CBackend *backend, int index)
     }
 
     Node *decl = structure->node;
-    fprintf(backend->out, "struct %s {\n", structure->generated_name);
+    fprintf(
+        backend->out,
+        "%s %s {\n",
+        decl->as.struct_decl.is_union ? "union" : "struct",
+        structure->generated_name
+    );
 
     for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
         Node *field = decl->as.struct_decl.fields.items[f];

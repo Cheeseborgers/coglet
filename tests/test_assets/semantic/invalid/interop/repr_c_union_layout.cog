@@ -1,0 +1,8 @@
+#repr(c)
+Empty::union {
+}
+
+#repr(c)
+Recursive::union {
+    self: Recursive;
+}

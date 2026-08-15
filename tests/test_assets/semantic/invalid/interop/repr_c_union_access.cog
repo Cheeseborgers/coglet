@@ -1,0 +1,13 @@
+#repr(c)
+CValue::union {
+    integer: c_int;
+    real: c_double;
+}
+
+read_member::(value: CValue) -> c_int {
+    return value.integer;
+}
+
+construct_member::() -> CValue {
+    return CValue{ integer = 1 };
+}

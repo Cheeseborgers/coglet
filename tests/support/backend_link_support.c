@@ -235,3 +235,44 @@ int coglet_backend_incomplete_handle_probe(
 
     return 67;
 }
+
+typedef struct CogletBackendUnionPoint {
+    int x;
+    double y;
+} CogletBackendUnionPoint;
+
+typedef union CogletBackendUnionValue {
+    int integer;
+    double real;
+    CogletBackendUnionPoint point;
+} CogletBackendUnionValue;
+
+typedef struct CogletBackendUnionPacket {
+    int tag;
+    CogletBackendUnionValue value;
+    CogletBackendUnionValue history[2];
+} CogletBackendUnionPacket;
+
+CogletBackendUnionPacket coglet_backend_make_union_packet(int value)
+{
+    CogletBackendUnionPacket packet;
+    packet.tag = value;
+    packet.value.point.x = value;
+    packet.value.point.y = 2.5;
+    packet.history[0].integer = value + 1;
+    packet.history[1].real = 3.5;
+    return packet;
+}
+
+int coglet_backend_union_packet_probe(CogletBackendUnionPacket packet)
+{
+    if (packet.tag != 71 ||
+        packet.value.point.x != 71 ||
+        packet.value.point.y != 2.5 ||
+        packet.history[0].integer != 72 ||
+        packet.history[1].real != 3.5) {
+        return 72;
+    }
+
+    return 71;
+}

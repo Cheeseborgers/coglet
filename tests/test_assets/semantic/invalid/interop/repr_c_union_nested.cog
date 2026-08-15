@@ -1,0 +1,6 @@
+outer::() -> void {
+    #repr(c)
+    LocalUnion::union {
+        value: c_int;
+    }
+}

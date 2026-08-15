@@ -107,7 +107,7 @@ Body checking is skipped for external declarations.
 
 The current C-ABI eligibility check permits concrete scalar types, raw typed
 pointers recursively over supported pointees, opaque raw pointers, explicitly
-`#repr(c)` structs/enums, native C function-pointer types (`cfn(...) -> T`), and
+`#repr(c)` structs/unions/enums, native C function-pointer types (`cfn(...) -> T`), and
 `void` returns. Callback signatures are checked recursively against the same
 subset. Arrays, ordinary Coglet structs/enums, and ordinary Coglet function
 types remain rejected. External declarations are restricted to top level and
@@ -115,8 +115,10 @@ parameter defaults are rejected. `#repr(c)` functions are likewise top-level,
 reject defaults, and must have a C-compatible signature.
 
 Aggregate `#repr(c)` metadata is stored on `NODE_STRUCT_DECL` / `NODE_ENUM_DECL`
-and propagated to semantic `TYPE_STRUCT` / `TYPE_ENUM`; function `#repr(c)`
-metadata is stored separately on `NODE_FUNC_DECL` as described above.
+and propagated to semantic `TYPE_STRUCT` / `TYPE_ENUM`; represented unions reuse
+`NODE_STRUCT_DECL` / `TYPE_STRUCT` field storage with an explicit union-layout
+flag. Function `#repr(c)` metadata is stored separately on `NODE_FUNC_DECL` as
+described above.
 C-represented aggregates are top-level only. A `#repr(c)` enum requires an explicit
 native C integer alias as its backing
 type; the existing enum member range checks then apply to that resolved type.
@@ -124,19 +126,22 @@ The enum remains closed and nominal. The host-C backend represents it with a
 typedef of the exact selected C integer spelling, avoiding C99's implementation-
 defined native-enum underlying representation.
 
-C-represented structs are top-level only. Fields may use
+C-represented structs and unions are top-level only. Fields may use
 scalar/raw-pointer ABI types, native C function pointers, pointers to other
-`#repr(c)` structs, other `#repr(c)` structs directly by value, or positive-length
-fixed arrays of any supported field type. Semantic analysis rejects direct and
-indirect by-value layout cycles, including cycles reached through array elements,
-while allowing recursive pointer graphs. Empty structs, unsized/zero-length
-arrays, ordinary enums, and ordinary structs remain rejected; `#repr(c)` enums
-and `cfn` values are valid field/array element types. The host-C backend assigns generated C struct
-tags, emits forward typedefs before pointer aliases, and topologically emits
-complete struct definitions so by-value dependencies do not depend on Coglet
-source order. Fixed array fields are emitted as native C array declarators; fields
+represented aggregates, complete `#repr(c)` structs/unions directly by value, or
+positive-length fixed arrays of any supported field type. Semantic analysis
+rejects direct and indirect by-value layout cycles, including cycles reached
+through array elements, while allowing recursive pointer graphs. Empty
+structs/unions, unsized/zero-length arrays, ordinary enums, and ordinary structs
+remain rejected; `#repr(c)` enums and `cfn` values are valid field/array element
+types. The host-C backend assigns generated native C struct/union tags, emits
+forward typedefs before pointer aliases, and topologically emits complete
+aggregate definitions so by-value dependencies do not depend on Coglet source
+order. Fixed array fields are emitted as native C array declarators; fields
 otherwise remain in source order and use source-level C ABI spellings. Arrays are
-still rejected in `#extern(c)` parameters and returns.
+still rejected in `#extern(c)` parameters and returns. Direct Coglet-side union
+member access/construction is deliberately rejected until active-member
+semantics are specified.
 
 A body-less `#repr(c) Name::struct;` declaration is represented as a nominal
 `TYPE_STRUCT` marked incomplete. Semantic analysis permits that type only behind

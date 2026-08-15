@@ -248,6 +248,9 @@ const char *token_debug_display_name(TokenType type)
         case TOK_STRUCT:
             return "'struct'";
 
+        case TOK_UNION:
+            return "'union'";
+
         case TOK_ENUM:
             return "'enum'";
 
@@ -1453,7 +1456,7 @@ static Node *parse_attribute_decl(Parser *p)
 
         Node *decl = NULL;
 
-        if (check(p, TOK_STRUCT)) {
+        if (check(p, TOK_STRUCT) || check(p, TOK_UNION)) {
             decl = parse_struct_decl_rest(p, name, hash.line);
             if (decl && decl->type == NODE_STRUCT_DECL)
                 decl->as.struct_decl.is_repr_c = 1;
@@ -1474,7 +1477,7 @@ static Node *parse_attribute_decl(Parser *p)
             return decl;
         }
 
-        error_at(p, &p->current, "#repr(c) applies only to struct, enum, or function declarations");
+        error_at(p, &p->current, "#repr(c) applies only to struct, union, enum, or function declarations");
         synchronize(p);
         return ast_new_error(p->arena, p->current);
     }
@@ -1570,9 +1573,15 @@ static Node *parse_attribute_decl(Parser *p)
 // =================== struct declarations ========================
 static Node *parse_struct_decl_rest(Parser *p,Token name,int line) {
 
-    consume(p, TOK_STRUCT);
+    int is_union = check(p, TOK_UNION);
+
+    if (is_union)
+        consume(p, TOK_UNION);
+    else
+        consume(p, TOK_STRUCT);
 
     Node *decl = ast_new_struct_decl(p->arena, name.start,name.length, line);
+    decl->as.struct_decl.is_union = is_union;
 
     /*
      * A semicolon spells an incomplete named struct. Semantic analysis
@@ -1875,7 +1884,8 @@ static Node *parse_decl_after_name(Parser *p, Token name) {
     int line = name.line;
 
     if (check(p, TOK_LPAREN)) return parse_proc_decl_rest(p, name, line);
-    if (check(p, TOK_STRUCT)) return parse_struct_decl_rest(p, name, line);
+    if (check(p, TOK_STRUCT) || check(p, TOK_UNION))
+        return parse_struct_decl_rest(p, name, line);
     if (check(p, TOK_ENUM))   return parse_enum_decl_rest(p, name, line);
 
     // anything else after '::' is a constant expression

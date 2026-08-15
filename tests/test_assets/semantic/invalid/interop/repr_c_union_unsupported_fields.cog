@@ -1,0 +1,9 @@
+Plain::struct {
+    value: i32;
+}
+
+#repr(c)
+BadUnion::union {
+    plain: Plain;
+    unsized: c_int[];
+}

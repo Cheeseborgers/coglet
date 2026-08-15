@@ -1,0 +1,7 @@
+program
+  #repr(c) union Value
+    struct_field_decl integer: c_int
+    struct_field_decl real: c_double
+  #repr(c) struct Packet
+    struct_field_decl value: Value
+    struct_field_decl history: Value[2]

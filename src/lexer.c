@@ -179,6 +179,7 @@ static const Keyword keywords[] = {
     {"for", TOK_FOR},
     {"return", TOK_RETURN},
     {"struct", TOK_STRUCT},
+    {"union", TOK_UNION},
     {"break", TOK_BREAK},
     {"continue", TOK_CONTINUE},
     {"enum", TOK_ENUM},
@@ -1099,6 +1100,7 @@ const char *token_type_name(TokenType type) {
         case TOK_RETURN: return "RETURN";
         case TOK_VOID: return "VOID";
         case TOK_STRUCT: return "STRUCT";
+        case TOK_UNION: return "UNION";
         case TOK_BREAK: return "BREAK";
         case TOK_CONTINUE: return "CONTINUE";
         case TOK_ENUM: return "ENUM";

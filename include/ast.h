@@ -298,6 +298,12 @@ struct Node {
             int is_repr_c;
 
             /*
+             * `union` shares the aggregate field representation with structs
+             * but has native C union layout when this flag is set.
+             */
+            int is_union;
+
+            /*
              * Incomplete native-C struct declaration:
              *
              *     #repr(c)
@@ -305,6 +311,7 @@ struct Node {
              *
              * The type may only be used behind raw pointers until a layout is
              * provided by C; Coglet never defines or accesses its fields.
+             * Incomplete unions are not part of the current C ABI subset.
              */
             int is_incomplete;
             Type *resolved_type;  // semantic TYPE_STRUCT, NULL if declaration failed

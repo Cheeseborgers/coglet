@@ -350,25 +350,30 @@ Conceptually:
 ```text
 repr_c_decl :=
     "#" "repr" "(" "c" ")"
-    identifier "::" (repr_c_struct_body | repr_c_enum_body);
+    identifier "::" (repr_c_struct_body | repr_c_union_body | repr_c_enum_body);
 
 repr_c_struct_body :=
     "struct" ("{" {struct_field_decl} "}" | ";");
+
+repr_c_union_body :=
+    "union" "{" {struct_field_decl} "}";
 
 repr_c_enum_body :=
     "enum" "(" c_integer_alias ")" "{" [enum_member {"," enum_member} [","]] "}";
 ```
 
-`repr` and `c` remain identifiers at the lexer level. `#repr(c)` applies to
-top-level struct and enum declarations. C-represented enums require an explicit
-native C integer backing alias. A represented struct may contain
-another `#repr(c)` struct by value or a positive-length fixed array of supported
-C field types, including `#repr(c)` enum values and arrays of those enums.
-Struct dependencies reached directly or through array elements must form an
-acyclic inline layout graph. Unsized and zero-length C-layout array
-fields are rejected. The semicolon form declares an incomplete foreign C
-struct, for example `#repr(c) SDL_Window::struct;`; incomplete structs have no
-Coglet field layout and may only be used behind raw pointers.
+`repr` and `c` remain identifiers at the lexer level. `union` is a language
+keyword. `#repr(c)` applies to top-level struct, union, and enum declarations.
+C-represented enums require an explicit native C integer backing alias. A
+represented struct or union may contain another complete `#repr(c)` aggregate by
+value or a positive-length fixed array of supported C field types, including
+`#repr(c)` enum values and arrays of those enums. Inline aggregate dependencies
+reached directly or through array elements must form an acyclic layout graph.
+Unsized and zero-length C-layout array fields are rejected. The semicolon form
+currently declares only an incomplete foreign C struct, for example
+`#repr(c) SDL_Window::struct;`; incomplete structs have no Coglet field layout
+and may only be used behind raw pointers. Incomplete `#repr(c)` unions are not
+yet supported.
 
 The C scalar-ABI names `c_char`, `c_schar`, `c_uchar`, `c_short`,
 `c_ushort`, `c_int`, `c_uint`, `c_long`, `c_ulong`, `c_longlong`,

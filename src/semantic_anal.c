@@ -6696,6 +6696,12 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 return NULL;
             }
 
+            if (object_type->struct_is_union) {
+                semantic_error(ctx, node,
+                    "direct C union member access is not supported yet");
+                return NULL;
+            }
+
             Type *field_type =
                 find_struct_field(
                     object_type,
@@ -6995,6 +7001,12 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             if (type->struct_is_incomplete) {
                 semantic_error(ctx, node,
                     "cannot construct an incomplete C struct");
+                return NULL;
+            }
+
+            if (type->struct_is_union) {
+                semantic_error(ctx, node,
+                    "direct C union construction is not supported yet");
                 return NULL;
             }
 
@@ -8946,6 +8958,16 @@ static void check_function(SemanticContext *ctx, Node *node)
 
 static int declare_struct_shell(SemanticContext *ctx, Node *node) {
 
+    if (node->as.struct_decl.is_union && !node->as.struct_decl.is_repr_c) {
+        semantic_error(ctx, node, "union declarations currently require #repr(c)");
+        return 0;
+    }
+
+    if (node->as.struct_decl.is_union && node->as.struct_decl.is_incomplete) {
+        semantic_error(ctx, node, "incomplete #repr(c) unions are not supported yet");
+        return 0;
+    }
+
     if (scope_find_local(ctx->current_scope, node->as.struct_decl.name.data, node->as.struct_decl.name.length)) {
         semantic_error_name(ctx, node, "duplicate declaration",
             node->as.struct_decl.name.data, node->as.struct_decl.name.length);
@@ -8958,6 +8980,7 @@ static int declare_struct_shell(SemanticContext *ctx, Node *node) {
     type->struct_name.data   = node->as.struct_decl.name.data;
     type->struct_name.length = node->as.struct_decl.name.length;
     type->struct_is_repr_c      = node->as.struct_decl.is_repr_c;
+    type->struct_is_union       = node->as.struct_decl.is_union;
     type->struct_is_incomplete  = node->as.struct_decl.is_incomplete;
 
     node->as.struct_decl.resolved_type = type;
@@ -9084,9 +9107,10 @@ static void validate_repr_c_struct_layout_dfs(
                 semantic_error_fmt(
                     ctx,
                     field,
-                    "#repr(c) by-value field '%.*s' creates a recursive struct layout",
+                    "#repr(c) by-value field '%.*s' creates a recursive %s layout",
                     (int)field->as.struct_field_decl.name.length,
-                    field->as.struct_field_decl.name.data
+                    field->as.struct_field_decl.name.data,
+                    decl->as.struct_decl.is_union ? "union" : "struct"
                 );
                 continue;
             }
@@ -9159,8 +9183,16 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
         return;
     }
 
-    if (node->as.struct_decl.is_repr_c && node->as.struct_decl.fields.count == 0) {
-        semantic_error(ctx, node, "#repr(c) structs must contain at least one field");
+    if (node->as.struct_decl.is_repr_c &&
+        !node->as.struct_decl.is_incomplete &&
+        node->as.struct_decl.fields.count == 0) {
+        semantic_error(
+            ctx,
+            node,
+            node->as.struct_decl.is_union
+                ? "#repr(c) unions must contain at least one field"
+                : "#repr(c) structs must contain at least one field"
+        );
     }
 
     // A duplicate struct name means declare_struct_shell already reported
@@ -9195,8 +9227,13 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
 
         if (invalid_value_type(field_type)) {
 
-            semantic_error(ctx, field,
-                "struct field cannot have type void");
+            semantic_error(
+                ctx,
+                field,
+                node->as.struct_decl.is_union
+                    ? "union field cannot have type void"
+                    : "struct field cannot have type void"
+            );
 
             type->fields[i].type = NULL;
             continue;
@@ -9218,7 +9255,9 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
             semantic_error_fmt(
                 ctx,
                 field,
-                "#repr(c) struct field type '%s' is not supported by the current C ABI subset",
+                node->as.struct_decl.is_union
+                    ? "#repr(c) union field type '%s' is not supported by the current C ABI subset"
+                    : "#repr(c) struct field type '%s' is not supported by the current C ABI subset",
                 type_name
             );
 
@@ -9669,8 +9708,19 @@ static void check_node(SemanticContext *ctx,Node *node) {
         case NODE_EXPR_STMT:       check_statement_expression(ctx, node->as.expr_stmt.expr); break;
 
         case NODE_STRUCT_DECL: {
+            if (node->as.struct_decl.is_union && !node->as.struct_decl.is_repr_c) {
+                semantic_error(ctx, node, "union declarations currently require #repr(c)");
+                break;
+            }
+
             if (node->as.struct_decl.is_repr_c && ctx->function_depth > 0) {
-                semantic_error(ctx, node, "#repr(c) struct declarations must be at top level");
+                semantic_error(
+                    ctx,
+                    node,
+                    node->as.struct_decl.is_union
+                        ? "#repr(c) union declarations must be at top level"
+                        : "#repr(c) struct declarations must be at top level"
+                );
                 break;
             }
 

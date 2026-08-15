@@ -1,0 +1,3 @@
+NativeUnion::union {
+    value: i32;
+}

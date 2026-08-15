@@ -298,13 +298,14 @@ literals can now bind to `readonly c_char*` parameters of `#extern(c)` calls and
 are decoded/re-emitted by the host-C backend without enabling general
 array-to-pointer decay. Explicit cross-target ABI selection is still deferred.
 
-The C aggregate representation slice now supports `#repr(c)` structs with
-scalar/raw-pointer fields, positive-length fixed arrays of supported field types,
-nested `#repr(c)` structs by value, and `#repr(c)` enums with explicit native C
-integer backing aliases. Inline struct dependencies, including
+The C aggregate representation slice now supports `#repr(c)` structs and unions
+with scalar/raw-pointer fields, positive-length fixed arrays of supported field
+types, nested represented aggregates by value, and `#repr(c)` enums with explicit
+native C integer backing aliases. Inline aggregate dependencies, including
 dependencies reached through array elements, are checked for cycles and emitted
 in dependency order, so source declaration order does not constrain valid C
-layouts.
+layouts. C unions currently act as ABI carrier values; direct member
+construction/access remains deferred until an active-member policy is designed.
 
 Incomplete named C structs are now represented with body-less declarations such
 as `#repr(c) SDL_Window::struct;`. They are nominal, pointer-only foreign types:
@@ -324,7 +325,7 @@ Remaining C interoperability work includes:
 
 - explicit target/C-ABI selection for cross compilation;
 - richer linker/toolchain configuration beyond `-L` / `-l`;
-- unions and remaining aggregate/ABI representation controls;
+- remaining aggregate/ABI representation controls (alignment/packing/calling conventions);
 - mapping C null pointers to Coglet `null` at additional lowering boundaries.
 
 ### 2. Slices and Pointer-Length Views

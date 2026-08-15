@@ -1,0 +1,24 @@
+#repr(c)
+CValue::union {
+    integer: c_int;
+    real: c_double;
+    pointer: opaque*;
+}
+
+#repr(c)
+CUnionPacket::struct {
+    tag: c_int;
+    value: CValue;
+    history: CValue[2];
+    next: CValue*;
+}
+
+#extern(c)
+make_c_union_packet::(value: c_int) -> CUnionPacket;
+
+#extern(c)
+consume_c_union_packet::(packet: CUnionPacket) -> c_int;
+
+round_trip_c_union::(value: c_int) -> c_int {
+    return consume_c_union_packet(make_c_union_packet(value));
+}

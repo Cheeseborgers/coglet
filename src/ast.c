@@ -275,6 +275,7 @@ Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int l
     node->as.struct_decl.name.data   = name;
     node->as.struct_decl.name.length = name_length;
     node->as.struct_decl.is_repr_c     = 0;
+    node->as.struct_decl.is_union      = 0;
     node->as.struct_decl.is_incomplete = 0;
     node->as.struct_decl.resolved_type  = NULL;
 
@@ -538,6 +539,7 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.struct_decl.name.data   = node->as.struct_decl.name.data;
             clone->as.struct_decl.name.length = node->as.struct_decl.name.length;
             clone->as.struct_decl.is_repr_c     = node->as.struct_decl.is_repr_c;
+            clone->as.struct_decl.is_union      = node->as.struct_decl.is_union;
             clone->as.struct_decl.is_incomplete = node->as.struct_decl.is_incomplete;
             clone->as.struct_decl.resolved_type  = NULL;
 

@@ -12,10 +12,12 @@
  */
 
 typedef void (*ExpressionVisitor)(void *context, Node *expression);
+typedef void (*DeclarationVisitor)(void *context, Node *declaration);
 
 typedef struct ExpressionWalker {
     SemanticContext *sem;
     ExpressionVisitor visit;
+    DeclarationVisitor visit_declaration;
     void *context;
 } ExpressionWalker;
 
@@ -29,8 +31,10 @@ typedef struct Verifier {
     SemanticContext *sem;
     FILE *diagnostics;
     ExpressionList expressions;
+    ExpressionList declarations;
     int mutation_count;
     int table_entry_count;
+    int declaration_table_entry_count;
     int error_count;
 } Verifier;
 
@@ -147,6 +151,24 @@ static int node_is_expression(NodeType type)
         case NODE_INDEX:
         case NODE_STRUCT_INIT:
         case NODE_ARRAY_LITERAL:
+            return 1;
+
+        default:
+            return 0;
+    }
+}
+
+static int node_is_declaration(NodeType type)
+{
+    switch (type) {
+        case NODE_VAR_DECL:
+        case NODE_FUNC_DECL:
+        case NODE_FUNC_PARAM_DECL:
+        case NODE_STRUCT_DECL:
+        case NODE_STRUCT_FIELD_DECL:
+        case NODE_ENUM_DECL:
+        case NODE_ENUM_MEMBER:
+        case NODE_CONST_DECL:
             return 1;
 
         default:
@@ -415,6 +437,9 @@ static void walk_node(ExpressionWalker *walker, Node *node)
     if (!node)
         return;
 
+    if (walker->visit_declaration && node_is_declaration(node->type))
+        walker->visit_declaration(walker->context, node);
+
     switch (node->type) {
         case NODE_PROGRAM:
             walk_node_list(
@@ -456,6 +481,12 @@ static void walk_node(ExpressionWalker *walker, Node *node)
             break;
 
         case NODE_STRUCT_DECL:
+            walk_node_list(
+                walker,
+                &node->as.struct_decl.fields
+            );
+            break;
+
         case NODE_STRUCT_FIELD_DECL:
             break;
 
@@ -620,6 +651,28 @@ static void collect_expression(void *context, Node *expression)
 
     if (node_is_mutation(expression->type))
         verifier->mutation_count++;
+}
+
+static void collect_declaration(void *context, Node *declaration)
+{
+    Verifier *verifier = context;
+
+    if (!node_is_declaration(declaration->type)) {
+        verifier_error(verifier, declaration,
+            "AST walker classified a non-declaration node as a declaration");
+        return;
+    }
+
+    if (expression_list_contains(&verifier->declarations, declaration)) {
+        verifier_error(verifier, declaration,
+            "AST contains the same declaration node more than once");
+        return;
+    }
+
+    if (!expression_list_push(&verifier->declarations, declaration)) {
+        verifier_error(verifier, declaration,
+            "out of memory while collecting declaration nodes");
+    }
 }
 
 static const char *value_access_name(ValueAccess access) {
@@ -1322,11 +1375,165 @@ static void verify_expression_info(Verifier *verifier, Node *expression) {
     verify_value_info(verifier, expression, info);
 }
 
+static void verify_declaration_info(Verifier *verifier, Node *declaration) {
+
+    SemDeclInfo *info =
+        semantic_get_decl_info(verifier->sem, declaration);
+
+    if (!info) {
+        verifier_error(verifier, declaration,
+            "successfully checked declaration has no SemDeclInfo");
+        return;
+    }
+
+    if (info->node != declaration) {
+        verifier_error(verifier, declaration,
+            "SemDeclInfo points to a different AST node");
+        return;
+    }
+
+    if (info->id == INVALID_SEM_DECL_ID) {
+        verifier_error(verifier, declaration,
+            "SemDeclInfo has the invalid declaration ID");
+    }
+
+    if (!info->type) {
+        verifier_error(verifier, declaration,
+            "SemDeclInfo has no resolved semantic type");
+    }
+
+    if (semantic_get_decl_info_by_id(verifier->sem, info->id) != info) {
+        verifier_error(verifier, declaration,
+            "declaration ID does not resolve back to the same SemDeclInfo");
+    }
+
+    if (info->symbol) {
+        if (info->symbol->declaration != declaration) {
+            verifier_error(verifier, declaration,
+                "declaration Symbol points to a different AST node");
+        }
+
+        if (info->symbol->declaration_id != info->id) {
+            verifier_error(verifier, declaration,
+                "declaration Symbol carries a different stable declaration ID");
+        }
+
+        if (info->symbol->type != info->type) {
+            verifier_error(verifier, declaration,
+                "declaration Symbol type differs from SemDeclInfo type");
+        }
+    }
+
+    switch (declaration->type) {
+        case NODE_VAR_DECL:
+        case NODE_FUNC_DECL:
+        case NODE_CONST_DECL:
+        case NODE_STRUCT_DECL:
+        case NODE_ENUM_DECL:
+            if (!info->symbol) {
+                verifier_error(verifier, declaration,
+                    "lexical declaration has no resolved Symbol");
+            }
+            break;
+
+        case NODE_STRUCT_FIELD_DECL:
+        case NODE_ENUM_MEMBER:
+            if (info->symbol) {
+                verifier_error(verifier, declaration,
+                    "aggregate member unexpectedly has a lexical Symbol");
+            }
+            break;
+
+        case NODE_FUNC_PARAM_DECL:
+            /*
+             * Parameters of body-less declarations (notably #extern(c)) have
+             * semantic identity/type but intentionally no lexical Symbol.
+             */
+            break;
+
+        default:
+            verifier_error(verifier, declaration,
+                "SemDeclInfo attached to unsupported declaration node kind");
+            break;
+    }
+}
+
+static void verify_declaration_table_entries(Verifier *verifier) {
+
+    for (SemDeclInfo *info = verifier->sem->decl_infos; info; info = info->next) {
+        verifier->declaration_table_entry_count++;
+
+        if (!info->node) {
+            verifier_error(verifier, NULL,
+                "declaration semantic-info table contains an entry with a null node");
+            continue;
+        }
+
+        if (!node_is_declaration(info->node->type)) {
+            verifier_error(verifier, info->node,
+                "declaration semantic-info entry belongs to a non-declaration node");
+        }
+
+        if (!expression_list_contains(&verifier->declarations, info->node)) {
+            verifier_error(verifier, info->node,
+                "declaration semantic-info entry does not belong to the program AST");
+        }
+
+        if (info->id == INVALID_SEM_DECL_ID ||
+            info->id >= verifier->sem->next_declaration_id) {
+            verifier_error(verifier, info->node,
+                "declaration semantic-info entry has an out-of-range stable ID");
+        }
+
+        if (semantic_get_decl_info_by_id(verifier->sem, info->id) != info) {
+            verifier_error(verifier, info->node,
+                "stable declaration ID lookup does not return its table entry");
+        }
+
+        for (SemDeclInfo *other = info->next; other; other = other->next) {
+            if (other->node == info->node) {
+                verifier_error(verifier, info->node,
+                    "declaration semantic-info table contains duplicate entries for one AST node");
+                break;
+            }
+
+            if (other->id == info->id) {
+                verifier_error(verifier, info->node,
+                    "declaration semantic-info table contains duplicate stable IDs");
+                break;
+            }
+        }
+    }
+
+    if ((SemDeclId)verifier->declaration_table_entry_count !=
+        verifier->sem->next_declaration_id) {
+        verifier_error(
+            verifier,
+            NULL,
+            "declaration ID sequence has %zu IDs but table has %d entries",
+            (size_t)verifier->sem->next_declaration_id,
+            verifier->declaration_table_entry_count
+        );
+    }
+}
+
 static void verify_table_entries(Verifier *verifier) {
 
     for (SemExprInfo *info = verifier->sem->expr_infos; info; info = info->next) {
 
         verifier->table_entry_count++;
+
+        if (info->symbol && info->symbol->declaration) {
+            SemDeclInfo *decl_info = semantic_get_decl_info_by_id(
+                verifier->sem,
+                info->symbol->declaration_id
+            );
+
+            if (!decl_info || decl_info->symbol != info->symbol) {
+                verifier_error(verifier, info->node,
+                    "expression Symbol does not resolve through stable declaration identity");
+            }
+        }
 
         if (!info->node) {
             verifier_error(verifier, NULL,
@@ -1415,8 +1622,9 @@ void semantic_info_dump_program(SemanticContext *sem, Node *program, FILE *outpu
     dump.count  = 1;
 
     ExpressionWalker walker;
-    walker.sem     = sem;
-    walker.visit   = dump_expression;
+    walker.sem = sem;
+    walker.visit = dump_expression;
+    walker.visit_declaration = NULL;
     walker.context = &dump;
 
     walk_node(&walker, program);
@@ -1460,6 +1668,7 @@ int semantic_info_verify_program(
     ExpressionWalker walker;
     walker.sem = sem;
     walker.visit = collect_expression;
+    walker.visit_declaration = collect_declaration;
     walker.context = &verifier;
 
     walk_node(&walker, program);
@@ -1471,7 +1680,15 @@ int semantic_info_verify_program(
         );
     }
 
+    for (int i = 0; i < verifier.declarations.count; i++) {
+        verify_declaration_info(
+            &verifier,
+            verifier.declarations.items[i]
+        );
+    }
+
     verify_table_entries(&verifier);
+    verify_declaration_table_entries(&verifier);
 
     if (verifier.table_entry_count != verifier.expressions.count) {
         verifier_error(
@@ -1483,15 +1700,29 @@ int semantic_info_verify_program(
         );
     }
 
+    if (verifier.declaration_table_entry_count != verifier.declarations.count) {
+        verifier_error(
+            &verifier,
+            NULL,
+            "declaration table has %d entries but AST has %d checked declarations",
+            verifier.declaration_table_entry_count,
+            verifier.declarations.count
+        );
+    }
+
     if (verification) {
         verification->expression_count = verifier.expressions.count;
         verification->mutation_count = verifier.mutation_count;
         verification->table_entry_count = verifier.table_entry_count;
+        verification->declaration_count = verifier.declarations.count;
+        verification->declaration_table_entry_count =
+            verifier.declaration_table_entry_count;
         verification->error_count = verifier.error_count;
     }
 
     int succeeded = verifier.error_count == 0;
     expression_list_destroy(&verifier.expressions);
+    expression_list_destroy(&verifier.declarations);
 
     return succeeded;
 }

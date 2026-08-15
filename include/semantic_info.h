@@ -24,6 +24,16 @@
 typedef struct Type Type;
 typedef struct Symbol Symbol;
 
+/*
+ * Stable identity for a successfully resolved source declaration.
+ *
+ * IDs are unique within one semantic_check() invocation. They are deliberately
+ * independent of AST/Symbol pointer values so later lowering stages can build
+ * their own tables without using addresses as declaration identity.
+ */
+typedef size_t SemDeclId;
+#define INVALID_SEM_DECL_ID ((SemDeclId)-1)
+
 typedef enum ValueCategory {
     VALUE_CATEGORY_NONE,
     VALUE_CATEGORY_RVALUE,
@@ -35,6 +45,21 @@ typedef enum ValueAccess {
     VALUE_ACCESS_READONLY,
     VALUE_ACCESS_WRITABLE,
 } ValueAccess;
+
+typedef struct SemDeclInfo {
+    SemDeclId id;
+    Node *node;
+
+    /*
+     * Lexical symbol when this declaration introduces one. Aggregate members
+     * and parameters on declarations without a body may legitimately have no
+     * Symbol while still having declaration identity and a resolved type.
+     */
+    Symbol *symbol;
+    Type *type;
+
+    struct SemDeclInfo *next;
+} SemDeclInfo;
 
 typedef struct SemExprInfo {
     Node *node;

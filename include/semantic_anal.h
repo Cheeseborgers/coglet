@@ -93,11 +93,12 @@ typedef struct Symbol {
     Type *type;
 
     /*
-     * Source declaration for ordinary declared symbols when semantic checks
-     * need syntax-level metadata that is intentionally erased by type
-     * resolution. Currently populated for SYMBOL_FUNCTION.
+     * Source declaration and stable semantic identity for ordinary declared
+     * symbols. Compiler-provided aliases/builtins have declaration == NULL and
+     * declaration_id == INVALID_SEM_DECL_ID.
      */
     Node *declaration;
+    SemDeclId declaration_id;
 
     VariableStorage variable_storage;
 
@@ -159,6 +160,7 @@ typedef struct {
     */
     size_t next_flow_owner_id;
     size_t next_variable_id;
+    SemDeclId next_declaration_id;
 
     FlowState flow;
 
@@ -181,10 +183,13 @@ typedef struct {
 
     Type *current_return_type;
 
+    SemDeclInfo *decl_infos;
     SemExprInfo *expr_infos;
 } SemanticContext;
 
 void semantic_check(Node *program, SemanticContext *ctx);
+SemDeclInfo *semantic_get_decl_info(SemanticContext *ctx, Node *node);
+SemDeclInfo *semantic_get_decl_info_by_id(SemanticContext *ctx, SemDeclId id);
 SemExprInfo *semantic_get_expr_info(SemanticContext *ctx, Node *node);
 
 #endif

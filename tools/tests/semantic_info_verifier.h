@@ -10,6 +10,8 @@ typedef struct SemanticInfoVerification {
     int expression_count;
     int mutation_count;
     int table_entry_count;
+    int declaration_count;
+    int declaration_table_entry_count;
     int error_count;
 } SemanticInfoVerification;
 

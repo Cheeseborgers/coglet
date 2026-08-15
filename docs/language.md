@@ -1774,8 +1774,14 @@ and cross-target lowering are still deferred.
 
 ## Current Semantic Architecture
 
-Semantic analysis stores expression facts separately from the AST. Each
-successful expression records:
+Semantic analysis stores declaration and expression facts separately from the
+AST. Each successfully resolved source declaration receives a `SemDeclInfo`
+entry containing a stable per-compilation declaration ID, its resolved semantic
+type, and its lexical symbol when one exists. This includes aggregate members
+and parameters on body-less external declarations, which intentionally may not
+have lexical symbols.
+
+Each successful expression records:
 
 - its resolved type;
 - its resolved symbol, when applicable;
@@ -1801,6 +1807,9 @@ assignable.
 The semantic-info verifier walks successful programs in source order and
 checks:
 
+- one declaration entry for every successful source declaration;
+- unique stable declaration IDs with node/ID reverse lookup;
+- declaration/Symbol/type consistency;
 - one semantic entry for every successful expression or mutation node;
 - no duplicate or orphan side-table entries;
 - valid value-category and storage-access combinations;

@@ -668,10 +668,45 @@ Nested functions do not currently implement closure environments. A reference to
 Visible globals, constants, types, and function declarations remain accessible because they do not require an enclosing function's runtime flow slots.
 
 
+## Semantic Declaration Identity
+
+Successful source declarations now receive a stable semantic identity through
+`SemDeclInfo`. The ID is unique within one `semantic_check()` invocation and is
+independent of AST and `Symbol *` addresses. This gives later lowering stages a
+reliable declaration key without repeating lexical name resolution.
+
+Declaration metadata records:
+
+- the declaration AST node;
+- its resolved semantic type;
+- its stable `SemDeclId`;
+- its lexical `Symbol *` when the declaration introduces one.
+
+Globals, locals, constants, functions, structs, enums, parameters, struct
+fields, and enum members all receive declaration metadata after successful
+resolution. Aggregate members do not acquire artificial lexical symbols.
+Parameters in body-less declarations such as `#extern(c)` still receive an ID
+and resolved type; parameters in a Coglet function body attach their lexical
+symbol to that same existing declaration record.
+
+Ordinary declared symbols mirror the declaration node and ID in
+`Symbol.declaration` and `Symbol.declaration_id`. Compiler-provided builtin
+symbols and native-C type aliases use `INVALID_SEM_DECL_ID`.
+
+The public semantic API supports lookup by declaration node and by stable ID:
+
+```c
+semantic_get_decl_info(ctx, node);
+semantic_get_decl_info_by_id(ctx, id);
+```
+
+The declaration IDs are deterministic for a given semantic traversal but are
+compiler-internal identities, not persistent source/module IDs.
+
 ## Semantic-Information Verification
 
 `check_semantic_info` uses the same compiler-driver frontend pipeline and then
-verifies the semantic side table after successful analysis.
+verifies the semantic side tables after successful analysis.
 
 Normal verification:
 
@@ -687,7 +722,9 @@ check_semantic_info --dump-semantic-info source.cog
 
 The verifier checks:
 
-- completeness, duplicate entries, and orphan entries;
+- completeness, duplicate entries, and orphan entries for expressions and declarations;
+- stable declaration-ID uniqueness and reverse lookup;
+- declaration/Symbol/type consistency;
 - type, symbol, and value-category invariants;
 - valid `ValueCategory`/`ValueAccess` combinations;
 - readonly and writable dereference propagation;

@@ -82,10 +82,13 @@ int main(int argc, char **argv)
 
     printf(
         "semantic-info verification passed: "
-        "%d expressions, %d mutations, %d table entries\n",
+        "%d expressions, %d mutations, %d expression entries, "
+        "%d declarations, %d declaration entries\n",
         verification.expression_count,
         verification.mutation_count,
-        verification.table_entry_count
+        verification.table_entry_count,
+        verification.declaration_count,
+        verification.declaration_table_entry_count
     );
 
     compile_result_destroy(&result);

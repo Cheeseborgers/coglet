@@ -106,6 +106,82 @@ static void semantic_error_name(
     ctx->error_count++;
 }
 
+static SemDeclInfo *sem_find_decl_info(SemanticContext *ctx, Node *node) {
+
+    for (SemDeclInfo *info = ctx->decl_infos; info; info = info->next) {
+        if (info->node == node)
+            return info;
+    }
+
+    return NULL;
+}
+
+static SemDeclInfo *sem_find_decl_info_by_id(SemanticContext *ctx, SemDeclId id) {
+
+    if (id == INVALID_SEM_DECL_ID)
+        return NULL;
+
+    for (SemDeclInfo *info = ctx->decl_infos; info; info = info->next) {
+        if (info->id == id)
+            return info;
+    }
+
+    return NULL;
+}
+
+static SemDeclInfo *sem_get_or_create_decl_info(SemanticContext *ctx, Node *node) {
+
+    assert(node);
+
+    SemDeclInfo *info = sem_find_decl_info(ctx, node);
+    if (info) return info;
+
+    assert(ctx->next_declaration_id != INVALID_SEM_DECL_ID);
+
+    info = arena_alloc(ctx->arena, sizeof(*info));
+    memset(info, 0, sizeof(*info));
+
+    info->id = ctx->next_declaration_id++;
+    info->node = node;
+    info->next = ctx->decl_infos;
+    ctx->decl_infos = info;
+
+    return info;
+}
+
+static SemDeclInfo *sem_record_decl_info(
+    SemanticContext *ctx, Node *node, Type *type, Symbol *symbol) {
+
+    assert(node);
+    assert(type);
+    assert_canonical_builtin_type(ctx, type);
+
+    SemDeclInfo *info = sem_get_or_create_decl_info(ctx, node);
+
+    if (info->type)
+        assert(info->type == type);
+
+    if (info->symbol && symbol)
+        assert(info->symbol == symbol);
+
+    info->type = type;
+
+    if (symbol) {
+        info->symbol = symbol;
+
+        if (symbol->declaration)
+            assert(symbol->declaration == node);
+
+        if (symbol->declaration_id != INVALID_SEM_DECL_ID)
+            assert(symbol->declaration_id == info->id);
+
+        symbol->declaration = node;
+        symbol->declaration_id = info->id;
+    }
+
+    return info;
+}
+
 static SemExprInfo *sem_find_expr_info(SemanticContext *ctx, Node *node) {
 
     for (SemExprInfo *info = ctx->expr_infos; info; info = info->next) {
@@ -728,6 +804,8 @@ static Symbol *scope_define_symbol(
         .kind             = kind,
         .builtin_kind     = builtin_kind,
         .type             = type,
+        .declaration      = NULL,
+        .declaration_id   = INVALID_SEM_DECL_ID,
         .variable_storage = VARIABLE_STORAGE_NONE,
         .flow_owner_id    = INVALID_FLOW_OWNER_ID,
         .variable_id      = INVALID_VARIABLE_ID,
@@ -751,6 +829,22 @@ static Symbol *scope_define(
     assert(kind != SYMBOL_BUILTIN);
 
     return scope_define_symbol(ctx, name, kind, BUILTIN_NONE, type);
+}
+
+static Symbol *scope_define_declared(
+    SemanticContext *ctx,
+    Node *declaration,
+    StringView name,
+    SymbolKind kind,
+    Type *type
+) {
+    assert(declaration);
+    assert(kind != SYMBOL_BUILTIN);
+    assert(type);
+
+    Symbol *symbol = scope_define(ctx, name, kind, type);
+    sem_record_decl_info(ctx, declaration, type, symbol);
+    return symbol;
 }
 
 static void assert_symbol_builtin_invariant(const Symbol *symbol) {
@@ -7378,8 +7472,9 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
         value.type = type;
     }
 
-    Symbol *sym = scope_define(
+    Symbol *sym = scope_define_declared(
         ctx,
+        node,
         node->as.const_decl.name,
         SYMBOL_CONSTANT,
         type);
@@ -8333,8 +8428,9 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
             ? VARIABLE_STORAGE_LOCAL
             : VARIABLE_STORAGE_GLOBAL;
 
-    Symbol *symbol = scope_define(
+    Symbol *symbol = scope_define_declared(
         ctx,
+        node,
         node->as.var_decl.name,
         SYMBOL_VARIABLE,
         type);
@@ -8369,9 +8465,14 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
         return;
             }
 
-    Type *type = node->as.param_decl.var_type;
+    SemDeclInfo *signature_info =
+        sem_find_decl_info(ctx, node);
 
-    if (type) {
+    Type *type = signature_info
+        ? signature_info->type
+        : node->as.param_decl.var_type;
+
+    if (type && !signature_info) {
         type = resolve_type(ctx, type, node);
 
         if (!type)
@@ -8438,8 +8539,9 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
         return;
     }
 
-    Symbol *symbol = scope_define(
+    Symbol *symbol = scope_define_declared(
         ctx,
+        node,
         node->as.param_decl.name,
         SYMBOL_VARIABLE,
         type);
@@ -8944,11 +9046,30 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
         return 0;
     }
 
-    Symbol *symbol =
-        scope_define(ctx, node->as.func_decl.name, SYMBOL_FUNCTION, func_type);
+    scope_define_declared(
+        ctx,
+        node,
+        node->as.func_decl.name,
+        SYMBOL_FUNCTION,
+        func_type
+    );
 
-    symbol->declaration = node;
     node->as.func_decl.resolved_type = func_type;
+
+    /*
+     * Parameter declarations have semantic identity as part of the function
+     * signature even when there is no body (for example #extern(c)). A body
+     * later attaches the lexical parameter Symbol to this same declaration
+     * record rather than allocating a second identity.
+     */
+    for (int i = 0; i < node->as.func_decl.params.count; i++) {
+        sem_record_decl_info(
+            ctx,
+            node->as.func_decl.params.items[i],
+            func_type->parameters[i],
+            NULL
+        );
+    }
 
     return 1;
 }
@@ -9092,7 +9213,13 @@ static int declare_struct_shell(SemanticContext *ctx, Node *node) {
 
     node->as.struct_decl.resolved_type = type;
 
-    scope_define(ctx, node->as.struct_decl.name, SYMBOL_TYPE, type);
+    scope_define_declared(
+        ctx,
+        node,
+        node->as.struct_decl.name,
+        SYMBOL_TYPE,
+        type
+    );
 
     return 1;
 }
@@ -9393,6 +9520,7 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
         }
 
         type->fields[i].type = field_type;
+        sem_record_decl_info(ctx, field, field_type, NULL);
     }
 }
 
@@ -9415,7 +9543,13 @@ static int declare_enum_shell(SemanticContext *ctx, Node *node) {
     type->enum_name = node->as.enum_decl.name;
     type->enum_is_repr_c = node->as.enum_decl.is_repr_c;
 
-    scope_define(ctx, node->as.enum_decl.name, SYMBOL_TYPE, type);
+    scope_define_declared(
+        ctx,
+        node,
+        node->as.enum_decl.name,
+        SYMBOL_TYPE,
+        type
+    );
 
     node->as.enum_decl.resolved_type = type;
 
@@ -9615,6 +9749,8 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
         member_node->as.enum_member.resolved_value = value;
 
         if (!duplicate && value_is_valid) {
+            sem_record_decl_info(ctx, member_node, type, NULL);
+
             IntegerValue one =
                 integer_value_make(1, 0);
 
@@ -9970,6 +10106,7 @@ void semantic_check(Node *program, SemanticContext *ctx) {
     ctx->error_count        = 0;
     ctx->next_flow_owner_id = 0;
     ctx->next_variable_id   = 0;
+    ctx->next_declaration_id = 0;
     ctx->current_loop       = NULL;
 
     /*
@@ -9998,11 +10135,20 @@ void semantic_check(Node *program, SemanticContext *ctx) {
     ctx->type_null = new_type(ctx, TYPE_NULL);
 
     ctx->current_scope = scope_new(ctx, NULL);
+    ctx->decl_infos = NULL;
     ctx->expr_infos = NULL;
 
     register_builtin_symbols(ctx);
 
     check_node(ctx,  program);
+}
+
+SemDeclInfo *semantic_get_decl_info(SemanticContext *ctx, Node *node) {
+    return sem_find_decl_info(ctx, node);
+}
+
+SemDeclInfo *semantic_get_decl_info_by_id(SemanticContext *ctx, SemDeclId id) {
+    return sem_find_decl_info_by_id(ctx, id);
 }
 
 SemExprInfo *semantic_get_expr_info(SemanticContext *ctx, Node *node) {

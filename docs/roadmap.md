@@ -205,7 +205,7 @@ Current cast rules:
 - compile-time integer to enum: allowed only for a declared member value
 - runtime integer to enum: rejected until checked runtime conversion exists
 
-This makes enum switch exhaustiveness sound. A future `#repr(c)` attribute is planned for explicit C ABI representation; it will not make enums open.
+This makes enum switch exhaustiveness sound. `#repr(c)` enums now provide an explicit C ABI representation through a required native C integer backing alias without making enums open.
 
 ### Bitwise and Shift Operators
 
@@ -300,7 +300,8 @@ array-to-pointer decay. Explicit cross-target ABI selection is still deferred.
 
 The C aggregate representation slice now supports `#repr(c)` structs with
 scalar/raw-pointer fields, positive-length fixed arrays of supported field types,
-and nested `#repr(c)` structs by value. Inline struct dependencies, including
+nested `#repr(c)` structs by value, and `#repr(c)` enums with explicit native C
+integer backing aliases. Inline struct dependencies, including
 dependencies reached through array elements, are checked for cycles and emitted
 in dependency order, so source declaration order does not constrain valid C
 layouts.
@@ -311,8 +312,6 @@ Remaining C interoperability work includes:
 - richer linker/toolchain configuration beyond `-L` / `-l`;
 - variadic functions;
 - C callbacks/function pointers;
-- enum backing representation;
-- extending `#repr(c)` to enums once those representation rules are defined;
 - mapping C null pointers to Coglet `null` at lowering boundaries.
 
 ### 2. Slices and Pointer-Length Views

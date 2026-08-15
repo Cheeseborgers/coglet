@@ -1,0 +1,6 @@
+outer::() -> void {
+    #repr(c)
+    Local::enum(c_int) {
+        A = 0,
+    }
+}

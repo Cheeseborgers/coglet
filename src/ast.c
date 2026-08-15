@@ -300,6 +300,7 @@ Node *ast_new_enum_decl(Arena *arena, const char *name, int name_length, int lin
     node->as.enum_decl.name.length = name_length;
 
     node->as.enum_decl.backing_type  = NULL;
+    node->as.enum_decl.is_repr_c     = 0;
     node->as.enum_decl.resolved_type = NULL;
 
     node->as.enum_decl.members.items    = NULL;
@@ -581,6 +582,8 @@ Node *ast_clone(Arena *arena, const Node *node)
 
             clone->as.enum_decl.backing_type =
                 node->as.enum_decl.backing_type;
+            clone->as.enum_decl.is_repr_c =
+                node->as.enum_decl.is_repr_c;
 
             /*
              * Semantic information should not be cloned.

@@ -1,0 +1,5 @@
+semantic error at line 1: #repr(c) enums require an explicit native C integer backing type
+semantic error at line 6: #repr(c) enum backing type must be a native C integer alias
+semantic error at line 11: #repr(c) enum backing type must be a native C integer alias
+semantic error at line 18: enum member value does not fit in backing type
+4 semantic errors generated.

@@ -1351,17 +1351,25 @@ static Node *parse_attribute_decl(Parser *p)
             return ast_new_error(p->arena, p->current);
         }
 
-        if (!check(p, TOK_STRUCT)) {
-            error_at(p, &p->current, "#repr(c) applies only to struct declarations");
-            synchronize(p);
-            return ast_new_error(p->arena, p->current);
+        Node *decl = NULL;
+
+        if (check(p, TOK_STRUCT)) {
+            decl = parse_struct_decl_rest(p, name, hash.line);
+            if (decl && decl->type == NODE_STRUCT_DECL)
+                decl->as.struct_decl.is_repr_c = 1;
+            return decl;
         }
 
-        Node *decl = parse_struct_decl_rest(p, name, hash.line);
-        if (decl && decl->type == NODE_STRUCT_DECL)
-            decl->as.struct_decl.is_repr_c = 1;
+        if (check(p, TOK_ENUM)) {
+            decl = parse_enum_decl_rest(p, name, hash.line);
+            if (decl && decl->type == NODE_ENUM_DECL)
+                decl->as.enum_decl.is_repr_c = 1;
+            return decl;
+        }
 
-        return decl;
+        error_at(p, &p->current, "#repr(c) applies only to struct or enum declarations");
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
     }
 
     if (!token_text_equals(attribute, "extern")) {

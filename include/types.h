@@ -101,6 +101,7 @@ struct Type {
     Type *return_type;
 
     StringView enum_name;    // TYPE_ENUM
+    int enum_is_repr_c;
     Type *enum_backing_type;
     EnumMember *enum_members;
     int enum_member_count;

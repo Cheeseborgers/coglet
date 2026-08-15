@@ -1192,7 +1192,17 @@ BAD   :: cast(Color, 9); // invalid
 
 Runtime integer-to-enum casts are currently rejected. A future checked conversion may validate the incoming value at runtime.
 
-A future `#repr(c)` enum annotation is planned to make the backing representation and ABI contract explicit. It will not change closed-enum validity or switch exhaustiveness.
+For C interoperability, an enum may opt into an explicit ABI representation:
+
+```c
+#repr(c)
+CMode::enum(c_int) {
+    Idle = -1,
+    Running = 3,
+}
+```
+
+`#repr(c)` enums must spell an explicit native C integer backing alias (`c_char`, the signed/unsigned C integer families, or `c_size`). The representation annotation does not change closed-enum validity, nominal typing, or switch exhaustiveness. The host-C backend lowers the enum ABI type to the exact selected C integer spelling rather than a native C `enum`, because C99 cannot portably force a fixed enum underlying representation.
 
 ## Switch Statements
 
@@ -1434,8 +1444,8 @@ additional raw-pointer layers such as opaque**
 void as a return type only
 ```
 
-Arrays, ordinary Coglet structs, enums, and function types remain rejected in
-`#extern(c)` signatures. A struct must opt into the C ABI contract explicitly:
+Arrays, ordinary Coglet structs, ordinary Coglet enums, and function types remain rejected in
+`#extern(c)` signatures. Structs and enums must opt into the C ABI contract explicitly:
 
 ```c
 #repr(c)
@@ -1446,6 +1456,15 @@ CPoint::struct {
 
 #extern(c)
 consume_point::(point: CPoint) -> c_int;
+
+#repr(c)
+CMode::enum(c_int) {
+    Idle = -1,
+    Running = 3,
+}
+
+#extern(c)
+consume_mode::(mode: CMode) -> c_int;
 ```
 
 `#repr(c)` is top-level only. C-compatible scalar/raw-pointer fields are
@@ -1455,8 +1474,9 @@ supported C field type. Array lengths must be greater than zero; unsized and
 zero-length arrays are rejected. By-value struct dependencies may be declared in
 any source order, including dependencies reached through an array element; their
 inline layout graph must be acyclic. Raw-pointer cycles remain valid because the
-pointee is not laid out inline. Empty structs, enums, and ordinary Coglet structs
-remain rejected as fields. Arrays remain rejected as `#extern(c)` parameters and
+pointee is not laid out inline. Empty structs and ordinary Coglet structs/enums
+remain rejected as fields. Explicit `#repr(c)` enums are accepted directly, through
+pointers, and inside fixed arrays. Arrays remain rejected as `#extern(c)` parameters and
 returns because C function-parameter array syntax decays to pointers rather than
 representing a by-value array ABI.
 

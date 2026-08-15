@@ -1,0 +1,19 @@
+#repr(c)
+MissingBacking::enum {
+    A = 0,
+}
+
+#repr(c)
+CogletBacking::enum(i32) {
+    A = 0,
+}
+
+#repr(c)
+FloatBacking::enum(c_float) {
+    A = 0,
+}
+
+#repr(c)
+TooWide::enum(c_uchar) {
+    A = 256,
+}

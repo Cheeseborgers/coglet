@@ -134,3 +134,35 @@ int coglet_backend_array_struct_probe(CogletBackendArrayPacket packet)
 
     return 45;
 }
+
+
+typedef enum CogletBackendMode {
+    COGLET_BACKEND_MODE_IDLE = -1,
+    COGLET_BACKEND_MODE_RUNNING = 3
+} CogletBackendMode;
+
+typedef struct CogletBackendEnumPacket {
+    CogletBackendMode current;
+    CogletBackendMode history[2];
+} CogletBackendEnumPacket;
+
+CogletBackendEnumPacket coglet_backend_make_enum_packet(void)
+{
+    CogletBackendEnumPacket packet = {
+        COGLET_BACKEND_MODE_RUNNING,
+        {COGLET_BACKEND_MODE_IDLE, COGLET_BACKEND_MODE_RUNNING}
+    };
+    return packet;
+}
+
+int coglet_backend_enum_packet_probe(CogletBackendMode mode, CogletBackendEnumPacket packet)
+{
+    if (mode != COGLET_BACKEND_MODE_RUNNING ||
+        packet.current != COGLET_BACKEND_MODE_RUNNING ||
+        packet.history[0] != COGLET_BACKEND_MODE_IDLE ||
+        packet.history[1] != COGLET_BACKEND_MODE_RUNNING) {
+        return 50;
+    }
+
+    return 49;
+}

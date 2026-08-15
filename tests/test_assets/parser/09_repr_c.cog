@@ -7,3 +7,9 @@ CPoint::struct {
 
 #extern(c)
 consume_point::(point: CPoint) -> c_int;
+
+#repr(c)
+CMode::enum(c_int) {
+    Idle = -1,
+    Running = 3,
+}

@@ -664,7 +664,10 @@ static void print_node(Node *node)
             break;
 
         case NODE_ENUM_DECL:
-            printf("(enum %.*s (",
+            printf("(enum ");
+            if (node->as.enum_decl.is_repr_c)
+                printf("#repr(c) ");
+            printf("%.*s (",
                 (int)node->as.enum_decl.name.length,
                 node->as.enum_decl.name.data);
 
@@ -1107,6 +1110,8 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_ENUM_DECL:
             indent(depth);
 
+            if (node->as.enum_decl.is_repr_c)
+                printf("#repr(c) ");
             printf(
                 "enum_decl %.*s\n",
                 (int)node->as.enum_decl.name.length,

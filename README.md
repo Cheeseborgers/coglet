@@ -444,7 +444,17 @@ share a backing type, members, or a shadowed source-level name. Runtime
 integer-to-enum casts are currently rejected because checked runtime
 conversion has not yet been implemented.
 
-A future `#repr_c` annotation is planned for explicit ABI representation. It will not make an enum open.
+C ABI enums opt in explicitly with `#repr(c)` and an explicit native C integer backing alias:
+
+```c
+#repr(c)
+CResult::enum(c_int) {
+    Ok = 0,
+    Error = 1,
+}
+```
+
+The annotation fixes the external ABI representation but does not make the enum open: Coglet still accepts only declared member values and keeps normal enum exhaustiveness rules.
 
 ## Numeric Semantics
 

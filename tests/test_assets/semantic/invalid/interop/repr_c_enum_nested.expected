@@ -1,0 +1,2 @@
+semantic error at line 2: #repr(c) enum declarations must be at top level
+1 semantic error generated.

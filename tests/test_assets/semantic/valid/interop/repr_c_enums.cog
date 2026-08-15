@@ -1,0 +1,25 @@
+#repr(c)
+Mode::enum(c_int) {
+    Idle = -1,
+    Running = 3,
+}
+
+#repr(c)
+EnumPacket::struct {
+    current: Mode;
+    history: Mode[2];
+    next: Mode*;
+}
+
+#extern(c)
+coglet_backend_make_enum_packet::() -> EnumPacket;
+
+#extern(c)
+coglet_backend_enum_packet_probe::(packet: EnumPacket) -> c_int;
+
+#extern(c)
+coglet_backend_mode_probe::(mode: Mode) -> c_int;
+
+accept_mode::(mode: Mode) -> Mode {
+    return mode;
+}

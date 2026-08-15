@@ -291,6 +291,14 @@ struct Node {
             StringView name;
             Type *backing_type;
             NodeList members;
+
+            /*
+             * Explicit C ABI representation contract:
+             *
+             *     #repr(c)
+             *     Mode::enum(c_int) { ... }
+             */
+            int is_repr_c;
             Type *resolved_type;
         } enum_decl;
 

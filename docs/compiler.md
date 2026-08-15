@@ -104,18 +104,25 @@ Body checking is skipped for external declarations.
 
 The current C-ABI eligibility check permits concrete scalar types, raw typed
 pointers recursively over supported pointees, opaque raw pointers, explicitly
-`#repr(c)` structs, and `void` returns. It rejects arrays, ordinary Coglet
-structs, enums, and function types. External declarations are restricted to top
+`#repr(c)` structs/enums, and `void` returns. It rejects arrays, ordinary Coglet
+structs/enums, and function types. External declarations are restricted to top
 level and parameter defaults are rejected.
 
-`#repr(c)` is stored on `NODE_STRUCT_DECL` and propagated to the semantic
-`TYPE_STRUCT`. C-represented structs are top-level only. Fields may use
+`#repr(c)` is stored on `NODE_STRUCT_DECL` / `NODE_ENUM_DECL` and propagated to
+the semantic `TYPE_STRUCT` / `TYPE_ENUM`. C-represented aggregates are top-level
+only. A `#repr(c)` enum requires an explicit native C integer alias as its backing
+type; the existing enum member range checks then apply to that resolved type.
+The enum remains closed and nominal. The host-C backend represents it with a
+typedef of the exact selected C integer spelling, avoiding C99's implementation-
+defined native-enum underlying representation.
+
+C-represented structs are top-level only. Fields may use
 scalar/raw-pointer ABI types, pointers to other `#repr(c)` structs, other
 `#repr(c)` structs directly by value, or positive-length fixed arrays of any
 supported field type. Semantic analysis rejects direct and indirect by-value
 layout cycles, including cycles reached through array elements, while allowing
-recursive pointer graphs. Empty structs, unsized/zero-length arrays, enums, and
-ordinary structs remain rejected. The host-C backend assigns generated C struct
+recursive pointer graphs. Empty structs, unsized/zero-length arrays, ordinary enums, and ordinary structs
+remain rejected; `#repr(c)` enums are valid field/array element types. The host-C backend assigns generated C struct
 tags, emits forward typedefs before pointer aliases, and topologically emits
 complete struct definitions so by-value dependencies do not depend on Coglet
 source order. Fixed array fields are emitted as native C array declarators; fields

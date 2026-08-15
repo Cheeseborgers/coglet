@@ -19,6 +19,7 @@
 
 #define C_BACKEND_MAX_FUNCTIONS 512
 #define C_BACKEND_MAX_STRUCTS 256
+#define C_BACKEND_MAX_ENUMS 256
 #define C_BACKEND_MAX_TYPE_ALIASES 1024
 #define C_BACKEND_NAME_SIZE 48
 #define C_BACKEND_TYPE_DEF_SIZE 192
@@ -41,6 +42,12 @@ typedef struct CStruct {
     unsigned char definition_state;
 } CStruct;
 
+typedef struct CEnum {
+    Node *node;
+    const Type *type;
+    char generated_name[C_BACKEND_NAME_SIZE];
+} CEnum;
+
 typedef struct CBackend {
     FILE *out;
     const char *source_filename;
@@ -52,6 +59,9 @@ typedef struct CBackend {
 
     CStruct structs[C_BACKEND_MAX_STRUCTS];
     int struct_count;
+
+    CEnum enums[C_BACKEND_MAX_ENUMS];
+    int enum_count;
 
     CTypeAlias type_aliases[C_BACKEND_MAX_TYPE_ALIASES];
     int type_alias_count;
@@ -108,6 +118,28 @@ static const CStruct *find_c_struct_by_type(CBackend *backend, const Type *type)
     for (int i = 0; i < backend->struct_count; i++) {
         if (backend->structs[i].type == type)
             return &backend->structs[i];
+    }
+
+    return NULL;
+}
+
+static const CEnum *find_c_enum_by_name(CBackend *backend, StringView name)
+{
+    for (int i = 0; i < backend->enum_count; i++) {
+        StringView candidate = backend->enums[i].node->as.enum_decl.name;
+        if (candidate.length == name.length &&
+            memcmp(candidate.data, name.data, name.length) == 0)
+            return &backend->enums[i];
+    }
+
+    return NULL;
+}
+
+static const CEnum *find_c_enum_by_type(CBackend *backend, const Type *type)
+{
+    for (int i = 0; i < backend->enum_count; i++) {
+        if (backend->enums[i].type == type)
+            return &backend->enums[i];
     }
 
     return NULL;
@@ -180,11 +212,19 @@ static const char *register_c_type(CBackend *backend, const Type *type, const No
     if (type->kind == TYPE_NAMED) {
         const CStruct *structure = find_c_struct_by_name(backend, type->named_name);
         if (structure) return structure->generated_name;
+
+        const CEnum *enumeration = find_c_enum_by_name(backend, type->named_name);
+        if (enumeration) return enumeration->generated_name;
     }
 
     if (type->kind == TYPE_STRUCT) {
         const CStruct *structure = find_c_struct_by_type(backend, type);
         if (structure) return structure->generated_name;
+    }
+
+    if (type->kind == TYPE_ENUM) {
+        const CEnum *enumeration = find_c_enum_by_type(backend, type);
+        if (enumeration) return enumeration->generated_name;
     }
 
     if (type->kind != TYPE_POINTER && type->kind != TYPE_OPAQUE_POINTER) {
@@ -264,6 +304,46 @@ static CFunction *find_function(CBackend *backend, StringView name)
     }
 
     return NULL;
+}
+
+static int collect_enums(CBackend *backend)
+{
+    if (!backend->program || backend->program->type != NODE_PROGRAM) {
+        backend_error(backend, backend->program, "expected program node");
+        return 0;
+    }
+
+    NodeList statements = backend->program->as.program.statements;
+
+    for (int i = 0; i < statements.count; i++) {
+        Node *node = statements.items[i];
+        if (!node || node->type != NODE_ENUM_DECL || !node->as.enum_decl.is_repr_c)
+            continue;
+
+        if (backend->enum_count >= C_BACKEND_MAX_ENUMS) {
+            backend_error(backend, node, "too many #repr(c) enums for current C backend");
+            return 0;
+        }
+
+        if (!node->as.enum_decl.resolved_type) {
+            backend_error(backend, node, "missing resolved #repr(c) enum type during C lowering");
+            return 0;
+        }
+
+        CEnum *enumeration = &backend->enums[backend->enum_count];
+        memset(enumeration, 0, sizeof(*enumeration));
+        enumeration->node = node;
+        enumeration->type = node->as.enum_decl.resolved_type;
+        snprintf(
+            enumeration->generated_name,
+            sizeof(enumeration->generated_name),
+            "cg_enum_%d",
+            backend->enum_count
+        );
+        backend->enum_count++;
+    }
+
+    return !backend->had_error;
 }
 
 static int collect_structs(CBackend *backend)
@@ -420,6 +500,56 @@ static void emit_c_string_literal(FILE *out, StringView value)
 }
 
 static int emit_expression(CBackend *backend, Node *node);
+
+static int emit_integer_value(CBackend *backend, const Node *owner, IntegerValue value)
+{
+    if (value.is_negative) {
+        if (value.magnitude > ((uint64_t)INT64_MAX + 1u)) {
+            backend_error(backend, owner, "negative enum value exceeds host-C backend integer range");
+            return 0;
+        }
+
+        if (value.magnitude == ((uint64_t)INT64_MAX + 1u)) {
+            fputs("(-9223372036854775807LL - 1LL)", backend->out);
+            return 1;
+        }
+
+        fprintf(backend->out, "(-%" PRIu64 "LL)", value.magnitude);
+        return 1;
+    }
+
+    fprintf(backend->out, "%" PRIu64 "ULL", value.magnitude);
+    return 1;
+}
+
+static int emit_enum_member(CBackend *backend, Node *node)
+{
+    SemExprInfo *info = semantic_get_expr_info(backend->sem, node);
+    if (!info || !info->type || info->type->kind != TYPE_ENUM)
+        return 0;
+
+    Type *enum_type = info->type;
+    for (int i = 0; i < enum_type->enum_member_count; i++) {
+        EnumMember *member = &enum_type->enum_members[i];
+        if (member->name.length == node->as.field.name.length &&
+            memcmp(member->name.data, node->as.field.name.data, member->name.length) == 0) {
+            const CEnum *enumeration = find_c_enum_by_type(backend, enum_type);
+            if (!enumeration) {
+                backend_error(backend, node, "enum member belongs to a non-#repr(c) enum in C lowering");
+                return 0;
+            }
+
+            fprintf(backend->out, "((%s)", enumeration->generated_name);
+            if (!emit_integer_value(backend, node, member->value))
+                return 0;
+            fputc(')', backend->out);
+            return 1;
+        }
+    }
+
+    backend_error(backend, node, "could not resolve enum member during C lowering");
+    return 0;
+}
 
 static int emit_integer_literal(CBackend *backend, Node *node)
 {
@@ -618,6 +748,14 @@ static int emit_expression(CBackend *backend, Node *node)
             return 1;
         }
 
+        case NODE_FIELD:
+            if (emit_enum_member(backend, node))
+                return 1;
+
+            if (!backend->had_error)
+                backend_error(backend, node, "current host-C backend only lowers enum-member field expressions");
+            return 0;
+
         case NODE_CAST:
             backend_error(
                 backend,
@@ -720,6 +858,32 @@ static void emit_parameter_type_list(CBackend *backend, Node *func, int with_nam
         if (with_names)
             fprintf(backend->out, " cg_p_%d", i);
     }
+}
+
+static int emit_enum_definitions(CBackend *backend)
+{
+    for (int i = 0; i < backend->enum_count; i++) {
+        CEnum *enumeration = &backend->enums[i];
+        Node *decl = enumeration->node;
+        const char *backing = base_c_type_name(decl->as.enum_decl.backing_type);
+
+        if (!backing) {
+            backend_error(backend, decl, "invalid #repr(c) enum backing type during C lowering");
+            return 0;
+        }
+
+        /*
+         * C99 cannot portably spell a fixed-underlying enum. Lower the ABI
+         * type to the exact requested native C integer representation while
+         * Coglet retains closed-enum validity in semantic analysis.
+         */
+        fprintf(backend->out, "typedef %s %s;\n", backing, enumeration->generated_name);
+    }
+
+    if (backend->enum_count > 0)
+        fputc('\n', backend->out);
+
+    return !backend->had_error;
 }
 
 static void emit_struct_forward_declarations(CBackend *backend)
@@ -960,7 +1124,8 @@ static CBackendStatus c_backend_emit_stream(
     backend.program = program;
     backend.sem = sem;
 
-    if (!collect_structs(&backend) ||
+    if (!collect_enums(&backend) ||
+        !collect_structs(&backend) ||
         !collect_functions(&backend) ||
         !prepare_struct_types(&backend) ||
         !prepare_function_types(&backend))
@@ -970,6 +1135,9 @@ static CBackendStatus c_backend_emit_stream(
     fputs("#include <stddef.h>\n#include <stdint.h>\n\n", out);
 
     emit_struct_forward_declarations(&backend);
+
+    if (!emit_enum_definitions(&backend))
+        return C_BACKEND_STATUS_UNSUPPORTED;
 
     for (int i = 0; i < backend.type_alias_count; i++) {
         fputs(backend.type_aliases[i].definition, out);

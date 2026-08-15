@@ -325,16 +325,24 @@ CPoint::struct {
 Conceptually:
 
 ```text
-repr_c_struct_decl :=
+repr_c_decl :=
     "#" "repr" "(" "c" ")"
-    identifier "::" "struct" "{" {struct_field_decl} "}";
+    identifier "::" (repr_c_struct_body | repr_c_enum_body);
+
+repr_c_struct_body :=
+    "struct" "{" {struct_field_decl} "}";
+
+repr_c_enum_body :=
+    "enum" "(" c_integer_alias ")" "{" [enum_member {"," enum_member} [","]] "}";
 ```
 
-`repr` and `c` remain identifiers at the lexer level. `#repr(c)` currently
-applies only to top-level struct declarations. A represented struct may contain
+`repr` and `c` remain identifiers at the lexer level. `#repr(c)` applies to
+top-level struct and enum declarations. C-represented enums require an explicit
+native C integer backing alias. A represented struct may contain
 another `#repr(c)` struct by value or a positive-length fixed array of supported
-C field types. Struct dependencies reached directly or through array elements
-must form an acyclic inline layout graph. Unsized and zero-length C-layout array
+C field types, including `#repr(c)` enum values and arrays of those enums.
+Struct dependencies reached directly or through array elements must form an
+acyclic inline layout graph. Unsized and zero-length C-layout array
 fields are rejected.
 
 The C scalar-ABI names `c_char`, `c_schar`, `c_uchar`, `c_short`,

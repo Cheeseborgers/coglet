@@ -8340,12 +8340,14 @@ static int extern_c_type_supported(const Type *type, int allow_void)
         case TYPE_STRUCT:
             return type->struct_is_repr_c;
 
+        case TYPE_ENUM:
+            return type->enum_is_repr_c;
+
         case TYPE_UNTYPED_INT:
         case TYPE_UNTYPED_FLOAT:
         case TYPE_NULL:
         case TYPE_ARRAY:
         case TYPE_NAMED:
-        case TYPE_ENUM:
         case TYPE_FUNCTION:
             return 0;
     }
@@ -8647,6 +8649,9 @@ static int repr_c_struct_field_type_supported(const Type *type)
         case TYPE_STRUCT:
             return type->struct_is_repr_c;
 
+        case TYPE_ENUM:
+            return type->enum_is_repr_c;
+
         case TYPE_ARRAY:
             /*
              * C-compatible aggregate fields may contain fixed-size arrays.
@@ -8662,7 +8667,6 @@ static int repr_c_struct_field_type_supported(const Type *type)
         case TYPE_UNTYPED_FLOAT:
         case TYPE_NULL:
         case TYPE_NAMED:
-        case TYPE_ENUM:
         case TYPE_FUNCTION:
             return 0;
     }
@@ -8871,6 +8875,7 @@ static int declare_enum_shell(SemanticContext *ctx, Node *node) {
 
     Type *type      = new_type(ctx, TYPE_ENUM);
     type->enum_name = node->as.enum_decl.name;
+    type->enum_is_repr_c = node->as.enum_decl.is_repr_c;
 
     scope_define(ctx, node->as.enum_decl.name, SYMBOL_TYPE, type);
 
@@ -8916,11 +8921,47 @@ static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value
     return NULL;
 }
 
+static int repr_c_enum_backing_type_syntax_supported(const Type *type)
+{
+    if (!type || type->kind != TYPE_NAMED)
+        return 0;
+
+    StringView name = type->named_name;
+    static const char *const supported[] = {
+        "c_char", "c_schar", "c_uchar",
+        "c_short", "c_ushort",
+        "c_int", "c_uint",
+        "c_long", "c_ulong",
+        "c_longlong", "c_ulonglong",
+        "c_size",
+    };
+
+    for (size_t i = 0; i < sizeof(supported) / sizeof(supported[0]); i++) {
+        size_t length = strlen(supported[i]);
+        if (name.length == length && memcmp(name.data, supported[i], length) == 0)
+            return 1;
+    }
+
+    return 0;
+}
+
 static void fill_enum_members(SemanticContext *ctx, Node *node) {
 
     Type *type = node->as.enum_decl.resolved_type;
 
     if (!type) return;
+
+    if (node->as.enum_decl.is_repr_c) {
+        if (!node->as.enum_decl.backing_type) {
+            semantic_error(ctx, node, "#repr(c) enums require an explicit native C integer backing type");
+            return;
+        }
+
+        if (!repr_c_enum_backing_type_syntax_supported(node->as.enum_decl.backing_type)) {
+            semantic_error(ctx, node, "#repr(c) enum backing type must be a native C integer alias");
+            return;
+        }
+    }
 
     Type *backing_type = NULL;
 
@@ -9267,6 +9308,11 @@ static void check_node(SemanticContext *ctx,Node *node) {
         }
 
         case NODE_ENUM_DECL: {
+            if (node->as.enum_decl.is_repr_c && ctx->function_depth > 0) {
+                semantic_error(ctx, node, "#repr(c) enum declarations must be at top level");
+                break;
+            }
+
             declare_enum_shell(ctx, node);
             fill_enum_members(ctx, node);
             break;

@@ -6,3 +6,14 @@ program
   extern(c) func consume_point -> c_int
     params:
       param_decl point: CPoint
+  #repr(c) enum_decl CMode
+    Backing type
+      c_int
+    Members
+      EnumMember Idle
+        Explicit value
+          (-)
+            1
+      EnumMember Running
+        Explicit value
+          3

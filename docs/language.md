@@ -1422,7 +1422,10 @@ bool
 i8 i16 i32 i64
 u8 u16 u32 u64
 f32 f64
-c_char c_int c_uint c_size
+c_char c_schar c_uchar
+c_short c_ushort c_int c_uint
+c_long c_ulong c_longlong c_ulonglong
+c_size
 T* and readonly T* when T is recursively in this subset
 opaque* and readonly opaque*
 additional raw-pointer layers such as opaque**
@@ -1445,20 +1448,30 @@ representation, while Coglet still requires explicit `reinterpret()` when
 crossing between typed and opaque raw pointers. Readonly access remains
 monotonic across that conversion.
 
-Coglet now provides a first set of transparent C ABI scalar aliases:
+Coglet provides transparent aliases for the native C integer family:
 
 ```text
-c_char  -> native C char representation and signedness
-c_int   -> native C int representation
-c_uint  -> native C unsigned int representation
-c_size  -> native C size_t representation
+c_char      -> native C char representation and signedness
+c_schar     -> signed char
+c_uchar     -> unsigned char
+c_short     -> short
+c_ushort    -> unsigned short
+c_int       -> int
+c_uint      -> unsigned int
+c_long      -> long
+c_ulong     -> unsigned long
+c_longlong  -> long long
+c_ulonglong -> unsigned long long
+c_size      -> size_t
 ```
 
 These names are semantic builtin type aliases rather than lexer keywords. Once
 resolved, they use the matching canonical Coglet fixed-width integer type, so
 ordinary arithmetic, literal contextualization, casts, and pointer composition
-continue to use the existing integer semantics. For example, on a conventional
-LP64 host `c_int` resolves to `i32` and `c_size` to `u64`.
+continue to use the existing integer semantics. Plain `c_char` remains distinct
+from `c_schar`/`c_uchar` because native C decides whether plain `char` is signed.
+For example, on a conventional LP64 host `c_int` resolves to `i32`, `c_long`
+resolves to `i64`, and `c_size` resolves to `u64`.
 
 The compiler does not yet expose an explicit cross-compilation target. For this
 milestone the selected C ABI is therefore the **native C ABI used to build

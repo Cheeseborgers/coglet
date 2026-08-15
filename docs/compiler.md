@@ -108,11 +108,12 @@ returns. It rejects arrays, structs, enums, and function types until their ABI
 representation is specified. External declarations are restricted to top level
 and parameter defaults are rejected.
 
-Semantic startup registers `c_char`, `c_int`, `c_uint`, and `c_size` as
-builtin type aliases using the native C ABI of the compiler executable. The
-widths come from the build C implementation (`CHAR_BIT` and `sizeof`), and
-plain-`char` signedness comes from `CHAR_MIN`. Each alias resolves to an existing
-canonical Coglet integer type, keeping the rest of type checking target-agnostic.
+Semantic startup registers the native C integer family as builtin type aliases:
+`c_char`, `c_schar`, `c_uchar`, `c_short`, `c_ushort`, `c_int`, `c_uint`,
+`c_long`, `c_ulong`, `c_longlong`, `c_ulonglong`, and `c_size`. The widths come
+from the build C implementation (`CHAR_BIT` and `sizeof`), while plain-`char`
+signedness comes from `CHAR_MIN`. Each alias resolves to an existing canonical
+Coglet fixed-width integer type, keeping the rest of type checking target-agnostic.
 
 A deliberately narrow **host-C backend** now provides the first executable
 lowering path. `coglet input.cog -o program` emits a temporary C translation

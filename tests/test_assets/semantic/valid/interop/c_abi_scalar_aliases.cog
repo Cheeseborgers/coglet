@@ -16,3 +16,38 @@ use_c_abi_aliases::(s: readonly c_char*, size: c_size, value: c_uint) -> c_int {
     malloc(size);
     return puts(s);
 }
+
+#extern(c)
+consume_integer_family::(
+    schar_value: c_schar,
+    uchar_value: c_uchar,
+    short_value: c_short,
+    ushort_value: c_ushort,
+    long_value: c_long,
+    ulong_value: c_ulong,
+    longlong_value: c_longlong,
+    ulonglong_value: c_ulonglong
+) -> void;
+
+use_remaining_c_integer_aliases::(
+    schar_value: c_schar,
+    uchar_value: c_uchar,
+    short_value: c_short,
+    ushort_value: c_ushort,
+    long_value: c_long,
+    ulong_value: c_ulong,
+    longlong_value: c_longlong,
+    ulonglong_value: c_ulonglong
+) -> c_longlong {
+    consume_integer_family(
+        schar_value,
+        uchar_value,
+        short_value,
+        ushort_value,
+        long_value,
+        ulong_value,
+        longlong_value,
+        ulonglong_value
+    );
+    return longlong_value;
+}

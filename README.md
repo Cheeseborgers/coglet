@@ -86,9 +86,10 @@ create_window::(title: readonly c_char*) -> opaque*;
 
 `#extern(c)` declarations are top-level, have no Coglet body, and currently
 accept the scalar/raw-pointer ABI subset. `name="..."` optionally changes the
-external symbol without changing the Coglet identifier. `c_char`, `c_int`,
-`c_uint`, and `c_size` are transparent aliases selected from the native C ABI
-used to build the compiler. The initial host-C backend can now compile a
+external symbol without changing the Coglet identifier. The native C integer
+family is available through transparent aliases such as `c_char`, `c_short`,
+`c_int`, `c_long`, `c_longlong`, their unsigned forms, and `c_size`, selected
+from the native C ABI used to build the compiler. The initial host-C backend can now compile a
 deliberately small executable subset and resolve direct external C calls through
 the native `cc` toolchain. Direct string literals may bind to `readonly c_char*`
 parameters of `#extern(c)` functions without enabling general array-to-pointer

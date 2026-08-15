@@ -102,10 +102,18 @@ static const char *base_c_type_name(const Type *type)
         case TYPE_F64: return "double";
 
         case TYPE_NAMED:
-            if (sv_equals(type->named_name, "c_char")) return "char";
-            if (sv_equals(type->named_name, "c_int"))  return "int";
-            if (sv_equals(type->named_name, "c_uint")) return "unsigned int";
-            if (sv_equals(type->named_name, "c_size")) return "size_t";
+            if (sv_equals(type->named_name, "c_char"))      return "char";
+            if (sv_equals(type->named_name, "c_schar"))     return "signed char";
+            if (sv_equals(type->named_name, "c_uchar"))     return "unsigned char";
+            if (sv_equals(type->named_name, "c_short"))     return "short";
+            if (sv_equals(type->named_name, "c_ushort"))    return "unsigned short";
+            if (sv_equals(type->named_name, "c_int"))       return "int";
+            if (sv_equals(type->named_name, "c_uint"))      return "unsigned int";
+            if (sv_equals(type->named_name, "c_long"))      return "long";
+            if (sv_equals(type->named_name, "c_ulong"))     return "unsigned long";
+            if (sv_equals(type->named_name, "c_longlong"))  return "long long";
+            if (sv_equals(type->named_name, "c_ulonglong")) return "unsigned long long";
+            if (sv_equals(type->named_name, "c_size"))      return "size_t";
             return NULL;
 
         case TYPE_UNTYPED_INT:

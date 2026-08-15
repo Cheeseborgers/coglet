@@ -833,7 +833,7 @@ static int register_c_abi_type_alias(
 }
 
 /*
- * Registers the first target-sized C ABI aliases.
+ * Registers the native C integer-family ABI aliases.
  *
  * The compiler does not have an explicit cross-compilation target yet, so the
  * selected ABI for this milestone is the native C ABI used to build Coglet.
@@ -842,32 +842,31 @@ static int register_c_abi_type_alias(
  * canonical `u64`. A future target configuration can replace this mapping
  * without changing source syntax or the rest of semantic analysis.
  */
-static void register_native_c_abi_type_aliases(SemanticContext *ctx) {
-    Type *c_char = fixed_integer_type_for_c_abi(
-        ctx,
-        sizeof(char),
-        CHAR_MIN < 0
-    );
-    Type *c_int = fixed_integer_type_for_c_abi(
-        ctx,
-        sizeof(int),
-        1
-    );
-    Type *c_uint = fixed_integer_type_for_c_abi(
-        ctx,
-        sizeof(unsigned int),
-        0
-    );
-    Type *c_size = fixed_integer_type_for_c_abi(
-        ctx,
-        sizeof(size_t),
-        0
-    );
+static void register_native_c_integer_alias(
+    SemanticContext *ctx,
+    const char *name,
+    size_t byte_width,
+    int is_signed
+) {
+    Type *type = fixed_integer_type_for_c_abi(ctx, byte_width, is_signed);
+    register_c_abi_type_alias(ctx, name, type, byte_width);
+}
 
-    register_c_abi_type_alias(ctx, "c_char", c_char, sizeof(char));
-    register_c_abi_type_alias(ctx, "c_int", c_int, sizeof(int));
-    register_c_abi_type_alias(ctx, "c_uint", c_uint, sizeof(unsigned int));
-    register_c_abi_type_alias(ctx, "c_size", c_size, sizeof(size_t));
+static void register_native_c_abi_type_aliases(SemanticContext *ctx) {
+    register_native_c_integer_alias(ctx, "c_char", sizeof(char), CHAR_MIN < 0);
+    register_native_c_integer_alias(ctx, "c_schar", sizeof(signed char), 1);
+    register_native_c_integer_alias(ctx, "c_uchar", sizeof(unsigned char), 0);
+
+    register_native_c_integer_alias(ctx, "c_short", sizeof(short), 1);
+    register_native_c_integer_alias(ctx, "c_ushort", sizeof(unsigned short), 0);
+    register_native_c_integer_alias(ctx, "c_int", sizeof(int), 1);
+    register_native_c_integer_alias(ctx, "c_uint", sizeof(unsigned int), 0);
+    register_native_c_integer_alias(ctx, "c_long", sizeof(long), 1);
+    register_native_c_integer_alias(ctx, "c_ulong", sizeof(unsigned long), 0);
+    register_native_c_integer_alias(ctx, "c_longlong", sizeof(long long), 1);
+    register_native_c_integer_alias(ctx, "c_ulonglong", sizeof(unsigned long long), 0);
+
+    register_native_c_integer_alias(ctx, "c_size", sizeof(size_t), 0);
 }
 
 static void register_builtin_symbols(SemanticContext *ctx) {

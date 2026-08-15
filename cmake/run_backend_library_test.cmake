@@ -22,6 +22,10 @@ if(NOT DEFINED STYLE)
     message(FATAL_ERROR "STYLE is required")
 endif()
 
+if(NOT DEFINED EXPECT_EXIT)
+    set(EXPECT_EXIT 23)
+endif()
+
 file(REMOVE "${OUTPUT}")
 
 if(STYLE STREQUAL "split")
@@ -65,9 +69,9 @@ if(NOT run_result MATCHES "^[0-9]+$")
     )
 endif()
 
-if(NOT run_result EQUAL 23)
+if(NOT run_result EQUAL EXPECT_EXIT)
     message(FATAL_ERROR
-        "generated executable exited ${run_result}, expected 23\n"
+        "generated executable exited ${run_result}, expected ${EXPECT_EXIT}\n"
         "stdout:\n${run_stdout}\n"
         "stderr:\n${run_stderr}"
     )

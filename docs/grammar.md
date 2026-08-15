@@ -10,8 +10,11 @@ A simplified type grammar is:
 
 ```ebnf
 type =
-    ["readonly"] base_type
-    {"*"}
+    ["readonly"]
+    (
+        base_type {"*"}
+      | "opaque" "*" {"*"}
+    )
     ["[" integer_constant "]"];
 ```
 
@@ -115,10 +118,32 @@ Pointers with equal immediate pointee types may be compared despite an
 immediate mutable-versus-readonly difference. Both pointer forms may be
 compared with `null`.
 
-Arrays do not decay implicitly to pointers. General pointer arithmetic,
-opaque pointers, and ownership or lifetime checking are not yet supported.
-`null` is the only source-level null-pointer value; integer zero does not
-implicitly or explicitly become a pointer.
+Arrays do not decay implicitly to pointers. General pointer arithmetic and
+ownership or lifetime checking are not yet supported. `null` is the only
+source-level null-pointer value; integer zero does not implicitly or explicitly
+become a pointer.
+
+### Opaque raw pointers
+
+The source form `opaque*` denotes a dedicated non-dereferenceable raw-pointer
+type. `opaque` without at least one `*` is invalid.
+
+```c
+handle: opaque*;
+view: readonly opaque*;
+out: opaque**;
+```
+
+`opaque*` and `readonly opaque*` may hold `null`, compare with `null`, compare
+with each other while ignoring only their immediate access difference, and
+adapt from mutable to readonly. They cannot be dereferenced or indexed.
+
+Additional `*` layers are ordinary typed pointer layers. Consequently,
+`opaque**` may be dereferenced once to obtain an `opaque*`, but the resulting
+opaque pointer still cannot be dereferenced.
+
+Typed and opaque raw pointers do not implicitly convert or directly compare.
+Conversions between them require `reinterpret`.
 
 ## Array Indexing
 
@@ -243,23 +268,53 @@ String literals are not yet general inferred standalone expressions.
 
 ## Function Declarations and Calls
 
-A simplified function form is:
+Function declarations have two forms:
 
 ```ebnf
 function_declaration =
+      coglet_function_declaration
+    | extern_c_function_declaration;
+
+coglet_function_declaration =
     identifier "::"
     "(" [parameter_list] ")"
     ["->" type]
     block;
+
+extern_c_function_declaration =
+    "#" "extern" "(" "c" ")"
+    identifier "::"
+    "(" [parameter_list] ")"
+    ["->" type]
+    ";";
 ```
 
-Example:
+Ordinary Coglet function:
 
 ```c
 add::(a, b: i32) -> i32 {
     return a + b;
 }
 ```
+
+External C declaration:
+
+```c
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+
+#extern(c, name="SDL_CreateWindow")
+create_window::(title: readonly c_char*) -> opaque*;
+```
+
+The optional `name="..."` option overrides the external C/linker symbol while
+leaving the Coglet function identifier unchanged. Without it, the Coglet name
+is used as the external symbol. `#extern(c)` declarations have no Coglet body,
+are terminated by `;`, and are currently restricted semantically to top level.
+
+`c_char`, `c_int`, `c_uint`, and `c_size` are builtin type aliases resolved
+through the selected native C ABI. They are ordinary identifiers at the lexer
+level, so adding them does not expand the keyword set.
 
 A missing return type defaults to `void`.
 
@@ -538,12 +593,14 @@ Color.Red
 
 ## Explicit Conversion Expressions
 
-Checked and truncating conversions share this surface grammar:
+Checked, truncating, and raw-pointer reinterpretation conversions share this
+surface grammar:
 
 ```ebnf
 conversion_expression =
       "cast" "(" type "," expression ")"
-    | "truncate" "(" type "," expression ")";
+    | "truncate" "(" type "," expression ")"
+    | "reinterpret" "(" type "," expression ")";
 ```
 
 `cast(TargetType, expression)` is checked and value-preserving. It also permits
@@ -552,6 +609,10 @@ the safe access conversion from `T*` to `readonly T*`, but not the reverse.
 `truncate(TargetIntegerType, expression)` accepts only integer sources and
 concrete integer targets. It retains the low destination-width bits and
 interprets them using the target signedness.
+
+`reinterpret(TargetPointerType, expression)` crosses only between a top-level
+typed raw pointer and a top-level opaque raw pointer. It preserves address bits,
+never removes readonly access, and is not a general `T*`-to-`U*` cast.
 
 ## Switch
 

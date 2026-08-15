@@ -1,0 +1,4 @@
+outer::() -> void {
+    #extern(c)
+    nested::(value: i32) -> i32;
+}

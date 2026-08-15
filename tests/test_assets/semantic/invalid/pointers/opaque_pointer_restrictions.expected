@@ -1,0 +1,11 @@
+semantic error at line 7: initializer type does not match declared type
+semantic error at line 8: initializer type does not match declared type
+semantic error at line 10: comparison type mismatch
+semantic error at line 12: cannot dereference an opaque pointer
+semantic error at line 13: cannot index an opaque pointer
+semantic error at line 15: reinterpret cannot discard readonly pointer access
+semantic error at line 16: reinterpret cannot discard readonly pointer access
+semantic error at line 18: reinterpret must cross between typed and opaque raw pointers
+semantic error at line 19: reinterpret must cross between typed and opaque raw pointers
+semantic error at line 20: reinterpret must cross between typed and opaque raw pointers
+10 semantic errors generated.

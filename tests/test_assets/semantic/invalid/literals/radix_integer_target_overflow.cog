@@ -1,0 +1,4 @@
+radix_integer_target_overflow::() -> void {
+    too_large_for_u8: u8 = 0x100;
+    too_large_for_i8: i8 = 0x80;
+}

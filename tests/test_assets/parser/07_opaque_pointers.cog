@@ -1,0 +1,7 @@
+opaque_types::(p: i32*, h: opaque*, rh: readonly opaque*) -> void {
+    slot: opaque* = null;
+    out: opaque** = &slot;
+    erased: opaque* = reinterpret(opaque*, p);
+    recovered: i32* = reinterpret(i32*, h);
+    view: readonly opaque* = rh;
+}

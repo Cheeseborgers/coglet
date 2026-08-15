@@ -1,0 +1,3 @@
+error: unknown #extern(c) option; expected 'name'
+#extern(c, library="SDL3")
+           ^~~~~~~

@@ -62,7 +62,8 @@ A result may be destroyed after every driver return status.
   such as when the source file could not be read.
 
 Parser and driver errors map to process exit code 2. Semantic errors map to
-exit code 1.
+exit code 1. The `coglet` command uses exit code 3 when an explicitly requested
+backend emission/link step fails after successful frontend checking.
 
 ## Diagnostics
 
@@ -74,6 +75,64 @@ driver prints only the final semantic error-count summary.
 
 Callers must not print these diagnostics again.
 
+
+## External C Function Declarations
+
+`#extern(c)` is represented by the ordinary `NODE_FUNC_DECL` AST node with
+`FUNCTION_LINKAGE_EXTERN_C`. Its `body` is `NULL`; ordinary Coglet functions use
+`FUNCTION_LINKAGE_COGLET` and retain a block body.
+
+The parser keeps `extern`, `c`, and option names such as `name` as ordinary
+identifiers. Only `#` is new punctuation. This means the annotation syntax does
+not consume globally useful identifier names and can coexist with future
+declaration metadata such as `#repr_c`.
+
+`NODE_FUNC_DECL.external_name` stores an optional decoded external symbol name.
+An empty view means the source-level Coglet function name is also the external
+symbol. `#extern(c, name="...")` populates the override; the parser rejects an
+empty name, invalid string escape, embedded NUL, duplicate `name`, or unknown
+option. AST cloning preserves this metadata.
+
+Semantic analysis registers external function signatures in the same function
+namespace as ordinary functions, so duplicate-declaration and call-resolution
+rules remain shared. Body checking is skipped for external declarations.
+
+The current C-ABI eligibility check permits concrete scalar types, raw typed
+pointers recursively over supported pointees, opaque raw pointers, and `void`
+returns. It rejects arrays, structs, enums, and function types until their ABI
+representation is specified. External declarations are restricted to top level
+and parameter defaults are rejected.
+
+Semantic startup registers `c_char`, `c_int`, `c_uint`, and `c_size` as
+builtin type aliases using the native C ABI of the compiler executable. The
+widths come from the build C implementation (`CHAR_BIT` and `sizeof`), and
+plain-`char` signedness comes from `CHAR_MIN`. Each alias resolves to an existing
+canonical Coglet integer type, keeping the rest of type checking target-agnostic.
+
+A deliberately narrow **host-C backend** now provides the first executable
+lowering path. `coglet input.cog -o program` emits a temporary C translation
+unit, invokes the native `cc` driver, and lets that driver resolve normal C
+runtime/libc symbols. External declarations are emitted under generated C
+identifiers with `__asm__("symbol")` labels, so `name="..."` overrides affect
+the actual linker symbol without requiring that symbol to be a safe C identifier.
+
+The backend is intentionally smaller than the frontend. It currently lowers
+only direct named function calls, integer/Boolean/null literals, parameter
+references, literal integer negation, expression statements, and returns. It
+requires `main::() -> c_int` for a host executable. Runtime arithmetic, strings,
+locals, control flow, aggregate values, and casts are rejected by the backend
+until their Coglet semantics can be preserved correctly. In particular, checked
+signed arithmetic is not lowered to raw C signed operators because C overflow
+would introduce undefined behavior instead of Coglet's required trap.
+
+`coglet input.cog --emit-c generated.c` exposes the generated translation unit
+for inspection. Running `coglet input.cog` without `-o` or `--emit-c` preserves
+the previous frontend-only parse/check behavior.
+
+There is not yet an explicit cross-compilation target model. A future driver
+configuration should provide the C ABI map instead of deriving it from the host.
+Library-selection flags, C `_Bool`, wider C integer-family aliases, variadics,
+and calling-convention details remain deferred.
 
 ## Semantic Type Identity
 
@@ -87,17 +146,27 @@ f32 f64
 bool void null
 ```
 
-Parsed scalar types are resolved to these shared instances. Pointer, array,
-function, struct, enum, and untyped numeric types are not represented by one
-generic canonical object because their structure or declaration identity
-matters.
+Parsed scalar types are resolved to these shared instances. Typed pointer,
+opaque pointer, array, function, struct, enum, and untyped numeric types are not
+represented by one generic canonical object because their structure,
+permissions, or declaration identity matters.
 
 Type equality begins with pointer identity. Built-in scalars then compare by
 kind. Arrays and functions compare structurally. Pointer type equality includes
 both exact pointee-type equality and exact `PointerAccess` equality, so `T*`
 and `readonly T*` are distinct semantic types.
 
-Directional compatibility is separate from type identity. The only
+Opaque raw pointers use the dedicated `TYPE_OPAQUE_POINTER` kind rather than
+`TYPE_POINTER(TYPE_OPAQUE)`. There is no standalone opaque value type. This
+preserves the invariant that `TYPE_POINTER` always has a dereferenceable Coglet
+pointee. Additional pointer layers compose normally, so `opaque**` is
+`TYPE_POINTER` whose element is `TYPE_OPAQUE_POINTER`.
+
+`TYPE_OPAQUE_POINTER` carries the same immediate `PointerAccess` permission as
+typed pointers. Its type identity includes that permission, but it has no
+`element` pointee type.
+
+Directional compatibility is separate from type identity. The safe
 access-changing pointer conversion is:
 
 ```text
@@ -108,8 +177,16 @@ The immediate pointee types must already be exactly equal. This prevents
 unsafe recursive conversions such as `T** -> readonly T**`.
 
 Pointer equality comparison may ignore only an immediate mutable-versus-
-readonly access difference when the immediate pointee types are exactly equal.
+readonly access difference within the same pointer family. Typed pointers must
+have exactly equal immediate pointee types; opaque pointers require no pointee
+comparison. Typed and opaque raw pointers are not directly comparable.
 Comparison does not alter either operand's permissions.
+
+Typed/opaque crossings use `CAST_REINTERPRET`. Semantic checking requires one
+side to be `TYPE_OPAQUE_POINTER` and the other to be `TYPE_POINTER`, and rejects
+any conversion that changes an immediate readonly source into a mutable target.
+The operation is intentionally not a general typed-pointer-to-typed-pointer
+cast.
 
 Structs and enums are nominal: the semantic `Type *` allocated for the
 declaration is its identity. Two different declarations remain different even
@@ -220,8 +297,10 @@ resolved builtin symbol rather than depending on source-name comparisons.
 
 Truncating integer conversion is represented by `NODE_CAST` with
 `CAST_TRUNCATING`, alongside checked conversion represented by `CAST_CHECKED`.
-Semantic checking and constant evaluation each dispatch exhaustively on
-`CastKind`.
+Opaque/typed raw-pointer conversion is represented by the same AST node with
+`CAST_REINTERPRET`. Semantic checking dispatches exhaustively on `CastKind`;
+constant evaluation explicitly rejects reinterpretation because it is not a
+compile-time constant conversion.
 
 A future lowering layer can derive required behavior directly:
 
@@ -231,6 +310,7 @@ signed unary -        -> checked negation
 integer / and %       -> divisor and signed-overflow checks
 integer shift         -> shift-count range check
 numeric cast          -> checked conversion
+reinterpret            -> preserve address bits, change raw-pointer type
 truncate              -> fixed-width low-bit integer conversion
 wrapping builtin      -> fixed-width modulo integer arithmetic
 bitwise operation     -> fixed-width bit-pattern operation

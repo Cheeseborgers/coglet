@@ -1,0 +1,6 @@
+#extern(c, name="SDL_CreateWindow")
+create_window::(title: readonly c_char*) -> opaque*;
+
+use_window::(title: readonly c_char*) -> opaque* {
+    return create_window(title);
+}

@@ -1,0 +1,3 @@
+error: unsupported extern ABI; expected 'c'
+#extern(foo)
+        ^~~

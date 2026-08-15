@@ -1,0 +1,2 @@
+handle: opaque* = null;
+view: readonly opaque* = reinterpret(readonly opaque*, handle);

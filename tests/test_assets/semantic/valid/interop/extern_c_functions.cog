@@ -1,0 +1,19 @@
+#extern(c)
+consume_i32::(value: i32) -> void;
+
+#extern(c)
+inspect_bytes::(data: readonly u8*) -> i32;
+
+#extern(c)
+allocate::(size: uint) -> opaque*;
+
+#extern(c)
+release::(ptr: opaque*) -> void;
+
+#extern(c)
+replace_handle::(slot: opaque**) -> i32;
+
+use_extern::(value: i32, handle: opaque*) -> void {
+    consume_i32(value);
+    release(handle);
+}

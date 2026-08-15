@@ -1,6 +1,6 @@
 # Testing
 
-Coglet uses CTest to run lexer, parser, semantic, constant-evaluation, and semantic-information tests.
+Coglet uses CTest to run lexer, parser, semantic, constant-evaluation, semantic-information, and host-C backend integration tests.
 
 Configure and build the Debug tree before running tests:
 
@@ -28,10 +28,12 @@ The test suite includes:
 
 * lexer token snapshots;
 * parser AST snapshots;
+* invalid parser diagnostic snapshots with non-zero exit verification;
 * valid semantic programs;
 * invalid semantic diagnostic snapshots;
 * compile-time constant-value oracles;
-* semantic-information snapshots and verification.
+* semantic-information snapshots and verification;
+* host-C backend compile/link/run integration tests and backend rejection tests.
 
 CTest labels allow related tests to be selected without depending on test-number ranges.
 
@@ -49,6 +51,57 @@ To list tests and their labels:
 ctest \
     --test-dir cmake-build-debug \
     --show-only=json-v1
+```
+
+
+
+## Host-C Backend Tests
+
+Backend integration fixtures live under:
+
+```text
+tests/test_assets/backend/
+```
+
+The executable tests run the Coglet compiler with `-o`, invoke the generated
+program, and verify its process exit status. The first C-interoperability cases
+cover both default external symbols and `#extern(c, name="...")` overrides. A
+separate negative backend test verifies that runtime checked arithmetic is
+rejected until its trapping semantics are lowered correctly.
+
+Run the backend suite with:
+
+```bash
+ctest \
+    --test-dir cmake-build-debug \
+    -L backend \
+    --output-on-failure
+```
+
+Backend-generation failures from the `coglet` executable currently use process
+exit status `3`; parser/driver and semantic statuses remain unchanged.
+
+## Parser-Invalid Tests
+
+Invalid parser inputs live under:
+
+```text
+tests/test_assets/parser/invalid/
+```
+
+Each `.cog` fixture has a matching `.expected` snapshot. The parser-invalid
+harness requires `dump_ast` to exit with status `1`, requires stdout to remain
+empty, and compares normalized stderr diagnostics. Checkout-specific filename
+and line/column prefixes are removed before comparison so snapshots remain
+portable.
+
+Run them with:
+
+```bash
+ctest \
+    --test-dir cmake-build-debug \
+    -L parser.invalid \
+    --output-on-failure
 ```
 
 ## Semantic Tests

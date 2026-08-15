@@ -1,0 +1,5 @@
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+
+#extern(c, name="SDL_CreateWindow")
+create_window::(title: readonly c_char*) -> opaque*;

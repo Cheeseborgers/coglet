@@ -140,6 +140,31 @@ static int skip_whitespace_and_comments(Lexer *lx, Token *error) {
 }
 
 static int is_digit(char c) { return c >= '0' && c <= '9'; }
+
+/*
+ * Returns the numeric value of an ASCII digit, or -1 when the
+ * character is not a digit supported by Coglet's integer literals.
+ */
+static int integer_digit_value(char c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+
+    if (c >= 'a' && c <= 'f')
+        return 10 + c - 'a';
+
+    if (c >= 'A' && c <= 'F')
+        return 10 + c - 'A';
+
+    return -1;
+}
+
+static int is_integer_digit_for_radix(char c,unsigned radix) {
+
+    int value = integer_digit_value(c);
+    return value >= 0 && (unsigned)value < radix;
+}
+
 static int is_alpha(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
 
 typedef struct {
@@ -165,7 +190,9 @@ static const Keyword keywords[] = {
     {"false", TOK_FALSE},
     {"cast", TOK_CAST},
     {"truncate", TOK_TRUNCATE},
+    {"reinterpret", TOK_REINTERPRET},
     {"readonly", TOK_READONLY},
+    {"opaque", TOK_OPAQUE},
     {"null", TOK_NULL},
 
     {"i8", TOK_I8},
@@ -196,6 +223,7 @@ static TokenType identifier_type(const char *start, int length) {
 }
 
 static Token scan_identifier(Lexer *lx, const char *start, int start_line, int start_column) {
+
     while (is_alpha(peek(lx)) || is_digit(peek(lx)))
         advance(lx);
 
@@ -211,27 +239,162 @@ static Token scan_identifier(Lexer *lx, const char *start, int start_line, int s
 }
 
 /*
- * Scans decimal integer and floating-point literals.
+ * Scans an integer literal after its leading zero has already been
+ * consumed and the next character is the radix prefix.
  *
- * Supported forms:
+ * Examples:
  *
- *     123
- *     3.14
- *     1e3
- *     1E3
- *     1e+3
- *     1e-3
- *     1.25e4
+ *     0xff
+ *     0b1010
+ *     0o755
  *
- * A decimal point must be followed by a digit. An exponent must
- * contain at least one digit after its optional sign.
+ * The prefix itself is consumed here.
  */
-static Token scan_number(
+static Token scan_prefixed_integer(
     Lexer *lx,
     const char *start,
     int start_line,
-    int start_column
+    int start_column,
+    unsigned radix,
+    const char *missing_digits_message,
+    const char *invalid_digit_message
 ) {
+    /*
+     * Consume x/X, b/B, or o/O.
+     */
+    advance(lx);
+
+    int digit_count = 0;
+
+    while (is_integer_digit_for_radix(peek(lx), radix)) {
+        advance(lx);
+        digit_count++;
+    }
+
+    /*
+     * Consume any identifier-like tail so malformed input such as:
+     *
+     *     0b102
+     *     0o758
+     *     0x12g
+     *
+     * becomes one useful error token rather than several unrelated
+     * tokens.
+     */
+    if (digit_count == 0) {
+
+        while (is_alpha(peek(lx)) || is_digit(peek(lx))) {
+            advance(lx);
+        }
+
+        return error_token(
+            lx,
+            start,
+            (int)(lx->current - start),
+            start_line,
+            start_column,
+            missing_digits_message
+        );
+    }
+
+    if (is_alpha(peek(lx)) || is_digit(peek(lx))) {
+
+        while (is_alpha(peek(lx)) || is_digit(peek(lx))) {
+            advance(lx);
+        }
+
+        return error_token(
+            lx,
+            start,
+            (int)(lx->current - start),
+            start_line,
+            start_column,
+            invalid_digit_message
+        );
+    }
+
+    return make_token(
+        TOK_NUMBER_INT,
+        start,
+        (int)(lx->current - start),
+        start_line,
+        start_column);
+}
+
+/*
+ * Scans decimal integers, prefixed integers, and decimal
+ * floating-point literals.
+ *
+ * Integer forms:
+ *
+ *     123
+ *     0xff
+ *     0b1010
+ *     0o755
+ *
+ * Floating-point forms:
+ *
+ *     3.14
+ *     1e3
+ *     1.25e-4
+ *
+ * Only decimal literals may contain a fractional component or
+ * exponent.
+ */
+static Token scan_number(Lexer *lx, const char *start, int start_line, int start_column) {
+
+    /*
+     * lexer_next() has already consumed the first digit.
+     *
+     * A radix prefix is recognised only immediately after a leading
+     * zero. Ordinary leading-zero numbers remain decimal.
+     */
+    if (start[0] == '0') {
+        switch (peek(lx)) {
+            case 'x':
+            case 'X':
+                return scan_prefixed_integer(
+                    lx,
+                    start,
+                    start_line,
+                    start_column,
+                    16,
+                    "expected hexadecimal digits after prefix",
+                    "invalid digit in hexadecimal integer literal"
+                );
+
+            case 'b':
+            case 'B':
+                return scan_prefixed_integer(
+                    lx,
+                    start,
+                    start_line,
+                    start_column,
+                    2,
+                    "expected binary digits after prefix",
+                    "invalid digit in binary integer literal"
+                );
+
+            case 'o':
+            case 'O':
+                return scan_prefixed_integer(
+                    lx,
+                    start,
+                    start_line,
+                    start_column,
+                    8,
+                    "expected octal digits after prefix",
+                    "invalid digit in octal integer literal"
+                );
+
+            default:
+                break;
+        }
+    }
+
+    /*
+     * The remainder of the function handles decimal spelling only.
+     */
     while (is_digit(peek(lx)))
         advance(lx);
 
@@ -251,49 +414,43 @@ static Token scan_number(
 
         while (is_digit(peek(lx)))
             advance(lx);
-        }
+    }
 
     /*
      * Optional decimal exponent.
-     *
-     * Exponent notation always produces a floating-point token,
-     * including forms without a decimal point such as 1e3.
      */
-    if (peek(lx) == 'e' || peek(lx) == 'E') {
-
+    if (peek(lx) == 'e' ||
+        peek(lx) == 'E') {
         is_float = 1;
 
         advance(lx);
 
-        if (peek(lx) == '+' || peek(lx) == '-')
+        if (peek(lx) == '+' ||
+            peek(lx) == '-') {
             advance(lx);
-
+        }
 
         if (!is_digit(peek(lx))) {
-
-            int length = (int)(lx->current - start);
-
             return error_token(
                 lx,
                 start,
-                length,
+                (int)(lx->current - start),
                 start_line,
                 start_column,
-                "expected digits after exponent");
+                "expected digits after exponent"
+            );
         }
 
         while (is_digit(peek(lx)))
             advance(lx);
-        }
-
-    int length = (int)(lx->current - start);
+    }
 
     return make_token(
         is_float
             ? TOK_NUMBER_FLOAT
             : TOK_NUMBER_INT,
         start,
-        length,
+        (int)(lx->current - start),
         start_line,
         start_column
     );
@@ -499,6 +656,15 @@ Token lexer_next(Lexer *lx) {
         case ']':
             return make_token(
                 TOK_RBRACKET,
+                start,
+                1,
+                start_line,
+                start_column
+            );
+
+        case '#':
+            return make_token(
+                TOK_HASH,
                 start,
                 1,
                 start_line,
@@ -928,7 +1094,9 @@ const char *token_type_name(TokenType type) {
         case TOK_DEFAULT: return "DEFAULT";
         case TOK_CAST: return "CAST";
         case TOK_TRUNCATE: return "TRUNCATE";
+        case TOK_REINTERPRET: return "REINTERPRET";
         case TOK_READONLY: return "READONLY";
+        case TOK_OPAQUE: return "OPAQUE";
         case TOK_I8: return "I8";
 
         case TOK_I16:
@@ -1104,6 +1272,9 @@ const char *token_type_name(TokenType type) {
 
         case TOK_COLON_EQUAL:
             return "COLON_EQUAL";
+
+        case TOK_HASH:
+            return "HASH";
     }
 
     return "UNKNOWN";

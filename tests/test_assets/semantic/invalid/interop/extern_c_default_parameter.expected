@@ -1,0 +1,2 @@
+semantic error at line 2: #extern(c) parameters cannot have default values
+1 semantic error generated.

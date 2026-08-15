@@ -1,0 +1,3 @@
+error: extern symbol name cannot be empty
+#extern(c, name="")
+                ^~

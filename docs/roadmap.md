@@ -2,7 +2,7 @@
 
 Coglet is focused on building a small, correct systems-language core with explicit semantics and a compiler architecture that remains understandable.
 
-The project is intentionally frontend-first. Code generation and backend selection are deferred until the intended use of the language, runtime model, and execution strategy are clearer. This avoids committing large amounts of backend code to assumptions that may later change.
+The project remains frontend-led, but a deliberately narrow host-C backend now provides an executable feedback loop. Backend expansion is kept incremental so runtime semantics are lowered only when their behavior is already specified clearly.
 
 ## Current State
 
@@ -229,44 +229,81 @@ Coglet now supports the integer bit-manipulation core:
 Coglet intentionally gives bitwise operators higher precedence than equality
 and ordered comparison, so `flags & mask == 0` means `(flags & mask) == 0`.
 
+### Opaque Raw Pointers
+
+Coglet's opaque raw-pointer milestone is complete.
+
+Implemented forms:
+
+```c
+opaque*
+readonly opaque*
+opaque**
+```
+
+Completed rules include:
+
+- `opaque*` is represented by the dedicated `TYPE_OPAQUE_POINTER` kind;
+- there is no standalone opaque value type;
+- opaque pointers are pointer-sized/address-like but cannot be dereferenced or indexed;
+- mutable and readonly opaque variants follow the same shallow access model as typed raw pointers;
+- mutable opaque pointers adapt implicitly or through `cast` to readonly opaque pointers;
+- both access modes adapt to and compare with `null`;
+- matching mutable and readonly opaque pointers may compare with each other;
+- typed and opaque raw pointers do not implicitly convert or directly compare;
+- `reinterpret(TargetPointerType, expression)` explicitly crosses between top-level typed and opaque raw pointers;
+- `reinterpret` preserves address bits and cannot discard readonly access;
+- `reinterpret` is not a general typed-pointer-to-typed-pointer cast;
+- additional pointer layers compose normally, making `opaque**` a dereferenceable pointer to an `opaque*` slot;
+- lexer, parser, semantic, diagnostic, and semantic-info coverage is included.
+
+The future C ABI layer may map `opaque*` to `void*` without importing C's
+implicit `void*` conversion semantics into Coglet.
+
 ## Candidate Next Design Work
 
-The checked-scalar, explicit wrapping/truncation, and mutable/readonly typed
-raw-pointer milestones are complete. Code generation remains deferred.
+The checked-scalar, explicit wrapping/truncation, typed raw-pointer, and opaque
+raw-pointer milestones are complete. A narrow host-C backend now exists as the
+first executable lowering path; broader runtime lowering remains incremental.
 
-### 1. Opaque Raw Pointers
+### 1. C Interoperability Design
 
-Design an opaque pointer facility for handle-oriented APIs and future C
-interoperability.
+The first external-declaration slice is now implemented:
 
-The design must settle:
+```c
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+```
 
-- source syntax;
-- whether opaque pointers have mutable and readonly variants;
-- conversions to and from typed object pointers;
-- whether conversions require an explicitly unsafe operation;
-- null compatibility;
-- equality rules;
-- prohibition of dereference and indexing;
-- interaction with future external declarations and ABI types.
+This provides declaration-only top-level C-linkage functions, ordinary Coglet
+call resolution, scalar/raw-pointer signature validation, and opaque-pointer
+participation without C-style implicit `void*` conversions.
 
-Opaque pointers should not automatically inherit every permissive rule
-associated with C `void*`.
+The first executable host-C slice is also implemented. The compiler can emit C,
+invoke native `cc`, resolve default C runtime/libc symbols, and honor
+`name="..."` through linker symbol labels. Integration tests execute both default
+and overridden external symbols. The backend deliberately rejects language
+constructs whose runtime semantics have not been lowered correctly yet.
 
-### 2. C Interoperability Design
+The first native C scalar aliases are also implemented: `c_char`, `c_int`,
+`c_uint`, and `c_size`. They transparently resolve to fixed-width Coglet integer
+types from the native C ABI used to build the compiler. External symbol-name
+overrides are implemented with `#extern(c, name="...")`. Explicit cross-target
+ABI selection is still deferred.
 
-Plan, but do not yet implement syntax-only ABI promises. Relevant future work
-includes:
+Remaining C interoperability work includes:
 
-- external declarations;
-- target-aware primitive ABI types;
+- explicit target/C-ABI selection for cross compilation;
+- the remaining C integer-family aliases and `_Bool` policy;
+- library/linker selection in the driver or build interface;
+- variadic functions;
+- C callbacks/function pointers;
 - C-compatible struct layout;
-- opaque pointer conversion rules;
 - enum backing representation;
 - `#repr_c` or an equivalent representation attribute;
-- mapping C null pointers to Coglet `null`.
+- mapping C null pointers to Coglet `null` at lowering boundaries.
 
-### 3. Slices and Pointer-Length Views
+### 2. Slices and Pointer-Length Views
 
 Slices remain a strong candidate after opaque-pointer and ABI rules are
 clearer. Their design must settle:
@@ -292,16 +329,18 @@ encoding, and C-interoperability rules are clearer.
 - closure and capture semantics, only if nested runtime functions require them
 - generics, if justified by real use cases
 
-## Deferred Execution Work
+## Execution Work
 
-No backend is selected yet. Possible later strategies include:
+A host-C transpilation backend is now the initial bootstrap/execution strategy.
+It is intentionally narrow rather than a commitment that C must be Coglet's
+permanent optimizing backend. The next backend work should expand only where
+Coglet's semantics can be preserved explicitly, especially checked arithmetic,
+control flow, storage, strings, and pointer operations.
 
-- an interpreter
-- a C transpilation backend
-- a custom IR and native backend
-- LLVM or another existing backend
-
-The choice should be driven by what Coglet is intended to become. Backend work should begin only when enough language and runtime decisions are stable that the implementation is unlikely to be discarded.
+Longer-term alternatives remain possible, including a custom IR/native backend,
+LLVM or another existing backend, or an interpreter for tooling and compile-time
+execution. The host-C path provides executable feedback without closing those
+options.
 
 ## Self-Hosting Direction
 

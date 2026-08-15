@@ -1,0 +1,3 @@
+error: extern symbol name cannot contain NUL
+#extern(c, name="bad\0name")
+                ^~~~~~~~~~~

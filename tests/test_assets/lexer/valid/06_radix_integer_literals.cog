@@ -1,0 +1,11 @@
+hex_lower := 0xff;
+hex_upper := 0XABCD;
+
+binary_lower := 0b1010;
+binary_upper := 0B0101;
+
+octal_lower := 0o755;
+octal_upper := 0O644;
+
+leading_zero_decimal := 0755;
+hex_with_e := 0x1e3;

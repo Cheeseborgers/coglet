@@ -1,0 +1,17 @@
+Point :: struct {
+    x: i32;
+}
+
+Mode :: enum(u32) {
+    Off = 0,
+    On = 1,
+}
+
+#extern(c)
+struct_parameter::(point: Point) -> void;
+
+#extern(c)
+array_parameter::(bytes: u8[4]) -> void;
+
+#extern(c)
+enum_return::() -> Mode;

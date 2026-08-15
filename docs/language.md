@@ -839,8 +839,60 @@ cast(readonly i32*, null);
 Integer zero is not a null-pointer constant. Integer-to-pointer,
 pointer-to-integer, and null-to-non-pointer casts are rejected.
 
-Pointer arithmetic, array-to-pointer decay, opaque pointers, ownership,
-borrowing, and lifetime checking remain unsupported.
+Pointer arithmetic, array-to-pointer decay, ownership, borrowing, and lifetime
+checking remain unsupported.
+
+## Opaque Raw Pointers
+
+Coglet provides a dedicated opaque raw-pointer family for handle-oriented APIs
+and future C interoperability:
+
+```c
+handle: opaque* = null;
+view: readonly opaque* = handle;
+```
+
+`opaque*` is pointer-sized and address-like, but it has no Coglet pointee type.
+It therefore cannot be dereferenced or indexed:
+
+```c
+*handle;    // invalid
+handle[0];  // invalid
+```
+
+Mutable and readonly opaque pointers are distinct semantic types. As with typed
+raw pointers, mutable access may be dropped implicitly or through `cast`, but
+readonly access cannot become mutable:
+
+```c
+mutable: opaque* = get_handle();
+view: readonly opaque* = mutable;
+explicit_view := cast(readonly opaque*, mutable);
+```
+
+`null` adapts to either opaque-pointer access mode, and matching mutable and
+readonly opaque pointers may be compared. Typed raw pointers and opaque raw
+pointers are not assignment-compatible or directly comparable.
+
+Opaque pointers compose with ordinary pointer layers. `opaque**` is a normal
+mutable pointer to storage containing an `opaque*`, so one dereference is
+valid:
+
+```c
+slot: opaque* = null;
+out: opaque** = &slot;
+*out = get_handle(); // valid
+
+handle := *out;      // valid: result is opaque*
+**out;               // invalid: opaque* is not dereferenceable
+```
+
+`readonly` continues to qualify the first pointer layer. Therefore
+`readonly opaque**` means a mutable outer pointer to a readonly `opaque*`
+value, matching the existing shallow pointer-qualification rule.
+
+Crossing between typed and opaque raw pointers requires `reinterpret`; there
+is no implicit conversion and ordinary `cast` does not perform this operation.
 
 ## Arrays
 
@@ -1159,8 +1211,8 @@ Supported categories include:
 - selected numeric conversions;
 - enum-to-integer conversion;
 - compile-time integer-to-enum conversion to a declared member;
-- `null` to a concrete mutable or readonly raw-pointer type;
-- mutable raw pointer to the corresponding readonly raw-pointer type;
+- `null` to a concrete mutable or readonly typed or opaque raw-pointer type;
+- mutable typed or opaque raw pointer to the corresponding readonly raw-pointer type;
 - Boolean to Boolean.
 
 A mutable pointer may explicitly drop write permission when the immediate
@@ -1210,6 +1262,47 @@ cast(Small, 255); // invalid: no declared member has value 255
 Runtime integer-to-enum casts remain rejected until Coglet has a checked
 runtime enum-conversion facility.
 
+
+### Raw-pointer reinterpretation
+
+Unchecked raw-pointer representation conversion uses:
+
+```c
+reinterpret(TargetPointerType, expression)
+```
+
+`reinterpret` is deliberately narrower than a general pointer cast. Exactly
+one side must be a top-level opaque raw pointer and the other a typed raw
+pointer:
+
+```c
+p: i32* = get_pointer();
+h: opaque* = reinterpret(opaque*, p);
+recovered: i32* = reinterpret(i32*, h);
+```
+
+The operation preserves the address bits and changes only their static pointer
+interpretation. Coglet cannot prove that an opaque address actually denotes an
+object of the recovered pointee type, so this operation is explicitly
+unchecked.
+
+`reinterpret` never grants stronger access. A readonly source may only produce
+a readonly target:
+
+```c
+rp: readonly i32* = get_view();
+rh: readonly opaque* = reinterpret(readonly opaque*, rp); // valid
+
+reinterpret(opaque*, rp); // invalid: would discard readonly access
+```
+
+Mutable sources may be reinterpreted as mutable or readonly targets. General
+typed-pointer-to-typed-pointer conversions and opaque-pointer-to-opaque-pointer
+conversions are rejected; safe access-only changes continue to use ordinary
+assignment or `cast`.
+
+`reinterpret` is not a compile-time constant conversion.
+
 ### Truncating integer conversion
 
 Explicit truncating conversion uses:
@@ -1256,6 +1349,115 @@ computed modulo the type width and never fail because of arithmetic overflow.
 Wrapping operations and `truncate` are explicit alternatives. They do not
 change the checked semantics of ordinary arithmetic or `cast`.
 
+## C Interoperability: External Function Declarations
+
+The first C-interoperability surface is a declaration-only function annotation:
+
+```c
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+```
+
+This means that the function body is supplied outside Coglet and is resolved
+through the platform's C ABI/linker when the current host-C backend is used. By
+default the Coglet identifier is also the external symbol name. A declaration
+may override that symbol without changing the name used by Coglet code:
+
+```c
+#extern(c, name="SDL_CreateWindow")
+create_window::(title: readonly c_char*) -> opaque*;
+```
+
+Calls in Coglet still refer to `create_window`; host-C lowering emits a reference
+to `SDL_CreateWindow`. The `name` value is a decoded, non-empty Coglet string and
+may not contain a NUL byte.
+
+External C declarations:
+
+- are valid only at top level;
+- have a signature but no Coglet body;
+- use the Coglet identifier as the external symbol unless `name="..."` overrides it;
+- end with `;`;
+- may be called through the ordinary Coglet function-call rules;
+- may not use parameter default values;
+- currently accept only scalar and raw-pointer ABI candidates;
+- do not introduce C's implicit `void*` conversions into Coglet.
+
+The currently accepted frontend type subset is:
+
+```text
+bool
+i8 i16 i32 i64
+u8 u16 u32 u64
+f32 f64
+c_char c_int c_uint c_size
+T* and readonly T* when T is recursively in this subset
+opaque* and readonly opaque*
+additional raw-pointer layers such as opaque**
+void as a return type only
+```
+
+Arrays, structs, enums, and function types are rejected in `#extern(c)`
+signatures for now. Their ABI contracts require additional design such as
+C-compatible aggregate layout, enum representation, and function-pointer rules.
+
+Opaque pointers provide the C `void*`-style representation boundary:
+
+```c
+#extern(c)
+consume_handle::(handle: opaque*) -> void;
+```
+
+In the host-C backend, `opaque*` uses a `void*`-compatible object-pointer
+representation, while Coglet still requires explicit `reinterpret()` when
+crossing between typed and opaque raw pointers. Readonly access remains
+monotonic across that conversion.
+
+Coglet now provides a first set of transparent C ABI scalar aliases:
+
+```text
+c_char  -> native C char representation and signedness
+c_int   -> native C int representation
+c_uint  -> native C unsigned int representation
+c_size  -> native C size_t representation
+```
+
+These names are semantic builtin type aliases rather than lexer keywords. Once
+resolved, they use the matching canonical Coglet fixed-width integer type, so
+ordinary arithmetic, literal contextualization, casts, and pointer composition
+continue to use the existing integer semantics. For example, on a conventional
+LP64 host `c_int` resolves to `i32` and `c_size` to `u64`.
+
+The compiler does not yet expose an explicit cross-compilation target. For this
+milestone the selected C ABI is therefore the **native C ABI used to build
+Coglet**, derived from `CHAR_BIT`, C type widths, and plain-`char` signedness.
+Only native C integer widths that map to Coglet's 8/16/32/64-bit integers are
+supported. Explicit target selection can replace this mapping later without
+changing source syntax.
+
+This makes common declarations portable across native targets:
+
+```c
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+
+#extern(c)
+malloc::(size: c_size) -> opaque*;
+```
+
+Fixed-width Coglet types remain valid in C declarations when the corresponding
+C interface itself uses a representation-compatible fixed-width type.
+
+The current executable backend is intentionally a small conformance slice. It
+can already emit and link direct external C calls using scalar/raw-pointer
+signatures, including external symbol-name overrides, but it does not yet lower
+strings, locals, control flow, runtime checked arithmetic, or general casts.
+Host executables currently use `main::() -> c_int` as the entry-point contract.
+
+Variadic functions, C callbacks/function pointers, C-compatible aggregate
+layout, enum representation attributes, calling-convention selection,
+non-default library selection, and cross-target lowering are still deferred.
+
 ## Current Semantic Architecture
 
 Semantic analysis stores expression facts separately from the AST. Each
@@ -1301,14 +1503,15 @@ explicitly requested.
 
 ## Future Direction
 
-Backend work remains deliberately deferred. The runtime scalar language
-contract, explicit wrapping/truncating operations, and mutable/readonly typed
-raw pointers are now defined at the frontend level.
+A narrow host-C backend now exists, while most runtime lowering remains future
+work. The runtime scalar language contract, explicit wrapping/truncating
+operations, mutable/readonly typed raw pointers, and opaque raw pointers are
+defined at the frontend level and should guide each backend expansion.
 
 Near-term candidate areas include:
 
-- opaque raw pointers;
-- explicit C ABI types and representation rules;
+- explicit target/C-ABI selection and broader C primitive alias coverage;
+- C-compatible aggregate and enum layout;
 - mutable and readonly slices and byte views;
 - ownership and lifetime rules only when justified by concrete use cases;
 - a later first-class string type;
@@ -1318,5 +1521,5 @@ Near-term candidate areas include:
 - generics, if justified by real use cases;
 - self-hosting.
 
-Opaque pointers should be designed separately from typed raw pointers rather
-than inheriting every permissive rule associated with C `void*`.
+At a future C ABI boundary, opaque pointers should map to C `void*`-style
+representations without importing C's implicit conversion rules into Coglet.

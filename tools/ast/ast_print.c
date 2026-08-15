@@ -8,6 +8,28 @@
 #include "types.h"
 #include "utils/utils.h"
 
+
+static void print_escaped_string_view_inline(StringView view)
+{
+    putchar('"');
+
+    for (size_t i = 0; i < view.length; i++) {
+        unsigned char c = (unsigned char)view.data[i];
+
+        switch (c) {
+            case '\n': printf("\\n"); break;
+            case '\t': printf("\\t"); break;
+            case '\r': printf("\\r"); break;
+            case '\\': printf("\\\\"); break;
+            case '"': printf("\\\""); break;
+            case '\0': printf("\\0"); break;
+            default: putchar((int)c); break;
+        }
+    }
+
+    putchar('"');
+}
+
 static const char *cast_kind_name(CastKind kind)
 {
     switch (kind) {
@@ -16,6 +38,9 @@ static const char *cast_kind_name(CastKind kind)
 
         case CAST_TRUNCATING:
             return "truncate";
+
+        case CAST_REINTERPRET:
+            return "reinterpret";
     }
 
     assert(0 && "unhandled CastKind");
@@ -168,6 +193,9 @@ static const char *token_type_str(TokenType type)
         case TOK_COLON_EQUAL:
             return ":=";
 
+        case TOK_HASH:
+            return "#";
+
         // Literals
         case TOK_IDENT:
             return "IDENT";
@@ -239,8 +267,14 @@ static const char *token_type_str(TokenType type)
         case TOK_TRUNCATE:
             return "TRUNCATE";
 
+        case TOK_REINTERPRET:
+            return "REINTERPRET";
+
         case TOK_READONLY:
             return "READONLY";
+
+        case TOK_OPAQUE:
+            return "OPAQUE";
 
         // Types
         case TOK_BOOL:
@@ -315,6 +349,18 @@ static void print_type(Type *t)
         case TYPE_U64:  printf("u64");  break;
         case TYPE_F32:  printf("f32");  break;
         case TYPE_F64:  printf("f64");  break;
+
+        case TYPE_OPAQUE_POINTER:
+            switch (t->pointer_access) {
+                case POINTER_ACCESS_MUTABLE:
+                    break;
+
+                case POINTER_ACCESS_READONLY:
+                    printf("readonly ");
+                    break;
+            }
+            printf("opaque*");
+            break;
 
         case TYPE_POINTER:
             switch (t->pointer_access) {
@@ -718,7 +764,18 @@ static void print_node(Node *node)
             break;
 
         case NODE_FUNC_DECL:
-            printf("(func ");
+            if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C) {
+                printf("(extern-func c ");
+
+                if (!string_view_is_empty(node->as.func_decl.external_name)) {
+                    printf("name=");
+                    print_escaped_string_view_inline(node->as.func_decl.external_name);
+                    printf(" ");
+                }
+            } else {
+                printf("(func ");
+            }
+
             print_string_view(node->as.func_decl.name);
             printf(" (");
 
@@ -734,8 +791,12 @@ static void print_node(Node *node)
 
             printf(") -> ");
             print_type(node->as.func_decl.return_type);
-            printf(" ");
-            print_node(node->as.func_decl.body);
+
+            if (node->as.func_decl.body) {
+                printf(" ");
+                print_node(node->as.func_decl.body);
+            }
+
             printf(")");
             break;
 
@@ -1239,7 +1300,18 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_FUNC_DECL:
             indent(depth);
 
-            printf("func ");
+            if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C) {
+                if (string_view_is_empty(node->as.func_decl.external_name)) {
+                    printf("extern(c) func ");
+                } else {
+                    printf("extern(c, name=");
+                    print_escaped_string_view_inline(node->as.func_decl.external_name);
+                    printf(") func ");
+                }
+            } else {
+                printf("func ");
+            }
+
             print_string_view(node->as.func_decl.name);
             printf(" -> ");
 
@@ -1263,13 +1335,15 @@ static void print_node_pretty(Node *node, int depth)
                 }
             }
 
-            indent(depth + 1);
-            printf("body:\n");
+            if (node->as.func_decl.body) {
+                indent(depth + 1);
+                printf("body:\n");
 
-            print_node_pretty(
-                node->as.func_decl.body,
-                depth + 2
-            );
+                print_node_pretty(
+                    node->as.func_decl.body,
+                    depth + 2
+                );
+            }
 
             break;
 

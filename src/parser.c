@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "string_decode.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -31,6 +32,7 @@ static Node *finish_inferred_const_decl(Parser *p, Token name);
 static Node *finish_inferred_var_decl(Parser *p, Token name);
 static Node *parse_decl_after_name(Parser *p, Token name);
 static Node *parse_proc_decl_rest(Parser *p, Token name, int line);
+static Node *parse_extern_decl(Parser *p);
 
 static Node *parse_struct_decl_rest(Parser *p, Token name, int line);
 static Node *parse_struct_field(Parser *p);
@@ -49,7 +51,7 @@ static Node *parse_for_statement(Parser *p);
 static Node *parse_conversion_expression(Parser *p);
 static Node *parse_array_literal(Parser *p);
 
-static int parse_decimal_u64(Token token, uint64_t *out);
+static int parse_integer_u64(Token token, uint64_t *out);
 static int parse_float_token(Parser *p, Token token, double *out);
 
 // postfix helpers
@@ -269,8 +271,14 @@ const char *token_debug_display_name(TokenType type)
         case TOK_TRUNCATE:
             return "'truncate'";
 
+        case TOK_REINTERPRET:
+            return "'reinterpret'";
+
         case TOK_READONLY:
             return "'readonly'";
+
+        case TOK_OPAQUE:
+            return "'opaque'";
 
         // Types
         case TOK_BOOL:
@@ -454,6 +462,9 @@ const char *token_debug_display_name(TokenType type)
 
         case TOK_COLON_EQUAL:
             return "':='";
+
+        case TOK_HASH:
+            return "'#'";
     }
 
     return "<unknown token>";
@@ -530,15 +541,13 @@ void parser_init(Parser *p, const char *filename, const char *source, Arena *are
 static Node *parse_primary(Parser *p)
 {
     if (match(p, TOK_NUMBER_INT)) {
+
         Token token = p->previous;
         uint64_t value;
 
-        if (!parse_decimal_u64(token, &value)) {
-            error_at(
-                p,
-                &token,
-                "integer literal exceeds u64 range"
-            );
+        if (!parse_integer_u64(token, &value)) {
+            error_at(p, &token,
+                "integer literal exceeds u64 range");
 
             value = 0;
         }
@@ -555,11 +564,8 @@ static Node *parse_primary(Parser *p)
         double value;
 
         if (!parse_float_token(p, token, &value)) {
-            error_at(
-                p,
-                &token,
-                "floating-point literal is out of range"
-            );
+            error_at(p, &token,
+                "floating-point literal is out of range");
 
             value = 0.0;
         }
@@ -589,7 +595,9 @@ static Node *parse_primary(Parser *p)
     * Conversion keywords are parsed before identifiers because their
     * first argument is a type rather than an ordinary expression.
     */
-    if (check(p, TOK_CAST) || check(p, TOK_TRUNCATE)) {
+    if (check(p, TOK_CAST) ||
+        check(p, TOK_TRUNCATE) ||
+        check(p, TOK_REINTERPRET)) {
         return parse_conversion_expression(p);
     }
 
@@ -853,7 +861,39 @@ static Type *parse_type(Parser *p)
 
     base->array_size = -1;
 
-    if (match(p, TOK_I8)) {
+    int pointer_count = 0;
+
+    if (match(p, TOK_OPAQUE)) {
+        /*
+         * `opaque*` is a dedicated non-dereferenceable raw pointer kind.
+         * There is deliberately no standalone `opaque` value type.
+         * Additional stars wrap the opaque pointer normally, so:
+         *
+         *     opaque*   -> TYPE_OPAQUE_POINTER
+         *     opaque**  -> TYPE_POINTER(TYPE_OPAQUE_POINTER)
+         *
+         * As with ordinary pointers, `readonly` qualifies the first
+         * pointer layer and outer pointer layers remain mutable.
+         */
+        Token opaque_token = p->previous;
+
+        if (!match(p, TOK_STAR)) {
+            error_at(
+                p,
+                &opaque_token,
+                "'opaque' must be followed by '*'"
+            );
+
+            base->kind = TYPE_VOID;
+            return base;
+        }
+
+        base->kind = TYPE_OPAQUE_POINTER;
+        base->pointer_access = has_readonly
+            ? POINTER_ACCESS_READONLY
+            : POINTER_ACCESS_MUTABLE;
+        pointer_count = 1;
+    } else if (match(p, TOK_I8)) {
         base->kind = TYPE_I8;
     } else if (match(p, TOK_I16)) {
         base->kind = TYPE_I16;
@@ -903,8 +943,6 @@ static Type *parse_type(Parser *p)
         return base;
     }
 
-    int pointer_count = 0;
-
     while (match(p, TOK_STAR)) {
         Type *ptr = arena_new(p->arena, Type);
 
@@ -944,7 +982,7 @@ static Type *parse_type(Parser *p)
                 Token size_token = p->previous;
                 uint64_t size;
 
-                if (!parse_decimal_u64(
+                if (!parse_integer_u64(
                         size_token,
                         &size
                     )) {
@@ -953,15 +991,15 @@ static Type *parse_type(Parser *p)
                         &size_token,
                         "array size exceeds u64 range"
                     );
-                } else if (size > INT_MAX) {
-                    error_at(
-                        p,
-                        &size_token,
-                        "array size exceeds compiler limit"
-                    );
-                } else {
-                    arr->array_size = (int)size;
-                }
+                    } else if (size > INT_MAX) {
+                        error_at(
+                            p,
+                            &size_token,
+                            "array size exceeds compiler limit"
+                        );
+                    } else {
+                        arr->array_size = (int)size;
+                    }
             } else {
                 error_at(
                     p,
@@ -1156,9 +1194,12 @@ static Type *make_void_type(Arena *arena)
     return type;
 }
 
-static Node *parse_proc_decl_rest(Parser *p, Token name, int line) {
+static Node *parse_function_signature_rest(Parser *p, Token name, int line) {
 
-    consume(p, TOK_LPAREN); // known present from check() in parse_decl_after_name
+    if (!consume(p, TOK_LPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
 
     Node *func = ast_new_func_decl(p->arena, name.start, name.length, NULL, line);
 
@@ -1171,16 +1212,26 @@ static Node *parse_proc_decl_rest(Parser *p, Token name, int line) {
         } while (match(p, TOK_COMMA));
     }
 
-    consume(p, TOK_RPAREN);
-
-    // Parse the return type
-    Type *return_type;
-    if (match(p, TOK_ARROW)) {
-        return_type = parse_type(p);
-    } else {
-        return_type = make_void_type(p->arena); // no return type/void
+    if (!consume(p, TOK_RPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
     }
-    func->as.func_decl.return_type = return_type;
+
+    if (match(p, TOK_ARROW)) {
+        func->as.func_decl.return_type = parse_type(p);
+    } else {
+        func->as.func_decl.return_type = make_void_type(p->arena);
+    }
+
+    return func;
+}
+
+static Node *parse_proc_decl_rest(Parser *p, Token name, int line) {
+
+    Node *func = parse_function_signature_rest(p, name, line);
+
+    if (!func || func->type == NODE_ERROR)
+        return func;
 
     if (!check(p, TOK_LBRACE)) {
         error_at(p, &p->current, "expected function body");
@@ -1189,6 +1240,175 @@ static Node *parse_proc_decl_rest(Parser *p, Token name, int line) {
     }
 
     func->as.func_decl.body = parse_block(p);
+
+    return func;
+}
+
+static int token_text_equals(Token token, const char *text)
+{
+    size_t length = strlen(text);
+
+    return token.type == TOK_IDENT &&
+           token.length == (int)length &&
+           memcmp(token.start, text, length) == 0;
+}
+
+/*
+ * Parses the first ABI declaration form:
+ *
+ *     #extern(c)
+ *     puts::(s: readonly u8*) -> i32;
+ *
+ * `extern` and `c` intentionally remain identifiers rather than globally
+ * reserved keywords. The `#` introduces declaration metadata.
+ */
+static int decode_extern_name(Parser *p, Token token, StringView *out)
+{
+    assert(token.type == TOK_STRING);
+
+    StringView raw = string_view(token.start + 1, (size_t)token.length - 2);
+    StringDecodeInfo info = string_analyze(raw);
+
+    if (!info.ok) {
+        if (info.invalid_escape) {
+            error_at(p, &token, "invalid escape sequence in extern symbol name");
+        } else {
+            error_at(p, &token, "unterminated escape sequence in extern symbol name");
+        }
+        return 0;
+    }
+
+    if (info.decoded_length == 0) {
+        error_at(p, &token, "extern symbol name cannot be empty");
+        return 0;
+    }
+
+    char *decoded = arena_alloc(p->arena, (size_t)info.decoded_length + 1);
+    string_decode_into(raw, decoded);
+    decoded[info.decoded_length] = '\0';
+
+    for (int i = 0; i < info.decoded_length; i++) {
+        if (decoded[i] == '\0') {
+            error_at(p, &token, "extern symbol name cannot contain NUL");
+            return 0;
+        }
+    }
+
+    *out = string_view(decoded, (size_t)info.decoded_length);
+    return 1;
+}
+
+/*
+ * Parses C ABI declarations:
+ *
+ *     #extern(c)
+ *     puts::(s: readonly c_char*) -> c_int;
+ *
+ *     #extern(c, name="SDL_CreateWindow")
+ *     create_window::(...) -> opaque*;
+ *
+ * `extern`, `c`, and option names intentionally remain identifiers rather
+ * than globally reserved keywords. Empty external_name means the Coglet
+ * declaration name is also the linker symbol.
+ */
+static Node *parse_extern_decl(Parser *p)
+{
+    Token hash = p->current;
+    StringView external_name = string_view_empty();
+    int saw_name = 0;
+
+    if (!consume(p, TOK_HASH))
+        return ast_new_error(p->arena, p->current);
+
+    if (!consume(p, TOK_IDENT)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Token attribute = p->previous;
+
+    if (!token_text_equals(attribute, "extern")) {
+        error_at(p, &attribute, "unknown declaration attribute; expected '#extern(c)'");
+        synchronize(p);
+        return ast_new_error(p->arena, attribute);
+    }
+
+    if (!consume(p, TOK_LPAREN) || !consume(p, TOK_IDENT)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Token abi = p->previous;
+
+    if (!token_text_equals(abi, "c")) {
+        error_at(p, &abi, "unsupported extern ABI; expected 'c'");
+        synchronize(p);
+        return ast_new_error(p->arena, abi);
+    }
+
+    while (match(p, TOK_COMMA)) {
+        if (!consume(p, TOK_IDENT)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        Token option = p->previous;
+
+        if (!token_text_equals(option, "name")) {
+            error_at(p, &option, "unknown #extern(c) option; expected 'name'");
+            synchronize(p);
+            return ast_new_error(p->arena, option);
+        }
+
+        if (saw_name) {
+            error_at(p, &option, "duplicate #extern(c) option 'name'");
+            synchronize(p);
+            return ast_new_error(p->arena, option);
+        }
+
+        if (!consume(p, TOK_EQUAL) || !consume(p, TOK_STRING)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        if (!decode_extern_name(p, p->previous, &external_name)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->previous);
+        }
+
+        saw_name = 1;
+    }
+
+    if (!consume(p, TOK_RPAREN) || !consume(p, TOK_IDENT)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Token name = p->previous;
+
+    if (!consume(p, TOK_COLON_COLON)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    if (!check(p, TOK_LPAREN)) {
+        error_at(p, &p->current, "#extern(c) applies only to function declarations");
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *func = parse_function_signature_rest(p, name, hash.line);
+
+    if (!func || func->type == NODE_ERROR)
+        return func;
+
+    func->as.func_decl.linkage = FUNCTION_LINKAGE_EXTERN_C;
+    func->as.func_decl.external_name = external_name;
+
+    if (!consume(p, TOK_SEMICOLON)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
 
     return func;
 }
@@ -1631,6 +1851,7 @@ static Node *parse_for_statement(Parser *p) {
 
 static Node *parse_statement(Parser *p) {
 
+    if (check(p, TOK_HASH))   return parse_extern_decl(p);
     if (match(p, TOK_IF))     return parse_if_statement(p);
     if (match(p, TOK_WHILE))  return parse_while_statement(p);
     if (match(p, TOK_FOR))    return parse_for_statement(p);
@@ -1690,6 +1911,10 @@ static Node *parse_conversion_expression(Parser *p) {
 
         case TOK_TRUNCATE:
             kind = CAST_TRUNCATING;
+            break;
+
+        case TOK_REINTERPRET:
+            kind = CAST_REINTERPRET;
             break;
 
         default:
@@ -1767,17 +1992,114 @@ static Node *parse_array_literal(Parser *p) {
     return array;
 }
 
-static int parse_decimal_u64(Token token, uint64_t *out)
+/*
+ * Returns the numeric value of an ASCII integer digit, or -1 when
+ * the character is not a supported digit.
+ *
+ * The lexer has already validated the spelling, but keeping this
+ * conversion defensive prevents this parser helper from silently
+ * accepting malformed tokens.
+ */
+static int integer_digit_value(char c)
 {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+
+    if (c >= 'a' && c <= 'f')
+        return 10 + c - 'a';
+
+    if (c >= 'A' && c <= 'F')
+        return 10 + c - 'A';
+
+    return -1;
+}
+
+/*
+ * Converts a syntactically valid integer token into its exact u64
+ * magnitude.
+ *
+ * Supported forms:
+ *
+ *     123
+ *     0xff
+ *     0b1010
+ *     0o755
+ *
+ * Leading-zero literals without a radix prefix remain decimal:
+ *
+ *     0755 -> decimal 755
+ */
+static int parse_integer_u64(Token token, uint64_t *out) {
+
+    if (!out || token.length <= 0)
+        return 0;
+
+    unsigned radix = 10;
+    int digit_start = 0;
+
+    if (token.length >= 2 &&
+        token.start[0] == '0') {
+        switch (token.start[1]) {
+            case 'x':
+            case 'X':
+                radix = 16;
+                digit_start = 2;
+                break;
+
+            case 'b':
+            case 'B':
+                radix = 2;
+                digit_start = 2;
+                break;
+
+            case 'o':
+            case 'O':
+                radix = 8;
+                digit_start = 2;
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    /*
+     * This should already be prevented by the lexer, but reject a
+     * prefix without digits defensively.
+     */
+    if (digit_start >= token.length)
+        return 0;
+
     uint64_t value = 0;
 
-    for (int i = 0; i < token.length; i++) {
-        unsigned digit = (unsigned)(token.start[i] - '0');
+    for (int i = digit_start;
+         i < token.length;
+         i++) {
+        int parsed_digit =
+            integer_digit_value(token.start[i]);
 
-        if (value > (UINT64_MAX - digit) / 10)
+        if (parsed_digit < 0 ||
+            (unsigned)parsed_digit >= radix) {
             return 0;
+        }
 
-        value = value * 10 + digit;
+        uint64_t digit =
+            (uint64_t)parsed_digit;
+
+        /*
+         * Check:
+         *
+         *     value * radix + digit <= UINT64_MAX
+         *
+         * before performing either operation.
+         */
+        if (value >
+            (UINT64_MAX - digit) / radix) {
+            return 0;
+        }
+
+        value =
+            value * radix + digit;
     }
 
     *out = value;

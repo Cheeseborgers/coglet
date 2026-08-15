@@ -2,6 +2,8 @@
 #include "semantic_anal.h"
 
 #include <assert.h>
+#include <limits.h>
+#include <stddef.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -785,7 +787,92 @@ static Symbol *scope_define_builtin(SemanticContext *ctx, const char *name, Buil
         NULL);
 }
 
+static Type *fixed_integer_type_for_c_abi(
+    SemanticContext *ctx,
+    size_t byte_width,
+    int is_signed
+) {
+    size_t bit_width = byte_width * (size_t)CHAR_BIT;
+
+    switch (bit_width) {
+        case 8:  return is_signed ? ctx->type_i8  : ctx->type_u8;
+        case 16: return is_signed ? ctx->type_i16 : ctx->type_u16;
+        case 32: return is_signed ? ctx->type_i32 : ctx->type_u32;
+        case 64: return is_signed ? ctx->type_i64 : ctx->type_u64;
+    }
+
+    return NULL;
+}
+
+static int register_c_abi_type_alias(
+    SemanticContext *ctx,
+    const char *name,
+    Type *type,
+    size_t byte_width
+) {
+    if (!type) {
+        fprintf(
+            stderr,
+            "semantic error: native C ABI type '%s' has unsupported width %zu bits\n",
+            name,
+            byte_width * (size_t)CHAR_BIT
+        );
+        ctx->had_error = 1;
+        ctx->error_count++;
+        return 0;
+    }
+
+    scope_define(
+        ctx,
+        string_view_from_cstr(name),
+        SYMBOL_TYPE,
+        type
+    );
+
+    return 1;
+}
+
+/*
+ * Registers the first target-sized C ABI aliases.
+ *
+ * The compiler does not have an explicit cross-compilation target yet, so the
+ * selected ABI for this milestone is the native C ABI used to build Coglet.
+ * Each source-level alias is transparent after resolution: for example, on a
+ * conventional LP64 host `c_int` resolves to canonical `i32` and `c_size` to
+ * canonical `u64`. A future target configuration can replace this mapping
+ * without changing source syntax or the rest of semantic analysis.
+ */
+static void register_native_c_abi_type_aliases(SemanticContext *ctx) {
+    Type *c_char = fixed_integer_type_for_c_abi(
+        ctx,
+        sizeof(char),
+        CHAR_MIN < 0
+    );
+    Type *c_int = fixed_integer_type_for_c_abi(
+        ctx,
+        sizeof(int),
+        1
+    );
+    Type *c_uint = fixed_integer_type_for_c_abi(
+        ctx,
+        sizeof(unsigned int),
+        0
+    );
+    Type *c_size = fixed_integer_type_for_c_abi(
+        ctx,
+        sizeof(size_t),
+        0
+    );
+
+    register_c_abi_type_alias(ctx, "c_char", c_char, sizeof(char));
+    register_c_abi_type_alias(ctx, "c_int", c_int, sizeof(int));
+    register_c_abi_type_alias(ctx, "c_uint", c_uint, sizeof(unsigned int));
+    register_c_abi_type_alias(ctx, "c_size", c_size, sizeof(size_t));
+}
+
 static void register_builtin_symbols(SemanticContext *ctx) {
+
+    register_native_c_abi_type_aliases(ctx);
 
     scope_define_builtin(ctx, "wrapping_add", BUILTIN_WRAPPING_ADD);
     scope_define_builtin(ctx, "wrapping_sub", BUILTIN_WRAPPING_SUB);
@@ -921,6 +1008,7 @@ static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t le
 static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value);
 static Type *check_value_expression(SemanticContext *ctx, Node *node);
 static Type *check_checked_cast_expression(SemanticContext *ctx, Node *node);
+static Type *check_reinterpret_expression(SemanticContext *ctx, Node *node);
 static Type *concretize_inferred_type(SemanticContext *ctx, Node *expression, Type *type);
 static int switch_case_values_are_exhaustive(
     Type *switch_type, const ConstValue *case_values, int case_value_count, int has_default);
@@ -1016,6 +1104,14 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
                 (int)type->enum_name.length,
                 type->enum_name.data
             );
+            return;
+
+        case TYPE_OPAQUE_POINTER:
+            if (type->pointer_access == POINTER_ACCESS_READONLY) {
+                snprintf(buffer, buffer_size, "readonly opaque*");
+            } else {
+                snprintf(buffer, buffer_size, "opaque*");
+            }
             return;
 
         case TYPE_POINTER: {
@@ -1135,6 +1231,12 @@ static int type_equal(const Type *a, const Type *b) {
         /*
          * Compound structural types.
          */
+        case TYPE_OPAQUE_POINTER:
+            assert(is_valid_pointer_access(a->pointer_access));
+            assert(is_valid_pointer_access(b->pointer_access));
+
+            return a->pointer_access == b->pointer_access;
+
         case TYPE_POINTER:
             assert(is_valid_pointer_access(a->pointer_access));
             assert(is_valid_pointer_access(b->pointer_access));
@@ -1283,6 +1385,7 @@ static int integer_type_info(TypeKind kind, IntegerTypeInfo *out) {
         case TYPE_UNTYPED_FLOAT:
         case TYPE_NULL:
         case TYPE_POINTER:
+        case TYPE_OPAQUE_POINTER:
         case TYPE_ARRAY:
         case TYPE_NAMED:
         case TYPE_STRUCT:
@@ -2177,6 +2280,15 @@ static int is_numeric_type(Type *t)  { return t && (is_integer_kind(t->kind) || 
 static int is_bool_type(Type *t)     { return t && t->kind == TYPE_BOOL; }
 static int is_enum_type(Type *type)  { return type && type->kind == TYPE_ENUM; }
 static int is_null_type(const Type *type) { return type && type->kind == TYPE_NULL;}
+static int is_typed_pointer_type(const Type *type) {
+    return type && type->kind == TYPE_POINTER;
+}
+static int is_opaque_pointer_type(const Type *type) {
+    return type && type->kind == TYPE_OPAQUE_POINTER;
+}
+static int is_raw_pointer_type(const Type *type) {
+    return is_typed_pointer_type(type) || is_opaque_pointer_type(type);
+}
 static int is_bool_cast_pair(Type *to, Type *from)       { return is_bool_type(to) && is_bool_type(from); }
 static int is_numeric_cast_pair(Type *to, Type *from)    { return is_numeric_type(to) && is_numeric_type(from); }
 static int is_enum_to_integer_cast(Type *to, Type *from) { return is_integer_kind(to->kind) && is_enum_type(from);}
@@ -2192,7 +2304,7 @@ static int is_equality_comparable_type(const Type *type) {
            is_float_kind(type->kind) ||
            type->kind == TYPE_BOOL ||
            type->kind == TYPE_ENUM ||
-           type->kind == TYPE_POINTER;
+           is_raw_pointer_type(type);
 }
 
 static int is_switchable_type(Type *type) {
@@ -2205,7 +2317,7 @@ static int is_switchable_type(Type *type) {
 }
 
 static int is_null_to_pointer_cast(Type *to, Type *from) {
-    return to && to->kind == TYPE_POINTER && is_null_type(from);
+    return is_raw_pointer_type(to) && is_null_type(from);
 }
 
 /*
@@ -2219,44 +2331,63 @@ static int is_null_to_pointer_cast(Type *to, Type *from) {
  *
  *     T** -> readonly T**
  */
+static int pointer_identity_equal_ignoring_access(
+    const Type *left,
+    const Type *right
+) {
+    if (!is_raw_pointer_type(left) || !is_raw_pointer_type(right))
+        return 0;
+
+    if (left->kind != right->kind)
+        return 0;
+
+    if (left->kind == TYPE_OPAQUE_POINTER)
+        return 1;
+
+    return type_equal(left->element, right->element);
+}
+
 static int pointer_readonly_conversion_allowed(const Type *target, const Type *source) {
 
-    if (!target ||
-        !source ||
-        target->kind != TYPE_POINTER ||
-        source->kind != TYPE_POINTER) {
+    if (!pointer_identity_equal_ignoring_access(target, source))
         return 0;
-    }
 
     return target->pointer_access ==
                POINTER_ACCESS_READONLY &&
            source->pointer_access ==
-               POINTER_ACCESS_MUTABLE &&
-           type_equal(target->element, source->element);
+               POINTER_ACCESS_MUTABLE;
 }
 
 /*
  * Pointer equality may ignore only the immediate access permission.
- *
- * Comparing addresses does not grant write access, so:
- *
- *     T* == readonly T*
- *
- * is valid when both pointers have exactly the same pointee type.
- *
- * Nested access differences remain significant because the immediate
- * pointee types will not be equal.
+ * Typed and opaque raw pointers remain different pointer families and
+ * therefore are not directly comparable.
  */
 static int pointer_equality_compatible(const Type *left, const Type *right) {
+    return pointer_identity_equal_ignoring_access(left, right);
+}
 
-    if (!left ||
-        !right ||
-        left->kind != TYPE_POINTER ||
-        right->kind != TYPE_POINTER) {
+static int reinterpret_pointer_conversion_allowed(
+    const Type *target,
+    const Type *source
+) {
+    if (!is_raw_pointer_type(target) || !is_raw_pointer_type(source))
+        return 0;
+
+    /*
+     * `reinterpret` is deliberately not a general T* -> U* operation.
+     * Exactly one side must be the top-level opaque pointer kind.
+     */
+    if (is_opaque_pointer_type(target) == is_opaque_pointer_type(source))
+        return 0;
+
+    /* Never recover write permission from a readonly address. */
+    if (source->pointer_access == POINTER_ACCESS_READONLY &&
+        target->pointer_access == POINTER_ACCESS_MUTABLE) {
         return 0;
     }
 
-    return type_equal(left->element, right->element);
+    return 1;
 }
 
 static int is_allowed_explicit_cast(Type *to, Type *from) {
@@ -2330,10 +2461,10 @@ static int is_pointer_null_pair(const Type *left, const Type *right) {
     if (!left || !right) return 0;
 
     return
-        (left->kind == TYPE_POINTER &&
+        (is_raw_pointer_type(left) &&
          right->kind == TYPE_NULL) ||
         (left->kind == TYPE_NULL &&
-         right->kind == TYPE_POINTER);
+         is_raw_pointer_type(right));
 }
 
 static int const_values_equal(ConstValue *a, ConstValue *b)
@@ -2542,8 +2673,7 @@ static Type *common_integer_type(Type *a, Type *b) {
 }
 
 static int is_integer_zero_to_pointer(const Type *expected, const Node *value) {
-    return expected &&
-           expected->kind == TYPE_POINTER &&
+    return is_raw_pointer_type(expected) &&
            value &&
            value->type == NODE_NUMBER &&
            value->as.number.kind == NUMBER_LITERAL_INTEGER &&
@@ -2590,7 +2720,7 @@ static int initializer_compatible(Type *declared, Type *init_type) {
      *
      * TYPE_NULL is not globally equal to TYPE_POINTER.
      */
-    if (declared->kind == TYPE_POINTER && is_null_type(init_type)) {
+    if (is_raw_pointer_type(declared) && is_null_type(init_type)) {
         return 1;
     }
 
@@ -4030,7 +4160,7 @@ static int eval_const_checked_cast(SemanticContext *ctx, Node *node, ConstValue 
      * A null-to-pointer cast remains a null constant but carries
      * the concrete destination pointer type.
      */
-    if (target_type->kind == TYPE_POINTER) {
+    if (is_raw_pointer_type(target_type)) {
         if (value.kind != CONST_VALUE_NULL) {
             semantic_error(ctx, node,
                 "pointer cast requires a null constant");
@@ -4287,6 +4417,11 @@ static int eval_const_cast(SemanticContext *ctx, Node *node, ConstValue *out) {
                 node,
                 out
             );
+
+        case CAST_REINTERPRET:
+            semantic_error(ctx, node,
+                "reinterpret is not a compile-time constant conversion");
+            return 0;
     }
 
     UNREACHABLE("CastKind");
@@ -4532,6 +4667,9 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
             return 1;
 
         case NODE_CAST:
+            if (node->as.cast_expr.kind == CAST_REINTERPRET)
+                return 0;
+
             return expression_is_compile_time_constant(
                 ctx,
                 node->as.cast_expr.expression
@@ -5395,6 +5533,50 @@ static Type *check_truncating_cast_expression(SemanticContext *ctx, Node *node) 
     return target_type;
 }
 
+static Type *check_reinterpret_expression(SemanticContext *ctx, Node *node) {
+
+    assert(node);
+    assert(node->type == NODE_CAST);
+    assert(node->as.cast_expr.kind == CAST_REINTERPRET);
+
+    Type *target_type =
+        resolve_type(ctx, node->as.cast_expr.target_type, node);
+
+    if (!target_type) {
+        semantic_error(ctx, node,
+            "could not resolve reinterpret target type");
+        return NULL;
+    }
+
+    Node *source_expression = node->as.cast_expr.expression;
+    Type *source_type = check_value_expression(ctx, source_expression);
+
+    if (!source_type)
+        return NULL;
+
+    if (!is_raw_pointer_type(target_type) ||
+        !is_raw_pointer_type(source_type)) {
+        semantic_error(ctx, node,
+            "reinterpret requires raw pointer source and target types");
+        return NULL;
+    }
+
+    if (source_type->pointer_access == POINTER_ACCESS_READONLY &&
+        target_type->pointer_access == POINTER_ACCESS_MUTABLE) {
+        semantic_error(ctx, node,
+            "reinterpret cannot discard readonly pointer access");
+        return NULL;
+    }
+
+    if (!reinterpret_pointer_conversion_allowed(target_type, source_type)) {
+        semantic_error(ctx, node,
+            "reinterpret must cross between typed and opaque raw pointers");
+        return NULL;
+    }
+
+    return target_type;
+}
+
 static Type *check_cast_expression(SemanticContext *ctx,Node *node) {
 
     assert(node);
@@ -5406,6 +5588,9 @@ static Type *check_cast_expression(SemanticContext *ctx,Node *node) {
 
         case CAST_TRUNCATING:
             return check_truncating_cast_expression(ctx,node);
+
+        case CAST_REINTERPRET:
+            return check_reinterpret_expression(ctx,node);
     }
 
     UNREACHABLE("CastKind");
@@ -5500,6 +5685,13 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     if (is_null_type(operand)) {
                         semantic_error(ctx, node,
                             "cannot dereference null");
+
+                        return NULL;
+                    }
+
+                    if (operand->kind == TYPE_OPAQUE_POINTER) {
+                        semantic_error(ctx, node,
+                            "cannot dereference an opaque pointer");
 
                         return NULL;
                     }
@@ -6346,6 +6538,16 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     ctx,
                     node,
                     "array index must be integer"
+                );
+
+                return NULL;
+            }
+
+            if (object_type->kind == TYPE_OPAQUE_POINTER) {
+                semantic_error(
+                    ctx,
+                    node,
+                    "cannot index an opaque pointer"
                 );
 
                 return NULL;
@@ -7926,6 +8128,103 @@ static void check_for_statement(SemanticContext *ctx, Node *node) {
 }
 
 // Check functions -------------------------------------------
+static int extern_c_type_supported(const Type *type, int allow_void)
+{
+    if (!type)
+        return 0;
+
+    switch (type->kind) {
+        case TYPE_VOID:
+            return allow_void;
+
+        case TYPE_BOOL:
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+        case TYPE_F32:
+        case TYPE_F64:
+        case TYPE_OPAQUE_POINTER:
+            return 1;
+
+        case TYPE_POINTER:
+            /*
+             * For the first C-ABI milestone, typed raw pointers are allowed
+             * only when their pointee is itself in the supported scalar/raw-
+             * pointer subset. Struct, enum, array, and function-pointer ABI
+             * rules are deliberately deferred.
+             */
+            return extern_c_type_supported(type->element, 0);
+
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
+        case TYPE_NULL:
+        case TYPE_ARRAY:
+        case TYPE_NAMED:
+        case TYPE_STRUCT:
+        case TYPE_ENUM:
+        case TYPE_FUNCTION:
+            return 0;
+    }
+
+    assert(!"unhandled TypeKind in extern_c_type_supported");
+    return 0;
+}
+
+static int validate_extern_c_signature(SemanticContext *ctx, Node *func, Type *type)
+{
+    assert(func);
+    assert(type && type->kind == TYPE_FUNCTION);
+
+    int ok = 1;
+
+    for (int i = 0; i < type->parameter_count; i++) {
+        Node *param = func->as.func_decl.params.items[i];
+
+        if (param->as.param_decl.default_value) {
+            semantic_error(
+                ctx,
+                param,
+                "#extern(c) parameters cannot have default values"
+            );
+            ok = 0;
+        }
+
+        if (extern_c_type_supported(type->parameters[i], 0))
+            continue;
+
+        char type_name[128];
+        format_type_name(type->parameters[i], type_name, sizeof(type_name));
+
+        semantic_error_fmt(
+            ctx,
+            param,
+            "#extern(c) parameter type '%s' is not supported by the current C ABI subset",
+            type_name
+        );
+        ok = 0;
+    }
+
+    if (!extern_c_type_supported(type->return_type, 1)) {
+        char type_name[128];
+        format_type_name(type->return_type, type_name, sizeof(type_name));
+
+        semantic_error_fmt(
+            ctx,
+            func,
+            "#extern(c) return type '%s' is not supported by the current C ABI subset",
+            type_name
+        );
+        ok = 0;
+    }
+
+    return ok;
+}
+
 static Type *make_function_type(SemanticContext *ctx, Node *func)
 {
     Type *type = new_type(ctx, TYPE_FUNCTION);
@@ -7997,6 +8296,11 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
     if (!func_type)
         return 0;
 
+    if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C &&
+        !validate_extern_c_signature(ctx, node, func_type)) {
+        return 0;
+    }
+
     scope_define(ctx, node->as.func_decl.name, SYMBOL_FUNCTION, func_type);
 
     node->as.func_decl.resolved_type = func_type;
@@ -8011,6 +8315,11 @@ static void check_function_body(SemanticContext *ctx, Node *node)
 
     if (!func_type || func_type->kind != TYPE_FUNCTION)
         return;
+
+    if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C) {
+        assert(node->as.func_decl.body == NULL);
+        return;
+    }
 
     size_t saved_next_variable_id =
         ctx->next_variable_id;
@@ -8090,6 +8399,12 @@ static void check_function_body(SemanticContext *ctx, Node *node)
 
 static void check_function(SemanticContext *ctx, Node *node)
 {
+    if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C &&
+        ctx->function_depth > 0) {
+        semantic_error(ctx, node, "#extern(c) declarations must be at top level");
+        return;
+    }
+
     if (!declare_function_signature(ctx, node))
         return;
 

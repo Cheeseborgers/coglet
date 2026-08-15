@@ -6,6 +6,14 @@
 #include "utils/arena.h"
 #include "utils/string_view.h"
 
+typedef enum FunctionLinkage {
+    /* Ordinary Coglet function with a Coglet body. */
+    FUNCTION_LINKAGE_COGLET,
+
+    /* Declaration of a function provided by the C ABI/linker. */
+    FUNCTION_LINKAGE_EXTERN_C,
+} FunctionLinkage;
+
 typedef enum CastKind {
     /*
      * Value-preserving checked conversion:
@@ -20,6 +28,16 @@ typedef enum CastKind {
      *     truncate(TargetType, expression)
      */
     CAST_TRUNCATING,
+
+    /*
+     * Unchecked raw-pointer representation conversion:
+     *
+     *     reinterpret(TargetPointerType, expression)
+     *
+     * This may cross between typed and opaque raw pointers but may
+     * never recover mutable access from a readonly pointer.
+     */
+    CAST_REINTERPRET,
 } CastKind;
 
 typedef enum {
@@ -246,6 +264,13 @@ struct Node {
             Type *return_type;
             Node *body;           // NODE_BLOCK
             Type *resolved_type;  // semantic TYPE_FUNCTION, NULL if declaration failed
+            FunctionLinkage linkage;
+
+            /*
+             * Optional external linker symbol for FUNCTION_LINKAGE_EXTERN_C.
+             * Empty means the Coglet declaration name is used unchanged.
+             */
+            StringView external_name;
         } func_decl;
 
         struct {

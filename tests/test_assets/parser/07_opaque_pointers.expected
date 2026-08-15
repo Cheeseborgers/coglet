@@ -1,0 +1,33 @@
+program
+  func opaque_types -> void
+    params:
+      param_decl p: i32*
+      param_decl h: opaque*
+      param_decl rh: readonly opaque*
+    body:
+      block
+        var_decl slot: opaque*
+          init:
+            null
+        var_decl out: opaque**
+          init:
+            (&)
+              slot
+        var_decl erased: opaque*
+          init:
+            reinterpret
+              target type:
+                opaque*
+              expression:
+                p
+        var_decl recovered: i32*
+          init:
+            reinterpret
+              target type:
+                i32*
+              expression:
+                h
+        var_decl view: readonly opaque*
+          init:
+            rh
+

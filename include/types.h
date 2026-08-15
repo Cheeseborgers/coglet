@@ -40,6 +40,7 @@ typedef enum {
     TYPE_NULL,
 
     TYPE_POINTER,
+    TYPE_OPAQUE_POINTER,
     TYPE_ARRAY,
 
     TYPE_NAMED, // Used as a placeholder kind until later resolution to struct, enum etc
@@ -81,7 +82,8 @@ struct Type {
     /*
     * Pointer and array types.
     *
-    * pointer_access is meaningful only when kind == TYPE_POINTER.
+    * pointer_access is meaningful when kind == TYPE_POINTER or
+    * TYPE_OPAQUE_POINTER.
     */
     Type *element;
     PointerAccess pointer_access;

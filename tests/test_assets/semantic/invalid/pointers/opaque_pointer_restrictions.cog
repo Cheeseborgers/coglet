@@ -1,0 +1,21 @@
+opaque_pointer_restrictions::(
+    p: i32*,
+    rp: readonly i32*,
+    h: opaque*,
+    rh: readonly opaque*
+) -> void {
+    direct_erasure: opaque* = p;
+    direct_recovery: i32* = h;
+
+    p == h;
+
+    *h;
+    h[0];
+
+    reinterpret(opaque*, rp);
+    reinterpret(i32*, rh);
+
+    reinterpret(u8*, p);
+    reinterpret(readonly opaque*, rh);
+    reinterpret(readonly i32*, rp);
+}

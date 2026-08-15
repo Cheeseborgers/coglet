@@ -1,0 +1,7 @@
+program
+  extern(c) func puts -> c_int
+    params:
+      param_decl s: readonly c_char*
+  extern(c, name="SDL_CreateWindow") func create_window -> opaque*
+    params:
+      param_decl title: readonly c_char*

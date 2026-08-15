@@ -12,7 +12,7 @@ The long-term objective is a compiler capable of compiling itself. Language desi
 
 - Build a complete, understandable compiler.
 - Keep language semantics explicit and predictable.
-- Maintain a clean separation between parsing, semantic analysis, runtime design, and any later backend work.
+- Maintain a clean separation between parsing, semantic analysis, runtime design, and backend lowering.
 - Reach a stable self-hosting implementation.
 - Add features incrementally without accumulating special-case behavior.
 
@@ -71,6 +71,39 @@ Nested functions do not currently support closure capture.
 They may access visible globals, constants, types, and function declarations, but cannot read or modify
 locals and parameters belonging to an enclosing function.
 
+The frontend also supports declaration-only C-linkage functions:
+
+```c
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+
+#extern(c)
+malloc::(size: c_size) -> opaque*;
+
+#extern(c, name="SDL_CreateWindow")
+create_window::(title: readonly c_char*) -> opaque*;
+```
+
+`#extern(c)` declarations are top-level, have no Coglet body, and currently
+accept the scalar/raw-pointer ABI subset. `name="..."` optionally changes the
+external symbol without changing the Coglet identifier. `c_char`, `c_int`,
+`c_uint`, and `c_size` are transparent aliases selected from the native C ABI
+used to build the compiler. The initial host-C backend can now compile a deliberately small executable subset
+and resolve direct external C calls through the native `cc` toolchain. Explicit
+cross-target ABI selection, aggregate layout, strings at the C boundary,
+variadics, callbacks, and library-selection flags remain future work.
+
+For the current executable slice:
+
+```sh
+coglet program.cog -o program
+coglet program.cog --emit-c program.c
+```
+
+Host executables currently require `main::() -> c_int`. Running `coglet` with
+only the input filename still performs frontend parse/semantic checking without
+requesting backend generation.
+
 
 ### Types
 
@@ -88,6 +121,7 @@ not a user-declarable storage type.
 Compound and declared types:
 
 - mutable and readonly raw nullable object pointers
+- mutable and readonly opaque raw pointers
 - fixed-size arrays
 - nominal structs
 - nominal enums
@@ -110,7 +144,7 @@ Supported expression forms include:
 - function calls
 - field access
 - array and pointer indexing
-- checked casts and explicit integer truncation
+- checked casts, explicit raw-pointer reinterpretation, and integer truncation
 - compiler-provided wrapping integer operations
 - struct initializers
 - contextual array literals
@@ -275,6 +309,29 @@ An explicit `null`-to-pointer cast may provide either concrete pointer type:
 ```c
 mutable_null := cast(i32*, null);
 readonly_null := cast(readonly i32*, null);
+```
+
+### Opaque Raw Pointers
+
+Opaque handles use `opaque*` and `readonly opaque*`. They are nullable and
+address-like but cannot be dereferenced or indexed:
+
+```c
+handle: opaque* = null;
+view: readonly opaque* = handle;
+```
+
+Additional pointer layers compose normally, so `opaque**` is a pointer to an
+`opaque*` slot and may be dereferenced once.
+
+Typed and opaque raw pointers do not implicitly convert. Crossing the boundary
+requires `reinterpret`, which preserves the address representation and cannot
+discard readonly access:
+
+```c
+pointer: i32* = get_pointer();
+handle := reinterpret(opaque*, pointer);
+recovered := reinterpret(i32*, handle);
 ```
 
 ### Arrays
@@ -571,21 +628,21 @@ Recently completed work includes:
 - readonly-pointer compatibility and semantic-info verification;
 - rejection of unsupported nested-function captures.
 
-Backend and code-generation work remains intentionally deferred until the
-execution strategy and enough remaining language and runtime decisions are
-stable.
+A deliberately narrow host-C backend now provides the first executable path.
+It should expand only where the specified Coglet semantics can be preserved; the
+compiler still rejects unlowered runtime constructs rather than translating them
+with weaker C behavior.
 
 ## Roadmap
 
-Near-term work should remain language- and frontend-focused:
+Near-term work should combine C interoperability with careful backend expansion:
 
-1. Design opaque raw pointers separately from ordinary typed pointers.
-2. Plan explicit C ABI types and representation rules.
-3. Design mutable and readonly slices and pointer-length views.
-4. Reassess imports, modules, and multi-file compilation.
-5. Continue improving diagnostics, tests, and documentation.
-
-Backend and code-generation work remain deferred.
+1. Add library/linker selection and continue the remaining C ABI surface.
+2. Add explicit target/C-ABI selection before cross-compilation claims are made.
+3. Lower core storage/control-flow and checked runtime arithmetic correctly.
+4. Design C string/byte-view interoperability, then slices.
+5. Reassess imports, modules, and multi-file compilation.
+6. Continue improving diagnostics, tests, and documentation.
 
 ## License
 

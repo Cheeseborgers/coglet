@@ -1,0 +1,3 @@
+radix_integer_literal_overflow::() -> void {
+    too_large := 0x10000000000000000;
+}

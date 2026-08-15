@@ -2,7 +2,7 @@
 
 Self-hosting remains a long-term objective rather than the current milestone.
 
-The frontend is intentionally being completed before committing to a backend architecture. Lowering, code generation, runtime design, and ABI decisions remain deferred until Coglet's long-term direction is settled.
+Coglet now has a deliberately narrow host-C bootstrap backend in addition to the mature frontend. It can lower a small executable subset and resolve direct `#extern(c)` calls through the native C toolchain. This is an execution foothold rather than a commitment to C as the permanent backend architecture.
 
 ## Frontend Features Already Present
 
@@ -37,9 +37,9 @@ Likely requirements include:
 * a settled pointer and memory model
 * runtime integer arithmetic semantics
 * C interoperability design
-* an execution strategy (interpreter, transpiler, bytecode, or native backend)
+* expansion of the current host-C execution strategy or selection of a later native/IR backend
 * lowering from the semantic AST into an implementation-oriented intermediate representation
-* backend code generation
+* complete lowering/code generation for the language runtime semantics
 * basic runtime calls and file I/O
 * arena or general allocation facilities available to Coglet programs
 * multi-file compilation or modules
@@ -75,4 +75,4 @@ The frontend now performs:
 * unified reachability analysis
 * switch exhaustiveness analysis
 
-At this stage, the remaining path toward self-hosting is primarily a backend engineering effort rather than completing another major semantic-analysis subsystem.
+At this stage, the remaining path toward self-hosting is primarily backend and runtime engineering rather than another major semantic-analysis subsystem. The current host-C slice proves the end-to-end path, but it still lacks most statements, storage, checked runtime arithmetic, strings, aggregates, and multi-file support.

@@ -26,6 +26,7 @@ add_library(compiler_core STATIC
         src/semantic_anal.c
         src/string_decode.c
         src/compiler_driver.c
+        src/backend_c.c
 )
 target_include_directories(compiler_core PUBLIC include)
 
@@ -70,6 +71,12 @@ function(add_diff_tests prefix dir exe_target)
         get_filename_component(relative_dir "${relative_path}" DIRECTORY)
         get_filename_component(test_name "${test_src}" NAME_WE)
 
+        # Invalid parser fixtures have their own harness because dump_ast
+        # exits non-zero and writes diagnostics to stderr.
+        if(prefix STREQUAL "parser" AND relative_dir MATCHES "^invalid([/\\]|$)")
+            continue()
+        endif()
+
         set(expected_file "${test_src}")
         string(REGEX REPLACE "\\.cog$" ".expected" expected_file "${expected_file}")
 
@@ -100,6 +107,56 @@ function(add_diff_tests prefix dir exe_target)
         else()
             message(WARNING
                     "No .expected file for ${test_src}; skipping test"
+            )
+        endif()
+    endforeach()
+endfunction()
+
+
+function(add_invalid_parser_tests root_dir)
+    file(GLOB_RECURSE test_sources CONFIGURE_DEPENDS
+            "${root_dir}/*.cog"
+    )
+
+    foreach(test_src IN LISTS test_sources)
+        file(RELATIVE_PATH relative_path "${root_dir}" "${test_src}")
+        get_filename_component(relative_dir "${relative_path}" DIRECTORY)
+        get_filename_component(test_name "${test_src}" NAME_WE)
+
+        set(expected_file "${test_src}")
+        string(REGEX REPLACE "\\.cog$" ".expected" expected_file "${expected_file}")
+
+        if(relative_dir STREQUAL "")
+            set(ctest_name "parser_invalid_${test_name}")
+            set(category_label "parser.invalid")
+        else()
+            string(REPLACE "/" "_" category_name "${relative_dir}")
+            string(REPLACE "\\" "_" category_name "${category_name}")
+            set(ctest_name "parser_invalid_${category_name}_${test_name}")
+
+            string(REPLACE "/" "." category_label "${relative_dir}")
+            string(REPLACE "\\" "." category_label "${category_label}")
+            set(category_label "parser.invalid.${category_label}")
+        endif()
+
+        if(EXISTS "${expected_file}")
+            add_test(
+                    NAME "${ctest_name}"
+                    COMMAND "${CMAKE_COMMAND}"
+                    -DEXE=$<TARGET_FILE:dump_ast>
+                    -DINPUT=${test_src}
+                    -DEXPECTED=${expected_file}
+                    -P "${CMAKE_SOURCE_DIR}/cmake/run_parser_invalid_test.cmake"
+            )
+
+            set_tests_properties(
+                    "${ctest_name}"
+                    PROPERTIES
+                    LABELS "parser;parser.invalid;${category_label}"
+            )
+        else()
+            message(WARNING
+                    "No .expected file for ${test_src}; skipping parser invalid test"
             )
         endif()
     endforeach()
@@ -284,6 +341,7 @@ add_invalid_lexer_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/lexer/invalid)
 
 # parser tests
 add_diff_tests(parser ${CMAKE_SOURCE_DIR}/tests/test_assets/parser dump_ast)
+add_invalid_parser_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/parser/invalid)
 
 # semantic anal tests
 add_semantic_valid_tests(${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/valid)
@@ -296,4 +354,64 @@ add_custom_command(
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/tests/test_assets
         $<TARGET_FILE_DIR:coglet>/test_assets
+)
+
+# Initial host-C backend integration tests. These compile Coglet source to a
+# native executable through `cc`, then run it. The chosen libc function uses
+# only c_int so this stage does not depend on string lowering yet.
+add_test(
+        NAME backend_extern_c_default_symbol
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_default_symbol.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_default_symbol
+        -DEXPECT_EXIT=5
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(
+        backend_extern_c_default_symbol
+        PROPERTIES LABELS "backend;backend.c;interop"
+)
+
+add_test(
+        NAME backend_extern_c_symbol_override
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_symbol_override.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_symbol_override
+        -DEXPECT_EXIT=7
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(
+        backend_extern_c_symbol_override
+        PROPERTIES LABELS "backend;backend.c;interop"
+)
+
+add_test(
+        NAME backend_rejects_unlowered_checked_binary
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/unsupported_checked_binary.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_unsupported_checked_binary
+        -DEXPECT_EXIT=3
+        "-DEXPECT_SUBSTRING=runtime binary operations are not lowered yet"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_failure_test.cmake"
+)
+set_tests_properties(
+        backend_rejects_unlowered_checked_binary
+        PROPERTIES LABELS "backend;backend.c;backend.invalid"
+)
+
+add_test(
+        NAME backend_extern_c_pointer_types
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_pointer_types.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_pointer_types
+        -DEXPECT_EXIT=0
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(
+        backend_extern_c_pointer_types
+        PROPERTIES LABELS "backend;backend.c;interop"
 )

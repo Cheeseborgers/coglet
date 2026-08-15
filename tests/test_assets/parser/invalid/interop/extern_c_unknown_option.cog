@@ -1,0 +1,2 @@
+#extern(c, library="SDL3")
+create_window::() -> opaque*;

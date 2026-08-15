@@ -1,0 +1,3 @@
+error: duplicate #extern(c) option 'name'
+#extern(c, name="first", name="second")
+                         ^~~~

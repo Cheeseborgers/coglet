@@ -1,0 +1,2 @@
+#extern(c, name="")
+f::() -> void;

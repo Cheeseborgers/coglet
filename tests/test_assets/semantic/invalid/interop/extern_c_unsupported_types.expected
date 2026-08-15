@@ -1,0 +1,4 @@
+semantic error at line 11: #extern(c) parameter type 'Point' is not supported by the current C ABI subset
+semantic error at line 14: #extern(c) parameter type 'u8[4]' is not supported by the current C ABI subset
+semantic error at line 16: #extern(c) return type 'Mode' is not supported by the current C ABI subset
+3 semantic errors generated.

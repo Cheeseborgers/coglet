@@ -113,6 +113,7 @@ static const char *type_kind_name(TypeKind kind)
         case TYPE_F32:      return "f32";
         case TYPE_F64:      return "f64";
         case TYPE_POINTER:  return "pointer";
+        case TYPE_OPAQUE_POINTER: return "opaque-pointer";
         case TYPE_ARRAY:    return "array";
         case TYPE_STRUCT:   return "struct";
         case TYPE_ENUM:     return "enum";
@@ -1083,7 +1084,8 @@ static int verify_null_cast_info(Verifier *verifier, Node *expression, SemExprIn
     }
 
     if (!info->type ||
-        info->type->kind != TYPE_POINTER) {
+        (info->type->kind != TYPE_POINTER &&
+         info->type->kind != TYPE_OPAQUE_POINTER)) {
         verifier_error(verifier, expression,
             "null cast result is not a concrete pointer type");
 

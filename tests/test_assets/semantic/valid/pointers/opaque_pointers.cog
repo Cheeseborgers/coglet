@@ -1,0 +1,40 @@
+accept_opaque::(value: readonly opaque*) -> void {
+}
+
+return_opaque::() -> opaque* {
+    return null;
+}
+
+opaque_pointer_rules::(
+    p: i32*,
+    rp: readonly i32*,
+    h: opaque*,
+    rh: readonly opaque*
+) -> void {
+    erased: opaque* = reinterpret(opaque*, p);
+    erased_view: readonly opaque* = reinterpret(readonly opaque*, p);
+    recovered: i32* = reinterpret(i32*, h);
+    recovered_view: readonly i32* = reinterpret(readonly i32*, rh);
+
+    implicit_view: readonly opaque* = h;
+    explicit_view: readonly opaque* = cast(readonly opaque*, h);
+
+    h == implicit_view;
+    implicit_view != h;
+    h != null;
+    rh == null;
+
+    null_handle: opaque* = null;
+    null_view: readonly opaque* = null;
+    returned: opaque* = return_opaque();
+    accept_opaque(h);
+    accept_opaque(null);
+    cast(opaque*, null);
+    cast(readonly opaque*, null);
+
+    slot: opaque* = null;
+    out: opaque** = &slot;
+    *out = h;
+    loaded: opaque* = *out;
+    loaded == h;
+}

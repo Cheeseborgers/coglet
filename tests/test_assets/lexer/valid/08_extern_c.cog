@@ -1,0 +1,2 @@
+#extern(c)
+puts::(s: readonly u8*) -> i32;

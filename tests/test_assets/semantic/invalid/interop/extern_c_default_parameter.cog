@@ -1,0 +1,2 @@
+#extern(c)
+bad_default::(value: i32 = 1) -> i32;

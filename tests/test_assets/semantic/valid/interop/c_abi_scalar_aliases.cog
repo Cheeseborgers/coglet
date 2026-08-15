@@ -1,0 +1,18 @@
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+
+#extern(c)
+malloc::(size: c_size) -> opaque*;
+
+#extern(c)
+consume_uint::(value: c_uint) -> void;
+
+increment_c_int::(value: c_int) -> c_int {
+    return value + 1;
+}
+
+use_c_abi_aliases::(s: readonly c_char*, size: c_size, value: c_uint) -> c_int {
+    consume_uint(value);
+    malloc(size);
+    return puts(s);
+}

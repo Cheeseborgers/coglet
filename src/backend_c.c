@@ -1,0 +1,805 @@
+#define _POSIX_C_SOURCE 200809L
+
+#include "backend_c.h"
+
+#include <errno.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
+#include "utils/string_view.h"
+
+#define C_BACKEND_MAX_FUNCTIONS 512
+#define C_BACKEND_MAX_TYPE_ALIASES 1024
+#define C_BACKEND_NAME_SIZE 48
+#define C_BACKEND_TYPE_DEF_SIZE 192
+
+typedef struct CFunction {
+    Node *node;
+    char generated_name[C_BACKEND_NAME_SIZE];
+} CFunction;
+
+typedef struct CTypeAlias {
+    const Type *type;
+    char name[C_BACKEND_NAME_SIZE];
+    char definition[C_BACKEND_TYPE_DEF_SIZE];
+} CTypeAlias;
+
+typedef struct CBackend {
+    FILE *out;
+    const char *source_filename;
+    Node *program;
+    SemanticContext *sem;
+
+    CFunction functions[C_BACKEND_MAX_FUNCTIONS];
+    int function_count;
+
+    CTypeAlias type_aliases[C_BACKEND_MAX_TYPE_ALIASES];
+    int type_alias_count;
+
+    Node *current_function;
+    int had_error;
+} CBackend;
+
+static int sv_equals(StringView view, const char *text)
+{
+    size_t length = strlen(text);
+    return view.length == length && memcmp(view.data, text, length) == 0;
+}
+
+static void backend_error(CBackend *backend, const Node *node, const char *message)
+{
+    if (!backend) return;
+
+    fprintf(
+        stderr,
+        "%s:%d: backend error: %s\n",
+        backend->source_filename ? backend->source_filename : "<input>",
+        node ? node->line : 0,
+        message
+    );
+
+    backend->had_error = 1;
+}
+
+static const CTypeAlias *find_type_alias(CBackend *backend, const Type *type)
+{
+    for (int i = 0; i < backend->type_alias_count; i++) {
+        if (backend->type_aliases[i].type == type)
+            return &backend->type_aliases[i];
+    }
+
+    return NULL;
+}
+
+static const char *base_c_type_name(const Type *type)
+{
+    if (!type) return NULL;
+
+    switch (type->kind) {
+        case TYPE_VOID: return "void";
+        case TYPE_BOOL: return "_Bool";
+
+        case TYPE_I8:  return "int8_t";
+        case TYPE_I16: return "int16_t";
+        case TYPE_I32: return "int32_t";
+        case TYPE_I64: return "int64_t";
+
+        case TYPE_U8:  return "uint8_t";
+        case TYPE_U16: return "uint16_t";
+        case TYPE_U32: return "uint32_t";
+        case TYPE_U64: return "uint64_t";
+
+        case TYPE_F32: return "float";
+        case TYPE_F64: return "double";
+
+        case TYPE_NAMED:
+            if (sv_equals(type->named_name, "c_char")) return "char";
+            if (sv_equals(type->named_name, "c_int"))  return "int";
+            if (sv_equals(type->named_name, "c_uint")) return "unsigned int";
+            if (sv_equals(type->named_name, "c_size")) return "size_t";
+            return NULL;
+
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
+        case TYPE_NULL:
+        case TYPE_POINTER:
+        case TYPE_OPAQUE_POINTER:
+        case TYPE_ARRAY:
+        case TYPE_STRUCT:
+        case TYPE_ENUM:
+        case TYPE_FUNCTION:
+            return NULL;
+    }
+
+    return NULL;
+}
+
+static const char *register_c_type(CBackend *backend, const Type *type, const Node *owner)
+{
+    const char *base = base_c_type_name(type);
+    if (base) return base;
+
+    if (!type) {
+        backend_error(backend, owner, "missing type during C lowering");
+        return NULL;
+    }
+
+    if (type->kind != TYPE_POINTER && type->kind != TYPE_OPAQUE_POINTER) {
+        backend_error(
+            backend,
+            owner,
+            "type is not supported by the current host-C backend subset"
+        );
+        return NULL;
+    }
+
+    const CTypeAlias *existing = find_type_alias(backend, type);
+    if (existing) return existing->name;
+
+    if (backend->type_alias_count >= C_BACKEND_MAX_TYPE_ALIASES) {
+        backend_error(backend, owner, "too many generated C pointer types");
+        return NULL;
+    }
+
+    char element_name[C_BACKEND_NAME_SIZE];
+    element_name[0] = '\0';
+
+    if (type->kind == TYPE_POINTER) {
+        const char *resolved_element = register_c_type(backend, type->element, owner);
+        if (!resolved_element) return NULL;
+
+        if (strlen(resolved_element) >= sizeof(element_name)) {
+            backend_error(backend, owner, "generated C element type name is too long");
+            return NULL;
+        }
+
+        strcpy(element_name, resolved_element);
+    }
+
+    int index = backend->type_alias_count;
+    CTypeAlias *alias = &backend->type_aliases[backend->type_alias_count++];
+    memset(alias, 0, sizeof(*alias));
+    alias->type = type;
+
+    snprintf(alias->name, sizeof(alias->name), "cg_type_%d", index);
+
+    char alias_name[C_BACKEND_NAME_SIZE];
+    strcpy(alias_name, alias->name);
+
+    if (type->kind == TYPE_OPAQUE_POINTER) {
+        snprintf(
+            alias->definition,
+            sizeof(alias->definition),
+            "typedef %svoid *%s;",
+            type->pointer_access == POINTER_ACCESS_READONLY ? "const " : "",
+            alias_name
+        );
+    } else {
+        snprintf(
+            alias->definition,
+            sizeof(alias->definition),
+            "typedef %s%s *%s;",
+            element_name,
+            type->pointer_access == POINTER_ACCESS_READONLY ? " const" : "",
+            alias_name
+        );
+    }
+
+    return alias->name;
+}
+
+static CFunction *find_function(CBackend *backend, StringView name)
+{
+    for (int i = 0; i < backend->function_count; i++) {
+        Node *func = backend->functions[i].node;
+        StringView candidate = func->as.func_decl.name;
+
+        if (candidate.length == name.length &&
+            memcmp(candidate.data, name.data, name.length) == 0) {
+            return &backend->functions[i];
+        }
+    }
+
+    return NULL;
+}
+
+static int collect_functions(CBackend *backend)
+{
+    if (!backend->program || backend->program->type != NODE_PROGRAM) {
+        backend_error(backend, backend->program, "expected program node");
+        return 0;
+    }
+
+    NodeList statements = backend->program->as.program.statements;
+
+    for (int i = 0; i < statements.count; i++) {
+        Node *node = statements.items[i];
+        if (!node || node->type != NODE_FUNC_DECL)
+            continue;
+
+        if (backend->function_count >= C_BACKEND_MAX_FUNCTIONS) {
+            backend_error(backend, node, "too many functions for current C backend");
+            return 0;
+        }
+
+        CFunction *function = &backend->functions[backend->function_count];
+        memset(function, 0, sizeof(*function));
+        function->node = node;
+        snprintf(
+            function->generated_name,
+            sizeof(function->generated_name),
+            "cg_fn_%d",
+            backend->function_count
+        );
+
+        backend->function_count++;
+    }
+
+    return !backend->had_error;
+}
+
+static int prepare_function_types(CBackend *backend)
+{
+    for (int i = 0; i < backend->function_count; i++) {
+        Node *func = backend->functions[i].node;
+
+        if (!register_c_type(backend, func->as.func_decl.return_type, func))
+            return 0;
+
+        for (int p = 0; p < func->as.func_decl.params.count; p++) {
+            Node *param = func->as.func_decl.params.items[p];
+            if (!register_c_type(backend, param->as.param_decl.var_type, param))
+                return 0;
+        }
+    }
+
+    return !backend->had_error;
+}
+
+static void emit_c_string_literal(FILE *out, StringView value)
+{
+    fputc('"', out);
+
+    for (size_t i = 0; i < value.length; i++) {
+        unsigned char ch = (unsigned char)value.data[i];
+
+        switch (ch) {
+            case '\\': fputs("\\\\", out); break;
+            case '"':  fputs("\\\"", out); break;
+            case '\n': fputs("\\n", out); break;
+            case '\r': fputs("\\r", out); break;
+            case '\t': fputs("\\t", out); break;
+            default:
+                if (ch >= 32 && ch <= 126) {
+                    fputc((int)ch, out);
+                } else {
+                    fprintf(out, "\\%03o", (unsigned int)ch);
+                }
+                break;
+        }
+    }
+
+    fputc('"', out);
+}
+
+static int emit_expression(CBackend *backend, Node *node);
+
+static int emit_integer_literal(CBackend *backend, Node *node)
+{
+    uint64_t value = node->as.number.value.integer;
+
+    if (value > (uint64_t)INT64_MAX) {
+        backend_error(
+            backend,
+            node,
+            "integer literal exceeds the first host-C backend literal subset"
+        );
+        return 0;
+    }
+
+    fprintf(backend->out, "%" PRIu64, value);
+    return 1;
+}
+
+static int emit_parameter_identifier(CBackend *backend, Node *node)
+{
+    if (!backend->current_function)
+        return 0;
+
+    for (int i = 0; i < backend->current_function->as.func_decl.params.count; i++) {
+        Node *param = backend->current_function->as.func_decl.params.items[i];
+        StringView name = param->as.param_decl.name;
+
+        if (name.length == node->as.ident.length &&
+            memcmp(name.data, node->as.ident.data, name.length) == 0) {
+            fprintf(backend->out, "cg_p_%d", i);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int emit_call(CBackend *backend, Node *node)
+{
+    Node *callee = node->as.call.callee;
+
+    if (!callee || callee->type != NODE_IDENT) {
+        backend_error(
+            backend,
+            node,
+            "current host-C backend supports only direct calls to named functions"
+        );
+        return 0;
+    }
+
+    CFunction *function = find_function(backend, callee->as.ident);
+    if (!function) {
+        backend_error(backend, node, "could not resolve call target during C lowering");
+        return 0;
+    }
+
+    fputs(function->generated_name, backend->out);
+    fputc('(', backend->out);
+
+    for (int i = 0; i < node->as.call.arguments.count; i++) {
+        if (i > 0) fputs(", ", backend->out);
+        if (!emit_expression(backend, node->as.call.arguments.items[i]))
+            return 0;
+    }
+
+    fputc(')', backend->out);
+    return 1;
+}
+
+static int emit_expression(CBackend *backend, Node *node)
+{
+    if (!node) {
+        backend_error(backend, backend->current_function, "missing expression during C lowering");
+        return 0;
+    }
+
+    switch (node->type) {
+        case NODE_NUMBER:
+            if (node->as.number.kind != NUMBER_LITERAL_INTEGER) {
+                backend_error(
+                    backend,
+                    node,
+                    "floating-point expressions are not lowered by the first host-C backend subset"
+                );
+                return 0;
+            }
+            return emit_integer_literal(backend, node);
+
+        case NODE_BOOL:
+            fputs(node->as.boolean.value ? "1" : "0", backend->out);
+            return 1;
+
+        case NODE_NULL:
+            fputs("NULL", backend->out);
+            return 1;
+
+        case NODE_IDENT:
+            if (emit_parameter_identifier(backend, node))
+                return 1;
+
+            backend_error(
+                backend,
+                node,
+                "current host-C backend only lowers parameter identifiers in value expressions"
+            );
+            return 0;
+
+        case NODE_UNARY:
+            if (node->as.unary.op == TOK_MINUS &&
+                node->as.unary.operand &&
+                node->as.unary.operand->type == NODE_NUMBER &&
+                node->as.unary.operand->as.number.kind == NUMBER_LITERAL_INTEGER) {
+                fputs("(-", backend->out);
+                if (!emit_integer_literal(backend, node->as.unary.operand))
+                    return 0;
+                fputc(')', backend->out);
+                return 1;
+            }
+
+            backend_error(
+                backend,
+                node,
+                "runtime unary operations are not lowered yet; checked integer semantics must be preserved"
+            );
+            return 0;
+
+        case NODE_CALL:
+            return emit_call(backend, node);
+
+        case NODE_STRING:
+            backend_error(
+                backend,
+                node,
+                "string lowering is not implemented yet; C string interoperability is a later milestone"
+            );
+            return 0;
+
+        case NODE_CAST:
+            backend_error(
+                backend,
+                node,
+                "cast lowering is not implemented by the first host-C backend subset"
+            );
+            return 0;
+
+        case NODE_BINARY:
+            backend_error(
+                backend,
+                node,
+                "runtime binary operations are not lowered yet; checked arithmetic cannot use raw C operators"
+            );
+            return 0;
+
+        default:
+            backend_error(
+                backend,
+                node,
+                "expression is not supported by the current host-C backend subset"
+            );
+            return 0;
+    }
+}
+
+static int emit_statement(CBackend *backend, Node *node)
+{
+    if (!node) return 1;
+
+    switch (node->type) {
+        case NODE_RETURN:
+            fputs("    return", backend->out);
+            if (node->as.return_stmt.value) {
+                fputc(' ', backend->out);
+                if (!emit_expression(backend, node->as.return_stmt.value))
+                    return 0;
+            }
+            fputs(";\n", backend->out);
+            return 1;
+
+        case NODE_EXPR_STMT:
+            fputs("    ", backend->out);
+            if (!emit_expression(backend, node->as.expr_stmt.expr))
+                return 0;
+            fputs(";\n", backend->out);
+            return 1;
+
+        default:
+            backend_error(
+                backend,
+                node,
+                "statement is not supported by the current host-C backend subset"
+            );
+            return 0;
+    }
+}
+
+static int emit_block(CBackend *backend, Node *block)
+{
+    if (!block || block->type != NODE_BLOCK) {
+        backend_error(backend, block, "expected function body block during C lowering");
+        return 0;
+    }
+
+    for (int i = 0; i < block->as.block.statements.count; i++) {
+        if (!emit_statement(backend, block->as.block.statements.items[i]))
+            return 0;
+    }
+
+    return 1;
+}
+
+static const char *function_return_type(CBackend *backend, Node *func)
+{
+    return register_c_type(backend, func->as.func_decl.return_type, func);
+}
+
+static const char *parameter_type(CBackend *backend, Node *param)
+{
+    return register_c_type(backend, param->as.param_decl.var_type, param);
+}
+
+static void emit_parameter_type_list(CBackend *backend, Node *func, int with_names)
+{
+    int count = func->as.func_decl.params.count;
+
+    if (count == 0) {
+        fputs("void", backend->out);
+        return;
+    }
+
+    for (int i = 0; i < count; i++) {
+        Node *param = func->as.func_decl.params.items[i];
+        const char *type_name = parameter_type(backend, param);
+
+        if (i > 0) fputs(", ", backend->out);
+        fputs(type_name ? type_name : "void", backend->out);
+
+        if (with_names)
+            fprintf(backend->out, " cg_p_%d", i);
+    }
+}
+
+static StringView external_symbol_name(Node *func)
+{
+    if (!string_view_is_empty(func->as.func_decl.external_name))
+        return func->as.func_decl.external_name;
+
+    return func->as.func_decl.name;
+}
+
+static int emit_function_declarations(CBackend *backend)
+{
+    for (int i = 0; i < backend->function_count; i++) {
+        CFunction *entry = &backend->functions[i];
+        Node *func = entry->node;
+        const char *return_type = function_return_type(backend, func);
+        if (!return_type) return 0;
+
+        if (func->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C) {
+            fprintf(backend->out, "extern %s %s(", return_type, entry->generated_name);
+            emit_parameter_type_list(backend, func, 0);
+            fputs(") __asm__(", backend->out);
+            emit_c_string_literal(backend->out, external_symbol_name(func));
+            fputs(");\n", backend->out);
+        } else {
+            fprintf(backend->out, "static %s %s(", return_type, entry->generated_name);
+            emit_parameter_type_list(backend, func, 0);
+            fputs(");\n", backend->out);
+        }
+    }
+
+    fputc('\n', backend->out);
+    return !backend->had_error;
+}
+
+static int emit_function_bodies(CBackend *backend)
+{
+    for (int i = 0; i < backend->function_count; i++) {
+        CFunction *entry = &backend->functions[i];
+        Node *func = entry->node;
+
+        if (func->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C)
+            continue;
+
+        const char *return_type = function_return_type(backend, func);
+        if (!return_type) return 0;
+
+        backend->current_function = func;
+
+        fprintf(backend->out, "static %s %s(", return_type, entry->generated_name);
+        emit_parameter_type_list(backend, func, 1);
+        fputs(")\n{\n", backend->out);
+
+        if (!emit_block(backend, func->as.func_decl.body))
+            return 0;
+
+        fputs("}\n\n", backend->out);
+        backend->current_function = NULL;
+    }
+
+    return !backend->had_error;
+}
+
+static int source_type_is_c_int(const Type *type)
+{
+    return type && type->kind == TYPE_NAMED && sv_equals(type->named_name, "c_int");
+}
+
+static int emit_entrypoint(CBackend *backend)
+{
+    StringView main_name = string_view_from_cstr("main");
+    CFunction *main_function = find_function(backend, main_name);
+
+    if (!main_function ||
+        main_function->node->as.func_decl.linkage != FUNCTION_LINKAGE_COGLET) {
+        backend_error(
+            backend,
+            backend->program,
+            "host executable backend requires a top-level Coglet 'main' function"
+        );
+        return 0;
+    }
+
+    Node *func = main_function->node;
+
+    if (func->as.func_decl.params.count != 0 ||
+        !source_type_is_c_int(func->as.func_decl.return_type)) {
+        backend_error(
+            backend,
+            func,
+            "host executable entry point must have signature 'main::() -> c_int'"
+        );
+        return 0;
+    }
+
+    fputs("int main(void)\n{\n    return ", backend->out);
+    fputs(main_function->generated_name, backend->out);
+    fputs("();\n}\n", backend->out);
+
+    return 1;
+}
+
+static CBackendStatus c_backend_emit_stream(
+    FILE *out,
+    const char *source_filename,
+    Node *program,
+    SemanticContext *sem
+) {
+    CBackend backend;
+    memset(&backend, 0, sizeof(backend));
+
+    backend.out = out;
+    backend.source_filename = source_filename;
+    backend.program = program;
+    backend.sem = sem;
+
+    if (!collect_functions(&backend) || !prepare_function_types(&backend))
+        return C_BACKEND_STATUS_UNSUPPORTED;
+
+    fputs("/* Generated by Coglet's initial host-C backend. */\n", out);
+    fputs("#include <stddef.h>\n#include <stdint.h>\n\n", out);
+
+    for (int i = 0; i < backend.type_alias_count; i++) {
+        fputs(backend.type_aliases[i].definition, out);
+        fputc('\n', out);
+    }
+
+    if (backend.type_alias_count > 0)
+        fputc('\n', out);
+
+    if (!emit_function_declarations(&backend) ||
+        !emit_function_bodies(&backend) ||
+        !emit_entrypoint(&backend)) {
+        return C_BACKEND_STATUS_UNSUPPORTED;
+    }
+
+    if (ferror(out)) {
+        fprintf(stderr, "error: failed while writing generated C output\n");
+        return C_BACKEND_STATUS_IO_ERROR;
+    }
+
+    return C_BACKEND_STATUS_OK;
+}
+
+CBackendStatus c_backend_emit_file(
+    const char *output_path,
+    const char *source_filename,
+    Node *program,
+    SemanticContext *sem
+) {
+    if (!output_path) {
+        fprintf(stderr, "error: no C output path provided\n");
+        return C_BACKEND_STATUS_IO_ERROR;
+    }
+
+    FILE *out = fopen(output_path, "wb");
+    if (!out) {
+        fprintf(stderr, "error: could not open '%s' for generated C output: %s\n",
+                output_path, strerror(errno));
+        return C_BACKEND_STATUS_IO_ERROR;
+    }
+
+    CBackendStatus status = c_backend_emit_stream(
+        out,
+        source_filename,
+        program,
+        sem
+    );
+
+    if (fclose(out) != 0 && status == C_BACKEND_STATUS_OK) {
+        fprintf(stderr, "error: could not close generated C output '%s': %s\n",
+                output_path, strerror(errno));
+        return C_BACKEND_STATUS_IO_ERROR;
+    }
+
+    return status;
+}
+
+CBackendStatus c_backend_build_executable(
+    const char *output_path,
+    const char *source_filename,
+    Node *program,
+    SemanticContext *sem
+) {
+#if defined(__unix__) || defined(__APPLE__)
+    if (!output_path) {
+        fprintf(stderr, "error: no executable output path provided\n");
+        return C_BACKEND_STATUS_IO_ERROR;
+    }
+
+    char temp_path[] = "/tmp/coglet-c-XXXXXX";
+    int fd = mkstemp(temp_path);
+    if (fd < 0) {
+        fprintf(stderr, "error: could not create temporary C file: %s\n", strerror(errno));
+        return C_BACKEND_STATUS_IO_ERROR;
+    }
+
+    FILE *out = fdopen(fd, "wb");
+    if (!out) {
+        fprintf(stderr, "error: could not open temporary C stream: %s\n", strerror(errno));
+        close(fd);
+        unlink(temp_path);
+        return C_BACKEND_STATUS_IO_ERROR;
+    }
+
+    CBackendStatus emit_status = c_backend_emit_stream(
+        out,
+        source_filename,
+        program,
+        sem
+    );
+
+    if (fclose(out) != 0 && emit_status == C_BACKEND_STATUS_OK) {
+        fprintf(stderr, "error: could not close temporary C output: %s\n", strerror(errno));
+        unlink(temp_path);
+        return C_BACKEND_STATUS_IO_ERROR;
+    }
+
+    if (emit_status != C_BACKEND_STATUS_OK) {
+        unlink(temp_path);
+        return emit_status;
+    }
+
+    pid_t child = fork();
+    if (child < 0) {
+        fprintf(stderr, "error: could not start native C compiler: %s\n", strerror(errno));
+        unlink(temp_path);
+        return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
+    }
+
+    if (child == 0) {
+        execlp(
+            "cc",
+            "cc",
+            "-std=c99",
+            "-Wall",
+            "-Wextra",
+            "-x",
+            "c",
+            temp_path,
+            "-o",
+            output_path,
+            (char *)NULL
+        );
+
+        fprintf(stderr, "error: could not execute native C compiler 'cc': %s\n", strerror(errno));
+        _exit(127);
+    }
+
+    int wait_status = 0;
+    if (waitpid(child, &wait_status, 0) < 0) {
+        fprintf(stderr, "error: failed waiting for native C compiler: %s\n", strerror(errno));
+        unlink(temp_path);
+        return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
+    }
+
+    unlink(temp_path);
+
+    if (!WIFEXITED(wait_status) || WEXITSTATUS(wait_status) != 0) {
+        fprintf(stderr, "error: native C compiler/linker failed\n");
+        return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
+    }
+
+    return C_BACKEND_STATUS_OK;
+#else
+    (void)output_path;
+    (void)source_filename;
+    (void)program;
+    (void)sem;
+    fprintf(stderr, "error: executable host-C backend is not implemented on this host platform\n");
+    return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
+#endif
+}

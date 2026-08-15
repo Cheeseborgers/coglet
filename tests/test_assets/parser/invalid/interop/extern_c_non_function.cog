@@ -1,0 +1,2 @@
+#extern(c)
+value:: i32;

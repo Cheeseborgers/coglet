@@ -1,0 +1,44 @@
+radix_integer_literals::() -> void {
+    hex_lower: u8 = 0xff;
+    hex_upper: u16 = 0XABCD;
+
+    binary_lower: u8 = 0b1010;
+    binary_upper: u8 = 0B0101;
+
+    octal_lower: u16 = 0o755;
+    octal_upper: u16 = 0O644;
+
+    /*
+     * A leading zero without a prefix is still decimal.
+     */
+    leading_zero_decimal: u16 = 0755;
+
+    /*
+     * Hexadecimal e is a digit, not an exponent marker.
+     */
+    hex_with_e: u16 = 0x1e3;
+
+    /*
+     * All four spellings represent the same exact value.
+     */
+    decimal_matches_hex: bool =
+        255 == 0xff;
+
+    decimal_matches_binary: bool =
+        255 == 0b11111111;
+
+    decimal_matches_octal: bool =
+        255 == 0o377;
+
+    /*
+     * Exercise the full exact u64 domain.
+     */
+    maximum_u64: u64 =
+        0xffffffffffffffff;
+
+    /*
+     * Unary minus remains separate from the literal magnitude.
+     */
+    minimum_i64: i64 =
+        -0x8000000000000000;
+}

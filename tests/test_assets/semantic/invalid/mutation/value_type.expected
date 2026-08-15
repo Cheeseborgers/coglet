@@ -1,2 +1,4 @@
-semantic error at line 5: compound assignment value must be numeric
+tests/test_assets/semantic/invalid/mutation/value_type.cog:5:5: error: compound assignment value must be numeric
+    value += flag;
+    ^~~~~~~~~~~~~
 1 semantic error generated.

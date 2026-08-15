@@ -1,2 +1,4 @@
-semantic error at line 5: expression does not produce a value
+tests/test_assets/semantic/invalid/void_values/binary_operand.cog:5:10: error: expression does not produce a value
+    x := does_nothing() + 1;
+         ^~~~~~~~~~~~
 1 semantic error generated.

@@ -1,2 +1,4 @@
-semantic error at line 2: division by zero
+tests/test_assets/semantic/invalid/builtins/wrapping_known_zero_divisor.cog:2:13: error: division by zero
+    value / wrapping_sub(
+            ^~~~~~~~~~~~
 1 semantic error generated.

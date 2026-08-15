@@ -1,6 +1,16 @@
-semantic error at line 12: invalid explicit cast
-semantic error at line 19: invalid explicit cast
-semantic error at line 23: invalid explicit cast
-semantic error at line 27: invalid explicit cast
-semantic error at line 31: invalid explicit cast
+tests/test_assets/semantic/invalid/casts/invalid_kind_conversions.cog:12:12: error: invalid explicit cast
+    return cast(i32, Point {
+           ^~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/invalid_kind_conversions.cog:19:12: error: invalid explicit cast
+    return cast(i32, true);
+           ^~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/invalid_kind_conversions.cog:23:12: error: invalid explicit cast
+    return cast(bool, 1);
+           ^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/invalid_kind_conversions.cog:27:12: error: invalid explicit cast
+    return cast(f64, Color.Red);
+           ^~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/invalid_kind_conversions.cog:31:12: error: invalid explicit cast
+    return cast(Color, 1.5);
+           ^~~~~~~~~~~~~~~
 5 semantic errors generated.

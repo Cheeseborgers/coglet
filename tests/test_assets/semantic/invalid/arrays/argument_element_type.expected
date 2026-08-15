@@ -1,2 +1,4 @@
-semantic error at line 9: initializer type does not match declared type
+tests/test_assets/semantic/invalid/arrays/argument_element_type.cog:9:22: error: initializer type does not match declared type
+    takes_values([1, true, 3]);
+                     ^~~~
 1 semantic error generated.

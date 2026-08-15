@@ -1,2 +1,4 @@
-semantic error at line 5: assignment cannot be used as a value; it is a statement
+tests/test_assets/semantic/invalid/mutation/chained_assignment.cog:5:9: error: assignment cannot be used as a value; it is a statement
+    a = b = 1;
+        ^~~~~
 1 semantic error generated.

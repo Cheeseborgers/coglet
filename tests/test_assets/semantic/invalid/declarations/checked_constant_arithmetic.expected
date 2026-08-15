@@ -1,14 +1,40 @@
-semantic error at line 1: integer overflow in constant expression
-semantic error at line 2: integer overflow in constant expression
-semantic error at line 3: integer overflow in constant expression
-semantic error at line 4: division by zero in constant expression
-semantic error at line 5: remainder by zero in constant expression
-semantic error at line 6: integer overflow in constant expression
-semantic error at line 7: integer overflow in constant expression
-semantic error at line 8: integer overflow in constant expression
-semantic error at line 9: integer overflow in constant expression
-semantic error at line 10: integer constant operand does not fit operation type
-semantic error at line 11: integer constant operand does not fit operation type
-semantic error at line 12: integer constant operand does not fit operation type
-semantic error at line 13: integer overflow in constant expression
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:1:17: error: integer overflow in constant expression
+ADD_OVERFLOW :: 2147483647 + 1;
+                ^~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:2:22: error: integer overflow in constant expression
+SUBTRACT_OVERFLOW :: cast(i32, -2147483648) - 1;
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:3:22: error: integer overflow in constant expression
+MULTIPLY_OVERFLOW :: 1073741824 * 2;
+                     ^~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:4:16: error: division by zero in constant expression
+DIVIDE_ZERO :: 1 / 0;
+               ^~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:5:19: error: remainder by zero in constant expression
+REMAINDER_ZERO :: 1 % 0;
+                  ^~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:6:19: error: integer overflow in constant expression
+DIVIDE_MINIMUM :: cast(i32, -2147483648) / -1;
+                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:7:22: error: integer overflow in constant expression
+REMAINDER_MINIMUM :: cast(i32, -2147483648) % -1;
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:8:17: error: integer overflow in constant expression
+U64_OVERFLOW :: 18446744073709551615 + 1;
+                ^~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:9:26: error: integer overflow in constant expression
+I64_MULTIPLY_OVERFLOW :: cast(i64, 4611686018427387904) * 2;
+                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:10:22: error: integer constant operand does not fit operation type
+ADD_OPERAND_RANGE :: cast(u8, 255) + 256;
+                     ^~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:11:25: error: integer constant operand does not fit operation type
+DIVIDE_OPERAND_RANGE :: cast(i8, 1) / 128;
+                        ^~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:12:28: error: integer constant operand does not fit operation type
+REMAINDER_OPERAND_RANGE :: cast(i8, 1) % 128;
+                           ^~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:13:25: error: integer overflow in constant expression
+NESTED_OVERFLOW: i32 : (50000 * 50000) + 1;
+                        ^~~~~~~~~~~~~
 13 semantic errors generated.

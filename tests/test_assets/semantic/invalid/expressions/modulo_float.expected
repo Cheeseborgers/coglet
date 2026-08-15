@@ -1,2 +1,4 @@
-semantic error at line 2: '%' requires integer operands
+tests/test_assets/semantic/invalid/expressions/modulo_float.cog:2:5: error: '%' requires integer operands
+    10 % 3.0;
+    ^~~~~~~~
 1 semantic error generated.

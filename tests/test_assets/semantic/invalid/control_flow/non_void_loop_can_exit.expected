@@ -1,3 +1,7 @@
-semantic error at line 1: non-void function may not return a value
-semantic error at line 11: non-void function may not return a value
+tests/test_assets/semantic/invalid/control_flow/non_void_loop_can_exit.cog:1:1: error: non-void function may not return a value
+loop_can_break::(
+^~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/control_flow/non_void_loop_can_exit.cog:11:1: error: non-void function may not return a value
+conditional_loop_may_not_execute::(
+^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 2 semantic errors generated.

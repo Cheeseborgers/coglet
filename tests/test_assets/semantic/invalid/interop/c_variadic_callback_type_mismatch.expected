@@ -1,2 +1,4 @@
-semantic error at line 10: argument type does not match parameter type: expected cfn(..., ...), got cfn(...)
+tests/test_assets/semantic/invalid/interop/c_variadic_callback_type_mismatch.cog:10:19: error: argument type does not match parameter type: expected cfn(..., ...), got cfn(...)
+    return accept(fixed);
+                  ^~~~~
 1 semantic error generated.

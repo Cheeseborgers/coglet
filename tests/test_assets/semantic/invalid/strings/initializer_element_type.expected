@@ -1,2 +1,4 @@
-semantic error at line 5: string literal destination must be u8 array
+tests/test_assets/semantic/invalid/strings/initializer_element_type.cog:5:21: error: string literal destination must be u8 array
+    value: i32[6] = "hello";
+                    ^~~~~~~
 1 semantic error generated.

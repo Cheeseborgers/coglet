@@ -1,2 +1,4 @@
-semantic error at line 12: assignment target is not assignable
+tests/test_assets/semantic/invalid/structs/temporary_field_target.cog:12:18: error: assignment target is not assignable
+    make_point().x = 1;
+                 ^~~~~
 1 semantic error generated.

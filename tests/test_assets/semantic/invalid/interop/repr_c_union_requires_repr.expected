@@ -1,2 +1,4 @@
-semantic error at line 1: union declarations currently require #repr(c)
+tests/test_assets/semantic/invalid/interop/repr_c_union_requires_repr.cog:1:1: error: union declarations currently require #repr(c)
+NativeUnion::union {
+^~~~~~~~~~~
 1 semantic error generated.

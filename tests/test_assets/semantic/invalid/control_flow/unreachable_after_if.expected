@@ -1,2 +1,4 @@
-semantic error at line 8: unreachable statement
+tests/test_assets/semantic/invalid/control_flow/unreachable_after_if.cog:8:5: error: unreachable statement
+    x := 3;
+    ^
 1 semantic error generated.

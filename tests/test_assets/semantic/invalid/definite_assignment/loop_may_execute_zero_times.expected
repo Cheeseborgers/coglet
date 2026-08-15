@@ -1,4 +1,10 @@
-semantic error at line 10: variable 'value' may be uninitialized
-semantic error at line 22: variable 'value' may be uninitialized
-semantic error at line 30: variable 'value' may be uninitialized
+tests/test_assets/semantic/invalid/definite_assignment/loop_may_execute_zero_times.cog:10:12: error: variable 'value' may be uninitialized
+    return value;
+           ^~~~~
+tests/test_assets/semantic/invalid/definite_assignment/loop_may_execute_zero_times.cog:22:12: error: variable 'value' may be uninitialized
+    return value;
+           ^~~~~
+tests/test_assets/semantic/invalid/definite_assignment/loop_may_execute_zero_times.cog:30:21: error: variable 'value' may be uninitialized
+    for condition : value += 1 {
+                    ^~~~~
 3 semantic errors generated.

@@ -1,3 +1,7 @@
-semantic error at line 1: #repr(c) unions must contain at least one field
-semantic error at line 7: #repr(c) by-value field 'self' creates a recursive union layout
+tests/test_assets/semantic/invalid/interop/repr_c_union_layout.cog:2:1: error: #repr(c) unions must contain at least one field
+Empty::union {
+^~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_union_layout.cog:7:5: error: #repr(c) by-value field 'self' creates a recursive union layout
+    self: Recursive;
+    ^~~~
 2 semantic errors generated.

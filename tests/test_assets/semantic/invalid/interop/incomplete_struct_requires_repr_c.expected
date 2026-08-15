@@ -1,2 +1,4 @@
-semantic error at line 1: incomplete struct declarations require #repr(c)
+tests/test_assets/semantic/invalid/interop/incomplete_struct_requires_repr_c.cog:1:1: error: incomplete struct declarations require #repr(c)
+Hidden::struct;
+^~~~~~
 1 semantic error generated.

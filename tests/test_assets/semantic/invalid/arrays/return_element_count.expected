@@ -1,2 +1,4 @@
-semantic error at line 5: array initializer element count does not match array size
+tests/test_assets/semantic/invalid/arrays/return_element_count.cog:5:12: error: array initializer element count does not match array size
+    return [1, 2, 3];
+           ^
 1 semantic error generated.

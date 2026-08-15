@@ -1,16 +1,46 @@
-semantic error at line 1: constant integer value does not fit declared type
-semantic error at line 2: constant integer value does not fit declared type
-semantic error at line 3: constant integer value does not fit declared type
-semantic error at line 4: constant integer value does not fit declared type
-semantic error at line 5: constant integer value does not fit declared type
-semantic error at line 6: constant integer value does not fit declared type
-semantic error at line 7: constant integer value does not fit declared type
-semantic error at line 8: constant integer value does not fit declared type
-semantic error at line 9: constant integer value does not fit declared type
-semantic error at line 10: constant integer value does not fit declared type
-semantic error at line 11: constant integer value does not fit declared type
-semantic error at line 12: constant integer value does not fit declared type
-semantic error at line 13: constant integer value does not fit declared type
-semantic error at line 14: integer overflow in constant expression
-semantic error at line 15: constant integer value does not fit declared type
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:1:15: error: constant integer value does not fit declared type
+I8_HIGH: i8 : 128;
+              ^~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:2:14: error: constant integer value does not fit declared type
+I8_LOW: i8 : -129;
+             ^~~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:3:15: error: constant integer value does not fit declared type
+U8_HIGH: u8 : 256;
+              ^~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:4:14: error: constant integer value does not fit declared type
+U8_LOW: u8 : -1;
+             ^~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:5:17: error: constant integer value does not fit declared type
+I16_HIGH: i16 : 32768;
+                ^~~~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:6:16: error: constant integer value does not fit declared type
+I16_LOW: i16 : -32769;
+               ^~~~~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:7:17: error: constant integer value does not fit declared type
+U16_HIGH: u16 : 65536;
+                ^~~~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:8:16: error: constant integer value does not fit declared type
+U16_LOW: u16 : -1;
+               ^~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:9:17: error: constant integer value does not fit declared type
+I32_HIGH: i32 : 2147483648;
+                ^~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:10:16: error: constant integer value does not fit declared type
+I32_LOW: i32 : -2147483649;
+               ^~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:11:17: error: constant integer value does not fit declared type
+U32_HIGH: u32 : 4294967296;
+                ^~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:12:16: error: constant integer value does not fit declared type
+U32_LOW: u32 : -1;
+               ^~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:13:17: error: constant integer value does not fit declared type
+I64_HIGH: i64 : 9223372036854775808;
+                ^~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:14:16: error: integer overflow in constant expression
+I64_LOW: i64 : -9223372036854775809;
+               ^~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/integer_literal_boundaries.cog:15:16: error: constant integer value does not fit declared type
+U64_LOW: u64 : -1;
+               ^~
 15 semantic errors generated.

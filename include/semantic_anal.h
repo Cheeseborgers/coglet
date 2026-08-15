@@ -2,6 +2,7 @@
 #define COGLET_SEMANTIC_H
 
 #include "ast.h"
+#include "diagnostic.h"
 #include "semantic_info.h"
 #include "target_info.h"
 
@@ -115,6 +116,9 @@ typedef struct {
 
     TargetInfo target;
 
+    SourceManager *sources;
+    DiagnosticList diagnostics;
+
     int had_error;
     int error_count;
 
@@ -161,7 +165,8 @@ typedef struct {
 void semantic_check(
     Node *program,
     SemanticContext *ctx,
-    const TargetInfo *target
+    const TargetInfo *target,
+    SourceManager *sources
 );
 SemDeclInfo *semantic_get_decl_info(SemanticContext *ctx, Node *node);
 SemDeclInfo *semantic_get_decl_info_by_id(SemanticContext *ctx, SemDeclId id);

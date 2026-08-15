@@ -1,2 +1,4 @@
-semantic error at line 3: variable 'value' may be uninitialized
+tests/test_assets/semantic/invalid/definite_assignment/self_referential_assignment.cog:3:13: error: variable 'value' may be uninitialized
+    value = value + 1;
+            ^~~~~
 1 semantic error generated.

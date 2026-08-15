@@ -1,13 +1,37 @@
-semantic error at line 18: unary '~' requires integer operand
-semantic error at line 19: unary '~' requires integer operand
-semantic error at line 20: unary '~' requires integer operand
-semantic error at line 21: unary '~' requires integer operand
-semantic error at line 22: unary '~' requires integer operand
-semantic error at line 24: right operand of bitwise operator must be integer
-semantic error at line 25: left operand of bitwise operator must be integer
-semantic error at line 26: left operand of bitwise operator must be integer
-semantic error at line 27: left operand of bitwise operator must be integer
-semantic error at line 28: left operand of bitwise operator must be integer
-semantic error at line 29: left operand of bitwise operator must be integer
-semantic error at line 30: left operand of bitwise operator must be integer
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:18:5: error: unary '~' requires integer operand
+    ~floating;
+    ^~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:19:5: error: unary '~' requires integer operand
+    ~boolean;
+    ^~~~~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:20:5: error: unary '~' requires integer operand
+    ~enumeration;
+    ^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:21:5: error: unary '~' requires integer operand
+    ~pointer;
+    ^~~~~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:22:5: error: unary '~' requires integer operand
+    ~null;
+    ^~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:24:5: error: right operand of bitwise operator must be integer
+    integer & floating;
+    ^~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:25:5: error: left operand of bitwise operator must be integer
+    boolean | integer;
+    ^~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:26:5: error: left operand of bitwise operator must be integer
+    enumeration ^ enumeration;
+    ^~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:27:5: error: left operand of bitwise operator must be integer
+    pointer & pointer;
+    ^~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:28:5: error: left operand of bitwise operator must be integer
+    null | integer;
+    ^~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:29:5: error: left operand of bitwise operator must be integer
+    array ^ array;
+    ^~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_operand_types.cog:30:5: error: left operand of bitwise operator must be integer
+    pair & pair;
+    ^~~~~~~~~~~
 12 semantic errors generated.

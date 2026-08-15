@@ -1,4 +1,10 @@
-semantic error at line 11: #extern(c) parameter type 'Point' is not supported by the current C ABI subset
-semantic error at line 14: #extern(c) parameter type 'u8[4]' is not supported by the current C ABI subset
-semantic error at line 16: #extern(c) return type 'Mode' is not supported by the current C ABI subset
+tests/test_assets/semantic/invalid/interop/extern_c_unsupported_types.cog:11:20: error: #extern(c) parameter type 'Point' is not supported by the current C ABI subset
+struct_parameter::(point: Point) -> void;
+                   ^~~~~
+tests/test_assets/semantic/invalid/interop/extern_c_unsupported_types.cog:14:19: error: #extern(c) parameter type 'u8[4]' is not supported by the current C ABI subset
+array_parameter::(bytes: u8[4]) -> void;
+                  ^~~~~
+tests/test_assets/semantic/invalid/interop/extern_c_unsupported_types.cog:17:1: error: #extern(c) return type 'Mode' is not supported by the current C ABI subset
+enum_return::() -> Mode;
+^~~~~~~~~~~
 3 semantic errors generated.

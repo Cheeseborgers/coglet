@@ -1,6 +1,16 @@
-semantic error at line 1: integer cast value does not fit in target type
-semantic error at line 2: integer cast value does not fit in target type
-semantic error at line 3: integer cast value does not fit in target type
-semantic error at line 4: integer cast value does not fit in target type
-semantic error at line 5: float cast value does not fit in target type
+tests/test_assets/semantic/invalid/casts/constant_range_and_huge_float.cog:1:16: error: integer cast value does not fit in target type
+I8_TOO_HIGH :: cast(i8, 128);
+               ^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/constant_range_and_huge_float.cog:2:15: error: integer cast value does not fit in target type
+I8_TOO_LOW :: cast(i8, -129);
+              ^~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/constant_range_and_huge_float.cog:3:16: error: integer cast value does not fit in target type
+U8_NEGATIVE :: cast(u8, -1);
+               ^~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/constant_range_and_huge_float.cog:4:22: error: integer cast value does not fit in target type
+HUGE_FLOAT_TO_I64 :: cast(i64, 18446744073709551615.0);
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/constant_range_and_huge_float.cog:5:22: error: float cast value does not fit in target type
+F32_CAST_OVERFLOW :: cast(f32, 340282366920938463463374607431768211456.0);
+                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 5 semantic errors generated.

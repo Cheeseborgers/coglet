@@ -1,2 +1,4 @@
-semantic error at line 10: type 'Packet' is not supported as a C variadic argument
+tests/test_assets/semantic/invalid/interop/c_variadic_unsupported_argument.cog:10:20: error: type 'Packet' is not supported as a C variadic argument
+    return sink(1, packet);
+                   ^~~~~~
 1 semantic error generated.

@@ -1,2 +1,4 @@
-semantic error at line 3: switch case value does not fit switch expression type
+tests/test_assets/semantic/invalid/switch/out_of_range_not_duplicate.cog:3:14: error: switch case value does not fit switch expression type
+        case 256: {}
+             ^~~
 1 semantic error generated.

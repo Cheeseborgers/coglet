@@ -1,11 +1,31 @@
-semantic error at line 18: left operand of shift operator must be integer
-semantic error at line 19: right operand of shift operator must be integer
-semantic error at line 20: left operand of shift operator must be integer
-semantic error at line 21: right operand of shift operator must be integer
-semantic error at line 22: left operand of shift operator must be integer
-semantic error at line 23: right operand of shift operator must be integer
-semantic error at line 24: left operand of shift operator must be integer
-semantic error at line 25: left operand of shift operator must be integer
-semantic error at line 26: left operand of shift operator must be integer
-semantic error at line 27: left operand of shift operator must be integer
+tests/test_assets/semantic/invalid/expressions/shift_operand_types.cog:18:5: error: left operand of shift operator must be integer
+    floating << 1;
+    ^~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/shift_operand_types.cog:19:5: error: right operand of shift operator must be integer
+    integer << floating;
+    ^~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/shift_operand_types.cog:20:5: error: left operand of shift operator must be integer
+    boolean >> 1;
+    ^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/shift_operand_types.cog:21:5: error: right operand of shift operator must be integer
+    integer >> boolean;
+    ^~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/shift_operand_types.cog:22:5: error: left operand of shift operator must be integer
+    enumeration << 1;
+    ^~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/shift_operand_types.cog:23:5: error: right operand of shift operator must be integer
+    integer << enumeration;
+    ^~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/shift_operand_types.cog:24:5: error: left operand of shift operator must be integer
+    pointer >> 1;
+    ^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/shift_operand_types.cog:25:5: error: left operand of shift operator must be integer
+    null << 1;
+    ^~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/shift_operand_types.cog:26:5: error: left operand of shift operator must be integer
+    array >> 1;
+    ^~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/shift_operand_types.cog:27:5: error: left operand of shift operator must be integer
+    pair << 1;
+    ^~~~~~~~~
 10 semantic errors generated.

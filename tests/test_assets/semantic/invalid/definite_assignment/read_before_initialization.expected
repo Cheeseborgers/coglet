@@ -1,4 +1,10 @@
-semantic error at line 6: variable 'value' may be uninitialized
-semantic error at line 11: variable 'value' may be uninitialized
-semantic error at line 16: variable 'value' may be uninitialized
+tests/test_assets/semantic/invalid/definite_assignment/read_before_initialization.cog:6:12: error: variable 'value' may be uninitialized
+    return value;
+           ^~~~~
+tests/test_assets/semantic/invalid/definite_assignment/read_before_initialization.cog:11:13: error: variable 'value' may be uninitialized
+    consume(value);
+            ^~~~~
+tests/test_assets/semantic/invalid/definite_assignment/read_before_initialization.cog:16:5: error: variable 'value' may be uninitialized
+    value;
+    ^~~~~
 3 semantic errors generated.

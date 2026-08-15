@@ -1,2 +1,4 @@
-semantic error at line 9: argument type does not match parameter type: expected cfn(...), got fn(...)
+tests/test_assets/semantic/invalid/interop/c_callback_requires_repr.cog:9:19: error: argument type does not match parameter type: expected cfn(...), got fn(...)
+    return invoke(ordinary, 1);
+                  ^~~~~~~~
 1 semantic error generated.

@@ -1,2 +1,4 @@
-semantic error at line 4: compound assignment target is not assignable
+tests/test_assets/semantic/invalid/mutation/constant_target.cog:4:5: error: compound assignment target is not assignable
+    CONSTANT += 1;
+    ^~~~~~~~~~~~~
 1 semantic error generated.

@@ -5,14 +5,15 @@ The compiler driver provides the shared source-file frontend pipeline used by
 
 Its current responsibilities are:
 
-1. read one source file;
+1. read the primary source file;
 2. create the main and scratch arenas;
-3. initialize the parser;
-4. parse the program;
-5. report parser diagnostics;
-6. run semantic analysis;
-7. report the semantic error summary;
-8. retain frontend state for the caller until explicit destruction.
+3. initialize a compilation-level `SourceManager` and register the primary file;
+4. initialize the parser against that registered source file;
+5. parse the program;
+6. report collected parser diagnostics;
+7. run semantic analysis against the same source manager;
+8. report collected semantic diagnostics and the semantic error summary;
+9. retain frontend state for the caller until explicit destruction.
 
 The driver does not perform token or AST snapshot dumping. `dump_tokens` remains
 lexer-only and `dump_ast` remains parser-only.
@@ -21,9 +22,10 @@ lexer-only and `dump_ast` remains parser-only.
 
 `CompileResult` owns:
 
-- the source buffer;
+- the primary source buffer;
 - the main arena;
-- the scratch arena.
+- the scratch arena;
+- compilation-level source-file metadata through `SourceManager`.
 
 `CompileResult` borrows:
 
@@ -31,8 +33,9 @@ lexer-only and `dump_ast` remains parser-only.
 
 The following data is backed by the owned arenas:
 
-- AST nodes;
-- parser diagnostics and diagnostic messages;
+- source-file metadata and copied filenames;
+- AST nodes and their `SourceSpan` provenance;
+- parser/semantic diagnostics and diagnostic messages;
 - semantic symbols and scopes;
 - definite-assignment flow storage and temporary flow snapshots;
 - semantic types;
@@ -65,15 +68,42 @@ Parser and driver errors map to process exit code 2. Semantic errors map to
 exit code 1. The `coglet` command uses exit code 3 when an explicitly requested
 backend emission/link step fails after successful frontend checking.
 
-## Diagnostics
+## Source provenance and diagnostics
 
-Parser diagnostics are accumulated by the parser and printed by the driver
-after parsing fails.
+Source identity is compilation-local and multi-file-capable. `SourceManager`
+registers each source buffer under a stable `SourceFileId`; the current driver
+registers one primary file, while future module/import loading can register
+additional files in the same manager without changing AST or diagnostic
+representation. Source buffers must remain alive while their registered spans
+are in use.
 
-Semantic diagnostics are printed immediately during semantic analysis. The
-driver prints only the final semantic error-count summary.
+Tokens and AST nodes carry `SourceSpan` values containing:
 
-Callers must not print these diagnostics again.
+- the source-file ID;
+- start/end byte offsets;
+- cached one-based start line and column.
+
+Byte offsets are the canonical range for source slicing and highlighting. The
+line/column cache makes common diagnostic rendering cheap. Composite expression
+spans are formed from their child/token spans; declaration spans begin at the
+declaration name, and statement spans begin at the controlling keyword or
+expression.
+
+Parser and semantic diagnostics use the shared `Diagnostic`/`DiagnosticList`
+representation. Semantic analysis no longer writes individual errors directly
+to `stderr`; it records them with a source span and the driver renders them after
+checking. A typical diagnostic is:
+
+```text
+foo.cog:12:12: error: array index out of bounds
+    return values[3];
+           ^~~~~~~~
+```
+
+The generic diagnostic phase enum already reserves lexer, parser, semantic, IR,
+and backend phases so CogIR lowering/verifier diagnostics can reuse the same
+source provenance later. Parser and semantic error-count summaries remain phase
+specific.
 
 
 ## External C Function Declarations

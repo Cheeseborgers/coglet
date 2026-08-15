@@ -5,16 +5,27 @@
 
 #include "utils/utils.h"
 
-void lexer_init(Lexer *lx, const char *filename, const char *source) {
+void lexer_init_with_source_id(
+    Lexer *lx,
+    SourceFileId source_id,
+    const char *filename,
+    const char *source
+) {
     assert(filename);
+    assert(source);
 
     lx->filename     = filename;
+    lx->source_id    = source_id;
     lx->source_start = source;
     lx->current = source;
     lx->line = 1;
     lx->column = 1;
     lx->line_start = source;
     lx->error_msg = NULL;
+}
+
+void lexer_init(Lexer *lx, const char *filename, const char *source) {
+    lexer_init_with_source_id(lx, 0, filename, source);
 }
 
 static int is_at_end(Lexer *lx) {
@@ -51,13 +62,31 @@ static int match(Lexer *lx, char expected) {
     return 1;
 }
 
-static Token make_token(TokenType type, const char *start,int length, int line, int column) {
+static Token make_token(
+    Lexer *lx,
+    TokenType type,
+    const char *start,
+    int length,
+    int line,
+    int column
+) {
     Token t;
     t.type = type;
     t.start = start;
     t.length = length;
     t.line = line;
     t.column = column;
+
+    size_t start_offset = (size_t)(start - lx->source_start);
+    size_t end_offset = start_offset + (length > 0 ? (size_t)length : 0);
+    t.span = source_span_make(
+        lx->source_id,
+        start_offset,
+        end_offset,
+        (uint32_t)line,
+        (uint32_t)column
+    );
+
     return t;
 }
 
@@ -72,6 +101,7 @@ static Token error_token(
     lx->error_msg = message;
 
     return make_token(
+        lx,
         TOK_ERROR,
         start,
         length,
@@ -233,6 +263,7 @@ static Token scan_identifier(Lexer *lx, const char *start, int start_line, int s
     int length = (int)(lx->current - start);
 
     return make_token(
+        lx,
         identifier_type(start, length),
         start,
         length,
@@ -317,6 +348,7 @@ static Token scan_prefixed_integer(
     }
 
     return make_token(
+        lx,
         TOK_NUMBER_INT,
         start,
         (int)(lx->current - start),
@@ -449,6 +481,7 @@ static Token scan_number(Lexer *lx, const char *start, int start_line, int start
     }
 
     return make_token(
+        lx,
         is_float
             ? TOK_NUMBER_FLOAT
             : TOK_NUMBER_INT,
@@ -485,6 +518,7 @@ static Token scan_string(Lexer *lx, const char *start, int start_line, int start
     advance(lx); // closing quote
 
     return make_token(
+        lx,
         TOK_STRING,
         start,
         (int)(lx->current - start),
@@ -542,6 +576,7 @@ static Token scan_char(Lexer *lx, const char *start, int start_line, int start_c
     advance(lx);
 
     return make_token(
+        lx,
         TOK_CHAR,
         start,
         (int)(lx->current - start),
@@ -564,6 +599,7 @@ Token lexer_next(Lexer *lx) {
 
     if (is_at_end(lx)) {
         return make_token(
+        lx,
             TOK_EOF,
             start,
             0,
@@ -613,6 +649,7 @@ Token lexer_next(Lexer *lx) {
     switch (c) {
         case '(':
             return make_token(
+        lx,
                 TOK_LPAREN,
                 start,
                 1,
@@ -622,6 +659,7 @@ Token lexer_next(Lexer *lx) {
 
         case ')':
             return make_token(
+        lx,
                 TOK_RPAREN,
                 start,
                 1,
@@ -631,6 +669,7 @@ Token lexer_next(Lexer *lx) {
 
         case '{':
             return make_token(
+        lx,
                 TOK_LBRACE,
                 start,
                 1,
@@ -640,6 +679,7 @@ Token lexer_next(Lexer *lx) {
 
         case '}':
             return make_token(
+        lx,
                 TOK_RBRACE,
                 start,
                 1,
@@ -649,6 +689,7 @@ Token lexer_next(Lexer *lx) {
 
         case '[':
             return make_token(
+        lx,
                 TOK_LBRACKET,
                 start,
                 1,
@@ -658,6 +699,7 @@ Token lexer_next(Lexer *lx) {
 
         case ']':
             return make_token(
+        lx,
                 TOK_RBRACKET,
                 start,
                 1,
@@ -667,6 +709,7 @@ Token lexer_next(Lexer *lx) {
 
         case '#':
             return make_token(
+        lx,
                 TOK_HASH,
                 start,
                 1,
@@ -676,6 +719,7 @@ Token lexer_next(Lexer *lx) {
 
         case ';':
             return make_token(
+        lx,
                 TOK_SEMICOLON,
                 start,
                 1,
@@ -685,6 +729,7 @@ Token lexer_next(Lexer *lx) {
 
         case ',':
             return make_token(
+        lx,
                 TOK_COMMA,
                 start,
                 1,
@@ -697,6 +742,7 @@ Token lexer_next(Lexer *lx) {
                 advance(lx);
                 advance(lx);
                 return make_token(
+        lx,
                     TOK_ELLIPSIS,
                     start,
                     3,
@@ -706,6 +752,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_DOT,
                 start,
                 1,
@@ -716,6 +763,7 @@ Token lexer_next(Lexer *lx) {
         case '+':
             if (match(lx, '+')) {
                 return make_token(
+        lx,
                     TOK_PLUS_PLUS,
                     start,
                     2,
@@ -726,6 +774,7 @@ Token lexer_next(Lexer *lx) {
 
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_PLUS_EQUAL,
                     start,
                     2,
@@ -735,6 +784,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_PLUS,
                 start,
                 1,
@@ -745,6 +795,7 @@ Token lexer_next(Lexer *lx) {
         case '-':
             if (match(lx, '-')) {
                 return make_token(
+        lx,
                     TOK_MINUS_MINUS,
                     start,
                     2,
@@ -755,6 +806,7 @@ Token lexer_next(Lexer *lx) {
 
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_MINUS_EQUAL,
                     start,
                     2,
@@ -765,6 +817,7 @@ Token lexer_next(Lexer *lx) {
 
             if (match(lx, '>')) {
                 return make_token(
+        lx,
                     TOK_ARROW,
                     start,
                     2,
@@ -774,6 +827,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_MINUS,
                 start,
                 1,
@@ -784,6 +838,7 @@ Token lexer_next(Lexer *lx) {
         case '*':
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_STAR_EQUAL,
                     start,
                     2,
@@ -793,6 +848,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_STAR,
                 start,
                 1,
@@ -803,6 +859,7 @@ Token lexer_next(Lexer *lx) {
         case '/':
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_SLASH_EQUAL,
                     start,
                     2,
@@ -812,6 +869,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_SLASH,
                 start,
                 1,
@@ -822,6 +880,7 @@ Token lexer_next(Lexer *lx) {
         case '%':
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_PERCENT_EQUAL,
                     start,
                     2,
@@ -831,6 +890,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_PERCENT,
                 start,
                 1,
@@ -841,6 +901,7 @@ Token lexer_next(Lexer *lx) {
         case ':':
             if (match(lx, ':')) {
                 return make_token(
+        lx,
                     TOK_COLON_COLON,
                     start,
                     2,
@@ -851,6 +912,7 @@ Token lexer_next(Lexer *lx) {
 
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_COLON_EQUAL,
                     start,
                     2,
@@ -860,6 +922,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_COLON,
                 start,
                 1,
@@ -870,6 +933,7 @@ Token lexer_next(Lexer *lx) {
         case '=':
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_EQUAL_EQUAL,
                     start,
                     2,
@@ -879,6 +943,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_EQUAL,
                 start,
                 1,
@@ -889,6 +954,7 @@ Token lexer_next(Lexer *lx) {
         case '!':
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_BANG_EQUAL,
                     start,
                     2,
@@ -898,6 +964,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_BANG,
                 start,
                 1,
@@ -909,6 +976,7 @@ Token lexer_next(Lexer *lx) {
             if (match(lx, '<')) {
                 if (match(lx, '=')) {
                     return make_token(
+        lx,
                         TOK_SHIFT_LEFT_EQUAL,
                         start,
                         3,
@@ -918,6 +986,7 @@ Token lexer_next(Lexer *lx) {
                 }
 
                 return make_token(
+        lx,
                     TOK_SHIFT_LEFT,
                     start,
                     2,
@@ -928,6 +997,7 @@ Token lexer_next(Lexer *lx) {
 
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_LESS_EQUAL,
                     start,
                     2,
@@ -937,6 +1007,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_LESS,
                 start,
                 1,
@@ -948,6 +1019,7 @@ Token lexer_next(Lexer *lx) {
             if (match(lx, '>')) {
                 if (match(lx, '=')) {
                     return make_token(
+        lx,
                         TOK_SHIFT_RIGHT_EQUAL,
                         start,
                         3,
@@ -957,6 +1029,7 @@ Token lexer_next(Lexer *lx) {
                 }
 
                 return make_token(
+        lx,
                     TOK_SHIFT_RIGHT,
                     start,
                     2,
@@ -967,6 +1040,7 @@ Token lexer_next(Lexer *lx) {
 
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_GREATER_EQUAL,
                     start,
                     2,
@@ -976,6 +1050,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_GREATER,
                 start,
                 1,
@@ -986,6 +1061,7 @@ Token lexer_next(Lexer *lx) {
         case '&':
             if (match(lx, '&')) {
                 return make_token(
+        lx,
                     TOK_AND_AND,
                     start,
                     2,
@@ -996,6 +1072,7 @@ Token lexer_next(Lexer *lx) {
 
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_AND_EQUAL,
                     start,
                     2,
@@ -1005,6 +1082,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_AND,
                 start,
                 1,
@@ -1015,6 +1093,7 @@ Token lexer_next(Lexer *lx) {
         case '|':
             if (match(lx, '|')) {
                 return make_token(
+        lx,
                     TOK_OR_OR,
                     start,
                     2,
@@ -1025,6 +1104,7 @@ Token lexer_next(Lexer *lx) {
 
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_OR_EQUAL,
                     start,
                     2,
@@ -1034,6 +1114,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_OR,
                 start,
                 1,
@@ -1044,6 +1125,7 @@ Token lexer_next(Lexer *lx) {
         case '^':
             if (match(lx, '=')) {
                 return make_token(
+        lx,
                     TOK_XOR_EQUAL,
                     start,
                     2,
@@ -1053,6 +1135,7 @@ Token lexer_next(Lexer *lx) {
             }
 
             return make_token(
+        lx,
                 TOK_XOR,
                 start,
                 1,
@@ -1062,6 +1145,7 @@ Token lexer_next(Lexer *lx) {
 
         case '~':
             return make_token(
+        lx,
                 TOK_TILDE,
                 start,
                 1,

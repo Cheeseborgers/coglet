@@ -1,2 +1,4 @@
-semantic error at line 5: invalid escape sequence '\x' in string literal
+tests/test_assets/semantic/invalid/interop/extern_c_string_literal_invalid_escape.cog:5:10: error: invalid escape sequence '\x' in string literal
+    puts("bad\x");
+         ^~~~~~~
 1 semantic error generated.

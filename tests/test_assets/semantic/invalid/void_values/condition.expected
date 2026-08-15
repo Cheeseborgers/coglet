@@ -1,2 +1,4 @@
-semantic error at line 5: expression does not produce a value
+tests/test_assets/semantic/invalid/void_values/condition.cog:5:8: error: expression does not produce a value
+    if does_nothing() {
+       ^~~~~~~~~~~~
 1 semantic error generated.

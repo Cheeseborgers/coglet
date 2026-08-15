@@ -183,8 +183,10 @@ represents the intended language behavior.
 Expected files for invalid semantic tests can be generated with:
 
 ```bash
-./tests/get_expected.sh
+./get_expected.sh
 ```
+
+The generator normalizes diagnostic source paths to `<source>` so snapshots remain checkout-independent.
 
 Review every generated change before accepting it. A bulk expected-file update can conceal a diagnostic
 regression or an unintended cascade.

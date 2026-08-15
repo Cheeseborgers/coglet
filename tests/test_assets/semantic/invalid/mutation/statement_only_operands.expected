@@ -1,2 +1,4 @@
-semantic error at line 3: assignment cannot be used as a value; it is a statement
+tests/test_assets/semantic/invalid/mutation/statement_only_operands.cog:3:15: error: assignment cannot be used as a value; it is a statement
+    y := 1 + (x = 2);
+              ^~~~~
 1 semantic error generated.

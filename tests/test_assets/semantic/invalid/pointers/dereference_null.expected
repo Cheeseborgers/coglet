@@ -1,2 +1,4 @@
-semantic error at line 2: cannot dereference null
+tests/test_assets/semantic/invalid/pointers/dereference_null.cog:2:5: error: cannot dereference null
+    *null;
+    ^~~~~
 1 semantic error generated.

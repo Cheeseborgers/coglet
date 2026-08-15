@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
     int exit_code = 0;
 
     if (parser.had_error) {
-        parser_print_diagnostics(filename, source, &parser);
+        parser_print_diagnostics(&parser);
         exit_code = 1;
     } else {
         ast_pretty_print(program);

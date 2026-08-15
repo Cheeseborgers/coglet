@@ -1,5 +1,13 @@
-semantic error at line 5: truncate target must be a concrete integer type
-semantic error at line 6: truncate source must be an integer
-semantic error at line 7: truncate source must be an integer
-semantic error at line 8: truncate target must be a concrete integer type
+tests/test_assets/semantic/invalid/casts/truncating_integer_types.cog:5:5: error: truncate target must be a concrete integer type
+    truncate(f32, 1);
+    ^~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/truncating_integer_types.cog:6:5: error: truncate source must be an integer
+    truncate(u8, floating);
+    ^~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/truncating_integer_types.cog:7:5: error: truncate source must be an integer
+    truncate(u8, pointer);
+    ^~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/casts/truncating_integer_types.cog:8:5: error: truncate target must be a concrete integer type
+    truncate(bool, 1);
+    ^~~~~~~~~~~~~~~~
 4 semantic errors generated.

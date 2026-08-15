@@ -1,2 +1,4 @@
-semantic error at line 2: #repr(c) functions must be at top level
+tests/test_assets/semantic/invalid/interop/repr_c_function_nested.cog:3:5: error: #repr(c) functions must be at top level
+    inner::(value: c_int) -> c_int {
+    ^~~~~
 1 semantic error generated.

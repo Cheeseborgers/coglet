@@ -1,2 +1,4 @@
-semantic error at line 2: ordered comparison requires numeric operands
+tests/test_assets/semantic/invalid/expressions/ordered_non_numeric.cog:2:5: error: ordered comparison requires numeric operands
+    true < false;
+    ^~~~~~~~~~~~
 1 semantic error generated.

@@ -1,5 +1,13 @@
-semantic error at line 7: unary '-' cannot be applied to an unsigned value
-semantic error at line 8: unary '-' cannot be applied to an unsigned value
-semantic error at line 9: unary '-' cannot be applied to an unsigned value
-semantic error at line 10: unary '-' cannot be applied to an unsigned value
+tests/test_assets/semantic/invalid/expressions/unary_minus_unsigned.cog:7:5: error: unary '-' cannot be applied to an unsigned value
+    -value_u8;
+    ^~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/unary_minus_unsigned.cog:8:5: error: unary '-' cannot be applied to an unsigned value
+    -value_u16;
+    ^~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/unary_minus_unsigned.cog:9:5: error: unary '-' cannot be applied to an unsigned value
+    -value_u32;
+    ^~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/unary_minus_unsigned.cog:10:5: error: unary '-' cannot be applied to an unsigned value
+    -value_u64;
+    ^~~~~~~~~~
 4 semantic errors generated.

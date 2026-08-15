@@ -1,2 +1,4 @@
-semantic error at line 2: #repr(c) union declarations must be at top level
+tests/test_assets/semantic/invalid/interop/repr_c_union_nested.cog:3:5: error: #repr(c) union declarations must be at top level
+    LocalUnion::union {
+    ^~~~~~~~~~
 1 semantic error generated.

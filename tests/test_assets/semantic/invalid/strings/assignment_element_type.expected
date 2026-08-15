@@ -1,2 +1,4 @@
-semantic error at line 7: string literal destination must be u8 array
+tests/test_assets/semantic/invalid/strings/assignment_element_type.cog:7:13: error: string literal destination must be u8 array
+    value = "hello";
+            ^~~~~~~
 1 semantic error generated.

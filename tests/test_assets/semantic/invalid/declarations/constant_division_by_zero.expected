@@ -1,2 +1,4 @@
-semantic error at line 1: division by zero in constant expression
+tests/test_assets/semantic/invalid/declarations/constant_division_by_zero.cog:1:12: error: division by zero in constant expression
+BAD_DIV :: 1 / 0;
+           ^~~~~
 1 semantic error generated.

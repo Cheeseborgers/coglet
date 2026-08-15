@@ -1,3 +1,7 @@
-semantic error at line 8: compound assignment target must be numeric
-semantic error at line 13: compound assignment target must be numeric
+tests/test_assets/semantic/invalid/mutation/compound_target_type.cog:8:5: error: compound assignment target must be numeric
+    value += 1;
+    ^~~~~~~~~~
+tests/test_assets/semantic/invalid/mutation/compound_target_type.cog:13:5: error: compound assignment target must be numeric
+    color += 1;
+    ^~~~~~~~~~
 2 semantic errors generated.

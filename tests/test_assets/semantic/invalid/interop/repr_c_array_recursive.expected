@@ -1,2 +1,4 @@
-semantic error at line 3: #repr(c) by-value field 'children' creates a recursive struct layout
+tests/test_assets/semantic/invalid/interop/repr_c_array_recursive.cog:3:5: error: #repr(c) by-value field 'children' creates a recursive struct layout
+    children: RecursiveArray[1];
+    ^~~~~~~~
 1 semantic error generated.

@@ -1,3 +1,7 @@
-semantic error at line 6: wrong number of arguments: expected 2, got 1
-semantic error at line 10: wrong number of arguments: expected 2, got 3
+tests/test_assets/semantic/invalid/functions/argument_count.cog:6:15: error: wrong number of arguments: expected 2, got 1
+    result := add(1);
+              ^~~
+tests/test_assets/semantic/invalid/functions/argument_count.cog:10:15: error: wrong number of arguments: expected 2, got 3
+    result := add(1, 2, 3);
+              ^~~
 2 semantic errors generated.

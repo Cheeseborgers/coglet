@@ -26,7 +26,11 @@ while IFS= read -r -d '' file; do
     status=$?
 
     if [[ "$status" -eq 1 ]]; then
-        mv "$temporary" "$expected"
+        normalized="${temporary}.normalized"
+        sed -E 's#^.*:([0-9]+):([0-9]+): (error|warning|note):#<source>:\1:\2: \3:#' \
+            "$temporary" > "$normalized"
+        mv "$normalized" "$expected"
+        rm -f "$temporary"
         echo "generated: $expected"
         ((generated += 1))
     else

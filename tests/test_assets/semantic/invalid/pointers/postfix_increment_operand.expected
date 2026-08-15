@@ -1,2 +1,4 @@
-semantic error at line 2: increment/decrement cannot be used as a value; it is a statement
+tests/test_assets/semantic/invalid/pointers/postfix_increment_operand.cog:2:6: error: increment/decrement cannot be used as a value; it is a statement
+    *pointer++;
+     ^~~~~~~~~
 1 semantic error generated.

@@ -1,2 +1,4 @@
-semantic error at line 5: type name cannot be used as a value 'Color'
+tests/test_assets/semantic/invalid/enums/type_used_as_value.cog:5:16: error: type name cannot be used as a value 'Color'
+value: Color = Color;
+               ^~~~~
 1 semantic error generated.

@@ -32,14 +32,14 @@ static Node *finish_typed_decl(Parser *p, Token name);
 static Node *finish_inferred_const_decl(Parser *p, Token name);
 static Node *finish_inferred_var_decl(Parser *p, Token name);
 static Node *parse_decl_after_name(Parser *p, Token name);
-static Node *parse_proc_decl_rest(Parser *p, Token name, int line);
+static Node *parse_proc_decl_rest(Parser *p, Token name, SourceSpan span);
 static Node *parse_attribute_decl(Parser *p);
 
-static Node *parse_struct_decl_rest(Parser *p, Token name, int line);
+static Node *parse_struct_decl_rest(Parser *p, Token name, SourceSpan span);
 static Node *parse_struct_field(Parser *p);
 static Node *finish_struct_init(Parser *p, Token type_name);
 
-static Node *parse_enum_decl_rest(Parser *p, Token name, int line);
+static Node *parse_enum_decl_rest(Parser *p, Token name, SourceSpan span);
 static Node *parse_enum_member(Parser *p);
 
 static Node *parse_expression_before_block(Parser *p);
@@ -494,23 +494,15 @@ const char *token_debug_display_name(TokenType type)
 }
 
 static void add_diagnostic(Parser *p, Token token, const char *message) {
+    diagnostic_add(
+        &p->diagnostics,
+        DIAGNOSTIC_ERROR,
+        token.type == TOK_ERROR ? DIAGNOSTIC_PHASE_LEXER : DIAGNOSTIC_PHASE_PARSER,
+        token.span,
+        message
+    );
 
-    ParserDiagnosticNode *node = arena_alloc(p->arena, sizeof(*node));
-
-    node->diagnostic.token   = token;
-    node->diagnostic.message = arena_strdup_len(p->arena,message, strlen(message));
-
-    node->next = NULL;
-
-    if (p->diagnostics_last) {
-        p->diagnostics_last->next = node;
-    } else {
-        p->diagnostics_first = node;
-    }
-
-    p->diagnostics_last = node;
-    p->diagnostic_count++;
-
+    p->diagnostic_count = p->diagnostics.count;
     p->had_error = 1;
 }
 
@@ -541,23 +533,58 @@ static int consume(Parser *p, TokenType expected)
 
 // ===================== init =====================
 
-void parser_init(Parser *p, const char *filename, const char *source, Arena *arena, Arena *scratch)
-{
-    lexer_init(&p->lexer, filename, source); // lexer asserts filename
+static void parser_init_common(
+    Parser *p,
+    SourceManager *sources,
+    SourceFileId source_id,
+    Arena *arena,
+    Arena *scratch
+) {
+    const SourceFile *file = source_manager_get(sources, source_id);
+    assert(file);
 
-    p->arena   = arena;
+    lexer_init_with_source_id(
+        &p->lexer,
+        source_id,
+        file->filename,
+        file->source
+    );
+
+    p->arena = arena;
     p->scratch = scratch;
+    p->sources = sources;
+    p->source_id = source_id;
 
-    p->had_error   = 0;
+    p->had_error = 0;
+    diagnostic_list_init(&p->diagnostics, arena);
+    p->diagnostic_count = 0;
 
-    p->diagnostics_first = NULL;
-    p->diagnostics_last  = NULL;
-    p->diagnostic_count  = 0;
-
+    memset(&p->current, 0, sizeof(p->current));
     p->current.type = TOK_EOF;
+    p->current.span = source_span_invalid();
+    p->previous = p->current;
     p->suppress_struct_init = 0;
 
     advance(p);
+}
+
+void parser_init_with_source(
+    Parser *p,
+    SourceManager *sources,
+    SourceFileId source_id,
+    Arena *arena,
+    Arena *scratch
+) {
+    assert(p);
+    assert(sources);
+    parser_init_common(p, sources, source_id, arena, scratch);
+}
+
+void parser_init(Parser *p, const char *filename, const char *source, Arena *arena, Arena *scratch)
+{
+    source_manager_init(&p->local_sources, arena);
+    SourceFileId source_id = source_manager_add(&p->local_sources, filename, source);
+    parser_init_common(p, &p->local_sources, source_id, arena, scratch);
 }
 
 // ===================== primary =====================
@@ -578,7 +605,7 @@ static Node *parse_primary(Parser *p)
         return ast_new_integer(
             p->arena,
             value,
-            token.line
+            token.span
         );
     }
 
@@ -596,7 +623,7 @@ static Node *parse_primary(Parser *p)
         return ast_new_float(
             p->arena,
             value,
-            token.line
+            token.span
         );
     }
 
@@ -606,12 +633,12 @@ static Node *parse_primary(Parser *p)
      * */
     if (match(p, TOK_STRING)) {
         Token t = p->previous;
-        return ast_new_string(p->arena, t.start + 1, t.length - 2, t.line);
+        return ast_new_string(p->arena, t.start + 1, t.length - 2, t.span);
     }
 
     if (match(p, TOK_CHAR)) {
         Token t = p->previous;
-        return ast_new_char(p->arena, t.start + 1, t.length - 2, t.line);
+        return ast_new_char(p->arena, t.start + 1, t.length - 2, t.span);
     }
 
     /*
@@ -631,7 +658,7 @@ static Node *parse_primary(Parser *p)
             return finish_struct_init(p, t);
         }
 
-        return ast_new_ident(p->arena, t.start, t.length, t.line);
+        return ast_new_ident(p->arena, t.start, t.length, t.span);
     }
 
     if (match(p, TOK_LPAREN)) {
@@ -647,16 +674,16 @@ static Node *parse_primary(Parser *p)
 
     if (match(p, TOK_TRUE)) {
         Token t = p->previous;
-        return ast_new_bool(p->arena, 1, t.line);
+        return ast_new_bool(p->arena, 1, t.span);
     }
 
     if (match(p, TOK_FALSE)) {
         Token t = p->previous;
-        return ast_new_bool(p->arena, 0, t.line);
+        return ast_new_bool(p->arena, 0, t.span);
     }
 
     if (match(p, TOK_NULL)) {
-        return ast_new_null(p->arena, p->previous.line);
+        return ast_new_null(p->arena, p->previous.span);
     }
 
     if (match(p, TOK_LBRACKET)) {
@@ -668,7 +695,7 @@ static Node *parse_primary(Parser *p)
 }
 
 // ===================== postfix pipeline =====================
-static Node *make_inc_dec(Parser *p, Node *expr, TokenType op, int is_prefix, int line)
+static Node *make_inc_dec(Parser *p, Node *expr, TokenType op, int is_prefix, SourceSpan op_span)
 {
     if (!is_assignable(expr)) {
         error_at(p, &p->previous, "invalid increment target");
@@ -679,7 +706,7 @@ static Node *make_inc_dec(Parser *p, Node *expr, TokenType op, int is_prefix, in
         op,
         expr,
         is_prefix,
-        line
+        source_span_join(op_span, expr->span)
     );
 }
 
@@ -712,13 +739,13 @@ static Node *parse_postfix_from(Parser *p, Node *expr)
 
         if (match(p, TOK_PLUS_PLUS)) {
             Token op = p->previous;
-            expr = make_inc_dec(p, expr, TOK_PLUS_PLUS, 0, op.line);
+            expr = make_inc_dec(p, expr, TOK_PLUS_PLUS, 0, op.span);
             continue;
         }
 
         if (match(p, TOK_MINUS_MINUS)) {
             Token op = p->previous;
-            expr = make_inc_dec(p, expr, TOK_MINUS_MINUS, 0, op.line);
+            expr = make_inc_dec(p, expr, TOK_MINUS_MINUS, 0, op.span);
             continue;
         }
 
@@ -750,14 +777,14 @@ static Node *parse_unary(Parser *p)
         Node *rhs = parse_unary(p);
 
         if (op.type == TOK_PLUS_PLUS || op.type == TOK_MINUS_MINUS) {
-            return make_inc_dec(p, rhs, op.type, 1, op.line);
+            return make_inc_dec(p, rhs, op.type, 1, op.span);
         }
 
         return ast_new_unary(
             p->arena,
             op.type,
             rhs,
-            op.line
+            source_span_join(op.span, rhs->span)
         );
     }
 
@@ -784,7 +811,7 @@ static Node *parse_binary_from(Parser *p, Node *left, int min_prec)
             op.type,
             left,
             right,
-            op.line
+            source_span_join(left->span, right->span)
         );
     }
 
@@ -849,7 +876,7 @@ static Node *parse_assignment_from(Parser *p, Node *left)
             p->arena,
             left,
             right,
-            left->line
+            source_span_join(left->span, right->span)
         );
     }
 
@@ -858,7 +885,7 @@ static Node *parse_assignment_from(Parser *p, Node *left)
         op,
         left,
         right,
-        left->line
+        source_span_join(left->span, right->span)
     );
 }
 
@@ -1185,7 +1212,7 @@ static Type *parse_type(Parser *p)
 
 static Node *finish_typed_decl(Parser *p, Token name) {
 
-    int line   = name.line;
+    SourceSpan span = name.span;
     Type *type = parse_type(p);
 
     // name : type : expr ;   -- typed constant
@@ -1197,7 +1224,7 @@ static Node *finish_typed_decl(Parser *p, Token name) {
             return ast_new_error(p->arena, p->current);
         }
 
-        return ast_new_const_decl(p->arena, type, name.start, name.length, value, line);
+        return ast_new_const_decl(p->arena, type, name.start, name.length, value, span);
     }
 
     // name : type ;   or   name : type = expr ;   -- ordinary var decl
@@ -1211,12 +1238,12 @@ static Node *finish_typed_decl(Parser *p, Token name) {
         return ast_new_error(p->arena, p->current);
     }
 
-    return ast_new_var_decl(p->arena, type, name.start, name.length, initializer, line);
+    return ast_new_var_decl(p->arena, type, name.start, name.length, initializer, span);
 }
 
 static Node *finish_inferred_const_decl(Parser *p, Token name) {
 
-    int line    = name.line;
+    SourceSpan span = name.span;
     Node *value = parse_assignment(p);   // '::' always requires a value
 
     if (!consume(p, TOK_SEMICOLON)) {
@@ -1224,12 +1251,12 @@ static Node *finish_inferred_const_decl(Parser *p, Token name) {
         return ast_new_error(p->arena, p->current);
     }
 
-    return ast_new_const_decl(p->arena, NULL, name.start, name.length, value, line);
+    return ast_new_const_decl(p->arena, NULL, name.start, name.length, value, span);
 }
 
 static Node *finish_inferred_var_decl(Parser *p, Token name) {
 
-    int  line         = name.line;
+    SourceSpan span = name.span;
     Node *initializer = parse_assignment(p);   // ':=' always requires a value
 
     if (!consume(p, TOK_SEMICOLON)) {
@@ -1237,7 +1264,7 @@ static Node *finish_inferred_var_decl(Parser *p, Token name) {
         return ast_new_error(p->arena, p->current);
     }
 
-    return ast_new_var_decl(p->arena, NULL, name.start, name.length, initializer, line);
+    return ast_new_var_decl(p->arena, NULL, name.start, name.length, initializer, span);
 }
 
 // ================ end variable declarations ======================
@@ -1330,7 +1357,7 @@ static int parse_parameter_group(Parser *p, Node *func)
             it->name.start,
             it->name.length,
             param_default_value,
-            it->name.line
+            it->name.span
         );
 
         nodelist_push(
@@ -1358,14 +1385,14 @@ static Type *make_void_type(Arena *arena)
     return type;
 }
 
-static Node *parse_function_signature_rest(Parser *p, Token name, int line) {
+static Node *parse_function_signature_rest(Parser *p, Token name, SourceSpan span) {
 
     if (!consume(p, TOK_LPAREN)) {
         synchronize(p);
         return ast_new_error(p->arena, p->current);
     }
 
-    Node *func = ast_new_func_decl(p->arena, name.start, name.length, NULL, line);
+    Node *func = ast_new_func_decl(p->arena, name.start, name.length, NULL, span);
 
     if (!check(p, TOK_RPAREN)) {
         for (;;) {
@@ -1406,9 +1433,9 @@ static Node *parse_function_signature_rest(Parser *p, Token name, int line) {
     return func;
 }
 
-static Node *parse_proc_decl_rest(Parser *p, Token name, int line) {
+static Node *parse_proc_decl_rest(Parser *p, Token name, SourceSpan span) {
 
-    Node *func = parse_function_signature_rest(p, name, line);
+    Node *func = parse_function_signature_rest(p, name, span);
 
     if (!func || func->type == NODE_ERROR)
         return func;
@@ -1527,7 +1554,6 @@ static int decode_extern_name(Parser *p, Token token, StringView *out)
  */
 static Node *parse_attribute_decl(Parser *p)
 {
-    Token hash = p->current;
     StringView external_name = string_view_empty();
     CCallingConvention extern_call_conv = C_CALL_DEFAULT;
     int saw_name = 0;
@@ -1670,7 +1696,7 @@ static Node *parse_attribute_decl(Parser *p)
                 return ast_new_error(p->arena, p->current);
             }
 
-            decl = parse_struct_decl_rest(p, name, hash.line);
+            decl = parse_struct_decl_rest(p, name, name.span);
             if (decl && decl->type == NODE_STRUCT_DECL) {
                 decl->as.struct_decl.is_repr_c = 1;
                 decl->as.struct_decl.repr_c_packed = repr_packed;
@@ -1700,14 +1726,14 @@ static Node *parse_attribute_decl(Parser *p)
         }
 
         if (check(p, TOK_ENUM)) {
-            decl = parse_enum_decl_rest(p, name, hash.line);
+            decl = parse_enum_decl_rest(p, name, name.span);
             if (decl && decl->type == NODE_ENUM_DECL)
                 decl->as.enum_decl.is_repr_c = 1;
             return decl;
         }
 
         if (check(p, TOK_LPAREN)) {
-            decl = parse_proc_decl_rest(p, name, hash.line);
+            decl = parse_proc_decl_rest(p, name, name.span);
             if (decl && decl->type == NODE_FUNC_DECL) {
                 decl->as.func_decl.is_repr_c = 1;
                 decl->as.func_decl.c_call_conv = repr_call_conv;
@@ -1813,7 +1839,7 @@ static Node *parse_attribute_decl(Parser *p)
         return ast_new_error(p->arena, p->current);
     }
 
-    Node *func = parse_function_signature_rest(p, name, hash.line);
+    Node *func = parse_function_signature_rest(p, name, name.span);
 
     if (!func || func->type == NODE_ERROR)
         return func;
@@ -1833,7 +1859,7 @@ static Node *parse_attribute_decl(Parser *p)
 // ================== end proc/function parsing ===================
 
 // =================== struct declarations ========================
-static Node *parse_struct_decl_rest(Parser *p,Token name,int line) {
+static Node *parse_struct_decl_rest(Parser *p,Token name,SourceSpan span) {
 
     int is_union = check(p, TOK_UNION);
 
@@ -1842,7 +1868,7 @@ static Node *parse_struct_decl_rest(Parser *p,Token name,int line) {
     else
         consume(p, TOK_STRUCT);
 
-    Node *decl = ast_new_struct_decl(p->arena, name.start,name.length, line);
+    Node *decl = ast_new_struct_decl(p->arena, name.start,name.length, span);
     decl->as.struct_decl.is_union = is_union;
 
     /*
@@ -1874,7 +1900,7 @@ static Node *parse_struct_field(Parser *p) {
     consume(p, TOK_COLON);
     Type *type = parse_type(p);
     consume(p, TOK_SEMICOLON);
-    return ast_new_struct_field_decl(p->arena, type, field.start, field.length, field.line);
+    return ast_new_struct_field_decl(p->arena, type, field.start, field.length, field.span);
 }
 
 // Struct initializer: `Point{ x = 5, y = 10 }` (trailing comma allowed).
@@ -1883,7 +1909,7 @@ static Node *finish_struct_init(Parser *p, Token type_name)
 {
     consume(p, TOK_LBRACE); // known present from caller's check()
 
-    Node *init = ast_new_struct_init(p->arena, type_name.start, type_name.length, type_name.line);
+    Node *init = ast_new_struct_init(p->arena, type_name.start, type_name.length, type_name.span);
 
     if (!check(p, TOK_RBRACE)) {
         while (1) {
@@ -1905,7 +1931,7 @@ static Node *finish_struct_init(Parser *p, Token type_name)
                 field_name.start,
                 field_name.length,
                 value,
-                field_name.line
+                field_name.span
             );
 
             nodelist_push(p->arena, &init->as.struct_init.fields, field);
@@ -1921,7 +1947,7 @@ static Node *finish_struct_init(Parser *p, Token type_name)
 
 // ====================== end struct declarations ======================
 // ====================== enum declarations ===========================
-static Node *parse_enum_decl_rest(Parser *p, Token name, int line) {
+static Node *parse_enum_decl_rest(Parser *p, Token name, SourceSpan span) {
     consume(p, TOK_ENUM);
 
     Type *backing_type = NULL;
@@ -1955,7 +1981,7 @@ static Node *parse_enum_decl_rest(Parser *p, Token name, int line) {
         p->arena,
         name.start,
         name.length,
-        line
+        span
     );
 
     decl->as.enum_decl.backing_type = backing_type;
@@ -2009,7 +2035,7 @@ static Node *parse_enum_member(Parser *p)
         p->arena,
         name.start,
         name.length,
-        name.line
+        name.span
     );
 
     if (match(p, TOK_EQUAL)) {
@@ -2054,7 +2080,7 @@ static Node *parse_switch_statement(Parser *p)
         ast_new_switch(
             p->arena,
             expression,
-            keyword.line
+            keyword.span
         );
 
     while (!check(p, TOK_RBRACE) &&
@@ -2107,7 +2133,7 @@ static Node *parse_switch_case(Parser *p)
             value,
             body,
             0,
-            keyword.line
+            keyword.span
         );
     }
 
@@ -2126,7 +2152,7 @@ static Node *parse_switch_case(Parser *p)
             NULL,
             body,
             1,
-            keyword.line
+            keyword.span
         );
     }
 
@@ -2143,12 +2169,12 @@ static Node *parse_switch_case(Parser *p)
 // ====================== declaration dispatching ======================
 static Node *parse_decl_after_name(Parser *p, Token name) {
 
-    int line = name.line;
+    SourceSpan span = name.span;
 
-    if (check(p, TOK_LPAREN)) return parse_proc_decl_rest(p, name, line);
+    if (check(p, TOK_LPAREN)) return parse_proc_decl_rest(p, name, span);
     if (check(p, TOK_STRUCT) || check(p, TOK_UNION))
-        return parse_struct_decl_rest(p, name, line);
-    if (check(p, TOK_ENUM))   return parse_enum_decl_rest(p, name, line);
+        return parse_struct_decl_rest(p, name, span);
+    if (check(p, TOK_ENUM))   return parse_enum_decl_rest(p, name, span);
 
     // anything else after '::' is a constant expression
     return finish_inferred_const_decl(p, name);
@@ -2190,7 +2216,7 @@ static Node *parse_decl_or_expr_statement(Parser *p)
                     p->arena,
                     name.start,
                     name.length,
-                    name.line
+                    name.span
                 );
             }
 
@@ -2221,7 +2247,7 @@ static Node *parse_decl_or_expr_statement(Parser *p)
         return ast_new_expr_stmt(
             p->arena,
             full,
-            name.line
+            name.span
         );
     }
 
@@ -2233,7 +2259,7 @@ static Node *parse_decl_or_expr_statement(Parser *p)
 // TODO: Ensure we only allow return only inside a function body,
 static Node *parse_return_statement(Parser *p) {
 
-    int line = p->previous.line;   // TOK_RETURN already consumed by caller
+    SourceSpan span = p->previous.span;   // TOK_RETURN already consumed by caller
 
     Node *value = NULL;
     if (!check(p, TOK_SEMICOLON))
@@ -2244,12 +2270,12 @@ static Node *parse_return_statement(Parser *p) {
         return ast_new_error(p->arena, p->current);
     }
 
-    return ast_new_return(p->arena, value, line);
+    return ast_new_return(p->arena, value, span);
 }
 
 static Node *parse_while_statement(Parser *p) {
 
-    int line = p->previous.line;
+    SourceSpan span = p->previous.span;
 
     int saved = p->suppress_struct_init;
     p->suppress_struct_init = 1;
@@ -2257,12 +2283,12 @@ static Node *parse_while_statement(Parser *p) {
     p->suppress_struct_init = saved;
 
     Node *body = parse_block(p);
-    return ast_new_while(p->arena,cond, body, line);
+    return ast_new_while(p->arena, cond, body, source_span_join(span, body->span));
 }
 
 static Node *parse_for_statement(Parser *p) {
 
-    int line   = p->previous.line;
+    SourceSpan span = p->previous.span;
     Node *cond = NULL;
     Node *post = NULL;
 
@@ -2281,7 +2307,7 @@ static Node *parse_for_statement(Parser *p) {
 
     Node *body = parse_statement(p);
 
-    return ast_new_for(p->arena, cond, post, body, line);
+    return ast_new_for(p->arena, cond, post, body, source_span_join(span, body->span));
 }
 
 static Node *parse_statement(Parser *p) {
@@ -2294,15 +2320,15 @@ static Node *parse_statement(Parser *p) {
     if (check(p, TOK_SWITCH)) return parse_switch_statement(p);
 
     if (match(p, TOK_BREAK)) {
-        int line = p->previous.line;
+        SourceSpan span = p->previous.span;
         if (!consume(p, TOK_SEMICOLON)) { synchronize(p); return ast_new_error(p->arena, p->current); }
-        return ast_new_break(p->arena, line);
+        return ast_new_break(p->arena, span);
     }
 
     if (match(p, TOK_CONTINUE)) {
-        int line = p->previous.line;
+        SourceSpan span = p->previous.span;
         if (!consume(p, TOK_SEMICOLON)) { synchronize(p); return ast_new_error(p->arena, p->current); }
-        return ast_new_continue(p->arena, line);
+        return ast_new_continue(p->arena, span);
     }
 
     if (check(p, TOK_LBRACE)) return parse_block(p);
@@ -2317,7 +2343,7 @@ static Node *parse_block(Parser *p) {
         return ast_new_error(p->arena, p->current);
     }
 
-    Node *block = ast_new_block(p->arena, p->previous.line);
+    Node *block = ast_new_block(p->arena, p->previous.span);
 
     while (!check(p, TOK_RBRACE) && !check(p, TOK_EOF)) {
         Node *stmt = parse_statement(p);
@@ -2389,7 +2415,7 @@ static Node *parse_conversion_expression(Parser *p) {
         kind,
         target_type,
         expression,
-        keyword.line
+        source_span_join(keyword.span, expression->span)
     );
 }
 
@@ -2397,7 +2423,7 @@ static Node *parse_array_literal(Parser *p) {
 
     Token open = p->previous;
 
-    Node *array = ast_new_array_literal(p->arena, open.line);
+    Node *array = ast_new_array_literal(p->arena, open.span);
 
     if (!check(p, TOK_RBRACKET)) {
         while (1) {
@@ -2563,7 +2589,7 @@ static int parse_float_token(Parser *p, Token token, double *out)
 
 static Node *finish_call(Parser *p, Node *callee) {
 
-    Node *call = ast_new_call(p->arena, callee, callee->line);
+    Node *call = ast_new_call(p->arena, callee, callee->span);
 
     int saved = p->suppress_struct_init;
     p->suppress_struct_init = 0;
@@ -2589,7 +2615,7 @@ static Node *finish_field(Parser *p, Node *object) {
     }
 
     Token name = p->previous;
-    return ast_new_field(p->arena, object, name.start, name.length, object->line);
+    return ast_new_field(p->arena, object, name.start, name.length, name.span);
 }
 
 static Node *finish_index(Parser *p, Node *object) {
@@ -2602,13 +2628,13 @@ static Node *finish_index(Parser *p, Node *object) {
     p->suppress_struct_init = saved;
 
     consume(p, TOK_RBRACKET);
-    return ast_new_index(p->arena, object, index, object->line);
+    return ast_new_index(p->arena, object, index, source_span_join(object->span, index->span));
 }
 // ===================== statements =====================
 
 static Node *parse_expr_statement(Parser *p) {
 
-    int line   = p->current.line;
+    SourceSpan span = p->current.span;
     Node *expr = parse_assignment(p);
 
     if (!consume(p, TOK_SEMICOLON)) {
@@ -2616,13 +2642,13 @@ static Node *parse_expr_statement(Parser *p) {
         return ast_new_error(p->arena, p->current);
     }
 
-    return ast_new_expr_stmt(p->arena, expr, line);
+    return ast_new_expr_stmt(p->arena, expr, source_span_join(span, expr->span));
 }
 
 // TODO: if currently forces braces:
 static Node *parse_if_statement(Parser *p) {
 
-    int line          = p->previous.line;
+    SourceSpan span = p->previous.span;
 
     int saved = p->suppress_struct_init;
     p->suppress_struct_init = 1;
@@ -2637,12 +2663,12 @@ static Node *parse_if_statement(Parser *p) {
         else                  else_branch = parse_statement(p);
     }
 
-    return ast_new_if(p->arena,cond, then_branch, else_branch, line);
+    return ast_new_if(p->arena, cond, then_branch, else_branch, source_span_join(span, else_branch ? else_branch->span : then_branch->span));
 }
 
 // ===================== program =====================
 Node *parse_program(Parser *p) {
-    Node *program = ast_new_program(p->arena, p->current.line);
+    Node *program = ast_new_program(p->arena, p->current.span);
 
     while (!check(p, TOK_EOF)) {
         Node *decl = parse_statement(p);

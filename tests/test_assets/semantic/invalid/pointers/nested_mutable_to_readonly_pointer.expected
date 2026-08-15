@@ -1,2 +1,4 @@
-semantic error at line 4: initializer type does not match declared type
+tests/test_assets/semantic/invalid/pointers/nested_mutable_to_readonly_pointer.cog:4:35: error: initializer type does not match declared type
+    destination: readonly i32** = source;
+                                  ^~~~~~
 1 semantic error generated.

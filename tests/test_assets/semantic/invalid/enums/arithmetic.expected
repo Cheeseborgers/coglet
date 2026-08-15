@@ -1,2 +1,4 @@
-semantic error at line 7: left operand must be numeric
+tests/test_assets/semantic/invalid/enums/arithmetic.cog:7:11: error: left operand must be numeric
+    Color.Red + Color.Green;
+          ^~~~~~~~~~~~~~~~~
 1 semantic error generated.

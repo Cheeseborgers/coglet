@@ -1,3 +1,7 @@
-semantic error at line 4: break statement not inside loop
-semantic error at line 8: continue statement not inside loop
+tests/test_assets/semantic/invalid/control_flow/nested_function_loop_control.cog:4:13: error: break statement not inside loop
+            break;
+            ^~~~~
+tests/test_assets/semantic/invalid/control_flow/nested_function_loop_control.cog:8:13: error: continue statement not inside loop
+            continue;
+            ^~~~~~~~
 2 semantic errors generated.

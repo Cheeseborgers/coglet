@@ -1,2 +1,4 @@
-semantic error at line 2: initializer type does not match declared type
+tests/test_assets/semantic/invalid/interop/volatile_discard.cog:2:19: error: initializer type does not match declared type
+    plain: i32* = source;
+                  ^~~~~~
 1 semantic error generated.

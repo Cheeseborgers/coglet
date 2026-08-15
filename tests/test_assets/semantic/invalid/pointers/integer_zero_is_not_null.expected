@@ -1,6 +1,16 @@
-semantic error at line 5: integer zero is not a pointer; use null
-semantic error at line 8: integer zero is not a pointer; use null
-semantic error at line 12: integer zero is not a pointer; use null
-semantic error at line 14: integer zero is not a pointer; use null
-semantic error at line 16: integer zero is not a pointer; use null
+tests/test_assets/semantic/invalid/pointers/integer_zero_is_not_null.cog:5:12: error: integer zero is not a pointer; use null
+    return 0;
+           ^
+tests/test_assets/semantic/invalid/pointers/integer_zero_is_not_null.cog:8:22: error: integer zero is not a pointer; use null
+ZERO_POINTER: i32* : 0;
+                     ^
+tests/test_assets/semantic/invalid/pointers/integer_zero_is_not_null.cog:12:15: error: integer zero is not a pointer; use null
+    pointer = 0;
+              ^
+tests/test_assets/semantic/invalid/pointers/integer_zero_is_not_null.cog:14:33: error: integer zero is not a pointer; use null
+    invalid_initializer: i32* = 0;
+                                ^
+tests/test_assets/semantic/invalid/pointers/integer_zero_is_not_null.cog:16:19: error: integer zero is not a pointer; use null
+    takes_pointer(0);
+                  ^
 5 semantic errors generated.

@@ -1,2 +1,4 @@
-semantic error at line 7: constant value does not match declared type
+tests/test_assets/semantic/invalid/enums/constant_type_mismatch.cog:7:1: error: constant value does not match declared type
+BAD_COLOR_CONST: Color : 1;
+^~~~~~~~~~~~~~~
 1 semantic error generated.

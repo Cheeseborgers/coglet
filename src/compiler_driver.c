@@ -9,7 +9,7 @@
 
 static void report_parser_errors(const CompileResult *result) {
 
-    parser_print_diagnostics(result->filename, result->source, &result->parser);
+    parser_print_diagnostics(&result->parser);
 
     fprintf(
         stderr,
@@ -21,10 +21,8 @@ static void report_parser_errors(const CompileResult *result) {
 
 static void report_semantic_error_summary(const CompileResult *result) {
 
-    /*
-     * Individual semantic diagnostics are emitted immediately by
-     * semantic_check(). Do not print them again here.
-     */
+    diagnostic_print_all(stderr, &result->sources, &result->sem.diagnostics);
+
     fprintf(
         stderr,
         "%d semantic error%s generated.\n",
@@ -94,10 +92,17 @@ CompileStatus compile_parse_and_check_for_target(
     out->arena   = arena_create(MB(2));
     out->scratch = arena_create(MB(1));
 
-    parser_init(
-        &out->parser,
+    source_manager_init(&out->sources, out->arena);
+    out->primary_source_id = source_manager_add(
+        &out->sources,
         filename,
-        out->source,
+        out->source
+    );
+
+    parser_init_with_source(
+        &out->parser,
+        &out->sources,
+        out->primary_source_id,
         out->arena,
         out->scratch
     );
@@ -113,7 +118,7 @@ CompileStatus compile_parse_and_check_for_target(
 
     out->sem.arena = out->arena;
 
-    semantic_check(out->program, &out->sem, &out->target);
+    semantic_check(out->program, &out->sem, &out->target, &out->sources);
 
     if (out->sem.had_error) {
         report_semantic_error_summary(out);

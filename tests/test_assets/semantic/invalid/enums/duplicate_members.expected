@@ -1,2 +1,4 @@
-semantic error at line 3: duplicate enum member 'A'
+tests/test_assets/semantic/invalid/enums/duplicate_members.cog:3:5: error: duplicate enum member 'A'
+    A,
+    ^
 1 semantic error generated.

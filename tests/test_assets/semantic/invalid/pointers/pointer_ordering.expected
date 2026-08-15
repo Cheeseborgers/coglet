@@ -1,2 +1,4 @@
-semantic error at line 5: ordered comparison requires numeric operands
+tests/test_assets/semantic/invalid/pointers/pointer_ordering.cog:5:5: error: ordered comparison requires numeric operands
+    left < right;
+    ^~~~~~~~~~~~
 1 semantic error generated.

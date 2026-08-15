@@ -1,2 +1,4 @@
-semantic error at line 18: initializer type does not match declared type
+tests/test_assets/semantic/invalid/types/shadowed_struct_is_distinct.cog:18:13: error: initializer type does not match declared type
+    outer = inner;
+            ^~~~~
 1 semantic error generated.

@@ -1,4 +1,10 @@
-semantic error at line 5: cannot dereference a pointer to an incomplete C struct
-semantic error at line 6: cannot index a pointer to an incomplete C struct
-semantic error at line 7: cannot construct an incomplete C struct
+tests/test_assets/semantic/invalid/interop/repr_c_incomplete_access.cog:5:5: error: cannot dereference a pointer to an incomplete C struct
+    *handle;
+    ^~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_incomplete_access.cog:6:5: error: cannot index a pointer to an incomplete C struct
+    handle[0];
+    ^~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_incomplete_access.cog:7:5: error: cannot construct an incomplete C struct
+    ForeignHandle{};
+    ^~~~~~~~~~~~~
 3 semantic errors generated.

@@ -1,7 +1,19 @@
-semantic error at line 2: integer constant operand does not fit comparison type
-semantic error at line 6: integer constant operand does not fit comparison type
-semantic error at line 10: integer constant operand does not fit comparison type
-semantic error at line 14: integer constant operand does not fit comparison type
-semantic error at line 18: integer constant operand does not fit comparison type
-semantic error at line 22: integer constant operand does not fit comparison type
+tests/test_assets/semantic/invalid/expressions/contextual_constant_comparison_range.cog:2:17: error: integer constant operand does not fit comparison type
+    return x == 256;
+                ^~~
+tests/test_assets/semantic/invalid/expressions/contextual_constant_comparison_range.cog:6:16: error: integer constant operand does not fit comparison type
+    return x < 256;
+               ^~~
+tests/test_assets/semantic/invalid/expressions/contextual_constant_comparison_range.cog:10:17: error: integer constant operand does not fit comparison type
+    return x == -1;
+                ^~
+tests/test_assets/semantic/invalid/expressions/contextual_constant_comparison_range.cog:14:12: error: integer constant operand does not fit comparison type
+    return -1 < x;
+           ^~
+tests/test_assets/semantic/invalid/expressions/contextual_constant_comparison_range.cog:18:17: error: integer constant operand does not fit comparison type
+    return x == 128;
+                ^~~
+tests/test_assets/semantic/invalid/expressions/contextual_constant_comparison_range.cog:22:17: error: integer constant operand does not fit comparison type
+    return x == -129;
+                ^~~~
 6 semantic errors generated.

@@ -1,5 +1,13 @@
-semantic error at line 1: #repr(c) enums require an explicit native C integer backing type
-semantic error at line 6: #repr(c) enum backing type must be a native C integer alias
-semantic error at line 11: #repr(c) enum backing type must be a native C integer alias
-semantic error at line 18: enum member value does not fit in backing type
+tests/test_assets/semantic/invalid/interop/repr_c_enum_invalid.cog:2:1: error: #repr(c) enums require an explicit native C integer backing type
+MissingBacking::enum {
+^~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_enum_invalid.cog:7:1: error: #repr(c) enum backing type must be a native C integer alias
+CogletBacking::enum(i32) {
+^~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_enum_invalid.cog:12:1: error: #repr(c) enum backing type must be a native C integer alias
+FloatBacking::enum(c_float) {
+^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_enum_invalid.cog:18:5: error: enum member value does not fit in backing type
+    A = 256,
+    ^
 4 semantic errors generated.

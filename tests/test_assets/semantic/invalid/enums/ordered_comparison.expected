@@ -1,2 +1,4 @@
-semantic error at line 7: ordered comparison requires numeric operands
+tests/test_assets/semantic/invalid/enums/ordered_comparison.cog:7:11: error: ordered comparison requires numeric operands
+    Color.Red < Color.Green;
+          ^~~~~~~~~~~~~~~~~
 1 semantic error generated.

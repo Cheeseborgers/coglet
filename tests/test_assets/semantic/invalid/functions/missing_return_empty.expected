@@ -1,2 +1,4 @@
-semantic error at line 1: non-void function may not return a value
+tests/test_assets/semantic/invalid/functions/missing_return_empty.cog:1:1: error: non-void function may not return a value
+return_bad_empty::() -> i32 {
+^~~~~~~~~~~~~~~~
 1 semantic error generated.

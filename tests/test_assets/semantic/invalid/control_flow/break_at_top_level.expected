@@ -1,2 +1,4 @@
-semantic error at line 1: break statement not inside loop
+tests/test_assets/semantic/invalid/control_flow/break_at_top_level.cog:1:1: error: break statement not inside loop
+break;
+^~~~~
 1 semantic error generated.

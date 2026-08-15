@@ -1,2 +1,4 @@
-semantic error at line 2: reinterpret cannot discard volatile pointer access
+tests/test_assets/semantic/invalid/interop/volatile_reinterpret_discard.cog:2:12: error: reinterpret cannot discard volatile pointer access
+    return reinterpret(i32*, source);
+           ^~~~~~~~~~~~~~~~~~~~~~~~
 1 semantic error generated.

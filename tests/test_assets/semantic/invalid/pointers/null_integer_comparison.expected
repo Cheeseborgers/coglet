@@ -1,2 +1,4 @@
-semantic error at line 2: null may only be compared with a pointer
+tests/test_assets/semantic/invalid/pointers/null_integer_comparison.cog:2:15: error: null may only be compared with a pointer
+    result := null == 0;
+              ^~~~~~~~~
 1 semantic error generated.

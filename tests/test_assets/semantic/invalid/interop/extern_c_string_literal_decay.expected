@@ -1,5 +1,13 @@
-semantic error at line 14: string literal can only initialize a byte array
-semantic error at line 15: string literal can only initialize a byte array
-semantic error at line 16: string literal can only initialize a byte array
-semantic error at line 19: argument type does not match parameter type: expected readonly i8*, got u8[4]
+tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:14:14: error: string literal can only initialize a byte array
+    ordinary("ordinary");
+             ^~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:15:21: error: string literal can only initialize a byte array
+    consume_mutable("mutable");
+                    ^~~~~~~~~
+tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:16:19: error: string literal can only initialize a byte array
+    consume_bytes("bytes");
+                  ^~~~~~~
+tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:19:19: error: argument type does not match parameter type: expected readonly i8*, got u8[4]
+    consume_chars(bytes);
+                  ^~~~~
 4 semantic errors generated.

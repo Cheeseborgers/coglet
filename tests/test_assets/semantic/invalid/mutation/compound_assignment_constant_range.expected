@@ -1,6 +1,16 @@
-semantic error at line 3: integer constant operand does not fit compound assignment type
-semantic error at line 4: integer constant operand does not fit compound assignment type
-semantic error at line 7: integer constant operand does not fit compound assignment type
-semantic error at line 11: compound assignment operands have incompatible numeric types
-semantic error at line 14: modulo compound assignment operands must be integers
+tests/test_assets/semantic/invalid/mutation/compound_assignment_constant_range.cog:3:10: error: integer constant operand does not fit compound assignment type
+    x += 256;
+         ^~~
+tests/test_assets/semantic/invalid/mutation/compound_assignment_constant_range.cog:4:10: error: integer constant operand does not fit compound assignment type
+    x -= -1;
+         ^~
+tests/test_assets/semantic/invalid/mutation/compound_assignment_constant_range.cog:7:10: error: integer constant operand does not fit compound assignment type
+    y *= 128;
+         ^~~
+tests/test_assets/semantic/invalid/mutation/compound_assignment_constant_range.cog:11:5: error: compound assignment operands have incompatible numeric types
+    concrete_i32 += concrete_i64;
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/mutation/compound_assignment_constant_range.cog:14:5: error: modulo compound assignment operands must be integers
+    floating %= 1.0;
+    ^~~~~~~~~~~~~~~
 5 semantic errors generated.

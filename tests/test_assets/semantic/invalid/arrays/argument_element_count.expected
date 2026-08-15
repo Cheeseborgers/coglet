@@ -1,2 +1,4 @@
-semantic error at line 8: array initializer element count does not match array size
+tests/test_assets/semantic/invalid/arrays/argument_element_count.cog:8:18: error: array initializer element count does not match array size
+    takes_values([1, 2]);
+                 ^
 1 semantic error generated.

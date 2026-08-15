@@ -1,4 +1,10 @@
-semantic error at line 7: variable 'point' may be uninitialized
-semantic error at line 12: variable 'values' may be uninitialized
-semantic error at line 17: variable 'value' may be uninitialized
+tests/test_assets/semantic/invalid/definite_assignment/partial_and_address_uses.cog:7:5: error: variable 'point' may be uninitialized
+    point.x = 1;
+    ^~~~~
+tests/test_assets/semantic/invalid/definite_assignment/partial_and_address_uses.cog:12:5: error: variable 'values' may be uninitialized
+    values[0] = 1;
+    ^~~~~~
+tests/test_assets/semantic/invalid/definite_assignment/partial_and_address_uses.cog:17:22: error: variable 'value' may be uninitialized
+    pointer: i32* = &value;
+                     ^~~~~
 3 semantic errors generated.

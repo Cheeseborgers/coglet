@@ -1,5 +1,6 @@
 #ifndef COGLET_LEXER_H
 #define COGLET_LEXER_H
+#include "source.h"
 #include "utils/string_view.h"
 
 typedef enum {
@@ -103,10 +104,14 @@ typedef struct {
 
     int line;
     int column;
+
+    /* Stable source provenance for AST/semantic/backend diagnostics. */
+    SourceSpan span;
 } Token;
 
 typedef struct {
     const char *filename;      // for error reporting
+    SourceFileId source_id;
     const char *source_start;  // kept for error reporting
     const char *current;
     int line;
@@ -116,6 +121,12 @@ typedef struct {
 } Lexer;
 
 void lexer_init(Lexer *lx, const char *filename, const char *source);
+void lexer_init_with_source_id(
+    Lexer *lx,
+    SourceFileId source_id,
+    const char *filename,
+    const char *source
+);
 Token lexer_next(Lexer *lx);
 const char *token_type_name(TokenType type); // for printing/tests
 

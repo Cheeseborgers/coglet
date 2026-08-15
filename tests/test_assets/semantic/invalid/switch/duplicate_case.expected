@@ -1,2 +1,4 @@
-semantic error at line 11: duplicate switch case
+tests/test_assets/semantic/invalid/switch/duplicate_case.cog:11:9: error: duplicate switch case
+        case Color.Red:
+        ^~~~
 1 semantic error generated.

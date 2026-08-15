@@ -1,2 +1,4 @@
-semantic error at line 4: duplicate switch case
+tests/test_assets/semantic/invalid/switch/evaluated_duplicate_case.cog:4:9: error: duplicate switch case
+        case 1 + 2: {}
+        ^~~~
 1 semantic error generated.

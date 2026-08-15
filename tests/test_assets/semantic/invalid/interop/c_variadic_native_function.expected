@@ -1,2 +1,4 @@
-semantic error at line 1: C variadics are currently allowed only on #extern(c) declarations and cfn types
+tests/test_assets/semantic/invalid/interop/c_variadic_native_function.cog:1:1: error: C variadics are currently allowed only on #extern(c) declarations and cfn types
+bad::(value: c_int, ...) -> c_int {
+^~~
 1 semantic error generated.

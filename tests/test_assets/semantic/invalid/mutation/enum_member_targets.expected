@@ -1,4 +1,10 @@
-semantic error at line 7: assignment target is not assignable
-semantic error at line 8: compound assignment target is not assignable
-semantic error at line 9: increment/decrement target is not assignable
+tests/test_assets/semantic/invalid/mutation/enum_member_targets.cog:7:11: error: assignment target is not assignable
+    Color.Red = Color.Blue;
+          ^~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/mutation/enum_member_targets.cog:8:11: error: compound assignment target is not assignable
+    Color.Red += 1;
+          ^~~~~~~~
+tests/test_assets/semantic/invalid/mutation/enum_member_targets.cog:9:11: error: increment/decrement target is not assignable
+    Color.Red++;
+          ^~~~~
 3 semantic errors generated.

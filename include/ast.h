@@ -105,7 +105,14 @@ typedef struct {
 
 struct Node {
     NodeType type;
-    int line;   // always set during parsing -- needed for error messages
+
+    /*
+     * Canonical source provenance for diagnostics and later IR lowering.
+     * `line` is retained temporarily as a compatibility cache while existing
+     * debug/backend code migrates to SourceSpan.
+     */
+    SourceSpan span;
+    int line;
 
     union {
         struct {
@@ -372,45 +379,45 @@ struct Node {
 
 // Constructors allocate from the given arena -- callers never free
 // individual nodes.
-Node *ast_new_integer(Arena *arena, uint64_t value, int line);
-Node *ast_new_float(Arena *arena, double value, int line);
-Node *ast_new_ident(Arena *arena, const char *start, int length, int line);
-Node *ast_new_compound_assign(Arena *arena, TokenType op, Node *target, Node *value, int line);
-Node *ast_new_string(Arena *arena, const char *start, int length, int line);
-Node *ast_new_char(Arena *arena, const char *start, int length, int line);
-Node *ast_new_null(Arena *arena, int line);
-Node *ast_new_bool(Arena *arena, int value, int line);
-Node *ast_new_cast(Arena *arena, CastKind kind, Type *target_type, Node *expression, int line);
-Node *ast_new_unary(Arena *arena, TokenType op, Node *operand, int line);
-Node *ast_new_inc_dec(Arena *arena, TokenType op, Node *target, int is_prefix, int line);
-Node *ast_new_binary(Arena *arena, TokenType op, Node *left, Node *right, int line);
-Node *ast_new_assign(Arena *arena,Node *target,Node *value,int line);
-Node *ast_new_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, int line);
-Node *ast_new_expr_stmt(Arena *arena, Node *expr, int line);
-Node *ast_new_block(Arena *arena, int line);
-Node *ast_new_call(Arena *arena, Node *callee, int line);
-Node *ast_new_field(Arena *arena, Node *object, const char *name, int length, int line );
-Node *ast_new_index(Arena *arena,Node *object, Node *index, int line);
+Node *ast_new_integer(Arena *arena, uint64_t value, SourceSpan span);
+Node *ast_new_float(Arena *arena, double value, SourceSpan span);
+Node *ast_new_ident(Arena *arena, const char *start, int length, SourceSpan span);
+Node *ast_new_compound_assign(Arena *arena, TokenType op, Node *target, Node *value, SourceSpan span);
+Node *ast_new_string(Arena *arena, const char *start, int length, SourceSpan span);
+Node *ast_new_char(Arena *arena, const char *start, int length, SourceSpan span);
+Node *ast_new_null(Arena *arena, SourceSpan span);
+Node *ast_new_bool(Arena *arena, int value, SourceSpan span);
+Node *ast_new_cast(Arena *arena, CastKind kind, Type *target_type, Node *expression, SourceSpan span);
+Node *ast_new_unary(Arena *arena, TokenType op, Node *operand, SourceSpan span);
+Node *ast_new_inc_dec(Arena *arena, TokenType op, Node *target, int is_prefix, SourceSpan span);
+Node *ast_new_binary(Arena *arena, TokenType op, Node *left, Node *right, SourceSpan span);
+Node *ast_new_assign(Arena *arena,Node *target,Node *value,SourceSpan span);
+Node *ast_new_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, SourceSpan span);
+Node *ast_new_expr_stmt(Arena *arena, Node *expr, SourceSpan span);
+Node *ast_new_block(Arena *arena, SourceSpan span);
+Node *ast_new_call(Arena *arena, Node *callee, SourceSpan span);
+Node *ast_new_field(Arena *arena, Node *object, const char *name, int length, SourceSpan span );
+Node *ast_new_index(Arena *arena,Node *object, Node *index, SourceSpan span);
 Node *ast_new_error(Arena *arena, Token token);
-Node *ast_new_program(Arena *arena, int line);
-Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, int line);
-Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, int line);
-Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, int line);
-Node *ast_new_return(Arena *arena, Node *value, int line);
-Node *ast_new_while(Arena *arena, Node *cond, Node *body, int line);
-Node *ast_new_for(Arena *arena, Node *cond, Node *post, Node *body, int line);
-Node *ast_new_break(Arena *arena, int line);
-Node *ast_new_continue(Arena *arena, int line);
-Node *ast_new_switch(Arena *arena, Node *expression, int line);
-Node *ast_new_switch_case(Arena *arena, Node *value, Node *body, int is_default, int line);
-Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, int line);
-Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int line);
-Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, int line);
-Node *ast_new_enum_decl(Arena *arena, const char *name, int name_length, int line);
-Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, int line);
-Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, int line);
-Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, int line);
-Node *ast_new_array_literal(Arena *arena, int line);
+Node *ast_new_program(Arena *arena, SourceSpan span);
+Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, SourceSpan span);
+Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, SourceSpan span);
+Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, SourceSpan span);
+Node *ast_new_return(Arena *arena, Node *value, SourceSpan span);
+Node *ast_new_while(Arena *arena, Node *cond, Node *body, SourceSpan span);
+Node *ast_new_for(Arena *arena, Node *cond, Node *post, Node *body, SourceSpan span);
+Node *ast_new_break(Arena *arena, SourceSpan span);
+Node *ast_new_continue(Arena *arena, SourceSpan span);
+Node *ast_new_switch(Arena *arena, Node *expression, SourceSpan span);
+Node *ast_new_switch_case(Arena *arena, Node *value, Node *body, int is_default, SourceSpan span);
+Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, SourceSpan span);
+Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, SourceSpan span);
+Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, SourceSpan span);
+Node *ast_new_enum_decl(Arena *arena, const char *name, int name_length, SourceSpan span);
+Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, SourceSpan span);
+Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, SourceSpan span);
+Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, SourceSpan span);
+Node *ast_new_array_literal(Arena *arena, SourceSpan span);
 
 Node *ast_clone(Arena *arena, const Node *node);
 

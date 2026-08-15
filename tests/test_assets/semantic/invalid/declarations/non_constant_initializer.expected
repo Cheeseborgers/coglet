@@ -1,2 +1,4 @@
-semantic error at line 5: expression is not a compile-time constant
+tests/test_assets/semantic/invalid/declarations/non_constant_initializer.cog:5:13: error: expression is not a compile-time constant
+BAD_CALL :: some_func();
+            ^~~~~~~~~
 1 semantic error generated.

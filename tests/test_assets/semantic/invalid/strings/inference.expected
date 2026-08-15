@@ -1,2 +1,4 @@
-semantic error at line 5: string literal requires an expected byte array type
+tests/test_assets/semantic/invalid/strings/inference.cog:5:14: error: string literal requires an expected byte array type
+    value := "hello";
+             ^~~~~~~
 1 semantic error generated.

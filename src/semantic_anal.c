@@ -78,30 +78,76 @@ static void assert_canonical_builtin_type(SemanticContext *ctx, Type *type) {
 
 static void semantic_error_fmt(SemanticContext *ctx, const Node *node, const char *fmt, ...)
 {
-    fprintf(stderr, "semantic error at line %d: ", node->line);
+    assert(ctx);
+    assert(node);
 
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
+    va_list copy;
+    va_copy(copy, args);
 
-    fputc('\n', stderr);
+    int required = vsnprintf(NULL, 0, fmt, copy);
+    va_end(copy);
+
+    if (required < 0) {
+        va_end(args);
+        diagnostic_add(
+            &ctx->diagnostics,
+            DIAGNOSTIC_ERROR,
+            DIAGNOSTIC_PHASE_SEMANTIC,
+            node->span,
+            "semantic diagnostic formatting failed"
+        );
+    } else {
+        char *message = arena_alloc(ctx->arena, (size_t)required + 1);
+        vsnprintf(message, (size_t)required + 1, fmt, args);
+        va_end(args);
+
+        diagnostic_add(
+            &ctx->diagnostics,
+            DIAGNOSTIC_ERROR,
+            DIAGNOSTIC_PHASE_SEMANTIC,
+            node->span,
+            message
+        );
+    }
 
     ctx->had_error = 1;
     ctx->error_count++;
 }
 
 static void semantic_error(SemanticContext *ctx, const Node *node, const char *msg) {
+    assert(ctx);
+    assert(node);
 
-    fprintf(stderr, "semantic error at line %d: %s\n", node->line,msg);
+    diagnostic_add(
+        &ctx->diagnostics,
+        DIAGNOSTIC_ERROR,
+        DIAGNOSTIC_PHASE_SEMANTIC,
+        node->span,
+        msg
+    );
+
     ctx->had_error = 1;
     ctx->error_count++;
 }
 
 static void semantic_error_name(
     SemanticContext *ctx, const Node *node, const char *prefix, const char *name, size_t length) {
+    assert(ctx);
+    assert(node);
 
-    fprintf(stderr, "semantic error at line %d: %s '%.*s'\n", node->line, prefix, (int)length, name);
+    diagnostic_add_fmt(
+        &ctx->diagnostics,
+        DIAGNOSTIC_ERROR,
+        DIAGNOSTIC_PHASE_SEMANTIC,
+        node->span,
+        "%s '%.*s'",
+        prefix,
+        (int)length,
+        name
+    );
+
     ctx->had_error = 1;
     ctx->error_count++;
 }
@@ -10623,11 +10669,15 @@ static void check_node(SemanticContext *ctx,Node *node) {
 void semantic_check(
     Node *program,
     SemanticContext *ctx,
-    const TargetInfo *target
+    const TargetInfo *target,
+    SourceManager *sources
 ) {
 
     assert(target);
+    assert(sources);
     ctx->target = *target;
+    ctx->sources = sources;
+    diagnostic_list_init(&ctx->diagnostics, ctx->arena);
 
     ctx->had_error          = 0;
     ctx->loop_depth         = 0;

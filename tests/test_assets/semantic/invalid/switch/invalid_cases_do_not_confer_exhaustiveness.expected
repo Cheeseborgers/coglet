@@ -1,10 +1,28 @@
-semantic error at line 7: switch case type does not match switch expression type
-semantic error at line 10: switch case type does not match switch expression type
-semantic error at line 14: variable 'value' may be uninitialized
-semantic error at line 21: switch case type does not match switch expression type
-semantic error at line 24: switch case type does not match switch expression type
-semantic error at line 17: non-void function may not return a value
-semantic error at line 43: switch case type does not match switch expression type
-semantic error at line 46: switch case type does not match switch expression type
-semantic error at line 34: non-void function may not return a value
+tests/test_assets/semantic/invalid/switch/invalid_cases_do_not_confer_exhaustiveness.cog:7:9: error: switch case type does not match switch expression type
+        case true:
+        ^~~~
+tests/test_assets/semantic/invalid/switch/invalid_cases_do_not_confer_exhaustiveness.cog:10:9: error: switch case type does not match switch expression type
+        case false:
+        ^~~~
+tests/test_assets/semantic/invalid/switch/invalid_cases_do_not_confer_exhaustiveness.cog:14:12: error: variable 'value' may be uninitialized
+    return value;
+           ^~~~~
+tests/test_assets/semantic/invalid/switch/invalid_cases_do_not_confer_exhaustiveness.cog:21:9: error: switch case type does not match switch expression type
+        case true:
+        ^~~~
+tests/test_assets/semantic/invalid/switch/invalid_cases_do_not_confer_exhaustiveness.cog:24:9: error: switch case type does not match switch expression type
+        case false:
+        ^~~~
+tests/test_assets/semantic/invalid/switch/invalid_cases_do_not_confer_exhaustiveness.cog:17:1: error: non-void function may not return a value
+invalid_bool_cases_do_not_satisfy_return::(
+^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/switch/invalid_cases_do_not_confer_exhaustiveness.cog:43:9: error: switch case type does not match switch expression type
+        case State.Ready:
+        ^~~~
+tests/test_assets/semantic/invalid/switch/invalid_cases_do_not_confer_exhaustiveness.cog:46:9: error: switch case type does not match switch expression type
+        case State.Done:
+        ^~~~
+tests/test_assets/semantic/invalid/switch/invalid_cases_do_not_confer_exhaustiveness.cog:34:1: error: non-void function may not return a value
+shadowed_enum_cases_do_not_cover_outer::(
+^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 9 semantic errors generated.

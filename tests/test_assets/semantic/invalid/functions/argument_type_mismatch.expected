@@ -1,2 +1,4 @@
-semantic error at line 5: argument type does not match parameter type: expected u8, got bool
+tests/test_assets/semantic/invalid/functions/argument_type_mismatch.cog:5:13: error: argument type does not match parameter type: expected u8, got bool
+   takes_u8(true);
+            ^~~~
 1 semantic error generated.

@@ -1,7 +1,19 @@
-semantic error at line 22: address-of operand is not assignable
-semantic error at line 23: address-of operand is not assignable
-semantic error at line 24: address-of operand is not assignable
-semantic error at line 25: address-of operand is not assignable
-semantic error at line 26: address-of operand is not assignable
-semantic error at line 27: address-of operand is not assignable
+tests/test_assets/semantic/invalid/pointers/address_of_non_lvalues.cog:22:15: error: address-of operand is not assignable
+    a: i32* = &VALUE;
+              ^~~~~~
+tests/test_assets/semantic/invalid/pointers/address_of_non_lvalues.cog:23:17: error: address-of operand is not assignable
+    b: Color* = &Color.Red;
+                ^~~~~~~~~~
+tests/test_assets/semantic/invalid/pointers/address_of_non_lvalues.cog:24:15: error: address-of operand is not assignable
+    c: i32* = &1;
+              ^~
+tests/test_assets/semantic/invalid/pointers/address_of_non_lvalues.cog:25:15: error: address-of operand is not assignable
+    d: i32* = &(1 + 2);
+              ^~~~~~~
+tests/test_assets/semantic/invalid/pointers/address_of_non_lvalues.cog:26:15: error: address-of operand is not assignable
+    e: i32* = &make_value();
+              ^~~~~~~~~~~
+tests/test_assets/semantic/invalid/pointers/address_of_non_lvalues.cog:27:15: error: address-of operand is not assignable
+    f: i32* = &make_point().x;
+              ^~~~~~~~~~~~~~~
 6 semantic errors generated.

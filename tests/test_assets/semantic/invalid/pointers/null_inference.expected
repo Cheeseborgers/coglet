@@ -1,2 +1,4 @@
-semantic error at line 2: cannot infer a concrete pointer type from null
+tests/test_assets/semantic/invalid/pointers/null_inference.cog:2:16: error: cannot infer a concrete pointer type from null
+    pointer := null;
+               ^~~~
 1 semantic error generated.

@@ -17,6 +17,8 @@ endif()
 # --- Core compiler logic, shared by every tool/binary. ---
 # Not all of this need to be shared tho
 add_library(compiler_core STATIC
+        src/source.c
+        src/diagnostic.c
         src/lexer.c
         src/parser.c
         src/ast.c
@@ -58,6 +60,19 @@ target_link_libraries(check_contextual_conversions PRIVATE compiler_core)
 # --- Centralized semantic constant-value checker. ---
 add_executable(check_constant_values tools/tests/check_constant_values.c)
 target_link_libraries(check_constant_values PRIVATE compiler_core)
+
+# --- Multi-file source provenance / diagnostic checker. ---
+add_executable(check_source_provenance tools/tests/check_source_provenance.c)
+target_link_libraries(check_source_provenance PRIVATE compiler_core)
+
+add_test(
+        NAME source_provenance_multi_file
+        COMMAND "$<TARGET_FILE:check_source_provenance>"
+)
+set_tests_properties(
+        source_provenance_multi_file
+        PROPERTIES LABELS "source;diagnostic;multi-file"
+)
 
 # --- Standalone lexer test tool (Stage 1 harness). ---
 add_executable(dump_tokens tools/dump_tokens.c ${COMMON_SOURCES})
@@ -276,6 +291,7 @@ function(add_semantic_invalid_tests root_dir)
                     -DEXPECTED=${expected_file}
                     -DEXPECT_EXIT=1
                     -DOUTPUT_STREAM=stderr
+                    -DNORMALIZE_DIAGNOSTIC_PATH=ON
                     -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
             )
 

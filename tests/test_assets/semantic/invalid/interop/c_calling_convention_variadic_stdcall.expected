@@ -1,3 +1,7 @@
-semantic error at line 1: #extern(c) cannot use call=stdcall with C variadics
-semantic error at line 4: stdcall C function pointers cannot be variadic
+tests/test_assets/semantic/invalid/interop/c_calling_convention_variadic_stdcall.cog:2:1: error: #extern(c) cannot use call=stdcall with C variadics
+bad_extern::(format: readonly c_char*, ...) -> c_int;
+^~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/c_calling_convention_variadic_stdcall.cog:4:1: error: stdcall C function pointers cannot be variadic
+bad_callback: cfn(call=stdcall, c_int, ...) -> c_int = null;
+^~~~~~~~~~~~
 2 semantic errors generated.

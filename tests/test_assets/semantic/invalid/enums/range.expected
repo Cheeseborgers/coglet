@@ -1,5 +1,13 @@
-semantic error at line 3: enum member value does not fit in backing type
-semantic error at line 7: enum member value does not fit in backing type
-semantic error at line 11: enum member value does not fit in backing type
-semantic error at line 15: enum member value does not fit in backing type
+tests/test_assets/semantic/invalid/enums/range.cog:3:5: error: enum member value does not fit in backing type
+    B,
+    ^
+tests/test_assets/semantic/invalid/enums/range.cog:7:5: error: enum member value does not fit in backing type
+    A = -1,
+    ^
+tests/test_assets/semantic/invalid/enums/range.cog:11:5: error: enum member value does not fit in backing type
+    A = 128,
+    ^
+tests/test_assets/semantic/invalid/enums/range.cog:15:5: error: enum member value does not fit in backing type
+    A = -129,
+    ^
 4 semantic errors generated.

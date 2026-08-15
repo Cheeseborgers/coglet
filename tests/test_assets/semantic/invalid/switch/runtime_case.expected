@@ -1,2 +1,4 @@
-semantic error at line 3: expression is not a compile-time constant
+tests/test_assets/semantic/invalid/switch/runtime_case.cog:3:14: error: expression is not a compile-time constant
+        case runtime_case:
+             ^~~~~~~~~~~~
 1 semantic error generated.

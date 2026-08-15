@@ -1,2 +1,4 @@
-semantic error at line 14: initializer type does not match declared type
+tests/test_assets/semantic/invalid/types/shadowed_enum_is_distinct.cog:14:13: error: initializer type does not match declared type
+    outer = inner;
+            ^~~~~
 1 semantic error generated.

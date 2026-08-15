@@ -1,2 +1,4 @@
-semantic error at line 2: initializer type does not match declared type
+tests/test_assets/semantic/invalid/literals/scientific_notation_is_float.cog:2:18: error: initializer type does not match declared type
+    value: i32 = 1e3;
+                 ^~~
 1 semantic error generated.

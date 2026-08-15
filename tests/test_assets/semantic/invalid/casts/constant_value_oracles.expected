@@ -1,5 +1,13 @@
-semantic error at line 15: duplicate switch case
-semantic error at line 23: duplicate switch case
-semantic error at line 31: duplicate switch case
-semantic error at line 39: duplicate switch case
+tests/test_assets/semantic/invalid/casts/constant_value_oracles.cog:15:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/casts/constant_value_oracles.cog:23:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/casts/constant_value_oracles.cog:31:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/casts/constant_value_oracles.cog:39:9: error: duplicate switch case
+        case true: {}
+        ^~~~
 4 semantic errors generated.

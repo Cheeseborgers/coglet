@@ -1,2 +1,4 @@
-semantic error at line 5: compound assignment operands have incompatible numeric types
+tests/test_assets/semantic/invalid/mutation/numeric_type_mismatch.cog:5:5: error: compound assignment operands have incompatible numeric types
+    small += large;
+    ^~~~~~~~~~~~~~
 1 semantic error generated.

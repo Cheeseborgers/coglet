@@ -1,6 +1,16 @@
-semantic error at line 10: assignment target is readonly
-semantic error at line 11: assignment target is readonly
-semantic error at line 12: assignment target is readonly
-semantic error at line 14: compound assignment target is readonly
-semantic error at line 15: increment/decrement target is readonly
+tests/test_assets/semantic/invalid/pointers/readonly_pointer_mutation.cog:10:5: error: assignment target is readonly
+    *value = 1;
+    ^~~~~~~~~~
+tests/test_assets/semantic/invalid/pointers/readonly_pointer_mutation.cog:11:5: error: assignment target is readonly
+    values[0] = 2;
+    ^~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/pointers/readonly_pointer_mutation.cog:12:14: error: assignment target is readonly
+    (*point).x = 3;
+             ^~~~~
+tests/test_assets/semantic/invalid/pointers/readonly_pointer_mutation.cog:14:5: error: compound assignment target is readonly
+    *value += 1;
+    ^~~~~~~~~~~
+tests/test_assets/semantic/invalid/pointers/readonly_pointer_mutation.cog:15:6: error: increment/decrement target is readonly
+    (*value)++;
+     ^~~~~~~~~
 5 semantic errors generated.

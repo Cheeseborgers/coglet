@@ -1,3 +1,7 @@
-semantic error at line 1: #repr(c) alignment must be a power of two
-semantic error at line 6: incomplete #repr(c) structs cannot specify packed or alignment controls
+tests/test_assets/semantic/invalid/interop/repr_c_layout_controls_invalid.cog:2:1: error: #repr(c) alignment must be a power of two
+BadAlignment::struct {
+^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_layout_controls_invalid.cog:7:1: error: incomplete #repr(c) structs cannot specify packed or alignment controls
+Opaque::struct;
+^~~~~~
 2 semantic errors generated.

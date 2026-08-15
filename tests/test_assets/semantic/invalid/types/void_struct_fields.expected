@@ -1,3 +1,7 @@
-semantic error at line 2: struct field cannot have type void
-semantic error at line 6: struct field cannot have type void
+tests/test_assets/semantic/invalid/types/void_struct_fields.cog:2:5: error: struct field cannot have type void
+    field: void;
+    ^~~~~
+tests/test_assets/semantic/invalid/types/void_struct_fields.cog:6:5: error: struct field cannot have type void
+    field: void*;
+    ^~~~~
 2 semantic errors generated.

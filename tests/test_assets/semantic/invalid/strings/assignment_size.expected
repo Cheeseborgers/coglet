@@ -1,2 +1,4 @@
-semantic error at line 7: string literal requires destination array size 6, got 4
+tests/test_assets/semantic/invalid/strings/assignment_size.cog:7:13: error: string literal requires destination array size 6, got 4
+    value = "hello";
+            ^~~~~~~
 1 semantic error generated.

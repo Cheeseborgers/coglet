@@ -42,6 +42,21 @@ file(READ "${EXPECTED}" expected_output)
 string(REPLACE "\r\n" "\n" expected_output "${expected_output}")
 string(REPLACE "\r\n" "\n" actual_output "${actual_output}")
 
+if(DEFINED NORMALIZE_DIAGNOSTIC_PATH AND NORMALIZE_DIAGNOSTIC_PATH)
+    # Preserve line/column/severity while removing checkout-specific paths
+    # from both sides.  Normalizing expected_output too makes regenerated
+    # snapshots robust even if they were produced with a concrete filename.
+    foreach(output_var actual_output expected_output)
+        string(REGEX REPLACE
+            "[^\n]*:([0-9]+):([0-9]+): (error|warning|note):"
+            [=[<source>:\1:\2: \3:]=]
+            normalized_output
+            "${${output_var}}"
+        )
+        set(${output_var} "${normalized_output}")
+    endforeach()
+endif()
+
 string(STRIP "${actual_output}" actual_output)
 string(STRIP "${expected_output}" expected_output)
 

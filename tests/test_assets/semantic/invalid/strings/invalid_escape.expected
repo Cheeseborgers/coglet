@@ -1,2 +1,4 @@
-semantic error at line 5: invalid escape sequence '\x' in string literal
+tests/test_assets/semantic/invalid/strings/invalid_escape.cog:5:20: error: invalid escape sequence '\x' in string literal
+    value: u8[3] = "a\x";
+                   ^~~~~
 1 semantic error generated.

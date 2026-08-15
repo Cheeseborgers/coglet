@@ -1,7 +1,19 @@
-semantic error at line 23: duplicate switch case
-semantic error at line 31: duplicate switch case
-semantic error at line 39: duplicate switch case
-semantic error at line 47: duplicate switch case
-semantic error at line 55: duplicate switch case
-semantic error at line 63: duplicate switch case
+tests/test_assets/semantic/invalid/expressions/shift_constant_oracles.cog:23:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/shift_constant_oracles.cog:31:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/shift_constant_oracles.cog:39:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/shift_constant_oracles.cog:47:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/shift_constant_oracles.cog:55:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/shift_constant_oracles.cog:63:9: error: duplicate switch case
+        case true: {}
+        ^~~~
 6 semantic errors generated.

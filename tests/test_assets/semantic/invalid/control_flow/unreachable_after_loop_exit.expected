@@ -1,4 +1,10 @@
-semantic error at line 6: unreachable statement
-semantic error at line 15: unreachable statement
-semantic error at line 23: unreachable statement
+tests/test_assets/semantic/invalid/control_flow/unreachable_after_loop_exit.cog:6:9: error: unreachable statement
+        value := 1;
+        ^~~~~
+tests/test_assets/semantic/invalid/control_flow/unreachable_after_loop_exit.cog:15:9: error: unreachable statement
+        value := 2;
+        ^~~~~
+tests/test_assets/semantic/invalid/control_flow/unreachable_after_loop_exit.cog:23:5: error: unreachable statement
+    value := 3;
+    ^~~~~
 3 semantic errors generated.

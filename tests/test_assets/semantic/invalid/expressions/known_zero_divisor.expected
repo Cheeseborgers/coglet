@@ -1,9 +1,25 @@
-semantic error at line 6: division by zero
-semantic error at line 7: remainder by zero
-semantic error at line 9: division by zero
-semantic error at line 10: remainder by zero
-semantic error at line 12: division by zero
-semantic error at line 13: remainder by zero
-semantic error at line 15: division by zero
-semantic error at line 16: remainder by zero
+tests/test_assets/semantic/invalid/expressions/known_zero_divisor.cog:6:15: error: division by zero
+    integer / 0;
+              ^
+tests/test_assets/semantic/invalid/expressions/known_zero_divisor.cog:7:15: error: remainder by zero
+    integer % 0;
+              ^
+tests/test_assets/semantic/invalid/expressions/known_zero_divisor.cog:9:15: error: division by zero
+    integer / ZERO;
+              ^~~~
+tests/test_assets/semantic/invalid/expressions/known_zero_divisor.cog:10:15: error: remainder by zero
+    integer % ZERO;
+              ^~~~
+tests/test_assets/semantic/invalid/expressions/known_zero_divisor.cog:12:15: error: division by zero
+    integer / cast(i32, 0);
+              ^~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/known_zero_divisor.cog:13:15: error: remainder by zero
+    integer % cast(i32, 0);
+              ^~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/known_zero_divisor.cog:15:16: error: division by zero
+    integer / (1 - 1);
+               ^~~~~
+tests/test_assets/semantic/invalid/expressions/known_zero_divisor.cog:16:16: error: remainder by zero
+    integer % (1 - 1);
+               ^~~~~
 8 semantic errors generated.

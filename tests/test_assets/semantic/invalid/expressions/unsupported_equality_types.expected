@@ -1,4 +1,10 @@
-semantic error at line 23: type does not support equality comparison
-semantic error at line 28: type does not support equality comparison
-semantic error at line 30: type does not support equality comparison
+tests/test_assets/semantic/invalid/expressions/unsupported_equality_types.cog:23:5: error: type does not support equality comparison
+    left_point == right_point;
+    ^~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/unsupported_equality_types.cog:28:5: error: type does not support equality comparison
+    left_array == right_array;
+    ^~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/unsupported_equality_types.cog:30:5: error: type does not support equality comparison
+    first == second;
+    ^~~~~~~~~~~~~~~
 3 semantic errors generated.

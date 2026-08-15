@@ -1,5 +1,13 @@
-semantic error at line 1: wrong number of arguments to builtin 'wrapping_add': expected 2, got 1
-semantic error at line 2: builtin 'wrapping_add' requires concrete integer arguments
-semantic error at line 3: builtin 'wrapping_add' requires arguments of the same integer type
-semantic error at line 4: builtin 'wrapping_neg' requires a concrete integer argument
+tests/test_assets/semantic/invalid/builtins/wrapping_constant_call_types.cog:1:14: error: wrong number of arguments to builtin 'wrapping_add': expected 2, got 1
+BAD_COUNT :: wrapping_add(cast(u8, 1));
+             ^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/builtins/wrapping_constant_call_types.cog:2:16: error: builtin 'wrapping_add' requires concrete integer arguments
+BAD_UNTYPED :: wrapping_add(1, 2);
+               ^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/builtins/wrapping_constant_call_types.cog:3:17: error: builtin 'wrapping_add' requires arguments of the same integer type
+BAD_MISMATCH :: wrapping_add(cast(u8, 1), cast(u16, 2));
+                ^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/builtins/wrapping_constant_call_types.cog:4:14: error: builtin 'wrapping_neg' requires a concrete integer argument
+BAD_FLOAT :: wrapping_neg(cast(f32, 1.0));
+             ^~~~~~~~~~~~
 4 semantic errors generated.

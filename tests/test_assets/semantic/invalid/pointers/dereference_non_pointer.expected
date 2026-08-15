@@ -1,2 +1,4 @@
-semantic error at line 3: unary '*' requires a pointer operand
+tests/test_assets/semantic/invalid/pointers/dereference_non_pointer.cog:3:5: error: unary '*' requires a pointer operand
+    *value = 2;
+    ^~~~~~
 1 semantic error generated.

@@ -1,2 +1,4 @@
-semantic error at line 7: initializer type does not match declared type
+tests/test_assets/semantic/invalid/enums/integer_initializer.cog:7:16: error: initializer type does not match declared type
+value: Color = 1;
+               ^
 1 semantic error generated.

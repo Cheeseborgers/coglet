@@ -1,2 +1,4 @@
-semantic error at line 1: enum backing type must be an integer type
+tests/test_assets/semantic/invalid/enums/backing_type.cog:1:1: error: enum backing type must be an integer type
+BadBacking :: enum(f32) {
+^~~~~~~~~~
 1 semantic error generated.

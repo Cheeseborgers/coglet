@@ -451,11 +451,18 @@ encoding, and C-interoperability rules are clearer.
 
 ## Later Frontend Work
 
+Source provenance is now multi-file-capable even though compilation is still
+entered through one primary file: tokens/AST nodes carry `SourceFileId` + byte
+spans, parser and semantic diagnostics share the generic diagnostic layer, and a
+single `SourceManager` can register multiple source buffers. Actual module/import
+resolution and cross-file semantic composition remain separate language/compiler
+work.
+
 - imports and modules
 - multi-file compilation
 - package and visibility rules
 - stable declaration identity across files
-- structured diagnostics with source spans and notes
+- diagnostic notes/secondary spans and richer recovery
 - a standard library design
 - closure and capture semantics, only if nested runtime functions require them
 - generics, if justified by real use cases

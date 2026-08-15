@@ -1,2 +1,4 @@
-semantic error at line 2: enum member value must be an integer constant
+tests/test_assets/semantic/invalid/enums/member_value_type.cog:2:5: error: enum member value must be an integer constant
+    A = 1.5,
+    ^
 1 semantic error generated.

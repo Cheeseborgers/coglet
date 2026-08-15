@@ -1,5 +1,13 @@
-semantic error at line 5: operands are different numeric types -- use an explicit cast
-semantic error at line 6: operands are different numeric types -- use an explicit cast
-semantic error at line 8: compound assignment operands have incompatible numeric types
-semantic error at line 9: compound assignment operands have incompatible numeric types
+tests/test_assets/semantic/invalid/expressions/mixed_signed_unsigned_subtraction.cog:5:5: error: operands are different numeric types -- use an explicit cast
+    signed_value - unsigned_value;
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/mixed_signed_unsigned_subtraction.cog:6:5: error: operands are different numeric types -- use an explicit cast
+    unsigned_value - signed_value;
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/mixed_signed_unsigned_subtraction.cog:8:5: error: compound assignment operands have incompatible numeric types
+    signed_value -= unsigned_value;
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/mixed_signed_unsigned_subtraction.cog:9:5: error: compound assignment operands have incompatible numeric types
+    unsigned_value -= signed_value;
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 4 semantic errors generated.

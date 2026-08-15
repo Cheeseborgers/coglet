@@ -1,2 +1,4 @@
-semantic error at line 7: unknown enum member 'Purple'
+tests/test_assets/semantic/invalid/enums/unknown_member.cog:7:33: error: unknown enum member 'Purple'
+BadEnumMemberUse: Color = Color.Purple;
+                                ^~~~~~
 1 semantic error generated.

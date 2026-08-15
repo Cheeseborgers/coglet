@@ -1,3 +1,7 @@
-semantic error at line 5: comparison operands have incompatible numeric types
-semantic error at line 6: comparison operands have incompatible numeric types
+tests/test_assets/semantic/invalid/expressions/comparison_numeric_mismatch.cog:5:5: error: comparison operands have incompatible numeric types
+    a == b;
+    ^~~~~~
+tests/test_assets/semantic/invalid/expressions/comparison_numeric_mismatch.cog:6:5: error: comparison operands have incompatible numeric types
+    a < b;
+    ^~~~~
 2 semantic errors generated.

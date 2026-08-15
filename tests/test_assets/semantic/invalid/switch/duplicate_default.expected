@@ -1,2 +1,4 @@
-semantic error at line 9: duplicate default case
+tests/test_assets/semantic/invalid/switch/duplicate_default.cog:9:9: error: duplicate default case
+        default:
+        ^~~~~~~
 1 semantic error generated.

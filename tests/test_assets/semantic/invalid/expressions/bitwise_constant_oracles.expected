@@ -1,8 +1,22 @@
-semantic error at line 29: duplicate switch case
-semantic error at line 37: duplicate switch case
-semantic error at line 45: duplicate switch case
-semantic error at line 53: duplicate switch case
-semantic error at line 61: duplicate switch case
-semantic error at line 71: duplicate switch case
-semantic error at line 81: duplicate switch case
+tests/test_assets/semantic/invalid/expressions/bitwise_constant_oracles.cog:29:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_constant_oracles.cog:37:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_constant_oracles.cog:45:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_constant_oracles.cog:53:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_constant_oracles.cog:61:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_constant_oracles.cog:71:9: error: duplicate switch case
+        case true: {}
+        ^~~~
+tests/test_assets/semantic/invalid/expressions/bitwise_constant_oracles.cog:81:9: error: duplicate switch case
+        case true: {}
+        ^~~~
 7 semantic errors generated.

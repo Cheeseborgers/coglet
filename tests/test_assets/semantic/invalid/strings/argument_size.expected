@@ -1,2 +1,4 @@
-semantic error at line 9: string literal requires destination array size 3, got 6
+tests/test_assets/semantic/invalid/strings/argument_size.cog:9:16: error: string literal requires destination array size 3, got 6
+    takes_name("hi");
+               ^~~~
 1 semantic error generated.

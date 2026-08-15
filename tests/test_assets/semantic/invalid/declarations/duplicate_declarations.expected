@@ -1,2 +1,4 @@
-semantic error at line 5: duplicate declaration 'Color'
+tests/test_assets/semantic/invalid/declarations/duplicate_declarations.cog:5:1: error: duplicate declaration 'Color'
+Color :: enum {
+^~~~~
 1 semantic error generated.

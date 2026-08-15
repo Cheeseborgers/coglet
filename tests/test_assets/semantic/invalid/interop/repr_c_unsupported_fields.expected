@@ -1,9 +1,25 @@
-semantic error at line 11: #repr(c) struct field type 'i32[]' is not supported by the current C ABI subset
-semantic error at line 12: #repr(c) struct field type 'i32[0]' is not supported by the current C ABI subset
-semantic error at line 13: #repr(c) struct field type 'Plain' is not supported by the current C ABI subset
-semantic error at line 14: #repr(c) struct field type 'Plain[2]' is not supported by the current C ABI subset
-semantic error at line 15: #repr(c) struct field type 'Kind' is not supported by the current C ABI subset
-semantic error at line 16: #repr(c) struct field type 'Kind[2]' is not supported by the current C ABI subset
-semantic error at line 17: #repr(c) struct field type 'Plain*' is not supported by the current C ABI subset
-semantic error at line 20: #repr(c) structs must contain at least one field
+tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:11:5: error: #repr(c) struct field type 'i32[]' is not supported by the current C ABI subset
+    unsized: i32[];
+    ^~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:12:5: error: #repr(c) struct field type 'i32[0]' is not supported by the current C ABI subset
+    zero: i32[0];
+    ^~~~
+tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:13:5: error: #repr(c) struct field type 'Plain' is not supported by the current C ABI subset
+    nested: Plain;
+    ^~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:14:5: error: #repr(c) struct field type 'Plain[2]' is not supported by the current C ABI subset
+    plain_array: Plain[2];
+    ^~~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:15:5: error: #repr(c) struct field type 'Kind' is not supported by the current C ABI subset
+    enumeration: Kind;
+    ^~~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:16:5: error: #repr(c) struct field type 'Kind[2]' is not supported by the current C ABI subset
+    enum_array: Kind[2];
+    ^~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:17:5: error: #repr(c) struct field type 'Plain*' is not supported by the current C ABI subset
+    plain_pointer: Plain*;
+    ^~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:21:1: error: #repr(c) structs must contain at least one field
+Empty::struct {
+^~~~~
 8 semantic errors generated.

@@ -1,2 +1,4 @@
-semantic error at line 2: switch expression must be integer, bool, or enum
+tests/test_assets/semantic/invalid/switch/invalid_expression_type.cog:2:5: error: switch expression must be integer, bool, or enum
+    switch value {
+    ^~~~~~
 1 semantic error generated.

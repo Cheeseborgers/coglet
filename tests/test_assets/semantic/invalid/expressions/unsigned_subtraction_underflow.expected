@@ -1,5 +1,13 @@
-semantic error at line 1: integer overflow in constant expression
-semantic error at line 2: integer overflow in constant expression
-semantic error at line 3: integer overflow in constant expression
-semantic error at line 4: integer overflow in constant expression
+tests/test_assets/semantic/invalid/expressions/unsigned_subtraction_underflow.cog:1:18: error: integer overflow in constant expression
+U8_UNDERFLOW  :: cast(u8, 0)  - cast(u8, 1);
+                 ^~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/unsigned_subtraction_underflow.cog:2:18: error: integer overflow in constant expression
+U16_UNDERFLOW :: cast(u16, 0) - cast(u16, 1);
+                 ^~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/unsigned_subtraction_underflow.cog:3:18: error: integer overflow in constant expression
+U32_UNDERFLOW :: cast(u32, 0) - cast(u32, 1);
+                 ^~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/expressions/unsigned_subtraction_underflow.cog:4:18: error: integer overflow in constant expression
+U64_UNDERFLOW :: cast(u64, 0) - cast(u64, 1);
+                 ^~~~~~~~~~~~~~~~~~~~~~~~~~
 4 semantic errors generated.

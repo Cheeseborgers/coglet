@@ -1,2 +1,4 @@
-semantic error at line 1: constant floating-point value does not fit declared type
+tests/test_assets/semantic/invalid/declarations/floating_constant_errors.cog:1:33: error: constant floating-point value does not fit declared type
+F32_LITERAL_OUT_OF_RANGE: f32 : 340282366920938463463374607431768211456.0;
+                                ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 1 semantic error generated.

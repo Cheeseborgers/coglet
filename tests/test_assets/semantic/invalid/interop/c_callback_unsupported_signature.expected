@@ -1,2 +1,4 @@
-semantic error at line 2: cfn signature contains a type not supported by the current C ABI subset
+tests/test_assets/semantic/invalid/interop/c_callback_unsupported_signature.cog:2:7: error: cfn signature contains a type not supported by the current C ABI subset
+bad::(callback: cfn(c_int[2]) -> c_int) -> c_int;
+      ^~~~~~~~
 1 semantic error generated.

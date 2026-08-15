@@ -1,2 +1,4 @@
-semantic error at line 1: continue statement not inside loop
+tests/test_assets/semantic/invalid/control_flow/continue_at_top_level.cog:1:1: error: continue statement not inside loop
+continue;
+^~~~~~~~
 1 semantic error generated.

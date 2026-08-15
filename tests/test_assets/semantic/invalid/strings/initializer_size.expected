@@ -1,2 +1,4 @@
-semantic error at line 6: string literal requires destination array size 6, got 5
+tests/test_assets/semantic/invalid/strings/initializer_size.cog:6:20: error: string literal requires destination array size 6, got 5
+    value: u8[5] = "hello";
+                   ^~~~~~~
 1 semantic error generated.

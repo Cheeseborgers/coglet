@@ -1,2 +1,4 @@
-semantic error at line 2: floating-point constant does not fit destination type
+tests/test_assets/semantic/invalid/literals/scientific_notation_f32_overflow.cog:2:18: error: floating-point constant does not fit destination type
+    value: f32 = 1e39;
+                 ^~~~
 1 semantic error generated.

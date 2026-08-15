@@ -1,6 +1,16 @@
-semantic error at line 5: integer constant operand does not fit operation type
-semantic error at line 6: integer constant operand does not fit operation type
-semantic error at line 7: integer constant operand does not fit operation type
-semantic error at line 8: integer constant operand does not fit operation type
-semantic error at line 9: integer constant operand does not fit operation type
+tests/test_assets/semantic/invalid/expressions/bitwise_literal_range.cog:5:17: error: integer constant operand does not fit operation type
+    unsigned8 & 256;
+                ^~~
+tests/test_assets/semantic/invalid/expressions/bitwise_literal_range.cog:6:5: error: integer constant operand does not fit operation type
+    256 | unsigned8;
+    ^~~
+tests/test_assets/semantic/invalid/expressions/bitwise_literal_range.cog:7:17: error: integer constant operand does not fit operation type
+    unsigned8 ^ -1;
+                ^~
+tests/test_assets/semantic/invalid/expressions/bitwise_literal_range.cog:8:15: error: integer constant operand does not fit operation type
+    signed8 & 128;
+              ^~~
+tests/test_assets/semantic/invalid/expressions/bitwise_literal_range.cog:9:5: error: integer constant operand does not fit operation type
+    -129 | signed8;
+    ^~~~
 5 semantic errors generated.

@@ -1,3 +1,7 @@
-semantic error at line 7: #repr(c) union field type 'Plain' is not supported by the current C ABI subset
-semantic error at line 8: #repr(c) union field type 'i32[]' is not supported by the current C ABI subset
+tests/test_assets/semantic/invalid/interop/repr_c_union_unsupported_fields.cog:7:5: error: #repr(c) union field type 'Plain' is not supported by the current C ABI subset
+    plain: Plain;
+    ^~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_union_unsupported_fields.cog:8:5: error: #repr(c) union field type 'i32[]' is not supported by the current C ABI subset
+    unsized: c_int[];
+    ^~~~~~~
 2 semantic errors generated.

@@ -1,2 +1,4 @@
-semantic error at line 5: initializer type does not match declared type
+tests/test_assets/semantic/invalid/arrays/return_element_type.cog:5:16: error: initializer type does not match declared type
+    return [1, true, 3];
+               ^~~~
 1 semantic error generated.

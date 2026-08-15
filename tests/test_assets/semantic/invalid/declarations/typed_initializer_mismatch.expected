@@ -1,2 +1,4 @@
-semantic error at line 1: initializer type does not match declared type
+tests/test_assets/semantic/invalid/declarations/typed_initializer_mismatch.cog:1:29: error: initializer type does not match declared type
+bad_float_assignment: i64 = 3.14;
+                            ^~~~
 1 semantic error generated.

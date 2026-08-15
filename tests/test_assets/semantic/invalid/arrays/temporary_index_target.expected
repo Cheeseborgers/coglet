@@ -1,2 +1,4 @@
-semantic error at line 9: assignment target is not assignable
+tests/test_assets/semantic/invalid/arrays/temporary_index_target.cog:9:5: error: assignment target is not assignable
+    make_values()[0] = 1;
+    ^~~~~~~~~~~~~~~~~~~~
 1 semantic error generated.

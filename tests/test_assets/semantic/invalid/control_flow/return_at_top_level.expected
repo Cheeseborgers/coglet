@@ -1,2 +1,4 @@
-semantic error at line 1: return outside function
+tests/test_assets/semantic/invalid/control_flow/return_at_top_level.cog:1:1: error: return outside function
+return 1;
+^~~~~~
 1 semantic error generated.

@@ -20,6 +20,10 @@ typedef struct CompileResult {
     const char *filename;
     char *source;
 
+    /* Multi-file-capable source provenance; filename/source identify primary. */
+    SourceManager sources;
+    SourceFileId primary_source_id;
+
     Arena *arena;
     Arena *scratch;
 
@@ -38,6 +42,7 @@ typedef struct CompileResult {
  *   - out->source is owned by out
  *   - out->arena and out->scratch are owned by out
  *   - out->target is the copied frontend target description
+ *   - out->sources owns source metadata and may register multiple source files
  *   - out->program, parser diagnostics, and semantic data remain valid until
  *     compile_result_destroy(out)
  *
@@ -56,9 +61,8 @@ typedef struct CompileResult {
  *   - semantic analysis has not run
  *
  * Diagnostics:
- *   - parser diagnostics are printed here after parsing
- *   - semantic_check() prints individual semantic diagnostics
- *   - this function prints the semantic error summary
+ *   - parser and semantic diagnostics are collected with SourceSpan provenance
+ *   - this function prints diagnostics followed by the phase error summary
  */
 CompileStatus compile_parse_and_check(const char *filename, CompileResult *out);
 

@@ -1,2 +1,4 @@
-semantic error at line 5: expression does not produce a value
+tests/test_assets/semantic/invalid/void_values/switch_expression.cog:5:12: error: expression does not produce a value
+    switch does_nothing() {
+           ^~~~~~~~~~~~
 1 semantic error generated.

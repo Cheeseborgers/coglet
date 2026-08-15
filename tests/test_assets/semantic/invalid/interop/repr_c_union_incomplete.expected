@@ -1,2 +1,4 @@
-semantic error at line 1: incomplete #repr(c) unions are not supported yet
+tests/test_assets/semantic/invalid/interop/repr_c_union_incomplete.cog:2:1: error: incomplete #repr(c) unions are not supported yet
+ForwardUnion::union;
+^~~~~~~~~~~~
 1 semantic error generated.

@@ -1,5 +1,13 @@
-semantic error at line 17: variable 'value' may be uninitialized
-semantic error at line 33: variable 'value' may be uninitialized
-semantic error at line 49: variable 'value' may be uninitialized
-semantic error at line 62: variable 'value' may be uninitialized
+tests/test_assets/semantic/invalid/definite_assignment/switch_missing_paths.cog:17:12: error: variable 'value' may be uninitialized
+    return value;
+           ^~~~~
+tests/test_assets/semantic/invalid/definite_assignment/switch_missing_paths.cog:33:12: error: variable 'value' may be uninitialized
+    return value;
+           ^~~~~
+tests/test_assets/semantic/invalid/definite_assignment/switch_missing_paths.cog:49:12: error: variable 'value' may be uninitialized
+    return value;
+           ^~~~~
+tests/test_assets/semantic/invalid/definite_assignment/switch_missing_paths.cog:62:13: error: variable 'value' may be uninitialized
+            value += 1;
+            ^~~~~
 4 semantic errors generated.

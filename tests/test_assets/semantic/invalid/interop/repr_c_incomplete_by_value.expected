@@ -1,6 +1,16 @@
-semantic error at line 8: incomplete C struct cannot be stored by value; use a pointer
-semantic error at line 12: incomplete C struct cannot be passed by value; use a pointer
-semantic error at line 14: incomplete C struct cannot be returned by value; use a pointer
-semantic error at line 4: incomplete C struct cannot be stored by value; use a pointer
-semantic error at line 17: incomplete C struct cannot be stored by value; use a pointer
+tests/test_assets/semantic/invalid/interop/repr_c_incomplete_by_value.cog:8:5: error: incomplete C struct cannot be stored by value; use a pointer
+    handle: ForeignHandle;
+    ^~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_incomplete_by_value.cog:12:17: error: incomplete C struct cannot be passed by value; use a pointer
+bad_parameter::(handle: ForeignHandle) -> c_int;
+                ^~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_incomplete_by_value.cog:15:1: error: incomplete C struct cannot be returned by value; use a pointer
+bad_return::() -> ForeignHandle;
+^~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_incomplete_by_value.cog:4:1: error: incomplete C struct cannot be stored by value; use a pointer
+bad_storage: ForeignHandle;
+^~~~~~~~~~~
+tests/test_assets/semantic/invalid/interop/repr_c_incomplete_by_value.cog:17:1: error: incomplete C struct cannot be stored by value; use a pointer
+bad_array: ForeignHandle[2];
+^~~~~~~~~
 5 semantic errors generated.

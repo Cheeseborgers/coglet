@@ -1,4 +1,10 @@
-semantic error at line 12: array index out of bounds
-semantic error at line 18: array index out of bounds
-semantic error at line 24: array index out of bounds
+tests/test_assets/semantic/invalid/arrays/index_out_of_bounds.cog:12:12: error: array index out of bounds
+    return values[-1];
+           ^~~~~~~~~
+tests/test_assets/semantic/invalid/arrays/index_out_of_bounds.cog:18:12: error: array index out of bounds
+    return values[3];
+           ^~~~~~~~
+tests/test_assets/semantic/invalid/arrays/index_out_of_bounds.cog:24:12: error: array index out of bounds
+    return values[BAD_INDEX];
+           ^~~~~~~~~~~~~~~~
 3 semantic errors generated.

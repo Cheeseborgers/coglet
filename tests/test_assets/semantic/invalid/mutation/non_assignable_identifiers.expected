@@ -1,4 +1,10 @@
-semantic error at line 4: assignment target is not assignable
-semantic error at line 5: compound assignment target is not assignable
-semantic error at line 6: increment/decrement target is not assignable
+tests/test_assets/semantic/invalid/mutation/non_assignable_identifiers.cog:4:5: error: assignment target is not assignable
+    CONSTANT = 2;
+    ^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/mutation/non_assignable_identifiers.cog:5:5: error: compound assignment target is not assignable
+    CONSTANT += 1;
+    ^~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/mutation/non_assignable_identifiers.cog:6:5: error: increment/decrement target is not assignable
+    CONSTANT++;
+    ^~~~~~~~~~
 3 semantic errors generated.

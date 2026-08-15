@@ -1,2 +1,4 @@
-semantic error at line 1: function return type cannot contain void
+tests/test_assets/semantic/invalid/types/void_returns.cog:1:1: error: function return type cannot contain void
+bad_void_return::() -> void* {
+^~~~~~~~~~~~~~~
 1 semantic error generated.

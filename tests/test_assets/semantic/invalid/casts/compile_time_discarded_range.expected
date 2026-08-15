@@ -1,2 +1,4 @@
-semantic error at line 2: integer cast value does not fit in target type
+tests/test_assets/semantic/invalid/casts/compile_time_discarded_range.cog:2:5: error: integer cast value does not fit in target type
+    cast(u8, 256);
+    ^~~~~~~~~~~~
 1 semantic error generated.

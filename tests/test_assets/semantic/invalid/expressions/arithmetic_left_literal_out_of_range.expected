@@ -1,5 +1,13 @@
-semantic error at line 5: integer constant operand does not fit operation type
-semantic error at line 6: integer constant operand does not fit operation type
-semantic error at line 8: integer constant operand does not fit operation type
-semantic error at line 9: integer constant operand does not fit operation type
+tests/test_assets/semantic/invalid/expressions/arithmetic_left_literal_out_of_range.cog:5:5: error: integer constant operand does not fit operation type
+    256 + value_u8;
+    ^~~
+tests/test_assets/semantic/invalid/expressions/arithmetic_left_literal_out_of_range.cog:6:5: error: integer constant operand does not fit operation type
+    256 - value_u8;
+    ^~~
+tests/test_assets/semantic/invalid/expressions/arithmetic_left_literal_out_of_range.cog:8:5: error: integer constant operand does not fit operation type
+    128 + value_i8;
+    ^~~
+tests/test_assets/semantic/invalid/expressions/arithmetic_left_literal_out_of_range.cog:9:5: error: integer constant operand does not fit operation type
+    -129 - value_i8;
+    ^~~~
 4 semantic errors generated.

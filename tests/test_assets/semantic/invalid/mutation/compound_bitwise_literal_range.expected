@@ -1,5 +1,13 @@
-semantic error at line 5: integer constant operand does not fit compound assignment type
-semantic error at line 6: integer constant operand does not fit compound assignment type
-semantic error at line 7: integer constant operand does not fit compound assignment type
-semantic error at line 8: integer constant operand does not fit compound assignment type
+tests/test_assets/semantic/invalid/mutation/compound_bitwise_literal_range.cog:5:18: error: integer constant operand does not fit compound assignment type
+    unsigned8 &= 256;
+                 ^~~
+tests/test_assets/semantic/invalid/mutation/compound_bitwise_literal_range.cog:6:18: error: integer constant operand does not fit compound assignment type
+    unsigned8 |= -1;
+                 ^~
+tests/test_assets/semantic/invalid/mutation/compound_bitwise_literal_range.cog:7:16: error: integer constant operand does not fit compound assignment type
+    signed8 ^= 128;
+               ^~~
+tests/test_assets/semantic/invalid/mutation/compound_bitwise_literal_range.cog:8:18: error: integer constant operand does not fit compound assignment type
+    unsigned8 &= 250 + 6;
+                 ^~~~~~~
 4 semantic errors generated.

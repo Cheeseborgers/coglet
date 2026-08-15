@@ -1,2 +1,4 @@
-semantic error at line 10: argument type does not match parameter type: expected cfn(call=win64, ...), got cfn(call=cdecl, ...)
+tests/test_assets/semantic/invalid/interop/c_calling_convention_mismatch.cog:10:25: error: argument type does not match parameter type: expected cfn(call=win64, ...), got cfn(call=cdecl, ...)
+    return accept_win64(cdecl_callback);
+                        ^~~~~~~~~~~~~~
 1 semantic error generated.

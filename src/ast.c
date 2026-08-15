@@ -5,16 +5,17 @@
 
 #include "../include/utils/utils.h"
 
-static Node *new_node(Arena *arena, NodeType type, int line) {
+static Node *new_node(Arena *arena, NodeType type, SourceSpan span) {
     Node *node = arena_alloc(arena, sizeof(Node));
-    node->line = line;
+    node->span = span;
+    node->line = (int)span.line;
     node->type = type;
     return node;
 }
 
-Node *ast_new_integer(Arena *arena, uint64_t value, int line)
+Node *ast_new_integer(Arena *arena, uint64_t value, SourceSpan span)
 {
-    Node *node = new_node(arena, NODE_NUMBER, line);
+    Node *node = new_node(arena, NODE_NUMBER, span);
 
     node->as.number.kind = NUMBER_LITERAL_INTEGER;
     node->as.number.value.integer = value;
@@ -22,9 +23,9 @@ Node *ast_new_integer(Arena *arena, uint64_t value, int line)
     return node;
 }
 
-Node *ast_new_float(Arena *arena, double value, int line)
+Node *ast_new_float(Arena *arena, double value, SourceSpan span)
 {
-    Node *node = new_node(arena, NODE_NUMBER, line);
+    Node *node = new_node(arena, NODE_NUMBER, span);
 
     node->as.number.kind = NUMBER_LITERAL_FLOAT;
     node->as.number.value.floating = value;
@@ -32,47 +33,47 @@ Node *ast_new_float(Arena *arena, double value, int line)
     return node;
 }
 
-Node *ast_new_ident(Arena *arena, const char *start, int length, int line) {
-    Node *node = new_node(arena, NODE_IDENT, line);
+Node *ast_new_ident(Arena *arena, const char *start, int length, SourceSpan span) {
+    Node *node = new_node(arena, NODE_IDENT, span);
     node->as.ident.data  = start;
     node->as.ident.length = length;
     return node;
 }
 
-Node *ast_new_compound_assign(Arena *arena, TokenType op, Node *target, Node *value, int line) {
-    Node *node = new_node(arena, NODE_COMPOUND_ASSIGN, line);
+Node *ast_new_compound_assign(Arena *arena, TokenType op, Node *target, Node *value, SourceSpan span) {
+    Node *node = new_node(arena, NODE_COMPOUND_ASSIGN, span);
     node->as.compound_assign.op  = op;
     node->as.compound_assign.target = target;
     node->as.compound_assign.value = value;
     return node;
 }
 
-Node *ast_new_string(Arena *arena, const char *start, int length, int line) {
-    Node *node = new_node(arena, NODE_STRING, line);
+Node *ast_new_string(Arena *arena, const char *start, int length, SourceSpan span) {
+    Node *node = new_node(arena, NODE_STRING, span);
     node->as.string_literal.data   = start;
     node->as.string_literal.length = length;
     return node;
 }
 
-Node *ast_new_char(Arena *arena, const char *start, int length, int line) {
-    Node *node = new_node(arena, NODE_CHAR, line);
+Node *ast_new_char(Arena *arena, const char *start, int length, SourceSpan span) {
+    Node *node = new_node(arena, NODE_CHAR, span);
     node->as.char_literal.data   = start;
     node->as.char_literal.length = length;
     return node;
 }
 
-Node *ast_new_null(Arena *arena, int line) {
-    return new_node(arena, NODE_NULL, line);
+Node *ast_new_null(Arena *arena, SourceSpan span) {
+    return new_node(arena, NODE_NULL, span);
 }
 
-Node *ast_new_bool(Arena *arena, int value, int line) {
-    Node *node = new_node(arena, NODE_BOOL, line);
+Node *ast_new_bool(Arena *arena, int value, SourceSpan span) {
+    Node *node = new_node(arena, NODE_BOOL, span);
     node->as.boolean.value = value;
     return node;
 }
 
-Node *ast_new_cast(Arena *arena, CastKind kind, Type *target_type, Node *expression, int line) {
-    Node *node = new_node(arena, NODE_CAST, line);
+Node *ast_new_cast(Arena *arena, CastKind kind, Type *target_type, Node *expression, SourceSpan span) {
+    Node *node = new_node(arena, NODE_CAST, span);
     node->as.cast_expr.kind = kind;
     node->as.cast_expr.target_type = target_type;
     node->as.cast_expr.expression  = expression;
@@ -80,60 +81,60 @@ Node *ast_new_cast(Arena *arena, CastKind kind, Type *target_type, Node *express
     return node;
 }
 
-Node *ast_new_unary(Arena *arena, TokenType op, Node *operand, int line) {
-    Node *node = new_node(arena, NODE_UNARY, line);
+Node *ast_new_unary(Arena *arena, TokenType op, Node *operand, SourceSpan span) {
+    Node *node = new_node(arena, NODE_UNARY, span);
     node->as.unary.op      = op;
     node->as.unary.operand = operand;
     return node;
 }
 
-Node *ast_new_inc_dec(Arena *arena, TokenType op, Node *target, int is_prefix, int line) {
-    Node *node = new_node(arena, NODE_INC_DEC, line);
+Node *ast_new_inc_dec(Arena *arena, TokenType op, Node *target, int is_prefix, SourceSpan span) {
+    Node *node = new_node(arena, NODE_INC_DEC, span);
     node->as.inc_dec.op = op;
     node->as.inc_dec.target = target;
     node->as.inc_dec.is_prefix = is_prefix;
     return node;
 }
 
-Node *ast_new_binary(Arena *arena, TokenType op, Node *left, Node *right, int line) {
-    Node *node = new_node(arena, NODE_BINARY, line);
+Node *ast_new_binary(Arena *arena, TokenType op, Node *left, Node *right, SourceSpan span) {
+    Node *node = new_node(arena, NODE_BINARY, span);
     node->as.binary.op     = op;
     node->as.binary.left   = left;
     node->as.binary.right  = right;
     return node;
 }
 
-Node *ast_new_assign(Arena *arena,Node *target,Node *value,int line) {
-    Node *node = new_node(arena, NODE_ASSIGN, line);
+Node *ast_new_assign(Arena *arena,Node *target,Node *value,SourceSpan span) {
+    Node *node = new_node(arena, NODE_ASSIGN, span);
     node->as.assign.target = target;
     node->as.assign.value  = value;
     return node;
 }
 
-Node *ast_new_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, int line) {
-    Node *node = new_node(arena, NODE_IF, line);
+Node *ast_new_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, SourceSpan span) {
+    Node *node = new_node(arena, NODE_IF, span);
     node->as.if_stmt.condition   = cond;
     node->as.if_stmt.then_branch = then_b;
     node->as.if_stmt.else_branch = else_b;
     return node;
 }
 
-Node *ast_new_expr_stmt(Arena *arena, Node *expr, int line) {
-    Node *node = new_node(arena, NODE_EXPR_STMT, line);
+Node *ast_new_expr_stmt(Arena *arena, Node *expr, SourceSpan span) {
+    Node *node = new_node(arena, NODE_EXPR_STMT, span);
     node->as.expr_stmt.expr = expr;
     return node;
 }
 
-Node *ast_new_block(Arena *arena, int line) {
-    Node *node = new_node(arena, NODE_BLOCK, line);
+Node *ast_new_block(Arena *arena, SourceSpan span) {
+    Node *node = new_node(arena, NODE_BLOCK, span);
     node->as.block.statements.items    = NULL;
     node->as.block.statements.count    = 0;
     node->as.block.statements.capacity = 0;
     return node;
 }
 
-Node *ast_new_call(Arena *arena, Node *callee, int line) {
-    Node *node = new_node(arena, NODE_CALL, line);
+Node *ast_new_call(Arena *arena, Node *callee, SourceSpan span) {
+    Node *node = new_node(arena, NODE_CALL, span);
     node->as.call.callee             = callee;
     node->as.call.arguments.items    = NULL;
     node->as.call.arguments.count    = 0;
@@ -141,15 +142,15 @@ Node *ast_new_call(Arena *arena, Node *callee, int line) {
     return node;
 }
 
-Node *ast_new_field(Arena *arena, Node *object, const char *name, int length, int line ) {
-    Node *node = new_node(arena, NODE_FIELD, line);
+Node *ast_new_field(Arena *arena, Node *object, const char *name, int length, SourceSpan span ) {
+    Node *node = new_node(arena, NODE_FIELD, span);
     node->as.field.object = object;
     node->as.field.name.data   = name;
     node->as.field.name.length = length;
     return node;
 }
-Node *ast_new_index(Arena *arena, Node *object, Node *index, int line) {
-    Node *node = new_node(arena, NODE_INDEX, line);
+Node *ast_new_index(Arena *arena, Node *object, Node *index, SourceSpan span) {
+    Node *node = new_node(arena, NODE_INDEX, span);
     node->as.index.object = object;
     node->as.index.index  = index;
     return node;
@@ -159,21 +160,22 @@ Node *ast_new_error(Arena *arena, Token token)
 {
     Node *node = arena_alloc(arena, sizeof(Node));
     node->type = NODE_ERROR;
+    node->span = token.span;
     node->line = token.line;
     node->as.error.token = token;
     return node;
 }
 
-Node *ast_new_program(Arena *arena, int line) {
-    Node *node = new_node(arena, NODE_PROGRAM, line);
+Node *ast_new_program(Arena *arena, SourceSpan span) {
+    Node *node = new_node(arena, NODE_PROGRAM, span);
     node->as.program.statements.items    = NULL;
     node->as.program.statements.count    = 0;
     node->as.program.statements.capacity = 0;
     return node;
 }
 
-Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, int line) {
-    Node *node = new_node(arena, NODE_VAR_DECL, line);
+Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, SourceSpan span) {
+    Node *node = new_node(arena, NODE_VAR_DECL, span);
     node->as.var_decl.var_type    = type;
     node->as.var_decl.name.data   = name;
     node->as.var_decl.name.length = length;
@@ -181,16 +183,16 @@ Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, N
     return node;
 }
 
-Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, int line) {
-    Node *node = new_node(arena, NODE_STRUCT_FIELD_DECL, line);
+Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, SourceSpan span) {
+    Node *node = new_node(arena, NODE_STRUCT_FIELD_DECL, span);
     node->as.struct_field_decl.var_type    = type;
     node->as.struct_field_decl.name.data   = name;
     node->as.struct_field_decl.name.length = length;
     return node;
 }
 
-Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, int line) {
-    Node *node = new_node(arena, NODE_FUNC_PARAM_DECL, line);
+Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, SourceSpan span) {
+    Node *node = new_node(arena, NODE_FUNC_PARAM_DECL, span);
     node->as.param_decl.var_type      = type;
     node->as.param_decl.name.data     = name;
     node->as.param_decl.name.length   = length;
@@ -198,39 +200,39 @@ Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int le
     return node;
 }
 
-Node *ast_new_return(Arena *arena, Node *value, int line) {
-    Node *node = new_node(arena, NODE_RETURN, line);
+Node *ast_new_return(Arena *arena, Node *value, SourceSpan span) {
+    Node *node = new_node(arena, NODE_RETURN, span);
     node->as.return_stmt.value = value;
     return node;
 }
 
-Node*ast_new_while(Arena *arena, Node *cond, Node *body, int line) {
-    Node *node = new_node(arena, NODE_WHILE, line);
+Node*ast_new_while(Arena *arena, Node *cond, Node *body, SourceSpan span) {
+    Node *node = new_node(arena, NODE_WHILE, span);
     node->as.while_stmt.condition = cond;
     node->as.while_stmt.body      = body;
     return node;
 }
 
-Node *ast_new_for(Arena *arena, Node *cond, Node *post, Node *body, int line) {
-    Node *node = new_node(arena, NODE_FOR, line);
+Node *ast_new_for(Arena *arena, Node *cond, Node *post, Node *body, SourceSpan span) {
+    Node *node = new_node(arena, NODE_FOR, span);
     node->as.for_stmt.condition  = cond;
     node->as.for_stmt.post       = post;
     node->as.for_stmt.body       = body;
     return node;
 }
 
-Node *ast_new_break(Arena *arena, int line) {
-    Node *node = new_node(arena, NODE_BREAK, line);
+Node *ast_new_break(Arena *arena, SourceSpan span) {
+    Node *node = new_node(arena, NODE_BREAK, span);
     return node;
 }
 
-Node *ast_new_continue(Arena *arena, int line) {
-    Node *node = new_node(arena, NODE_CONTINUE, line);
+Node *ast_new_continue(Arena *arena, SourceSpan span) {
+    Node *node = new_node(arena, NODE_CONTINUE, span);
     return node;
 }
 
-Node *ast_new_switch(Arena *arena,Node *expression,int line) {
-    Node *node = new_node(arena, NODE_SWITCH, line);
+Node *ast_new_switch(Arena *arena,Node *expression,SourceSpan span) {
+    Node *node = new_node(arena, NODE_SWITCH, span);
 
     node->as.switch_stmt.expression    = expression;
     node->as.switch_stmt.resolved_type = NULL;
@@ -242,8 +244,8 @@ Node *ast_new_switch(Arena *arena,Node *expression,int line) {
     return node;
 }
 
-Node *ast_new_switch_case(Arena *arena, Node *value, Node *body, int is_default, int line) {
-    Node *node = new_node(arena, NODE_SWITCH_CASE, line);
+Node *ast_new_switch_case(Arena *arena, Node *value, Node *body, int is_default, SourceSpan span) {
+    Node *node = new_node(arena, NODE_SWITCH_CASE, span);
     node->as.switch_case.value = value;
     node->as.switch_case.body = body;
     node->as.switch_case.is_default = is_default;
@@ -251,8 +253,8 @@ Node *ast_new_switch_case(Arena *arena, Node *value, Node *body, int is_default,
     return node;
 }
 
-Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, int line) {
-    Node *node = new_node(arena, NODE_FUNC_DECL, line);
+Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *return_type, SourceSpan span) {
+    Node *node = new_node(arena, NODE_FUNC_DECL, span);
     node->as.func_decl.name.data     = name;
     node->as.func_decl.name.length   = name_length;
     node->as.func_decl.return_type   = return_type;
@@ -271,8 +273,8 @@ Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *r
     return node;
 }
 
-Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int line) {
-    Node *node = new_node(arena, NODE_STRUCT_DECL, line);
+Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, SourceSpan span) {
+    Node *node = new_node(arena, NODE_STRUCT_DECL, span);
     node->as.struct_decl.name.data   = name;
     node->as.struct_decl.name.length = name_length;
     node->as.struct_decl.is_repr_c       = 0;
@@ -289,8 +291,8 @@ Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, int l
     return node;
 }
 
-Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, int line) {
-    Node *node = new_node(arena, NODE_STRUCT_INIT, line);
+Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, SourceSpan span) {
+    Node *node = new_node(arena, NODE_STRUCT_INIT, span);
     node->as.struct_init.name.data   = name;
     node->as.struct_init.name.length = name_length;
 
@@ -301,8 +303,8 @@ Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, int l
     return node;
 }
 
-Node *ast_new_enum_decl(Arena *arena, const char *name, int name_length, int line) {
-    Node *node = new_node(arena, NODE_ENUM_DECL, line);
+Node *ast_new_enum_decl(Arena *arena, const char *name, int name_length, SourceSpan span) {
+    Node *node = new_node(arena, NODE_ENUM_DECL, span);
     node->as.enum_decl.name.data   = name;
     node->as.enum_decl.name.length = name_length;
 
@@ -317,8 +319,8 @@ Node *ast_new_enum_decl(Arena *arena, const char *name, int name_length, int lin
     return node;
 }
 
-Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, int line) {
-    Node *node = new_node(arena, NODE_ENUM_MEMBER, line);
+Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, SourceSpan span) {
+    Node *node = new_node(arena, NODE_ENUM_MEMBER, span);
     node->as.enum_member.name.data   = name;
     node->as.enum_member.name.length = name_length;
 
@@ -329,16 +331,16 @@ Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, int l
     return node;
 }
 
-Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, int line) {
-    Node *node = new_node(arena, NODE_FIELD_INIT, line);
+Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, SourceSpan span) {
+    Node *node = new_node(arena, NODE_FIELD_INIT, span);
     node->as.field_init.name.data   = name;
     node->as.field_init.name.length = name_length;
     node->as.field_init.value       = value;
     return node;
 }
 
-Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, int line) {
-    Node *node = new_node(arena, NODE_CONST_DECL, line);
+Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, SourceSpan span) {
+    Node *node = new_node(arena, NODE_CONST_DECL, span);
     node->as.const_decl.const_type  = type;
     node->as.const_decl.name.data   = name;
     node->as.const_decl.name.length = name_length;
@@ -346,8 +348,8 @@ Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_le
     return node;
 }
 
-Node *ast_new_array_literal(Arena *arena, int line) {
-    Node *node = new_node(arena, NODE_ARRAY_LITERAL, line);
+Node *ast_new_array_literal(Arena *arena, SourceSpan span) {
+    Node *node = new_node(arena, NODE_ARRAY_LITERAL, span);
     node->as.array_literal.elements.items    = NULL;
     node->as.array_literal.elements.count    = 0;
     node->as.array_literal.elements.capacity = 0;
@@ -359,7 +361,7 @@ Node *ast_clone(Arena *arena, const Node *node)
     if (!node)
         return NULL;
 
-    Node *clone = new_node(arena, node->type, node->line);
+    Node *clone = new_node(arena, node->type, node->span);
 
         switch (node->type)
     {

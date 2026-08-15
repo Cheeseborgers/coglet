@@ -1,3 +1,7 @@
-semantic error at line 1: parameter cannot have type void
-semantic error at line 4: parameter cannot have type void
+tests/test_assets/semantic/invalid/types/void_parameters.cog:1:18: error: parameter cannot have type void
+bad_void_param::(value: void) {
+                 ^~~~~
+tests/test_assets/semantic/invalid/types/void_parameters.cog:4:22: error: parameter cannot have type void
+bad_void_ptr_param::(value: void*) {
+                     ^~~~~
 2 semantic errors generated.

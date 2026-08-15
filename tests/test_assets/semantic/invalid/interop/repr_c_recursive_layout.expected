@@ -1,3 +1,7 @@
-semantic error at line 3: #repr(c) by-value field 'self' creates a recursive struct layout
-semantic error at line 13: #repr(c) by-value field 'left' creates a recursive struct layout
+tests/test_assets/semantic/invalid/interop/repr_c_recursive_layout.cog:3:5: error: #repr(c) by-value field 'self' creates a recursive struct layout
+    self: Direct;
+    ^~~~
+tests/test_assets/semantic/invalid/interop/repr_c_recursive_layout.cog:13:5: error: #repr(c) by-value field 'left' creates a recursive struct layout
+    left: Left;
+    ^~~~
 2 semantic errors generated.

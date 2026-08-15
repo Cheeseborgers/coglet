@@ -1,2 +1,4 @@
-semantic error at line 4: assignment cannot be used as a value; it is a statement
+tests/test_assets/semantic/invalid/mutation/statement_only_conditions.cog:4:8: error: assignment cannot be used as a value; it is a statement
+    if x = 1 {
+       ^~~~~
 1 semantic error generated.

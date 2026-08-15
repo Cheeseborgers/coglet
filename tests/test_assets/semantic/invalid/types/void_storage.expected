@@ -1,5 +1,13 @@
-semantic error at line 1: variable cannot have type void
-semantic error at line 2: variable cannot have type void
-semantic error at line 3: variable cannot have type void
-semantic error at line 4: constant cannot have type void
+tests/test_assets/semantic/invalid/types/void_storage.cog:1:1: error: variable cannot have type void
+bad_void_var: void;
+^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/types/void_storage.cog:2:1: error: variable cannot have type void
+bad_void_ptr: void*;
+^~~~~~~~~~~~
+tests/test_assets/semantic/invalid/types/void_storage.cog:3:1: error: variable cannot have type void
+bad_void_array: void[4];
+^~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/types/void_storage.cog:4:1: error: constant cannot have type void
+bad_void_const: void: 10;
+^~~~~~~~~~~~~~
 4 semantic errors generated.

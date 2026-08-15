@@ -1,2 +1,4 @@
-semantic error at line 2: cannot compare null without a pointer type
+tests/test_assets/semantic/invalid/pointers/null_without_pointer_context.cog:2:15: error: cannot compare null without a pointer type
+    result := null == null;
+              ^~~~~~~~~~~~
 1 semantic error generated.

@@ -1,3 +1,7 @@
-semantic error at line 11: comparison type mismatch
-semantic error at line 12: ordered comparison requires numeric operands
+tests/test_assets/semantic/invalid/enums/cross_type_comparison.cog:11:7: error: comparison type mismatch
+Color.Red == OtherEnum.Red;
+      ^~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/enums/cross_type_comparison.cog:12:7: error: ordered comparison requires numeric operands
+Color.Blue < OtherEnum.Red;
+      ^~~~~~~~~~~~~~~~~~~~
 2 semantic errors generated.

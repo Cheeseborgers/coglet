@@ -1,0 +1,9 @@
+ALWAYS :: true;
+
+constant_true_loop_can_break::(should_break: bool) -> i32 {
+    while ALWAYS {
+        if should_break {
+            break;
+        }
+    }
+}

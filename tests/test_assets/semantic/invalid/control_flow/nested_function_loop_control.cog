@@ -1,0 +1,13 @@
+outer::() -> void {
+    while true {
+        nested_break::() -> void {
+            break;
+        }
+
+        nested_continue::() -> void {
+            continue;
+        }
+
+        break;
+    }
+}

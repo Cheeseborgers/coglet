@@ -2782,7 +2782,19 @@ static int is_bool_cast_pair(Type *to, Type *from)       { return is_bool_type(t
 static int is_numeric_cast_pair(Type *to, Type *from)    { return is_numeric_type(to) && is_numeric_type(from); }
 static int is_enum_to_integer_cast(Type *to, Type *from) { return is_integer_kind(to->kind) && is_enum_type(from);}
 static int is_integer_to_enum_cast(Type *to, Type *from) { return is_enum_type(to) && is_integer_kind(from->kind); }
-static int is_literal_true(Node *node) { return node && node->type == NODE_BOOL && node->as.boolean.value; }
+static int expression_is_compile_time_true(SemanticContext *ctx, Node *node) {
+    if (!ctx || !node ||
+        !expression_is_compile_time_constant(ctx, node)) {
+        return 0;
+    }
+
+    ConstValue value;
+
+    if (!eval_const_expr(ctx, node, &value))
+        return 0;
+
+    return value.kind == CONST_VALUE_BOOL && value.as.boolean;
+}
 
 static int is_equality_comparable_type(const Type *type) {
 
@@ -9086,6 +9098,11 @@ static void check_while_statement(SemanticContext *ctx, Node *node) {
             "while condition must be a boolean expression");
     }
 
+    int condition_is_always_true =
+        condition_type &&
+        is_bool_type(condition_type) &&
+        expression_is_compile_time_true(ctx, node->as.while_stmt.condition);
+
     FlowState incoming =
         flow_clone(ctx, &ctx->flow);
 
@@ -9111,7 +9128,7 @@ static void check_while_statement(SemanticContext *ctx, Node *node) {
     * Body fallthrough and continue both begin another iteration.
     * Return leaves the function rather than the loop.
     */
-    if (is_literal_true(node->as.while_stmt.condition) && !loop.has_break_flow) {
+    if (condition_is_always_true && !loop.has_break_flow) {
         ctx->flow = flow_clone(ctx, &incoming);
 
         ctx->flow.reachable = 0;
@@ -9128,8 +9145,7 @@ static void check_while_statement(SemanticContext *ctx, Node *node) {
 static void check_for_statement(SemanticContext *ctx, Node *node) {
 
     int condition_is_always_true =
-        !node->as.for_stmt.condition ||
-        is_literal_true(node->as.for_stmt.condition);
+        node->as.for_stmt.condition == NULL;
 
     if (node->as.for_stmt.condition) {
         Type *condition_type =
@@ -9138,6 +9154,14 @@ static void check_for_statement(SemanticContext *ctx, Node *node) {
         if (condition_type && !is_bool_type(condition_type)) {
             semantic_error(ctx, node->as.for_stmt.condition,
                 "for condition must be a boolean expression");
+        }
+
+        if (condition_type && is_bool_type(condition_type)) {
+            condition_is_always_true =
+                expression_is_compile_time_true(
+                    ctx,
+                    node->as.for_stmt.condition
+                );
         }
     }
 

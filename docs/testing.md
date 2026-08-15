@@ -293,7 +293,7 @@ Coverage includes:
 * `break` and `continue`;
 * unreachable statements;
 * non-void function fallthrough;
-* non-terminating literal-true loops;
+* non-terminating compile-time-true loops;
 * nested loops;
 * nested-function flow ownership;
 * rejection of unsupported nested-function captures;

@@ -289,7 +289,7 @@ Normal body fallthrough and `continue` paths reach the post expression. `break` 
 
 `break` and `continue` apply to the nearest enclosing loop.
 
-A literal-true loop with no reachable `break` does not continue to the statement following the loop:
+A loop whose Boolean condition is known at compile time to be `true` and has no reachable `break` does not continue to the statement following the loop. This includes the literal `true`, named/local constants, and other checked constant Boolean expressions:
 
 ```c
 run_forever::() -> i32 {
@@ -300,7 +300,18 @@ run_forever::() -> i32 {
 
 This function is valid even though it contains no `return`, because normal control flow cannot reach the end of the function.
 
-A literal-true loop with a reachable `break` may continue after the loop and does not satisfy a non-void function's return obligation by itself.
+The same rule applies when compile-time constant evaluation proves the condition true:
+
+```c
+ALWAYS :: true;
+
+run_forever::() -> i32 {
+    while ALWAYS {
+    }
+}
+```
+
+A compile-time-true loop with a reachable `break` may continue after the loop and does not satisfy a non-void function's return obligation by itself.
 
 ### Unreachable statements
 

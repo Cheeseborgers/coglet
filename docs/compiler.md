@@ -675,7 +675,7 @@ Normal body fallthrough and accumulated `continue` paths are merged before the p
 
 Coglet does not currently compute a loop fixed point. A loop that may terminate normally preserves the unchanged incoming state as a conservative possible exit. Initialization performed only during an iteration therefore cannot become definitely initialized after the loop.
 
-A literal-true loop with no reachable `break` is handled specially and leaves the surrounding flow unreachable.
+A loop with a Boolean condition proven by the central constant evaluator to be `true` and no reachable `break` is handled specially and leaves the surrounding flow unreachable. The condition need not be the literal token `true`; named/local constants and checked constant Boolean expressions participate as well.
 
 ### Unified reachability
 
@@ -695,7 +695,7 @@ The same state controls:
 
 Block traversal reports an unreachable statement when it encounters a statement after the active path has become unreachable. The statement is still semantically checked so that unrelated semantic errors are not silently hidden.
 
-A non-void function is rejected only when its final flow state remains reachable. This accepts both explicit returns and provably non-continuing bodies such as literal-true loops without reachable breaks.
+A non-void function is rejected only when its final flow state remains reachable. This accepts both explicit returns and provably non-continuing bodies such as compile-time-true loops without reachable breaks.
 
 The older separate return-analysis and unreachable-analysis helpers are no longer used.
 
@@ -716,6 +716,8 @@ Before entering a nested function, semantic analysis saves the enclosing functio
 * loop context;
 * loop depth;
 * return type.
+
+The nested function starts with loop depth zero and no current loop. Consequently, `break` or `continue` inside a nested function cannot target a loop in the enclosing function; each function owns an independent CFG/control-flow context.
 
 These values are restored after the nested body has been checked. The global next-flow-owner counter is not restored, ensuring that every function receives a distinct owner.
 

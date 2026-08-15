@@ -34,6 +34,7 @@ Implemented areas include:
 - explicit frontend `TargetInfo` with host-default and synthetic cross-target semantic tests
 - explicit contextual-conversion metadata for IR-ready expression lowering
 - centralized, post-semantic constant-value metadata for IR lowering
+- constant-aware loop reachability and explicit function-local control-flow isolation
 
 ## Recently Completed
 
@@ -106,6 +107,26 @@ labels, and implicit/explicit enum values. Fixed-array lengths remain literal
 syntax today; general constant-expression array lengths are intentionally not
 introduced by this milestone.
 
+### Control-Flow Semantic Hardening
+
+The pre-IR control-flow audit keeps `FlowState.reachable` as the single source of
+truth while tightening the function-CFG contract. Infinite-loop recognition now
+uses the centralized constant evaluator rather than matching only the literal
+`true`, so named/local Boolean constants and other checked constant Boolean
+expressions participate in non-void fallthrough analysis. Reachable `break`
+paths still make those loops potentially continuing.
+
+Regression coverage now explicitly locks down `return` outside a function and
+function-local loop ownership: a nested function begins with no inherited loop,
+so its `break`/`continue` statements cannot target an enclosing function's loop.
+
+The audit also exposed a separate program-initialization policy that should not
+be decided accidentally as part of control-flow cleanup. Existing Coglet
+semantics accept top-level expression/mutation statements and at least one
+runtime-call global initializer. A future CogIR/module design must therefore
+either define ordered module initialization or deliberately tighten program
+scope/global initializer rules. This milestone does not impose a partial policy.
+
 ### Definite Assignment and Unified Reachability
 
 Coglet now tracks whether each function-local variable and parameter is definitely initialized at every
@@ -128,7 +149,7 @@ Completed behavior includes:
 * `break` and `continue` flow targets the nearest loop
 * `continue` and body-fallthrough paths reach a `for` post expression
 * `break` and `return` paths do not reach a `for` post expression
-* literal-true loops with no reachable `break` are non-continuing
+* compile-time-true loops with no reachable `break` are non-continuing
 * unreachable statements are diagnosed during block traversal
 * a non-void function is accepted whenever normal control flow cannot reach the end of its body
 

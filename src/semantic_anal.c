@@ -1658,16 +1658,25 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
             char element[128];
             format_type_name(type->element, element, sizeof(element));
 
-            if (type->array_size >= 0) {
-                snprintf(
-                    buffer,
-                    buffer_size,
-                    "%s[%d]",
-                    element,
-                    type->array_size
-                );
-            } else {
-                snprintf(buffer, buffer_size, "%s[]", element);
+            /*
+             * Build the suffix into the caller's remaining space. Besides
+             * making truncation behavior explicit, this avoids asking one
+             * snprintf call to reason about the maximum recursive type name.
+             */
+            snprintf(buffer, buffer_size, "%s", element);
+            size_t used = strlen(buffer);
+
+            if (used < buffer_size) {
+                if (type->array_size >= 0) {
+                    snprintf(
+                        buffer + used,
+                        buffer_size - used,
+                        "[%d]",
+                        type->array_size
+                    );
+                } else {
+                    snprintf(buffer + used, buffer_size - used, "[]");
+                }
             }
 
             return;
@@ -1735,15 +1744,19 @@ static int type_equal(const Type *a, const Type *b) {
          * Compound structural types.
          */
         case TYPE_OPAQUE_POINTER:
-            assert(is_valid_pointer_access(a->pointer_access));
-            assert(is_valid_pointer_access(b->pointer_access));
+            if (!is_valid_pointer_access(a->pointer_access) ||
+                !is_valid_pointer_access(b->pointer_access)) {
+                return 0;
+            }
 
             return a->pointer_access == b->pointer_access &&
                    a->pointer_is_volatile == b->pointer_is_volatile;
 
         case TYPE_POINTER:
-            assert(is_valid_pointer_access(a->pointer_access));
-            assert(is_valid_pointer_access(b->pointer_access));
+            if (!is_valid_pointer_access(a->pointer_access) ||
+                !is_valid_pointer_access(b->pointer_access)) {
+                return 0;
+            }
 
             return a->pointer_access == b->pointer_access &&
                 a->pointer_is_volatile == b->pointer_is_volatile &&

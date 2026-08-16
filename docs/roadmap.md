@@ -2,7 +2,7 @@
 
 Coglet is focused on building a small, correct systems-language core with explicit semantics and a compiler architecture that remains understandable.
 
-The project remains frontend-led, but a deliberately narrow host-C backend now provides an executable feedback loop. Backend expansion is kept incremental so runtime semantics are lowered only when their behavior is already specified clearly.
+The project remains frontend-led, with a CogIR-only host-C bootstrap backend providing the executable feedback loop. The current host-C/CogIR contract is complete for the exercised language and interop surface; the next backend phase is LLVM lowering against the same frozen IR boundary.
 
 ## Current State
 
@@ -43,7 +43,7 @@ Implemented areas include:
 
 ### Declaration Identity and ABI Normalization
 
-The frontend-to-lowering boundary is being hardened before CogIR work begins.
+The frontend-to-lowering boundary was hardened before CogIR implementation began.
 Successful declarations now receive stable per-semantic-check IDs independent
 of AST and symbol addresses, including parameters and aggregate members.
 
@@ -58,9 +58,9 @@ Native-C ABI intent is also normalized into semantic declaration metadata:
 
 The host-C backend consumes these normalized ABI facts rather than interpreting
 `#extern(c)`/`#repr(c)` annotation fields directly. Semantic-info verification
-checks the metadata against the successfully resolved program. This keeps the
-next CogIR lowering phase focused on translation rather than re-performing name,
-type, or ABI interpretation.
+checks the metadata against the successfully resolved program. This lets CogIR
+lowering translate frozen semantic decisions rather than re-performing name, type,
+or ABI interpretation.
 
 ### Explicit Frontend Target Description
 

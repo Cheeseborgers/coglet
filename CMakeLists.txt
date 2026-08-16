@@ -14,8 +14,7 @@ if(CCACHE_PROGRAM)
     set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
 endif()
 
-# --- Core compiler logic, shared by every tool/binary. ---
-# Not all of this need to be shared tho
+# --- Frontend, semantic analysis, and CogIR shared by compiler tools/backends. ---
 add_library(compiler_core STATIC
         src/source.c
         src/diagnostic.c
@@ -29,7 +28,6 @@ add_library(compiler_core STATIC
         src/target_info.c
         src/string_decode.c
         src/compiler_driver.c
-        src/backend_c.c
         src/cog_ir.c
         src/cog_ir_verify.c
         src/cog_ir_dump.c
@@ -37,9 +35,16 @@ add_library(compiler_core STATIC
 )
 target_include_directories(compiler_core PUBLIC include)
 
+# --- Host-C backend. Backends depend on CogIR/core, never the reverse. ---
+add_library(coglet_backend_c STATIC
+        src/backend_c.c
+)
+target_include_directories(coglet_backend_c PUBLIC include)
+target_link_libraries(coglet_backend_c PRIVATE compiler_core)
+
 # --- The real compiler binary. ---
 add_executable(coglet src/coglet.c ${COMMON_SOURCES})
-target_link_libraries(coglet PRIVATE compiler_core)
+target_link_libraries(coglet PRIVATE compiler_core coglet_backend_c)
 
 # --- Standalone Semantic info checker -------------
 add_executable(check_semantic_info
@@ -556,176 +561,70 @@ add_custom_command(
         $<TARGET_FILE_DIR:coglet>/test_assets
 )
 
-# Initial host-C backend integration tests. These compile Coglet source to a
-# native executable through `cc`, then run it. The chosen libc function uses
-# only c_int so this stage does not depend on string lowering yet.
-add_test(
-        NAME backend_extern_c_default_symbol
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_default_symbol.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_default_symbol
-        -DEXPECT_EXIT=5
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_default_symbol
-        PROPERTIES LABELS "backend;backend.c;interop"
+# Host-C backend integration tests. These exercise frozen CogIR through the
+# host-C emitter and native C toolchain. Registration helpers keep the backend
+# mechanics explicit without duplicating the CMake invocation for every case.
+include(cmake/HostCBackendTests.cmake)
+
+# Explicit library/linker selection support. The library is intentionally
+# outside the default link set so -L/-l forwarding tests do real work.
+add_library(coglet_backend_link_support STATIC
+        tests/support/backend_link_support.c
 )
 
-add_test(
-        NAME backend_extern_c_symbol_override
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_symbol_override.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_symbol_override
-        -DEXPECT_EXIT=7
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+add_host_c_executable_test(
+        backend_extern_c_default_symbol extern_c_default_symbol.cog 5
+        "backend;backend.c;interop"
 )
-set_tests_properties(
-        backend_extern_c_symbol_override
-        PROPERTIES LABELS "backend;backend.c;interop"
+add_host_c_executable_test(
+        backend_extern_c_symbol_override extern_c_symbol_override.cog 7
+        "backend;backend.c;interop"
 )
-
-add_test(
-        NAME backend_checked_arithmetic
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/checked_arithmetic.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_checked_arithmetic
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=95
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+add_host_c_library_test(
+        backend_checked_arithmetic checked_arithmetic.cog 95 joined
+        "backend;backend.c;ir;checked-arithmetic"
 )
-set_tests_properties(
-        backend_checked_arithmetic
-        PROPERTIES LABELS "backend;backend.c;ir;checked-arithmetic"
+add_host_c_executable_test(
+        backend_structured_cfg structured_cfg.cog 101
+        "backend;backend.c;ir;cfg;module-init"
 )
-
-add_test(
-        NAME backend_structured_cfg
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/structured_cfg.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_structured_cfg
-        -DEXPECT_EXIT=101
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+add_host_c_executable_test(
+        backend_scalar_ops scalar_ops.cog 0
+        "backend;backend.c;ir;scalar;bitwise;float;pointer"
 )
-set_tests_properties(
-        backend_structured_cfg
-        PROPERTIES LABELS "backend;backend.c;ir;cfg;module-init"
+add_host_c_library_test(
+        backend_data_address_casts data_address_casts.cog 0 joined
+        "backend;backend.c;ir;data;address;cast;volatile"
 )
-
-add_test(
-        NAME backend_scalar_ops
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/scalar_ops.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_scalar_ops
-        -DEXPECT_EXIT=0
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+add_host_c_library_test(
+        backend_indirect_calls indirect_calls.cog 0 joined
+        "backend;backend.c;ir;abi;callback;indirect-call;variadic"
 )
-set_tests_properties(
-        backend_scalar_ops
-        PROPERTIES LABELS "backend;backend.c;ir;scalar;bitwise;float;pointer"
-)
-
-add_test(
-        NAME backend_data_address_casts
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/data_address_casts.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_data_address_casts
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=0
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_data_address_casts
-        PROPERTIES LABELS "backend;backend.c;ir;data;address;cast;volatile"
-)
-
-add_test(
-        NAME backend_indirect_calls
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/indirect_calls.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_indirect_calls
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=0
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_indirect_calls
-        PROPERTIES LABELS "backend;backend.c;ir;abi;callback;indirect-call;variadic"
-)
-
-add_test(
-        NAME backend_aggregate_values
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/aggregate_values.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_aggregate_values
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=0
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_aggregate_values
-        PROPERTIES LABELS "backend;backend.c;ir;aggregate;array;struct;global;interop"
+add_host_c_library_test(
+        backend_aggregate_values aggregate_values.cog 0 joined
+        "backend;backend.c;ir;aggregate;array;struct;global;interop"
 )
 
 foreach(cast_trap_case IN ITEMS integer float_integer float_narrow)
-    add_test(
-            NAME backend_checked_cast_${cast_trap_case}_trap
-            COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:coglet>
-            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/checked_cast_${cast_trap_case}_trap.cog
-            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_checked_cast_${cast_trap_case}_trap
-            -DNO_TRAP_EXIT=91
-            -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_trap_test.cmake"
-    )
-    set_tests_properties(
+    add_host_c_trap_test(
             backend_checked_cast_${cast_trap_case}_trap
-            PROPERTIES LABELS "backend;backend.c;ir;cast;trap"
+            checked_cast_${cast_trap_case}_trap.cog
+            91
+            "backend;backend.c;ir;cast;trap"
     )
 endforeach()
 
-add_test(
-        NAME backend_shifts
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/shifts.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_shifts
-        -DEXPECT_EXIT=0
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
-)
-set_tests_properties(
-        backend_shifts
-        PROPERTIES LABELS "backend;backend.c;ir;shift;checked-count"
+add_host_c_executable_test(
+        backend_shifts shifts.cog 0
+        "backend;backend.c;ir;shift;checked-count"
 )
 
 foreach(shift_trap_case IN ITEMS negative_count wide_count)
-    add_test(
-            NAME backend_shift_${shift_trap_case}_trap
-            COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:coglet>
-            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/shift_${shift_trap_case}_trap.cog
-            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_shift_${shift_trap_case}_trap
-            -DNO_TRAP_EXIT=91
-            -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_trap_test.cmake"
-    )
-    set_tests_properties(
+    add_host_c_trap_test(
             backend_shift_${shift_trap_case}_trap
-            PROPERTIES LABELS "backend;backend.c;ir;shift;checked-count;trap"
+            shift_${shift_trap_case}_trap.cog
+            91
+            "backend;backend.c;ir;shift;checked-count;trap"
     )
 endforeach()
 
@@ -738,378 +637,115 @@ foreach(trap_case IN ITEMS overflow division_by_zero division_overflow)
         set(trap_exit 98)
     endif()
 
-    add_test(
-            NAME backend_checked_${trap_case}_trap
-            COMMAND "${CMAKE_COMMAND}"
-            -DCOMPILER=$<TARGET_FILE:coglet>
-            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/checked_${trap_case}_trap.cog
-            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_checked_${trap_case}_trap
-            -DNO_TRAP_EXIT=${trap_exit}
-            -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_trap_test.cmake"
-    )
-    set_tests_properties(
+    add_host_c_trap_test(
             backend_checked_${trap_case}_trap
-            PROPERTIES LABELS "backend;backend.c;ir;checked-arithmetic;trap"
+            checked_${trap_case}_trap.cog
+            ${trap_exit}
+            "backend;backend.c;ir;checked-arithmetic;trap"
     )
 endforeach()
 
-add_test(
-        NAME backend_extern_c_pointer_types
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_pointer_types.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_pointer_types
-        -DEXPECT_EXIT=0
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+add_host_c_executable_test(
+        backend_extern_c_pointer_types extern_c_pointer_types.cog 0
+        "backend;backend.c;interop"
 )
-set_tests_properties(
-        backend_extern_c_pointer_types
-        PROPERTIES LABELS "backend;backend.c;interop"
+add_host_c_executable_test(
+        backend_extern_c_string_literal extern_c_string_literal.cog 0
+        "backend;backend.c;interop;strings"
+        extern_c_string_literal.stdout
 )
-
-add_test(
-        NAME backend_extern_c_string_literal
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_string_literal.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_string_literal
-        -DEXPECT_EXIT=0
-        -DEXPECT_STDOUT_FILE=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_string_literal.stdout
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+add_host_c_library_test(
+        backend_explicit_library_split_flags extern_c_explicit_library.cog 23 split
+        "backend;backend.c;interop;linker"
 )
-set_tests_properties(
-        backend_extern_c_string_literal
-        PROPERTIES LABELS "backend;backend.c;interop;strings"
+add_host_c_library_test(
+        backend_explicit_library_joined_flags extern_c_explicit_library.cog 23 joined
+        "backend;backend.c;interop;linker"
 )
-
-# Explicit library/linker selection for the host-C executable backend. The
-# support library is intentionally outside the default link set so these tests
-# prove that -L/-l forwarding is doing real work.
-add_library(coglet_backend_link_support STATIC
-        tests/support/backend_link_support.c
+add_host_c_library_test(
+        backend_extern_c_integer_aliases extern_c_integer_aliases.cog 29 joined
+        "backend;backend.c;interop;abi"
 )
-
-add_test(
-        NAME backend_explicit_library_split_flags
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_explicit_library.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_explicit_library_split_flags
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=split
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+add_host_c_library_test(
+        backend_extern_c_scalar_aliases extern_c_scalar_aliases.cog 31 joined
+        "backend;backend.c;interop;abi"
 )
-set_tests_properties(
-        backend_explicit_library_split_flags
-        PROPERTIES LABELS "backend;backend.c;interop;linker"
+add_host_c_library_test(
+        backend_wrapping_arithmetic wrapping_arithmetic.cog 93 joined
+        "backend;backend.c;ir;wrapping"
 )
-
-add_test(
-        NAME backend_explicit_library_joined_flags
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_explicit_library.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_explicit_library_joined_flags
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+add_host_c_library_test(
+        backend_extern_c_repr_struct extern_c_repr_struct.cog 37 joined
+        "backend;backend.c;interop;abi;struct"
 )
-set_tests_properties(
-        backend_explicit_library_joined_flags
-        PROPERTIES LABELS "backend;backend.c;interop;linker"
+add_host_c_library_test(
+        backend_extern_c_repr_nested_struct extern_c_repr_nested_struct.cog 41 joined
+        "backend;backend.c;interop;abi;struct"
 )
-
-add_test(
-        NAME backend_extern_c_integer_aliases
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_integer_aliases.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_integer_aliases
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=29
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+add_host_c_library_test(
+        backend_extern_c_repr_array_fields extern_c_repr_array_fields.cog 45 joined
+        "backend;backend.c;interop;abi;struct;array"
 )
-set_tests_properties(
-        backend_extern_c_integer_aliases
-        PROPERTIES LABELS "backend;backend.c;interop;abi"
+add_host_c_library_test(
+        backend_extern_c_repr_enum extern_c_repr_enum.cog 49 joined
+        "backend;backend.c;interop;abi;enum;struct"
 )
-
-add_test(
-        NAME backend_extern_c_scalar_aliases
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_scalar_aliases.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_scalar_aliases
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=31
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_scalar_aliases
-        PROPERTIES LABELS "backend;backend.c;interop;abi"
-)
-
-add_test(
-        NAME backend_wrapping_arithmetic
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/wrapping_arithmetic.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_wrapping_arithmetic
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=93
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_wrapping_arithmetic
-        PROPERTIES LABELS "backend;backend.c;ir;wrapping"
-)
-
-add_test(
-        NAME backend_extern_c_repr_struct
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_repr_struct.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_repr_struct
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=37
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_repr_struct
-        PROPERTIES LABELS "backend;backend.c;interop;abi;struct"
-)
-
-add_test(
-        NAME backend_extern_c_repr_nested_struct
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_repr_nested_struct.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_repr_nested_struct
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=41
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_repr_nested_struct
-        PROPERTIES LABELS "backend;backend.c;interop;abi;struct"
-)
-
-add_test(
-        NAME backend_extern_c_repr_array_fields
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_repr_array_fields.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_repr_array_fields
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=45
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_repr_array_fields
-        PROPERTIES LABELS "backend;backend.c;interop;abi;struct;array"
-)
-
-add_test(
-        NAME backend_extern_c_repr_enum
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_repr_enum.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_repr_enum
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=49
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_repr_enum
-        PROPERTIES LABELS "backend;backend.c;interop;abi;enum;struct"
-)
-
-add_test(
-        NAME backend_extern_c_callback
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_callback.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_callback
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=53
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_callback
-        PROPERTIES LABELS "backend;backend.c;interop;abi;callback"
+add_host_c_library_test(
+        backend_extern_c_callback extern_c_callback.cog 53 joined
+        "backend;backend.c;interop;abi;callback"
 )
 
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
    CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
-add_test(
-        NAME backend_extern_c_calling_convention
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_calling_convention.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_calling_convention
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=79
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_calling_convention
-        PROPERTIES LABELS "backend;backend.c;interop;abi;calling-convention;callback"
-)
+    add_host_c_library_test(
+            backend_extern_c_calling_convention extern_c_calling_convention.cog 79 joined
+            "backend;backend.c;interop;abi;calling-convention;callback"
+    )
 endif()
 
-add_test(
-        NAME backend_native_i32_entry
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_native_i32_entry
-        -DEXPECT_EXIT=42
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+add_host_c_executable_test(
+        backend_native_i32_entry native_i32_entry.cog 42
+        "backend;backend.c;ir;entrypoint"
 )
-set_tests_properties(
-        backend_native_i32_entry
-        PROPERTIES LABELS "backend;backend.c;ir;entrypoint"
+add_host_c_failure_test(
+        backend_rejects_obsolete_c_int_entry obsolete_c_int_entry.cog 1
+        "executable entry point must have signature 'main::() -> i32'"
+        "backend;backend.c;backend.invalid;ir;entrypoint"
 )
-
-add_test(
-        NAME backend_rejects_obsolete_c_int_entry
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/obsolete_c_int_entry.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_obsolete_c_int_entry
-        -DEXPECT_EXIT=1
-        "-DEXPECT_SUBSTRING=executable entry point must have signature 'main::() -> i32'"
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_failure_test.cmake"
-)
-set_tests_properties(
-        backend_rejects_obsolete_c_int_entry
-        PROPERTIES LABELS "backend;backend.c;backend.invalid;ir;entrypoint"
-)
-
-add_test(
-        NAME backend_rejects_nested_main_as_entry
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/nested_main_not_entry.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_nested_main_not_entry
-        -DEXPECT_EXIT=3
-        "-DEXPECT_SUBSTRING=requires a top-level Coglet 'main' function"
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_failure_test.cmake"
-)
-set_tests_properties(
-        backend_rejects_nested_main_as_entry
-        PROPERTIES LABELS "backend;backend.c;backend.invalid;ir;entrypoint;nested-function"
+add_host_c_failure_test(
+        backend_rejects_nested_main_as_entry nested_main_not_entry.cog 3
+        "requires a top-level Coglet 'main' function"
+        "backend;backend.c;backend.invalid;ir;entrypoint;nested-function"
 )
 
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
    CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64" AND
    NOT WIN32)
-add_test(
-        NAME backend_rejects_unsupported_stdcall
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/unsupported_stdcall_calling_convention.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_unsupported_stdcall
-        -DEXPECT_EXIT=3
-        "-DEXPECT_SUBSTRING=call=stdcall requires 32-bit x86"
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_failure_test.cmake"
-)
-set_tests_properties(
-        backend_rejects_unsupported_stdcall
-        PROPERTIES LABELS "backend;backend.c;backend.invalid;interop;abi;calling-convention"
-)
+    add_host_c_failure_test(
+            backend_rejects_unsupported_stdcall unsupported_stdcall_calling_convention.cog 3
+            "call=stdcall requires 32-bit x86"
+            "backend;backend.c;backend.invalid;interop;abi;calling-convention"
+    )
 endif()
 
-
-add_test(
-        NAME backend_extern_c_variadic
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_variadic.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_variadic
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=57
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+add_host_c_library_test(
+        backend_extern_c_variadic extern_c_variadic.cog 57 joined
+        "backend;backend.c;interop;abi;variadic"
 )
-set_tests_properties(
-        backend_extern_c_variadic
-        PROPERTIES LABELS "backend;backend.c;interop;abi;variadic"
+add_host_c_library_test(
+        backend_extern_c_incomplete_struct extern_c_incomplete_struct.cog 67 joined
+        "backend;backend.c;interop;abi;struct;incomplete"
 )
-
-add_test(
-        NAME backend_extern_c_incomplete_struct
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_incomplete_struct.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_incomplete_struct
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=67
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+add_host_c_library_test(
+        backend_extern_c_repr_union extern_c_repr_union.cog 71 joined
+        "backend;backend.c;interop;abi;union;struct;array"
 )
-set_tests_properties(
-        backend_extern_c_incomplete_struct
-        PROPERTIES LABELS "backend;backend.c;interop;abi;struct;incomplete"
-)
-
-add_test(
-        NAME backend_extern_c_repr_union
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_repr_union.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_repr_union
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=71
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_repr_union
-        PROPERTIES LABELS "backend;backend.c;interop;abi;union;struct;array"
-)
-
 
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-add_test(
-        NAME backend_extern_c_repr_layout
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_repr_layout.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_repr_layout
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=73
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_repr_layout
-        PROPERTIES LABELS "backend;backend.c;interop;abi;layout;packed;alignment"
-)
+    add_host_c_library_test(
+            backend_extern_c_repr_layout extern_c_repr_layout.cog 73 joined
+            "backend;backend.c;interop;abi;layout;packed;alignment"
+    )
 endif()
 
 add_test(
@@ -1126,19 +762,7 @@ set_tests_properties(
         PROPERTIES LABELS "driver;backend;linker;invalid"
 )
 
-add_test(
-        NAME backend_extern_c_volatile_pointers
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_volatile_pointers.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_extern_c_volatile_pointers
-        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
-        -DLIB_NAME=coglet_backend_link_support
-        -DSTYLE=joined
-        -DEXPECT_EXIT=89
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
-)
-set_tests_properties(
-        backend_extern_c_volatile_pointers
-        PROPERTIES LABELS "backend;backend.c;interop;abi;volatile"
+add_host_c_library_test(
+        backend_extern_c_volatile_pointers extern_c_volatile_pointers.cog 89 joined
+        "backend;backend.c;interop;abi;volatile"
 )

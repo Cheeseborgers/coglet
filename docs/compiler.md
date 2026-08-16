@@ -222,15 +222,20 @@ fails during generated-C compilation when the selected host architecture cannot
 represent the requested convention; `cdecl` maps to the normal C convention
 outside 32-bit x86. `stdcall` variadics are rejected semantically.
 
-A deliberately narrow **host-C backend** now provides the first executable
-lowering path. `coglet input.cog -o program` emits a temporary C translation
+The **host-C backend** provides the bootstrap executable lowering path.
+`coglet input.cog -o program` emits a temporary C translation
 unit, invokes the native `cc` driver, and lets that driver resolve normal C
 runtime/libc symbols. External declarations are emitted under generated C
 identifiers with `__asm__("symbol")` labels, so `name="..."` overrides affect
 the actual linker symbol without requiring that symbol to be a safe C identifier.
 
 The backend now consumes CogIR only and has explicit emission for every current
-`CogIrOp`. Direct named calls,
+`CogIrOp`. The build mirrors that dependency direction: `compiler_core` contains
+the frontend, semantic analysis, target description, and CogIR implementation,
+while `coglet_backend_c` is a separate library that depends on the core. This
+keeps backend dependencies out of frontend/IR-only tools and provides the same
+place for a future LLVM backend to attach without making LLVM a core dependency.
+Direct named calls,
 locals, scalar globals/module initialization, checked and wrapping integer
 arithmetic, checked-count shifts, floating arithmetic/comparisons, structured
 control flow, field/array-field/pointer addressing, volatile scalar loads/stores,

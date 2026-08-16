@@ -83,6 +83,11 @@ Backend integration fixtures live under:
 tests/test_assets/backend/
 ```
 
+Host-C test registration uses the helpers in `cmake/HostCBackendTests.cmake`,
+which centralize compile/run, explicit-library, trap, and expected-failure CTest
+plumbing. The helpers are intentionally host-C-specific until another backend
+establishes which parts of that interface are actually common.
+
 The executable tests run the Coglet compiler with `-o`, invoke the generated
 program, and verify its process exit status. These tests now exercise the full
 frontend -> CogIR -> host-C boundary: the compiler freezes/verifies CogIR and
@@ -452,16 +457,10 @@ When adding or changing a semantic feature, consider coverage for:
 
 Do not claim a test passes until it has actually been run.
 
-## Known Parser Harness Issue
+## Parser Failure Fixtures
 
-There is an older parser test involving an integer literal whose magnitude exceeds `u64`.
-
-The compiler correctly rejects that source, but the parser snapshot harness may still expect the
-success status used by ordinary AST snapshot tests. If the test remains failing,
-do not classify it as a definite-assignment or semantic-analysis regression.
-
-The parser test harness should eventually distinguish:
-
-* successful parser snapshots;
-* expected parser failures and their diagnostics;
-* their different process exit statuses.
+Expected parser failures live under `tests/test_assets/parser/invalid/` and have
+paired `.expected` diagnostic snapshots. This includes the diagnostic-list growth
+stress case and invalid enum default-type syntax; they are registered through the
+non-zero parser harness rather than being silently skipped by the successful AST
+snapshot harness.

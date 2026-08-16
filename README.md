@@ -695,20 +695,21 @@ Recently completed work includes:
 - rejection of unsupported nested-function captures;
 - native `#repr(c)` union ABI layout for FFI carrier values.
 
-A deliberately narrow host-C backend now provides the first executable path.
-It should expand only where the specified Coglet semantics can be preserved; the
-compiler still rejects unlowered runtime constructs rather than translating them
-with weaker C behavior.
+The host-C backend is the bootstrap executable path for the current CogIR
+contract. It consumes only frozen CogIR, covers every current `CogIrOp`, and is
+built as a separate backend library beneath the frontend/semantic/CogIR core.
+This keeps C implementation details out of the language boundary and leaves LLVM
+or future native backends free to consume the same verified module.
 
 ## Roadmap
 
-Near-term work should combine C interoperability with careful backend expansion:
+Near-term compiler work is backend-focused:
 
-1. Pause broad C-interop expansion and return focus to native Coglet/compiler semantics.
-2. Lower core storage/control-flow and checked runtime arithmetic correctly.
-3. Design byte views/slices without introducing unrestricted array decay.
-4. Reassess imports, modules, and multi-file compilation.
-5. Add explicit target/C-ABI selection when cross-compilation becomes a priority.
+1. Add an LLVM backend that consumes only frozen, verified CogIR.
+2. Establish LLVM module/type/CFG lowering and LLVM verification before broadening coverage.
+3. Add explicit target ABI lowering where native C currently performs ABI classification for interop.
+4. Delegate general optimization to LLVM initially, retaining CogIR transforms only where Coglet semantics require them.
+5. Reassess imports, modules, multi-file compilation, and runtime/standard-library facilities as self-hosting needs become concrete.
 6. Continue improving diagnostics, tests, and documentation.
 
 ## License

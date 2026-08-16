@@ -167,6 +167,7 @@ int main(void)
         COG_IR_FUNCTION_DEFINITION,
         COG_IR_LINKAGE_INTERNAL,
         0,
+        COG_IR_C_SCALAR_NONE,
         NULL
     );
     if (bump == COG_IR_FUNCTION_INVALID)
@@ -229,6 +230,7 @@ int main(void)
         COG_IR_FUNCTION_DEFINITION,
         COG_IR_LINKAGE_INTERNAL,
         1,
+        COG_IR_C_SCALAR_NONE,
         NULL
     );
     CogIrBlockId init_entry = cog_ir_add_block(
@@ -259,7 +261,8 @@ int main(void)
 
     CogIrFunctionId late_defined = cog_ir_add_function(
         &module, string_view_from_cstr("late_defined"), function_span, init_type,
-        COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
+        COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_INTERNAL, 0,
+        COG_IR_C_SCALAR_NONE, NULL);
     if (late_defined == COG_IR_FUNCTION_INVALID ||
         !cog_ir_begin_function_definition(&module, late_defined))
         return fail("function predeclaration upgrade failed");
@@ -300,7 +303,8 @@ int main(void)
         &bad, bad_void, NULL, 0, COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
     CogIrFunctionId bad_fn = cog_ir_add_function(
         &bad, string_view_from_cstr("broken"), source_span_invalid(), bad_fn_type,
-        COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
+        COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0,
+        COG_IR_C_SCALAR_NONE, NULL);
     (void)cog_ir_add_block(&bad, bad_fn, string_view_from_cstr("entry"), source_span_invalid());
     cog_ir_module_freeze(&bad);
 
@@ -326,13 +330,15 @@ int main(void)
         COG_IR_ABI_C, COG_IR_CALL_DEFAULT, 1);
     CogIrFunctionId variadic = cog_ir_add_function(
         &bad_vararg, string_view_from_cstr("variadic"), source_span_invalid(),
-        variadic_type, COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_EXTERNAL, 0, NULL);
+        variadic_type, COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_EXTERNAL, 0,
+        COG_IR_C_SCALAR_NONE, NULL);
     CogIrTypeId caller_type = cog_ir_type_function(
         &bad_vararg, vararg_void, NULL, 0,
         COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
     CogIrFunctionId caller = cog_ir_add_function(
         &bad_vararg, string_view_from_cstr("caller"), source_span_invalid(),
-        caller_type, COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
+        caller_type, COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0,
+        COG_IR_C_SCALAR_NONE, NULL);
     CogIrBlockId caller_entry = cog_ir_add_block(
         &bad_vararg, caller, string_view_from_cstr("entry"), source_span_invalid());
 

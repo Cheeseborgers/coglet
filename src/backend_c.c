@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,64 +16,25 @@
 #include <unistd.h>
 #endif
 
-#include "string_decode.h"
-#include "utils/string_view.h"
-
-#define C_BACKEND_MAX_FUNCTIONS 512
-#define C_BACKEND_MAX_STRUCTS 256
-#define C_BACKEND_MAX_ENUMS 256
-#define C_BACKEND_MAX_TYPE_ALIASES 1024
 #define C_BACKEND_NAME_SIZE 48
-#define C_BACKEND_TYPE_DEF_SIZE 1024
-
-typedef struct CFunction {
-    Node *node;
-    SemDeclInfo *decl_info;
-    char generated_name[C_BACKEND_NAME_SIZE];
-} CFunction;
-
-typedef struct CTypeAlias {
-    const Type *type;
-    const SemAbiType *abi_type;
-    char name[C_BACKEND_NAME_SIZE];
-    char definition[C_BACKEND_TYPE_DEF_SIZE];
-} CTypeAlias;
-
-typedef struct CStruct {
-    Node *node;
-    SemDeclInfo *decl_info;
-    const Type *type;
-    char generated_name[C_BACKEND_NAME_SIZE];
-    unsigned char definition_state;
-} CStruct;
-
-typedef struct CEnum {
-    Node *node;
-    SemDeclInfo *decl_info;
-    const Type *type;
-    char generated_name[C_BACKEND_NAME_SIZE];
-} CEnum;
 
 typedef struct CBackend {
     FILE *out;
-    const char *source_filename;
-    Node *program;
-    SemanticContext *sem;
-
-    CFunction functions[C_BACKEND_MAX_FUNCTIONS];
-    int function_count;
-
-    CStruct structs[C_BACKEND_MAX_STRUCTS];
-    int struct_count;
-
-    CEnum enums[C_BACKEND_MAX_ENUMS];
-    int enum_count;
-
-    CTypeAlias type_aliases[C_BACKEND_MAX_TYPE_ALIASES];
-    int type_alias_count;
-
-    Node *current_function;
+    const CogIrModule *module;
     int had_error;
+
+    char (*type_names)[C_BACKEND_NAME_SIZE];
+    char (*abi_names)[C_BACKEND_NAME_SIZE];
+    char (*function_names)[C_BACKEND_NAME_SIZE];
+    char (*global_names)[C_BACKEND_NAME_SIZE];
+
+    unsigned char *runtime_alias_state;
+    unsigned char *abi_alias_state;
+    unsigned char *aggregate_definition_state;
+
+    char **type_definitions;
+    size_t type_definition_count;
+    size_t type_definition_capacity;
 } CBackend;
 
 static int sv_equals(StringView view, const char *text)
@@ -81,897 +43,512 @@ static int sv_equals(StringView view, const char *text)
     return view.length == length && memcmp(view.data, text, length) == 0;
 }
 
-static const char *c_call_macro_name(CCallingConvention convention)
+static const char *source_filename_for_span(const CBackend *backend, SourceSpan span)
 {
-    switch (convention) {
-        case C_CALL_DEFAULT: return "";
-        case C_CALL_CDECL:   return "CG_CALL_CDECL";
-        case C_CALL_STDCALL: return "CG_CALL_STDCALL";
-        case C_CALL_SYSV64:  return "CG_CALL_SYSV64";
-        case C_CALL_WIN64:   return "CG_CALL_WIN64";
-    }
+    if (!backend || !backend->module)
+        return "<cogir>";
 
-    return "";
+    const SourceFile *source = source_manager_get(&backend->module->sources, span.file_id);
+    return source && source->filename ? source->filename : "<cogir>";
 }
 
-static void backend_error(CBackend *backend, const Node *node, const char *message)
+static void backend_error(CBackend *backend, SourceSpan span, const char *message)
 {
-    if (!backend) return;
+    if (!backend)
+        return;
 
     fprintf(
         stderr,
-        "%s:%d: backend error: %s\n",
-        backend->source_filename ? backend->source_filename : "<input>",
-        node ? node->line : 0,
+        "%s:%u: backend error: %s\n",
+        source_filename_for_span(backend, span),
+        source_span_is_valid(span) ? span.line : 0,
         message
     );
-
     backend->had_error = 1;
 }
 
-static const CTypeAlias *find_type_alias(CBackend *backend, const Type *type)
+static const char *c_call_macro_name(CogIrCallingConvention convention)
 {
-    for (int i = 0; i < backend->type_alias_count; i++) {
-        if (backend->type_aliases[i].type == type &&
-            backend->type_aliases[i].abi_type == NULL) {
-            return &backend->type_aliases[i];
+    switch (convention) {
+        case COG_IR_CALL_DEFAULT: return "";
+        case COG_IR_CALL_CDECL:   return "CG_CALL_CDECL";
+        case COG_IR_CALL_STDCALL: return "CG_CALL_STDCALL";
+        case COG_IR_CALL_SYSV64:  return "CG_CALL_SYSV64";
+        case COG_IR_CALL_WIN64:   return "CG_CALL_WIN64";
+    }
+    return "";
+}
+
+static int append_type_definition(CBackend *backend, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    va_list copy;
+    va_copy(copy, args);
+    int length = vsnprintf(NULL, 0, format, copy);
+    va_end(copy);
+    if (length < 0) {
+        va_end(args);
+        return 0;
+    }
+
+    char *definition = malloc((size_t)length + 1);
+    if (!definition) {
+        va_end(args);
+        return 0;
+    }
+    vsnprintf(definition, (size_t)length + 1, format, args);
+    va_end(args);
+
+    if (backend->type_definition_count == backend->type_definition_capacity) {
+        size_t capacity = backend->type_definition_capacity
+            ? backend->type_definition_capacity * 2
+            : 32;
+        char **definitions = realloc(
+            backend->type_definitions,
+            capacity * sizeof(*definitions)
+        );
+        if (!definitions) {
+            free(definition);
+            return 0;
         }
+        backend->type_definitions = definitions;
+        backend->type_definition_capacity = capacity;
     }
 
+    backend->type_definitions[backend->type_definition_count++] = definition;
+    return 1;
+}
+
+static void free_backend_storage(CBackend *backend)
+{
+    if (!backend)
+        return;
+
+    for (size_t i = 0; i < backend->type_definition_count; ++i)
+        free(backend->type_definitions[i]);
+    free(backend->type_definitions);
+    free(backend->type_names);
+    free(backend->abi_names);
+    free(backend->function_names);
+    free(backend->global_names);
+    free(backend->runtime_alias_state);
+    free(backend->abi_alias_state);
+    free(backend->aggregate_definition_state);
+}
+
+static int init_backend_storage(CBackend *backend)
+{
+    const CogIrModule *module = backend->module;
+
+    if (module->type_count) {
+        backend->type_names = calloc(module->type_count, sizeof(*backend->type_names));
+        backend->runtime_alias_state = calloc(module->type_count, 1);
+        backend->aggregate_definition_state = calloc(module->type_count, 1);
+        if (!backend->type_names || !backend->runtime_alias_state ||
+            !backend->aggregate_definition_state)
+            return 0;
+    }
+
+    if (module->abi_type_count) {
+        backend->abi_names = calloc(module->abi_type_count, sizeof(*backend->abi_names));
+        backend->abi_alias_state = calloc(module->abi_type_count, 1);
+        if (!backend->abi_names || !backend->abi_alias_state)
+            return 0;
+    }
+
+    if (module->function_count) {
+        backend->function_names = calloc(module->function_count, sizeof(*backend->function_names));
+        if (!backend->function_names)
+            return 0;
+        for (size_t i = 0; i < module->function_count; ++i)
+            snprintf(backend->function_names[i], C_BACKEND_NAME_SIZE, "cg_fn_%zu", i);
+    }
+
+    if (module->global_count) {
+        backend->global_names = calloc(module->global_count, sizeof(*backend->global_names));
+        if (!backend->global_names)
+            return 0;
+        for (size_t i = 0; i < module->global_count; ++i)
+            snprintf(backend->global_names[i], C_BACKEND_NAME_SIZE, "cg_g_%zu", i);
+    }
+
+    return 1;
+}
+
+static const char *c_scalar_name(CogIrCScalarKind scalar)
+{
+    switch (scalar) {
+        case COG_IR_C_SCALAR_CHAR:      return "char";
+        case COG_IR_C_SCALAR_SCHAR:     return "signed char";
+        case COG_IR_C_SCALAR_UCHAR:     return "unsigned char";
+        case COG_IR_C_SCALAR_SHORT:     return "short";
+        case COG_IR_C_SCALAR_USHORT:    return "unsigned short";
+        case COG_IR_C_SCALAR_INT:       return "int";
+        case COG_IR_C_SCALAR_UINT:      return "unsigned int";
+        case COG_IR_C_SCALAR_LONG:      return "long";
+        case COG_IR_C_SCALAR_ULONG:     return "unsigned long";
+        case COG_IR_C_SCALAR_LONGLONG:  return "long long";
+        case COG_IR_C_SCALAR_ULONGLONG: return "unsigned long long";
+        case COG_IR_C_SCALAR_SIZE:      return "size_t";
+        case COG_IR_C_SCALAR_BOOL:      return "_Bool";
+        case COG_IR_C_SCALAR_FLOAT:     return "float";
+        case COG_IR_C_SCALAR_DOUBLE:    return "double";
+        case COG_IR_C_SCALAR_NONE:      return NULL;
+    }
     return NULL;
 }
 
-static const CTypeAlias *find_abi_type_alias(
+static const char *runtime_type_name(CBackend *backend, CogIrTypeId type_id, SourceSpan span);
+static const char *abi_type_name(CBackend *backend, CogIrAbiTypeId abi_id, SourceSpan span);
+
+static const char *nominal_type_name(CBackend *backend, const CogIrType *type)
+{
+    assert(type);
+    assert((size_t)type->id < backend->module->type_count);
+
+    char *name = backend->type_names[type->id];
+    if (name[0])
+        return name;
+
+    const char *prefix = NULL;
+    switch (type->kind) {
+        case COG_IR_TYPE_STRUCT: prefix = "cg_struct_"; break;
+        case COG_IR_TYPE_UNION:  prefix = "cg_union_"; break;
+        case COG_IR_TYPE_ENUM:   prefix = "cg_enum_"; break;
+        default: return NULL;
+    }
+    snprintf(name, C_BACKEND_NAME_SIZE, "%s%u", prefix, type->id);
+    return name;
+}
+
+static const char *runtime_integer_name(const CogIrType *type)
+{
+    if (!type || type->kind != COG_IR_TYPE_INTEGER)
+        return NULL;
+
+    switch (type->as.integer.bits) {
+        case 8:  return type->as.integer.is_signed ? "int8_t" : "uint8_t";
+        case 16: return type->as.integer.is_signed ? "int16_t" : "uint16_t";
+        case 32: return type->as.integer.is_signed ? "int32_t" : "uint32_t";
+        case 64: return type->as.integer.is_signed ? "int64_t" : "uint64_t";
+        default: return NULL;
+    }
+}
+
+static int append_parameter_type_list_runtime(
     CBackend *backend,
-    const SemAbiType *abi_type
-) {
-    for (int i = 0; i < backend->type_alias_count; i++) {
-        if (backend->type_aliases[i].abi_type == abi_type)
-            return &backend->type_aliases[i];
-    }
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    const CogIrFunctionType *function,
+    SourceSpan span
+);
 
-    return NULL;
+static int append_text(char **buffer, size_t *length, size_t *capacity, const char *text)
+{
+    size_t text_length = strlen(text);
+    size_t required = *length + text_length + 1;
+    if (required > *capacity) {
+        size_t next = *capacity ? *capacity : 64;
+        while (next < required)
+            next *= 2;
+        char *grown = realloc(*buffer, next);
+        if (!grown)
+            return 0;
+        *buffer = grown;
+        *capacity = next;
+    }
+    memcpy(*buffer + *length, text, text_length + 1);
+    *length += text_length;
+    return 1;
 }
 
-static const CStruct *find_c_struct_by_name(CBackend *backend, StringView name)
+static const char *runtime_type_name(CBackend *backend, CogIrTypeId type_id, SourceSpan span)
 {
-    for (int i = 0; i < backend->struct_count; i++) {
-        StringView candidate = backend->structs[i].node->as.struct_decl.name;
-        if (candidate.length == name.length &&
-            memcmp(candidate.data, name.data, name.length) == 0)
-            return &backend->structs[i];
+    const CogIrType *type = cog_ir_get_type(backend->module, type_id);
+    if (!type) {
+        backend_error(backend, span, "invalid CogIR runtime type during C lowering");
+        return NULL;
     }
-
-    return NULL;
-}
-
-static const CStruct *find_c_struct_by_type(CBackend *backend, const Type *type)
-{
-    for (int i = 0; i < backend->struct_count; i++) {
-        if (backend->structs[i].type == type)
-            return &backend->structs[i];
-    }
-
-    return NULL;
-}
-
-static const CEnum *find_c_enum_by_name(CBackend *backend, StringView name)
-{
-    for (int i = 0; i < backend->enum_count; i++) {
-        StringView candidate = backend->enums[i].node->as.enum_decl.name;
-        if (candidate.length == name.length &&
-            memcmp(candidate.data, name.data, name.length) == 0)
-            return &backend->enums[i];
-    }
-
-    return NULL;
-}
-
-static const CEnum *find_c_enum_by_type(CBackend *backend, const Type *type)
-{
-    for (int i = 0; i < backend->enum_count; i++) {
-        if (backend->enums[i].type == type)
-            return &backend->enums[i];
-    }
-
-    return NULL;
-}
-
-static const char *base_c_type_name(const Type *type)
-{
-    if (!type) return NULL;
 
     switch (type->kind) {
-        case TYPE_VOID: return "void";
-        case TYPE_BOOL: return "_Bool";
-
-        case TYPE_I8:  return "int8_t";
-        case TYPE_I16: return "int16_t";
-        case TYPE_I32: return "int32_t";
-        case TYPE_I64: return "int64_t";
-
-        case TYPE_U8:  return "uint8_t";
-        case TYPE_U16: return "uint16_t";
-        case TYPE_U32: return "uint32_t";
-        case TYPE_U64: return "uint64_t";
-
-        case TYPE_F32: return "float";
-        case TYPE_F64: return "double";
-
-        case TYPE_NAMED:
-            if (sv_equals(type->named_name, "c_char"))      return "char";
-            if (sv_equals(type->named_name, "c_schar"))     return "signed char";
-            if (sv_equals(type->named_name, "c_uchar"))     return "unsigned char";
-            if (sv_equals(type->named_name, "c_short"))     return "short";
-            if (sv_equals(type->named_name, "c_ushort"))    return "unsigned short";
-            if (sv_equals(type->named_name, "c_int"))       return "int";
-            if (sv_equals(type->named_name, "c_uint"))      return "unsigned int";
-            if (sv_equals(type->named_name, "c_long"))      return "long";
-            if (sv_equals(type->named_name, "c_ulong"))     return "unsigned long";
-            if (sv_equals(type->named_name, "c_longlong"))  return "long long";
-            if (sv_equals(type->named_name, "c_ulonglong")) return "unsigned long long";
-            if (sv_equals(type->named_name, "c_size"))      return "size_t";
-            if (sv_equals(type->named_name, "c_bool"))      return "_Bool";
-            if (sv_equals(type->named_name, "c_float"))     return "float";
-            if (sv_equals(type->named_name, "c_double"))    return "double";
-            return NULL;
-
-        case TYPE_UNTYPED_INT:
-        case TYPE_UNTYPED_FLOAT:
-        case TYPE_NULL:
-        case TYPE_POINTER:
-        case TYPE_OPAQUE_POINTER:
-        case TYPE_ARRAY:
-        case TYPE_STRUCT:
-        case TYPE_ENUM:
-        case TYPE_FUNCTION:
-            return NULL;
-    }
-
-    return NULL;
-}
-
-static const char *register_c_type(CBackend *backend, const Type *type, const Node *owner)
-{
-    const char *base = base_c_type_name(type);
-    if (base) return base;
-
-    if (!type) {
-        backend_error(backend, owner, "missing type during C lowering");
-        return NULL;
-    }
-
-    if (type->kind == TYPE_NAMED) {
-        const CStruct *structure = find_c_struct_by_name(backend, type->named_name);
-        if (structure) return structure->generated_name;
-
-        const CEnum *enumeration = find_c_enum_by_name(backend, type->named_name);
-        if (enumeration) return enumeration->generated_name;
-    }
-
-    if (type->kind == TYPE_STRUCT) {
-        const CStruct *structure = find_c_struct_by_type(backend, type);
-        if (structure) return structure->generated_name;
-    }
-
-    if (type->kind == TYPE_ENUM) {
-        const CEnum *enumeration = find_c_enum_by_type(backend, type);
-        if (enumeration) return enumeration->generated_name;
-    }
-
-    if (type->kind == TYPE_FUNCTION) {
-        if (type->function_abi != FUNCTION_ABI_C) {
-            backend_error(
-                backend,
-                owner,
-                "ordinary Coglet function types cannot be lowered as native C callbacks"
-            );
-            return NULL;
-        }
-
-        const CTypeAlias *existing_function = find_type_alias(backend, type);
-        if (existing_function) return existing_function->name;
-
-        const char *return_name = register_c_type(backend, type->return_type, owner);
-        if (!return_name) return NULL;
-
-        /* Register nested parameter types before allocating this alias. */
-        for (int i = 0; i < type->parameter_count; i++) {
-            if (!register_c_type(backend, type->parameters[i], owner))
-                return NULL;
-        }
-
-        if (backend->type_alias_count >= C_BACKEND_MAX_TYPE_ALIASES) {
-            backend_error(backend, owner, "too many generated C callback types");
-            return NULL;
-        }
-
-        int index = backend->type_alias_count;
-        CTypeAlias *alias = &backend->type_aliases[backend->type_alias_count++];
-        memset(alias, 0, sizeof(*alias));
-        alias->type = type;
-        snprintf(alias->name, sizeof(alias->name), "cg_type_%d", index);
-
-        char return_copy[C_BACKEND_NAME_SIZE];
-        char alias_copy[C_BACKEND_NAME_SIZE];
-
-        if (strlen(return_name) >= sizeof(return_copy) ||
-            strlen(alias->name) >= sizeof(alias_copy)) {
-            backend_error(backend, owner, "generated C callback type name is too long");
-            return NULL;
-        }
-
-        strcpy(return_copy, return_name);
-        strcpy(alias_copy, alias->name);
-
-        const char *call_macro = c_call_macro_name(type->function_call_conv);
-
-        int written;
-        if (type->function_call_conv == C_CALL_DEFAULT) {
-            written = snprintf(
-                alias->definition,
-                sizeof(alias->definition),
-                "typedef %s (*%s)(",
-                return_copy,
-                alias_copy
-            );
-        } else {
-            written = snprintf(
-                alias->definition,
-                sizeof(alias->definition),
-                "typedef %s (%s *%s)(",
-                return_copy,
-                call_macro,
-                alias_copy
-            );
-        }
-
-        if (written < 0 || (size_t)written >= sizeof(alias->definition)) {
-            backend_error(backend, owner, "generated C callback typedef is too long");
-            return NULL;
-        }
-
-        size_t used = (size_t)written;
-
-        if (type->parameter_count == 0) {
-            written = snprintf(
-                alias->definition + used,
-                sizeof(alias->definition) - used,
-                "void"
-            );
-            if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
-                backend_error(backend, owner, "generated C callback typedef is too long");
-                return NULL;
-            }
-            used += (size_t)written;
-        } else {
-            for (int i = 0; i < type->parameter_count; i++) {
-                const char *parameter_name =
-                    register_c_type(backend, type->parameters[i], owner);
-                if (!parameter_name) return NULL;
-
-                written = snprintf(
-                    alias->definition + used,
-                    sizeof(alias->definition) - used,
-                    "%s%s",
-                    i > 0 ? ", " : "",
-                    parameter_name
-                );
-
-                if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
-                    backend_error(backend, owner, "generated C callback typedef is too long");
-                    return NULL;
-                }
-                used += (size_t)written;
-            }
-
-            if (type->function_is_variadic) {
-                written = snprintf(
-                    alias->definition + used,
-                    sizeof(alias->definition) - used,
-                    ", ..."
-                );
-                if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
-                    backend_error(backend, owner, "generated C callback typedef is too long");
-                    return NULL;
-                }
-                used += (size_t)written;
-            }
-        }
-
-        written = snprintf(
-            alias->definition + used,
-            sizeof(alias->definition) - used,
-            ");"
-        );
-        if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
-            backend_error(backend, owner, "generated C callback typedef is too long");
-            return NULL;
-        }
-
-        return alias->name;
-    }
-
-    if (type->kind != TYPE_POINTER && type->kind != TYPE_OPAQUE_POINTER) {
-        backend_error(
-            backend,
-            owner,
-            "type is not supported by the current host-C backend subset"
-        );
-        return NULL;
-    }
-
-    const CTypeAlias *existing = find_type_alias(backend, type);
-    if (existing) return existing->name;
-
-    if (backend->type_alias_count >= C_BACKEND_MAX_TYPE_ALIASES) {
-        backend_error(backend, owner, "too many generated C pointer types");
-        return NULL;
-    }
-
-    char element_name[C_BACKEND_NAME_SIZE];
-    element_name[0] = '\0';
-
-    if (type->kind == TYPE_POINTER) {
-        const char *resolved_element = register_c_type(backend, type->element, owner);
-        if (!resolved_element) return NULL;
-
-        if (strlen(resolved_element) >= sizeof(element_name)) {
-            backend_error(backend, owner, "generated C element type name is too long");
-            return NULL;
-        }
-
-        strcpy(element_name, resolved_element);
-    }
-
-    int index = backend->type_alias_count;
-    CTypeAlias *alias = &backend->type_aliases[backend->type_alias_count++];
-    memset(alias, 0, sizeof(*alias));
-    alias->type = type;
-
-    snprintf(alias->name, sizeof(alias->name), "cg_type_%d", index);
-
-    char alias_name[C_BACKEND_NAME_SIZE];
-    strcpy(alias_name, alias->name);
-
-    if (type->kind == TYPE_OPAQUE_POINTER) {
-        snprintf(
-            alias->definition,
-            sizeof(alias->definition),
-            "typedef %s%svoid *%s;",
-            type->pointer_access == POINTER_ACCESS_READONLY ? "const " : "",
-            type->pointer_is_volatile ? "volatile " : "",
-            alias_name
-        );
-    } else {
-        snprintf(
-            alias->definition,
-            sizeof(alias->definition),
-            "typedef %s%s%s *%s;",
-            element_name,
-            type->pointer_access == POINTER_ACCESS_READONLY ? " const" : "",
-            type->pointer_is_volatile ? " volatile" : "",
-            alias_name
-        );
-    }
-
-    return alias->name;
-}
-
-static const char *c_scalar_type_name(SemCScalarKind kind)
-{
-    switch (kind) {
-        case SEM_C_SCALAR_CHAR:      return "char";
-        case SEM_C_SCALAR_SCHAR:     return "signed char";
-        case SEM_C_SCALAR_UCHAR:     return "unsigned char";
-        case SEM_C_SCALAR_SHORT:     return "short";
-        case SEM_C_SCALAR_USHORT:    return "unsigned short";
-        case SEM_C_SCALAR_INT:       return "int";
-        case SEM_C_SCALAR_UINT:      return "unsigned int";
-        case SEM_C_SCALAR_LONG:      return "long";
-        case SEM_C_SCALAR_ULONG:     return "unsigned long";
-        case SEM_C_SCALAR_LONGLONG:  return "long long";
-        case SEM_C_SCALAR_ULONGLONG: return "unsigned long long";
-        case SEM_C_SCALAR_SIZE:      return "size_t";
-        case SEM_C_SCALAR_BOOL:      return "_Bool";
-        case SEM_C_SCALAR_FLOAT:     return "float";
-        case SEM_C_SCALAR_DOUBLE:    return "double";
-        case SEM_C_SCALAR_NONE:      return NULL;
-    }
-
-    return NULL;
-}
-
-static const char *register_abi_c_type(
-    CBackend *backend,
-    const SemAbiType *abi_type,
-    const Node *owner
-) {
-    if (!abi_type || !abi_type->semantic_type) {
-        backend_error(backend, owner, "missing normalized ABI type during C lowering");
-        return NULL;
-    }
-
-    switch (abi_type->kind) {
-        case SEM_ABI_TYPE_C_SCALAR: {
-            const char *name = c_scalar_type_name(abi_type->c_scalar_kind);
-            if (!name) {
-                backend_error(backend, owner, "invalid normalized native-C scalar type");
-                return NULL;
-            }
+        case COG_IR_TYPE_VOID: return "void";
+        case COG_IR_TYPE_BOOL: return "_Bool";
+        case COG_IR_TYPE_INTEGER: {
+            const char *name = runtime_integer_name(type);
+            if (!name)
+                backend_error(backend, span, "integer width is not supported by the current host-C backend");
             return name;
         }
-
-        case SEM_ABI_TYPE_SEMANTIC:
-            return register_c_type(backend, abi_type->semantic_type, owner);
-
-        case SEM_ABI_TYPE_ARRAY:
-            backend_error(backend, owner,
-                "array ABI type must be lowered by its owning aggregate field");
+        case COG_IR_TYPE_FLOAT:
+            if (type->as.floating.bits == 32) return "float";
+            if (type->as.floating.bits == 64) return "double";
+            backend_error(backend, span, "floating width is not supported by the current host-C backend");
             return NULL;
-
-        case SEM_ABI_TYPE_POINTER:
-        case SEM_ABI_TYPE_OPAQUE_POINTER:
-        case SEM_ABI_TYPE_FUNCTION:
+        case COG_IR_TYPE_STRUCT:
+        case COG_IR_TYPE_UNION:
+            if (!type->as.aggregate.is_repr_c) {
+                backend_error(backend, span, "ordinary Coglet aggregate types are not lowered by the host-C backend yet");
+                return NULL;
+            }
+            return nominal_type_name(backend, type);
+        case COG_IR_TYPE_ENUM:
+            if (!type->as.enumeration.is_repr_c) {
+                backend_error(backend, span, "ordinary Coglet enum types are not lowered by the host-C backend yet");
+                return NULL;
+            }
+            return nominal_type_name(backend, type);
+        case COG_IR_TYPE_ARRAY:
+            backend_error(backend, span, "standalone CogIR array values are not lowered by the host-C backend yet");
+            return NULL;
+        case COG_IR_TYPE_POINTER:
+        case COG_IR_TYPE_OPAQUE_POINTER:
+        case COG_IR_TYPE_FUNCTION:
             break;
     }
 
-    const CTypeAlias *existing = find_abi_type_alias(backend, abi_type);
-    if (existing)
-        return existing->name;
-
-    const Type *type = abi_type->semantic_type;
-
-    if (abi_type->kind == SEM_ABI_TYPE_FUNCTION) {
-        if (type->kind != TYPE_FUNCTION || type->function_abi != FUNCTION_ABI_C) {
-            backend_error(backend, owner,
-                "normalized callback ABI type is not a native C function type");
-            return NULL;
-        }
-
-        const char *return_name = register_abi_c_type(
-            backend,
-            abi_type->return_type,
-            owner
-        );
-        if (!return_name) return NULL;
-
-        for (int i = 0; i < abi_type->parameter_count; i++) {
-            if (!register_abi_c_type(backend, abi_type->parameters[i], owner))
-                return NULL;
-        }
-
-        if (backend->type_alias_count >= C_BACKEND_MAX_TYPE_ALIASES) {
-            backend_error(backend, owner, "too many generated C callback types");
-            return NULL;
-        }
-
-        int index = backend->type_alias_count;
-        CTypeAlias *alias = &backend->type_aliases[backend->type_alias_count++];
-        memset(alias, 0, sizeof(*alias));
-        alias->abi_type = abi_type;
-        snprintf(alias->name, sizeof(alias->name), "cg_type_%d", index);
-
-        char return_copy[C_BACKEND_NAME_SIZE];
-        char alias_copy[C_BACKEND_NAME_SIZE];
-
-        if (strlen(return_name) >= sizeof(return_copy) ||
-            strlen(alias->name) >= sizeof(alias_copy)) {
-            backend_error(backend, owner, "generated C callback type name is too long");
-            return NULL;
-        }
-
-        strcpy(return_copy, return_name);
-        strcpy(alias_copy, alias->name);
-
-        const char *call_macro = c_call_macro_name(type->function_call_conv);
-
-        int written;
-        if (type->function_call_conv == C_CALL_DEFAULT) {
-            written = snprintf(
-                alias->definition,
-                sizeof(alias->definition),
-                "typedef %s (*%s)(",
-                return_copy,
-                alias_copy
-            );
-        } else {
-            written = snprintf(
-                alias->definition,
-                sizeof(alias->definition),
-                "typedef %s (%s *%s)(",
-                return_copy,
-                call_macro,
-                alias_copy
-            );
-        }
-
-        if (written < 0 || (size_t)written >= sizeof(alias->definition)) {
-            backend_error(backend, owner, "generated C callback typedef is too long");
-            return NULL;
-        }
-
-        size_t used = (size_t)written;
-
-        if (abi_type->parameter_count == 0) {
-            written = snprintf(
-                alias->definition + used,
-                sizeof(alias->definition) - used,
-                "void"
-            );
-            if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
-                backend_error(backend, owner, "generated C callback typedef is too long");
-                return NULL;
-            }
-            used += (size_t)written;
-        } else {
-            for (int i = 0; i < abi_type->parameter_count; i++) {
-                const char *parameter_name = register_abi_c_type(
-                    backend,
-                    abi_type->parameters[i],
-                    owner
-                );
-                if (!parameter_name) return NULL;
-
-                written = snprintf(
-                    alias->definition + used,
-                    sizeof(alias->definition) - used,
-                    "%s%s",
-                    i > 0 ? ", " : "",
-                    parameter_name
-                );
-
-                if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
-                    backend_error(backend, owner, "generated C callback typedef is too long");
-                    return NULL;
-                }
-                used += (size_t)written;
-            }
-
-            if (type->function_is_variadic) {
-                written = snprintf(
-                    alias->definition + used,
-                    sizeof(alias->definition) - used,
-                    ", ..."
-                );
-                if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
-                    backend_error(backend, owner, "generated C callback typedef is too long");
-                    return NULL;
-                }
-                used += (size_t)written;
-            }
-        }
-
-        written = snprintf(
-            alias->definition + used,
-            sizeof(alias->definition) - used,
-            ");"
-        );
-        if (written < 0 || (size_t)written >= sizeof(alias->definition) - used) {
-            backend_error(backend, owner, "generated C callback typedef is too long");
-            return NULL;
-        }
-
-        return alias->name;
-    }
-
-    if ((abi_type->kind == SEM_ABI_TYPE_POINTER && type->kind != TYPE_POINTER) ||
-        (abi_type->kind == SEM_ABI_TYPE_OPAQUE_POINTER &&
-         type->kind != TYPE_OPAQUE_POINTER)) {
-        backend_error(backend, owner,
-            "normalized pointer ABI type differs from semantic pointer type");
+    unsigned char *state = &backend->runtime_alias_state[type_id];
+    if (*state == 2)
+        return backend->type_names[type_id];
+    if (*state == 1) {
+        backend_error(backend, span, "recursive runtime C type alias during CogIR lowering");
         return NULL;
     }
+    *state = 1;
 
-    if (backend->type_alias_count >= C_BACKEND_MAX_TYPE_ALIASES) {
-        backend_error(backend, owner, "too many generated C pointer types");
-        return NULL;
-    }
+    char *name = backend->type_names[type_id];
+    snprintf(name, C_BACKEND_NAME_SIZE, "cg_rt_%u", type_id);
 
-    char element_name[C_BACKEND_NAME_SIZE];
-    element_name[0] = '\0';
-
-    if (abi_type->kind == SEM_ABI_TYPE_POINTER) {
-        const char *resolved_element = register_abi_c_type(
-            backend,
-            abi_type->element,
-            owner
-        );
-        if (!resolved_element) return NULL;
-
-        if (strlen(resolved_element) >= sizeof(element_name)) {
-            backend_error(backend, owner, "generated C element type name is too long");
+    if (type->kind == COG_IR_TYPE_POINTER) {
+        const char *pointee = runtime_type_name(backend, type->as.pointer.pointee, span);
+        if (!pointee)
+            return NULL;
+        if (!append_type_definition(
+                backend,
+                "typedef %s%s%s *%s;",
+                pointee,
+                type->as.pointer.is_readonly ? " const" : "",
+                type->as.pointer.is_volatile ? " volatile" : "",
+                name)) {
+            backend_error(backend, span, "out of memory while generating runtime pointer alias");
             return NULL;
         }
-
-        strcpy(element_name, resolved_element);
-    }
-
-    int index = backend->type_alias_count;
-    CTypeAlias *alias = &backend->type_aliases[backend->type_alias_count++];
-    memset(alias, 0, sizeof(*alias));
-    alias->abi_type = abi_type;
-    snprintf(alias->name, sizeof(alias->name), "cg_type_%d", index);
-
-    char alias_name[C_BACKEND_NAME_SIZE];
-    strcpy(alias_name, alias->name);
-
-    if (abi_type->kind == SEM_ABI_TYPE_OPAQUE_POINTER) {
-        snprintf(
-            alias->definition,
-            sizeof(alias->definition),
-            "typedef %s%svoid *%s;",
-            type->pointer_access == POINTER_ACCESS_READONLY ? "const " : "",
-            type->pointer_is_volatile ? "volatile " : "",
-            alias_name
-        );
+    } else if (type->kind == COG_IR_TYPE_OPAQUE_POINTER) {
+        if (!append_type_definition(
+                backend,
+                "typedef void%s%s *%s;",
+                type->as.opaque_pointer.is_readonly ? " const" : "",
+                type->as.opaque_pointer.is_volatile ? " volatile" : "",
+                name)) {
+            backend_error(backend, span, "out of memory while generating opaque pointer alias");
+            return NULL;
+        }
     } else {
-        snprintf(
-            alias->definition,
-            sizeof(alias->definition),
-            "typedef %s%s%s *%s;",
-            element_name,
-            type->pointer_access == POINTER_ACCESS_READONLY ? " const" : "",
-            type->pointer_is_volatile ? " volatile" : "",
-            alias_name
-        );
+        const CogIrFunctionType *function = &type->as.function;
+        if (function->abi != COG_IR_ABI_C) {
+            backend_error(backend, span, "ordinary Coglet function values are not lowered as native callbacks");
+            return NULL;
+        }
+        const char *result = runtime_type_name(backend, function->result_type, span);
+        if (!result)
+            return NULL;
+
+        char *params = NULL;
+        size_t params_length = 0, params_capacity = 0;
+        if (!append_parameter_type_list_runtime(
+                backend, &params, &params_length, &params_capacity, function, span)) {
+            free(params);
+            return NULL;
+        }
+        const char *macro = c_call_macro_name(function->calling_convention);
+        int ok;
+        if (function->calling_convention == COG_IR_CALL_DEFAULT) {
+            ok = append_type_definition(
+                backend, "typedef %s (*%s)(%s);", result, name, params);
+        } else {
+            ok = append_type_definition(
+                backend, "typedef %s (%s *%s)(%s);", result, macro, name, params);
+        }
+        free(params);
+        if (!ok) {
+            backend_error(backend, span, "out of memory while generating callback alias");
+            return NULL;
+        }
     }
 
-    return alias->name;
+    *state = 2;
+    return name;
 }
 
-static CFunction *find_function(CBackend *backend, StringView name)
-{
-    for (int i = 0; i < backend->function_count; i++) {
-        Node *func = backend->functions[i].node;
-        StringView candidate = func->as.func_decl.name;
-
-        if (candidate.length == name.length &&
-            memcmp(candidate.data, name.data, name.length) == 0) {
-            return &backend->functions[i];
-        }
-    }
-
-    return NULL;
-}
-
-static int collect_enums(CBackend *backend)
-{
-    if (!backend->program || backend->program->type != NODE_PROGRAM) {
-        backend_error(backend, backend->program, "expected program node");
-        return 0;
-    }
-
-    NodeList statements = backend->program->as.program.statements;
-
-    for (int i = 0; i < statements.count; i++) {
-        Node *node = statements.items[i];
-        if (!node || node->type != NODE_ENUM_DECL)
-            continue;
-
-        SemDeclInfo *decl_info = semantic_get_decl_info(backend->sem, node);
-        if (!decl_info || decl_info->abi_kind != SEM_DECL_ABI_ENUM) {
-            backend_error(backend, node, "missing normalized enum ABI metadata during C lowering");
-            return 0;
-        }
-
-        if (decl_info->abi.enumeration.representation != SEM_ABI_REPR_C)
-            continue;
-
-        if (backend->enum_count >= C_BACKEND_MAX_ENUMS) {
-            backend_error(backend, node, "too many #repr(c) enums for current C backend");
-            return 0;
-        }
-
-        if (!decl_info->type || decl_info->type->kind != TYPE_ENUM) {
-            backend_error(backend, node, "missing resolved #repr(c) enum type during C lowering");
-            return 0;
-        }
-
-        CEnum *enumeration = &backend->enums[backend->enum_count];
-        memset(enumeration, 0, sizeof(*enumeration));
-        enumeration->node = node;
-        enumeration->decl_info = decl_info;
-        enumeration->type = decl_info->type;
-        snprintf(
-            enumeration->generated_name,
-            sizeof(enumeration->generated_name),
-            "cg_enum_%d",
-            backend->enum_count
-        );
-        backend->enum_count++;
-    }
-
-    return !backend->had_error;
-}
-
-static int collect_structs(CBackend *backend)
-{
-    if (!backend->program || backend->program->type != NODE_PROGRAM) {
-        backend_error(backend, backend->program, "expected program node");
-        return 0;
-    }
-
-    NodeList statements = backend->program->as.program.statements;
-
-    for (int i = 0; i < statements.count; i++) {
-        Node *node = statements.items[i];
-        if (!node || node->type != NODE_STRUCT_DECL)
-            continue;
-
-        SemDeclInfo *decl_info = semantic_get_decl_info(backend->sem, node);
-        if (!decl_info || decl_info->abi_kind != SEM_DECL_ABI_AGGREGATE) {
-            backend_error(backend, node, "missing normalized aggregate ABI metadata during C lowering");
-            return 0;
-        }
-
-        if (decl_info->abi.aggregate.representation != SEM_ABI_REPR_C)
-            continue;
-
-        if (backend->struct_count >= C_BACKEND_MAX_STRUCTS) {
-            backend_error(backend, node, "too many #repr(c) structs for current C backend");
-            return 0;
-        }
-
-        if (!decl_info->type || decl_info->type->kind != TYPE_STRUCT) {
-            backend_error(backend, node, "missing resolved #repr(c) struct type during C lowering");
-            return 0;
-        }
-
-        CStruct *structure = &backend->structs[backend->struct_count];
-        memset(structure, 0, sizeof(*structure));
-        structure->node = node;
-        structure->decl_info = decl_info;
-        structure->type = decl_info->type;
-        snprintf(
-            structure->generated_name,
-            sizeof(structure->generated_name),
-            decl_info->abi.aggregate.aggregate_kind == SEM_AGGREGATE_UNION
-                ? "cg_union_%d"
-                : "cg_struct_%d",
-            backend->struct_count
-        );
-        backend->struct_count++;
-    }
-
-    return !backend->had_error;
-}
-
-static int collect_functions(CBackend *backend)
-{
-    if (!backend->program || backend->program->type != NODE_PROGRAM) {
-        backend_error(backend, backend->program, "expected program node");
-        return 0;
-    }
-
-    NodeList statements = backend->program->as.program.statements;
-
-    for (int i = 0; i < statements.count; i++) {
-        Node *node = statements.items[i];
-        if (!node || node->type != NODE_FUNC_DECL)
-            continue;
-
-        if (backend->function_count >= C_BACKEND_MAX_FUNCTIONS) {
-            backend_error(backend, node, "too many functions for current C backend");
-            return 0;
-        }
-
-        SemDeclInfo *decl_info = semantic_get_decl_info(backend->sem, node);
-        if (!decl_info || decl_info->abi_kind != SEM_DECL_ABI_FUNCTION) {
-            backend_error(backend, node, "missing normalized function ABI metadata during C lowering");
-            return 0;
-        }
-
-        CFunction *function = &backend->functions[backend->function_count];
-        memset(function, 0, sizeof(*function));
-        function->node = node;
-        function->decl_info = decl_info;
-        snprintf(
-            function->generated_name,
-            sizeof(function->generated_name),
-            "cg_fn_%d",
-            backend->function_count
-        );
-
-        backend->function_count++;
-    }
-
-    return !backend->had_error;
-}
-
-static int prepare_struct_field_abi_type(
+static int append_parameter_type_list_runtime(
     CBackend *backend,
-    const SemAbiType *abi_type,
-    const Node *owner
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    const CogIrFunctionType *function,
+    SourceSpan span
 ) {
-    if (!abi_type || !abi_type->semantic_type) {
-        backend_error(backend, owner, "missing normalized struct field ABI type during C lowering");
-        return 0;
-    }
+    if (function->parameter_count == 0 && !function->is_variadic)
+        return append_text(buffer, length, capacity, "void");
 
-    if (abi_type->kind == SEM_ABI_TYPE_ARRAY) {
-        const Type *type = abi_type->semantic_type;
-        if (type->kind != TYPE_ARRAY ||
-            type->array_size <= 0 ||
-            !abi_type->element) {
-            backend_error(backend, owner, "invalid #repr(c) array field during C lowering");
+    for (size_t i = 0; i < function->parameter_count; ++i) {
+        const char *type = runtime_type_name(backend, function->parameter_types[i], span);
+        if (!type)
             return 0;
-        }
-
-        return prepare_struct_field_abi_type(
-            backend,
-            abi_type->element,
-            owner
-        );
+        if (i && !append_text(buffer, length, capacity, ", ")) return 0;
+        if (!append_text(buffer, length, capacity, type)) return 0;
     }
-
-    return register_abi_c_type(backend, abi_type, owner) != NULL;
+    if (function->is_variadic) {
+        if (function->parameter_count && !append_text(buffer, length, capacity, ", ")) return 0;
+        if (!append_text(buffer, length, capacity, "...")) return 0;
+    }
+    return 1;
 }
 
-static int prepare_struct_types(CBackend *backend)
-{
-    for (int i = 0; i < backend->struct_count; i++) {
-        Node *decl = backend->structs[i].node;
+static int append_parameter_type_list_abi(
+    CBackend *backend,
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    const CogIrAbiType *abi,
+    const CogIrFunctionType *runtime,
+    SourceSpan span
+) {
+    if (abi->parameter_count == 0 && !runtime->is_variadic)
+        return append_text(buffer, length, capacity, "void");
 
-        for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
-            Node *field = decl->as.struct_decl.fields.items[f];
-            SemDeclInfo *field_info = semantic_get_decl_info(backend->sem, field);
-
-            if (!field_info ||
-                !prepare_struct_field_abi_type(
-                    backend,
-                    field_info->abi_type,
-                    field)) {
-                return 0;
-            }
-        }
+    for (size_t i = 0; i < abi->parameter_count; ++i) {
+        const char *type = abi_type_name(backend, abi->parameter_types[i], span);
+        if (!type)
+            return 0;
+        if (i && !append_text(buffer, length, capacity, ", ")) return 0;
+        if (!append_text(buffer, length, capacity, type)) return 0;
     }
-
-    return !backend->had_error;
+    if (runtime->is_variadic) {
+        if (abi->parameter_count && !append_text(buffer, length, capacity, ", ")) return 0;
+        if (!append_text(buffer, length, capacity, "...")) return 0;
+    }
+    return 1;
 }
 
-static int prepare_function_types(CBackend *backend)
+static const char *abi_type_name(CBackend *backend, CogIrAbiTypeId abi_id, SourceSpan span)
 {
-    for (int i = 0; i < backend->function_count; i++) {
-        CFunction *entry = &backend->functions[i];
-        Node *func = entry->node;
-        const SemFunctionAbiInfo *abi = &entry->decl_info->abi.function;
-
-        if (abi->abi == FUNCTION_ABI_C) {
-            if (!register_abi_c_type(backend, abi->return_abi_type, func))
-                return 0;
-        } else if (!register_c_type(backend, func->as.func_decl.return_type, func)) {
-            return 0;
-        }
-
-        for (int p = 0; p < func->as.func_decl.params.count; p++) {
-            Node *param = func->as.func_decl.params.items[p];
-            SemDeclInfo *param_info = semantic_get_decl_info(backend->sem, param);
-
-            if (abi->abi == FUNCTION_ABI_C) {
-                if (!param_info ||
-                    !register_abi_c_type(backend, param_info->abi_type, param)) {
-                    return 0;
-                }
-            } else if (!register_c_type(
-                    backend,
-                    param->as.param_decl.var_type,
-                    param)) {
-                return 0;
-            }
-        }
+    const CogIrAbiType *abi = cog_ir_get_abi_type(backend->module, abi_id);
+    if (!abi) {
+        backend_error(backend, span, "invalid CogIR ABI type during C lowering");
+        return NULL;
     }
 
-    return !backend->had_error;
+    if (abi->kind == COG_IR_ABI_TYPE_SEMANTIC)
+        return runtime_type_name(backend, abi->runtime_type, span);
+
+    if (abi->kind == COG_IR_ABI_TYPE_C_SCALAR) {
+        const char *name = c_scalar_name(abi->c_scalar_kind);
+        if (!name)
+            backend_error(backend, span, "invalid native-C scalar ABI spelling in CogIR");
+        return name;
+    }
+
+    if (abi->kind == COG_IR_ABI_TYPE_ARRAY) {
+        backend_error(backend, span, "array ABI type requires a declarator in the host-C backend");
+        return NULL;
+    }
+
+    unsigned char *state = &backend->abi_alias_state[abi_id];
+    if (*state == 2)
+        return backend->abi_names[abi_id];
+    if (*state == 1) {
+        backend_error(backend, span, "recursive ABI type alias during CogIR lowering");
+        return NULL;
+    }
+    *state = 1;
+
+    char *name = backend->abi_names[abi_id];
+    snprintf(name, C_BACKEND_NAME_SIZE, "cg_abi_%u", abi_id);
+
+    const CogIrType *runtime = cog_ir_get_type(backend->module, abi->runtime_type);
+    if (!runtime) {
+        backend_error(backend, span, "ABI type has invalid runtime type");
+        return NULL;
+    }
+
+    if (abi->kind == COG_IR_ABI_TYPE_POINTER) {
+        if (runtime->kind != COG_IR_TYPE_POINTER) {
+            backend_error(backend, span, "pointer ABI type has non-pointer runtime type");
+            return NULL;
+        }
+        const char *element = abi_type_name(backend, abi->element_type, span);
+        if (!element)
+            return NULL;
+        if (!append_type_definition(
+                backend,
+                "typedef %s%s%s *%s;",
+                element,
+                runtime->as.pointer.is_readonly ? " const" : "",
+                runtime->as.pointer.is_volatile ? " volatile" : "",
+                name)) {
+            backend_error(backend, span, "out of memory while generating ABI pointer alias");
+            return NULL;
+        }
+    } else if (abi->kind == COG_IR_ABI_TYPE_OPAQUE_POINTER) {
+        if (runtime->kind != COG_IR_TYPE_OPAQUE_POINTER) {
+            backend_error(backend, span, "opaque-pointer ABI type has invalid runtime type");
+            return NULL;
+        }
+        if (!append_type_definition(
+                backend,
+                "typedef void%s%s *%s;",
+                runtime->as.opaque_pointer.is_readonly ? " const" : "",
+                runtime->as.opaque_pointer.is_volatile ? " volatile" : "",
+                name)) {
+            backend_error(backend, span, "out of memory while generating ABI opaque pointer alias");
+            return NULL;
+        }
+    } else if (abi->kind == COG_IR_ABI_TYPE_FUNCTION) {
+        if (runtime->kind != COG_IR_TYPE_FUNCTION || runtime->as.function.abi != COG_IR_ABI_C) {
+            backend_error(backend, span, "callback ABI type has invalid runtime function type");
+            return NULL;
+        }
+        const char *result = abi_type_name(backend, abi->return_type, span);
+        if (!result)
+            return NULL;
+        char *params = NULL;
+        size_t params_length = 0, params_capacity = 0;
+        if (!append_parameter_type_list_abi(
+                backend, &params, &params_length, &params_capacity,
+                abi, &runtime->as.function, span)) {
+            free(params);
+            return NULL;
+        }
+        const char *macro = c_call_macro_name(runtime->as.function.calling_convention);
+        int ok;
+        if (runtime->as.function.calling_convention == COG_IR_CALL_DEFAULT) {
+            ok = append_type_definition(
+                backend, "typedef %s (*%s)(%s);", result, name, params);
+        } else {
+            ok = append_type_definition(
+                backend, "typedef %s (%s *%s)(%s);", result, macro, name, params);
+        }
+        free(params);
+        if (!ok) {
+            backend_error(backend, span, "out of memory while generating callback ABI alias");
+            return NULL;
+        }
+    } else {
+        backend_error(backend, span, "unsupported CogIR ABI type in host-C backend");
+        return NULL;
+    }
+
+    *state = 2;
+    return name;
 }
 
 static void emit_c_string_literal(FILE *out, StringView value)
 {
     fputc('"', out);
-
-    for (size_t i = 0; i < value.length; i++) {
+    for (size_t i = 0; i < value.length; ++i) {
         unsigned char ch = (unsigned char)value.data[i];
-
         switch (ch) {
             case '\\': fputs("\\\\", out); break;
             case '"':  fputs("\\\"", out); break;
@@ -979,474 +556,41 @@ static void emit_c_string_literal(FILE *out, StringView value)
             case '\r': fputs("\\r", out); break;
             case '\t': fputs("\\t", out); break;
             default:
-                if (ch >= 32 && ch <= 126) {
+                if (ch >= 0x20 && ch <= 0x7e)
                     fputc((int)ch, out);
-                } else {
-                    fprintf(out, "\\%03o", (unsigned int)ch);
-                }
+                else
+                    fprintf(out, "\\%03o", ch);
                 break;
         }
     }
-
     fputc('"', out);
 }
 
-static int emit_expression(CBackend *backend, Node *node);
-
-static int emit_integer_value(CBackend *backend, const Node *owner, IntegerValue value)
+static int uses_calling_convention(const CBackend *backend, CogIrCallingConvention convention)
 {
-    if (value.is_negative) {
-        if (value.magnitude > ((uint64_t)INT64_MAX + 1u)) {
-            backend_error(backend, owner, "negative enum value exceeds host-C backend integer range");
-            return 0;
-        }
-
-        if (value.magnitude == ((uint64_t)INT64_MAX + 1u)) {
-            fputs("(-9223372036854775807LL - 1LL)", backend->out);
+    for (size_t i = 0; i < backend->module->function_count; ++i) {
+        const CogIrFunction *function = &backend->module->functions[i];
+        if (function->abi.abi == COG_IR_ABI_C &&
+            function->abi.calling_convention == convention)
             return 1;
-        }
-
-        fprintf(backend->out, "(-%" PRIu64 "LL)", value.magnitude);
-        return 1;
     }
-
-    fprintf(backend->out, "%" PRIu64 "ULL", value.magnitude);
-    return 1;
-}
-
-static int emit_enum_member(CBackend *backend, Node *node)
-{
-    SemExprInfo *info = semantic_get_expr_info(backend->sem, node);
-    if (!info || !info->type || info->type->kind != TYPE_ENUM)
-        return 0;
-
-    Type *enum_type = info->type;
-    for (int i = 0; i < enum_type->enum_member_count; i++) {
-        EnumMember *member = &enum_type->enum_members[i];
-        if (member->name.length == node->as.field.name.length &&
-            memcmp(member->name.data, node->as.field.name.data, member->name.length) == 0) {
-            const CEnum *enumeration = find_c_enum_by_type(backend, enum_type);
-            if (!enumeration) {
-                backend_error(backend, node, "enum member belongs to a non-#repr(c) enum in C lowering");
-                return 0;
-            }
-
-            fprintf(backend->out, "((%s)", enumeration->generated_name);
-            if (!emit_integer_value(backend, node, member->value))
-                return 0;
-            fputc(')', backend->out);
+    for (size_t i = 0; i < backend->module->type_count; ++i) {
+        const CogIrType *type = &backend->module->types[i];
+        if (type->kind == COG_IR_TYPE_FUNCTION &&
+            type->as.function.abi == COG_IR_ABI_C &&
+            type->as.function.calling_convention == convention)
             return 1;
-        }
     }
-
-    backend_error(backend, node, "could not resolve enum member during C lowering");
-    return 0;
-}
-
-static int emit_integer_literal(CBackend *backend, Node *node)
-{
-    uint64_t value = node->as.number.value.integer;
-
-    if (value > (uint64_t)INT64_MAX) {
-        backend_error(
-            backend,
-            node,
-            "integer literal exceeds the first host-C backend literal subset"
-        );
-        return 0;
-    }
-
-    fprintf(backend->out, "%" PRIu64, value);
-    return 1;
-}
-
-static int emit_float_literal(CBackend *backend, Node *node)
-{
-    /*
-     * `%a` is a C99 hexadecimal floating literal representation. It round-
-     * trips the AST's host-double value exactly and avoids locale-sensitive
-     * decimal formatting. Contextual conversion to a C `float` parameter or
-     * return type performs the same binary32 rounding required by Coglet f32.
-     */
-    fprintf(backend->out, "%a", node->as.number.value.floating);
-    return 1;
-}
-
-static int emit_parameter_identifier(CBackend *backend, Node *node)
-{
-    if (!backend->current_function)
-        return 0;
-
-    for (int i = 0; i < backend->current_function->as.func_decl.params.count; i++) {
-        Node *param = backend->current_function->as.func_decl.params.items[i];
-        StringView name = param->as.param_decl.name;
-
-        if (name.length == node->as.ident.length &&
-            memcmp(name.data, node->as.ident.data, name.length) == 0) {
-            fprintf(backend->out, "cg_p_%d", i);
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-static int emit_call(CBackend *backend, Node *node)
-{
-    Node *callee = node->as.call.callee;
-
-    if (!callee || callee->type != NODE_IDENT) {
-        backend_error(
-            backend,
-            node,
-            "current host-C backend supports only direct calls to named functions"
-        );
-        return 0;
-    }
-
-    CFunction *function = find_function(backend, callee->as.ident);
-    if (function) {
-        fputs(function->generated_name, backend->out);
-    } else if (!emit_parameter_identifier(backend, callee)) {
-        backend_error(backend, node, "could not resolve call target during C lowering");
-        return 0;
-    }
-
-    fputc('(', backend->out);
-
-    for (int i = 0; i < node->as.call.arguments.count; i++) {
-        if (i > 0) fputs(", ", backend->out);
-        if (!emit_expression(backend, node->as.call.arguments.items[i]))
-            return 0;
-    }
-
-    fputc(')', backend->out);
-    return 1;
-}
-
-static int emit_expression(CBackend *backend, Node *node)
-{
-    if (!node) {
-        backend_error(backend, backend->current_function, "missing expression during C lowering");
-        return 0;
-    }
-
-    switch (node->type) {
-        case NODE_NUMBER:
-            if (node->as.number.kind == NUMBER_LITERAL_INTEGER)
-                return emit_integer_literal(backend, node);
-
-            if (node->as.number.kind == NUMBER_LITERAL_FLOAT)
-                return emit_float_literal(backend, node);
-
-            backend_error(backend, node, "unknown numeric literal kind during C lowering");
-            return 0;
-
-        case NODE_BOOL:
-            fputs(node->as.boolean.value ? "1" : "0", backend->out);
-            return 1;
-
-        case NODE_NULL:
-            fputs("NULL", backend->out);
-            return 1;
-
-        case NODE_IDENT:
-            if (emit_parameter_identifier(backend, node))
-                return 1;
-
-            {
-                CFunction *function = find_function(backend, node->as.ident);
-                if (function) {
-                    fputs(function->generated_name, backend->out);
-                    return 1;
-                }
-            }
-
-            backend_error(
-                backend,
-                node,
-                "current host-C backend only lowers parameter and function identifiers in value expressions"
-            );
-            return 0;
-
-        case NODE_UNARY:
-            if (node->as.unary.op == TOK_MINUS &&
-                node->as.unary.operand &&
-                node->as.unary.operand->type == NODE_NUMBER) {
-                fputs("(-", backend->out);
-
-                if (node->as.unary.operand->as.number.kind == NUMBER_LITERAL_INTEGER) {
-                    if (!emit_integer_literal(backend, node->as.unary.operand))
-                        return 0;
-                } else if (node->as.unary.operand->as.number.kind == NUMBER_LITERAL_FLOAT) {
-                    if (!emit_float_literal(backend, node->as.unary.operand))
-                        return 0;
-                } else {
-                    backend_error(backend, node, "unknown numeric literal kind during C lowering");
-                    return 0;
-                }
-
-                fputc(')', backend->out);
-                return 1;
-            }
-
-            backend_error(
-                backend,
-                node,
-                "runtime unary operations are not lowered yet; checked integer semantics must be preserved"
-            );
-            return 0;
-
-        case NODE_CALL:
-            return emit_call(backend, node);
-
-        case NODE_STRING: {
-            StringDecodeInfo info =
-                string_analyze(node->as.string_literal);
-
-            if (!info.ok) {
-                backend_error(
-                    backend,
-                    node,
-                    "invalid string literal reached C lowering after semantic checking"
-                );
-                return 0;
-            }
-
-            size_t decoded_size =
-                info.decoded_length > 0
-                    ? (size_t)info.decoded_length
-                    : 1;
-
-            char *decoded = malloc(decoded_size);
-            if (!decoded) {
-                backend_error(backend, node, "out of memory while lowering string literal");
-                return 0;
-            }
-
-            StringDecodeInfo decoded_info =
-                string_decode_into(node->as.string_literal, decoded);
-
-            if (!decoded_info.ok) {
-                free(decoded);
-                backend_error(
-                    backend,
-                    node,
-                    "invalid string literal reached C lowering after semantic checking"
-                );
-                return 0;
-            }
-
-            emit_c_string_literal(
-                backend->out,
-                (StringView){
-                    .data = decoded,
-                    .length = (size_t)decoded_info.decoded_length,
-                }
-            );
-
-            free(decoded);
-            return 1;
-        }
-
-        case NODE_FIELD:
-            if (emit_enum_member(backend, node))
-                return 1;
-
-            if (!backend->had_error)
-                backend_error(backend, node, "current host-C backend only lowers enum-member field expressions");
-            return 0;
-
-        case NODE_CAST:
-            backend_error(
-                backend,
-                node,
-                "cast lowering is not implemented by the first host-C backend subset"
-            );
-            return 0;
-
-        case NODE_BINARY:
-            backend_error(
-                backend,
-                node,
-                "runtime binary operations are not lowered yet; checked arithmetic cannot use raw C operators"
-            );
-            return 0;
-
-        default:
-            backend_error(
-                backend,
-                node,
-                "expression is not supported by the current host-C backend subset"
-            );
-            return 0;
-    }
-}
-
-static int emit_statement(CBackend *backend, Node *node)
-{
-    if (!node) return 1;
-
-    switch (node->type) {
-        case NODE_RETURN:
-            fputs("    return", backend->out);
-            if (node->as.return_stmt.value) {
-                fputc(' ', backend->out);
-                if (!emit_expression(backend, node->as.return_stmt.value))
-                    return 0;
-            }
-            fputs(";\n", backend->out);
-            return 1;
-
-        case NODE_EXPR_STMT:
-            fputs("    ", backend->out);
-            if (!emit_expression(backend, node->as.expr_stmt.expr))
-                return 0;
-            fputs(";\n", backend->out);
-            return 1;
-
-        default:
-            backend_error(
-                backend,
-                node,
-                "statement is not supported by the current host-C backend subset"
-            );
-            return 0;
-    }
-}
-
-static int emit_block(CBackend *backend, Node *block)
-{
-    if (!block || block->type != NODE_BLOCK) {
-        backend_error(backend, block, "expected function body block during C lowering");
-        return 0;
-    }
-
-    for (int i = 0; i < block->as.block.statements.count; i++) {
-        if (!emit_statement(backend, block->as.block.statements.items[i]))
-            return 0;
-    }
-
-    return 1;
-}
-
-static const char *function_return_type(CBackend *backend, Node *func)
-{
-    SemDeclInfo *info = semantic_get_decl_info(backend->sem, func);
-    if (info &&
-        info->abi_kind == SEM_DECL_ABI_FUNCTION &&
-        info->abi.function.abi == FUNCTION_ABI_C) {
-        return register_abi_c_type(
-            backend,
-            info->abi.function.return_abi_type,
-            func
-        );
-    }
-
-    return register_c_type(backend, func->as.func_decl.return_type, func);
-}
-
-static const char *parameter_type(CBackend *backend, Node *param)
-{
-    SemDeclInfo *info = semantic_get_decl_info(backend->sem, param);
-    if (info && info->abi_type)
-        return register_abi_c_type(backend, info->abi_type, param);
-
-    return register_c_type(backend, param->as.param_decl.var_type, param);
-}
-
-static void emit_parameter_type_list(CBackend *backend, Node *func, int with_names)
-{
-    int count = func->as.func_decl.params.count;
-
-    if (count == 0) {
-        fputs("void", backend->out);
-        return;
-    }
-
-    for (int i = 0; i < count; i++) {
-        Node *param = func->as.func_decl.params.items[i];
-        const char *type_name = parameter_type(backend, param);
-
-        if (i > 0) fputs(", ", backend->out);
-        fputs(type_name ? type_name : "void", backend->out);
-
-        if (with_names)
-            fprintf(backend->out, " cg_p_%d", i);
-    }
-
-    SemDeclInfo *func_info = semantic_get_decl_info(backend->sem, func);
-    if (func_info &&
-        func_info->abi_kind == SEM_DECL_ABI_FUNCTION &&
-        func_info->abi.function.is_variadic) {
-        fputs(", ...", backend->out);
-    }
-}
-
-static int emit_enum_definitions(CBackend *backend)
-{
-    for (int i = 0; i < backend->enum_count; i++) {
-        CEnum *enumeration = &backend->enums[i];
-        Node *decl = enumeration->node;
-        const char *backing = register_abi_c_type(
-            backend,
-            enumeration->decl_info->abi.enumeration.backing_abi_type,
-            decl
-        );
-
-        if (!backing) {
-            backend_error(backend, decl, "invalid #repr(c) enum backing type during C lowering");
-            return 0;
-        }
-
-        /*
-         * C99 cannot portably spell a fixed-underlying enum. Lower the ABI
-         * type to the exact requested native C integer representation while
-         * Coglet retains closed-enum validity in semantic analysis.
-         */
-        fprintf(backend->out, "typedef %s %s;\n", backing, enumeration->generated_name);
-    }
-
-    if (backend->enum_count > 0)
-        fputc('\n', backend->out);
-
-    return !backend->had_error;
-}
-
-static int uses_c_calling_convention(
-    const CBackend *backend,
-    CCallingConvention convention
-)
-{
-    for (int i = 0; i < backend->function_count; i++) {
-        SemDeclInfo *info = backend->functions[i].decl_info;
-        if (info &&
-            info->abi_kind == SEM_DECL_ABI_FUNCTION &&
-            info->abi.function.c_call_conv == convention) {
-            return 1;
-        }
-    }
-
-    for (int i = 0; i < backend->type_alias_count; i++) {
-        const CTypeAlias *alias = &backend->type_aliases[i];
-        const Type *type = alias->type
-            ? alias->type
-            : (alias->abi_type ? alias->abi_type->semantic_type : NULL);
-
-        if (type && type->kind == TYPE_FUNCTION &&
-            type->function_call_conv == convention) {
-            return 1;
-        }
-    }
-
     return 0;
 }
 
 static void emit_c_calling_convention_support(CBackend *backend)
 {
-    if (uses_c_calling_convention(backend, C_CALL_CDECL)) {
+    if (uses_calling_convention(backend, COG_IR_CALL_CDECL)) {
         fputs(
-            "#if (defined(__GNUC__) || defined(__clang__)) && defined(__i386__)\n"
+            "#if defined(_MSC_VER)\n"
+            "#define CG_CALL_CDECL __cdecl\n"
+            "#elif defined(__GNUC__) || defined(__clang__)\n"
             "#define CG_CALL_CDECL __attribute__((cdecl))\n"
             "#else\n"
             "#define CG_CALL_CDECL\n"
@@ -1454,26 +598,25 @@ static void emit_c_calling_convention_support(CBackend *backend)
             backend->out
         );
     }
-
-    if (uses_c_calling_convention(backend, C_CALL_STDCALL)) {
+    if (uses_calling_convention(backend, COG_IR_CALL_STDCALL)) {
         fputs(
-            "#if (defined(__GNUC__) || defined(__clang__)) && defined(__i386__)\n"
+            "#if defined(_MSC_VER) && defined(_M_IX86)\n"
+            "#define CG_CALL_STDCALL __stdcall\n"
+            "#elif (defined(__GNUC__) || defined(__clang__)) && defined(__i386__)\n"
             "#define CG_CALL_STDCALL __attribute__((stdcall))\n"
-            "#elif (defined(__GNUC__) || defined(__clang__)) && defined(_WIN32) && "
-                "(defined(__x86_64__) || defined(__amd64__))\n"
-            "#define CG_CALL_STDCALL /* unified Win64 ABI */\n"
-            "#else\n"
+            "#elif defined(_WIN64) || defined(__x86_64__) || defined(__amd64__)\n"
             "#error \"Coglet host-C backend: call=stdcall requires 32-bit x86 (or the unified Win64 ABI)\"\n"
+            "#define CG_CALL_STDCALL\n"
+            "#else\n"
+            "#error \"Coglet host-C backend: call=stdcall is unsupported by this native C compiler\"\n"
             "#define CG_CALL_STDCALL\n"
             "#endif\n\n",
             backend->out
         );
     }
-
-    if (uses_c_calling_convention(backend, C_CALL_SYSV64)) {
+    if (uses_calling_convention(backend, COG_IR_CALL_SYSV64)) {
         fputs(
-            "#if (defined(__GNUC__) || defined(__clang__)) && "
-                "(defined(__x86_64__) || defined(__amd64__))\n"
+            "#if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__amd64__))\n"
             "#define CG_CALL_SYSV64 __attribute__((sysv_abi))\n"
             "#else\n"
             "#error \"Coglet host-C backend: call=sysv64 requires GNU-compatible x86-64 C attributes\"\n"
@@ -1482,11 +625,9 @@ static void emit_c_calling_convention_support(CBackend *backend)
             backend->out
         );
     }
-
-    if (uses_c_calling_convention(backend, C_CALL_WIN64)) {
+    if (uses_calling_convention(backend, COG_IR_CALL_WIN64)) {
         fputs(
-            "#if (defined(__GNUC__) || defined(__clang__)) && "
-                "(defined(__x86_64__) || defined(__amd64__))\n"
+            "#if (defined(__GNUC__) || defined(__clang__)) && (defined(__x86_64__) || defined(__amd64__))\n"
             "#define CG_CALL_WIN64 __attribute__((ms_abi))\n"
             "#else\n"
             "#error \"Coglet host-C backend: call=win64 requires GNU-compatible x86-64 C attributes\"\n"
@@ -1499,16 +640,13 @@ static void emit_c_calling_convention_support(CBackend *backend)
 
 static int has_repr_c_layout_controls(const CBackend *backend)
 {
-    for (int i = 0; i < backend->struct_count; i++) {
-        const SemDeclInfo *info = backend->structs[i].decl_info;
-        if (info &&
-            info->abi_kind == SEM_DECL_ABI_AGGREGATE &&
-            (info->abi.aggregate.is_packed ||
-             info->abi.aggregate.explicit_alignment > 0)) {
+    for (size_t i = 0; i < backend->module->type_count; ++i) {
+        const CogIrType *type = &backend->module->types[i];
+        if ((type->kind == COG_IR_TYPE_STRUCT || type->kind == COG_IR_TYPE_UNION) &&
+            type->as.aggregate.is_repr_c &&
+            (type->as.aggregate.is_packed || type->as.aggregate.explicit_alignment > 0))
             return 1;
-        }
     }
-
     return 0;
 }
 
@@ -1516,7 +654,6 @@ static void emit_repr_c_layout_support(CBackend *backend)
 {
     if (!has_repr_c_layout_controls(backend))
         return;
-
     fputs(
         "#if defined(__GNUC__) || defined(__clang__)\n"
         "#define CG_REPR_C_PACKED __attribute__((packed))\n"
@@ -1530,373 +667,794 @@ static void emit_repr_c_layout_support(CBackend *backend)
     );
 }
 
-static void emit_struct_forward_declarations(CBackend *backend)
+static void emit_aggregate_forward_declarations(CBackend *backend)
 {
-    for (int i = 0; i < backend->struct_count; i++) {
-        const char *name = backend->structs[i].generated_name;
-        const char *kind =
-            backend->structs[i].decl_info->abi.aggregate.aggregate_kind == SEM_AGGREGATE_UNION
-                ? "union"
-                : "struct";
-        fprintf(backend->out, "typedef %s %s %s;\n", kind, name, name);
+    int emitted = 0;
+    for (size_t i = 0; i < backend->module->type_count; ++i) {
+        const CogIrType *type = &backend->module->types[i];
+        if ((type->kind != COG_IR_TYPE_STRUCT && type->kind != COG_IR_TYPE_UNION) ||
+            !type->as.aggregate.is_repr_c)
+            continue;
+        const char *name = nominal_type_name(backend, type);
+        fprintf(
+            backend->out,
+            "typedef %s %s %s;\n",
+            type->kind == COG_IR_TYPE_UNION ? "union" : "struct",
+            name,
+            name
+        );
+        emitted = 1;
     }
-
-    if (backend->struct_count > 0)
+    if (emitted)
         fputc('\n', backend->out);
 }
 
-static int emit_struct_field_declaration(
-    CBackend *backend,
-    const SemAbiType *abi_type,
-    const Node *field,
-    int field_index
-) {
-    if (!abi_type || !abi_type->semantic_type) {
-        backend_error(backend, field, "missing normalized struct field ABI type during C lowering");
-        return 0;
-    }
-
-    if (abi_type->kind == SEM_ABI_TYPE_ARRAY) {
-        const Type *type = abi_type->semantic_type;
-        if (type->kind != TYPE_ARRAY ||
-            type->array_size <= 0 ||
-            !abi_type->element) {
-            backend_error(backend, field, "invalid #repr(c) array field during C lowering");
-            return 0;
-        }
-
-        const char *element_type = register_abi_c_type(
-            backend,
-            abi_type->element,
-            field
-        );
-        if (!element_type) return 0;
-
-        fprintf(
-            backend->out,
-            "    %s cg_f_%d[%d];\n",
-            element_type,
-            field_index,
-            type->array_size
-        );
-        return 1;
-    }
-
-    const char *type_name = register_abi_c_type(backend, abi_type, field);
-    if (!type_name) return 0;
-
-    fprintf(backend->out, "    %s cg_f_%d;\n", type_name, field_index);
-    return 1;
-}
-
-static int emit_struct_definition(CBackend *backend, int index)
+static int emit_enum_definitions(CBackend *backend)
 {
-    CStruct *structure = &backend->structs[index];
-
-    if (structure->definition_state == 2)
-        return 1;
-
-    /*
-     * Incomplete #repr(c) structs intentionally remain forward declarations.
-     * Their only supported ABI use is behind pointers, so no object layout is
-     * emitted into the host-C translation unit.
-     */
-    if (structure->decl_info->abi.aggregate.is_incomplete) {
-        structure->definition_state = 2;
-        return 1;
-    }
-
-    if (structure->definition_state == 1) {
-        backend_error(
-            backend,
-            structure->node,
-            "recursive #repr(c) by-value aggregate layout reached C lowering"
-        );
-        return 0;
-    }
-
-    structure->definition_state = 1;
-
-    /*
-     * C permits pointers to forward-declared structs, but a struct embedded
-     * by value must already be complete. Emit inline aggregate dependencies
-     * first regardless of Coglet source declaration order.
-     */
-    for (int f = 0; f < structure->type->field_count; f++) {
-        const Type *field_type = structure->type->fields[f].type;
-
-        while (field_type && field_type->kind == TYPE_ARRAY)
-            field_type = field_type->element;
-
-        if (!field_type || field_type->kind != TYPE_STRUCT)
+    int emitted = 0;
+    for (size_t i = 0; i < backend->module->type_count; ++i) {
+        const CogIrType *type = &backend->module->types[i];
+        if (type->kind != COG_IR_TYPE_ENUM || !type->as.enumeration.is_repr_c)
             continue;
-
-        const CStruct *dependency = find_c_struct_by_type(backend, field_type);
-        if (!dependency) {
-            backend_error(
-                backend,
-                structure->node,
-                "missing #repr(c) struct dependency during C lowering"
-            );
+        const char *backing = abi_type_name(backend, type->as.enumeration.backing_abi_type, type->span);
+        const char *name = nominal_type_name(backend, type);
+        if (!backing || !name)
             return 0;
-        }
-
-        int dependency_index = (int)(dependency - backend->structs);
-        if (!emit_struct_definition(backend, dependency_index))
-            return 0;
+        fprintf(backend->out, "typedef %s %s;\n", backing, name);
+        emitted = 1;
     }
-
-    Node *decl = structure->node;
-    fprintf(
-        backend->out,
-        "%s %s {\n",
-        structure->decl_info->abi.aggregate.aggregate_kind == SEM_AGGREGATE_UNION
-            ? "union"
-            : "struct",
-        structure->generated_name
-    );
-
-    for (int f = 0; f < decl->as.struct_decl.fields.count; f++) {
-        Node *field = decl->as.struct_decl.fields.items[f];
-        SemDeclInfo *field_info = semantic_get_decl_info(backend->sem, field);
-        if (!field_info ||
-            !emit_struct_field_declaration(
-                backend,
-                field_info->abi_type,
-                field,
-                f)) {
-            return 0;
-        }
-    }
-
-    fputs("}", backend->out);
-
-    if (structure->decl_info->abi.aggregate.is_packed)
-        fputs(" CG_REPR_C_PACKED", backend->out);
-
-    if (structure->decl_info->abi.aggregate.explicit_alignment > 0) {
-        fprintf(
-            backend->out,
-            " CG_REPR_C_ALIGNED(%u)",
-            structure->decl_info->abi.aggregate.explicit_alignment
-        );
-    }
-
-    fputs(";\n\n", backend->out);
-    structure->definition_state = 2;
-    return 1;
-}
-
-static int emit_struct_definitions(CBackend *backend)
-{
-    for (int i = 0; i < backend->struct_count; i++) {
-        if (!emit_struct_definition(backend, i))
-            return 0;
-    }
-
+    if (emitted)
+        fputc('\n', backend->out);
     return !backend->had_error;
 }
 
-static StringView external_symbol_name(const CFunction *function)
+static int prepare_abi_field_type(CBackend *backend, CogIrAbiTypeId abi_id, SourceSpan span)
 {
-    assert(function);
-    assert(function->decl_info);
-    assert(function->decl_info->abi_kind == SEM_DECL_ABI_FUNCTION);
-    assert(function->decl_info->abi.function.linkage == SEM_FUNCTION_LINKAGE_EXTERNAL);
+    const CogIrAbiType *abi = cog_ir_get_abi_type(backend->module, abi_id);
+    if (!abi) {
+        backend_error(backend, span, "invalid aggregate field ABI type");
+        return 0;
+    }
+    if (abi->kind == COG_IR_ABI_TYPE_ARRAY)
+        return prepare_abi_field_type(backend, abi->element_type, span);
+    return abi_type_name(backend, abi_id, span) != NULL;
+}
 
-    return function->decl_info->abi.function.external_symbol;
+static int prepare_type_aliases(CBackend *backend)
+{
+    for (size_t i = 0; i < backend->module->type_count; ++i) {
+        const CogIrType *type = &backend->module->types[i];
+        if ((type->kind == COG_IR_TYPE_STRUCT || type->kind == COG_IR_TYPE_UNION) &&
+            type->as.aggregate.is_repr_c && !type->as.aggregate.is_incomplete) {
+            for (size_t f = 0; f < type->as.aggregate.field_count; ++f) {
+                const CogIrAggregateField *field = &type->as.aggregate.fields[f];
+                if (!prepare_abi_field_type(backend, field->abi_type, field->span))
+                    return 0;
+            }
+        }
+    }
+
+    for (size_t i = 0; i < backend->module->function_count; ++i) {
+        const CogIrFunction *function = &backend->module->functions[i];
+        const CogIrType *type = cog_ir_get_type(backend->module, function->type);
+        if (!type || type->kind != COG_IR_TYPE_FUNCTION) {
+            backend_error(backend, function->span, "function has invalid CogIR function type");
+            return 0;
+        }
+        if (function->abi.abi == COG_IR_ABI_C) {
+            if (!abi_type_name(backend, function->abi.return_abi_type, function->span))
+                return 0;
+            for (size_t p = 0; p < function->abi.parameter_count; ++p)
+                if (!abi_type_name(backend, function->abi.parameter_abi_types[p], function->span))
+                    return 0;
+        } else {
+            if (!runtime_type_name(backend, type->as.function.result_type, function->span))
+                return 0;
+            for (size_t p = 0; p < type->as.function.parameter_count; ++p)
+                if (!runtime_type_name(backend, type->as.function.parameter_types[p], function->span))
+                    return 0;
+        }
+        for (size_t s = 0; s < function->slot_count; ++s)
+            if (!runtime_type_name(backend, function->slots[s].type, function->slots[s].span))
+                return 0;
+    }
+    return !backend->had_error;
+}
+
+static int emit_abi_field_declaration(
+    CBackend *backend,
+    CogIrAbiTypeId abi_id,
+    CogIrTypeId runtime_type_id,
+    const char *name,
+    SourceSpan span
+) {
+    const CogIrAbiType *abi = cog_ir_get_abi_type(backend->module, abi_id);
+    const CogIrType *runtime = cog_ir_get_type(backend->module, runtime_type_id);
+    if (!abi || !runtime) {
+        backend_error(backend, span, "invalid aggregate field type during C lowering");
+        return 0;
+    }
+
+    if (abi->kind == COG_IR_ABI_TYPE_ARRAY) {
+        if (runtime->kind != COG_IR_TYPE_ARRAY || runtime->as.array.length == 0) {
+            backend_error(backend, span, "array ABI field has invalid runtime array type");
+            return 0;
+        }
+        char nested[128];
+        int written = snprintf(nested, sizeof(nested), "%s[%zu]", name, runtime->as.array.length);
+        if (written < 0 || (size_t)written >= sizeof(nested)) {
+            backend_error(backend, span, "aggregate field declarator is too long");
+            return 0;
+        }
+        return emit_abi_field_declaration(
+            backend,
+            abi->element_type,
+            runtime->as.array.element_type,
+            nested,
+            span
+        );
+    }
+
+    const char *type = abi_type_name(backend, abi_id, span);
+    if (!type)
+        return 0;
+    fprintf(backend->out, "    %s %s;\n", type, name);
+    return 1;
+}
+
+static int emit_aggregate_definition(CBackend *backend, CogIrTypeId type_id)
+{
+    const CogIrType *type = cog_ir_get_type(backend->module, type_id);
+    if (!type || (type->kind != COG_IR_TYPE_STRUCT && type->kind != COG_IR_TYPE_UNION) ||
+        !type->as.aggregate.is_repr_c)
+        return 1;
+
+    unsigned char *state = &backend->aggregate_definition_state[type_id];
+    if (*state == 2)
+        return 1;
+    if (type->as.aggregate.is_incomplete) {
+        *state = 2;
+        return 1;
+    }
+    if (*state == 1) {
+        backend_error(backend, type->span, "recursive #repr(c) by-value aggregate layout reached C lowering");
+        return 0;
+    }
+    *state = 1;
+
+    for (size_t f = 0; f < type->as.aggregate.field_count; ++f) {
+        const CogIrType *field = cog_ir_get_type(backend->module, type->as.aggregate.fields[f].type);
+        while (field && field->kind == COG_IR_TYPE_ARRAY)
+            field = cog_ir_get_type(backend->module, field->as.array.element_type);
+        if (field && (field->kind == COG_IR_TYPE_STRUCT || field->kind == COG_IR_TYPE_UNION) &&
+            field->as.aggregate.is_repr_c) {
+            if (!emit_aggregate_definition(backend, field->id))
+                return 0;
+        }
+    }
+
+    const char *name = nominal_type_name(backend, type);
+    fprintf(
+        backend->out,
+        "%s %s {\n",
+        type->kind == COG_IR_TYPE_UNION ? "union" : "struct",
+        name
+    );
+    for (size_t f = 0; f < type->as.aggregate.field_count; ++f) {
+        char field_name[32];
+        snprintf(field_name, sizeof(field_name), "cg_f_%zu", f);
+        const CogIrAggregateField *field = &type->as.aggregate.fields[f];
+        if (!emit_abi_field_declaration(
+                backend, field->abi_type, field->type, field_name, field->span))
+            return 0;
+    }
+    fputs("}", backend->out);
+    if (type->as.aggregate.is_packed)
+        fputs(" CG_REPR_C_PACKED", backend->out);
+    if (type->as.aggregate.explicit_alignment > 0)
+        fprintf(backend->out, " CG_REPR_C_ALIGNED(%u)", type->as.aggregate.explicit_alignment);
+    fputs(";\n\n", backend->out);
+    *state = 2;
+    return 1;
+}
+
+static int emit_aggregate_definitions(CBackend *backend)
+{
+    for (size_t i = 0; i < backend->module->type_count; ++i)
+        if (!emit_aggregate_definition(backend, (CogIrTypeId)i))
+            return 0;
+    return !backend->had_error;
+}
+
+static int string_global_bytes(
+    CBackend *backend,
+    const CogIrGlobal *global,
+    const unsigned char **unused
+) {
+    (void)unused;
+    const CogIrType *type = cog_ir_get_type(backend->module, global->type);
+    const CogIrConstant *init = cog_ir_get_constant(backend->module, global->static_initializer);
+    if (!type || type->kind != COG_IR_TYPE_ARRAY ||
+        !global->is_compiler_generated || !global->is_readonly ||
+        !sv_equals(global->debug_name, ".str") ||
+        !init || init->kind != COG_IR_CONST_ARRAY ||
+        init->as.aggregate.element_count != type->as.array.length)
+        return 0;
+    const CogIrType *element = cog_ir_get_type(backend->module, type->as.array.element_type);
+    return element && element->kind == COG_IR_TYPE_INTEGER && element->as.integer.bits == 8;
+}
+
+static int emit_globals(CBackend *backend)
+{
+    for (size_t i = 0; i < backend->module->global_count; ++i) {
+        const CogIrGlobal *global = &backend->module->globals[i];
+        if (!string_global_bytes(backend, global, NULL)) {
+            backend_error(backend, global->span, "non-string CogIR globals are not lowered by the host-C backend yet");
+            return 0;
+        }
+        const CogIrType *type = cog_ir_get_type(backend->module, global->type);
+        const CogIrConstant *init = cog_ir_get_constant(backend->module, global->static_initializer);
+        fprintf(backend->out, "static const char %s[%zu] = {", backend->global_names[i], type->as.array.length);
+        for (size_t e = 0; e < init->as.aggregate.element_count; ++e) {
+            const CogIrConstant *element = cog_ir_get_constant(backend->module, init->as.aggregate.elements[e]);
+            if (!element || element->kind != COG_IR_CONST_INTEGER) {
+                backend_error(backend, global->span, "string global has non-integer byte constant");
+                return 0;
+            }
+            fprintf(backend->out, "%s0x%02" PRIx64, e ? ", " : "", element->as.integer_bits & UINT64_C(0xff));
+        }
+        fputs("};\n", backend->out);
+    }
+    if (backend->module->global_count)
+        fputc('\n', backend->out);
+    return !backend->had_error;
+}
+
+static const char *function_result_type(CBackend *backend, const CogIrFunction *function)
+{
+    const CogIrType *type = cog_ir_get_type(backend->module, function->type);
+    if (!type || type->kind != COG_IR_TYPE_FUNCTION) {
+        backend_error(backend, function->span, "function has invalid runtime function type");
+        return NULL;
+    }
+    return function->abi.abi == COG_IR_ABI_C
+        ? abi_type_name(backend, function->abi.return_abi_type, function->span)
+        : runtime_type_name(backend, type->as.function.result_type, function->span);
+}
+
+static const char *function_parameter_type(
+    CBackend *backend,
+    const CogIrFunction *function,
+    size_t index
+) {
+    const CogIrType *type = cog_ir_get_type(backend->module, function->type);
+    if (!type || type->kind != COG_IR_TYPE_FUNCTION || index >= type->as.function.parameter_count)
+        return NULL;
+    return function->abi.abi == COG_IR_ABI_C
+        ? abi_type_name(backend, function->abi.parameter_abi_types[index], function->span)
+        : runtime_type_name(backend, type->as.function.parameter_types[index], function->span);
+}
+
+static void emit_function_parameter_list(CBackend *backend, const CogIrFunction *function, int names)
+{
+    const CogIrType *type = cog_ir_get_type(backend->module, function->type);
+    size_t count = type->as.function.parameter_count;
+    if (count == 0 && !type->as.function.is_variadic) {
+        fputs("void", backend->out);
+        return;
+    }
+    for (size_t p = 0; p < count; ++p) {
+        if (p) fputs(", ", backend->out);
+        const char *param = function_parameter_type(backend, function, p);
+        if (!param) {
+            backend_error(backend, function->span, "invalid function parameter type during C lowering");
+            return;
+        }
+        fprintf(backend->out, names ? "%s cg_p_%zu" : "%s", param, p);
+    }
+    if (type->as.function.is_variadic) {
+        if (count) fputs(", ", backend->out);
+        fputs("...", backend->out);
+    }
 }
 
 static int emit_function_declarations(CBackend *backend)
 {
-    for (int i = 0; i < backend->function_count; i++) {
-        CFunction *entry = &backend->functions[i];
-        Node *func = entry->node;
-        const char *return_type = function_return_type(backend, func);
-        if (!return_type) return 0;
-
-        const SemFunctionAbiInfo *abi = &entry->decl_info->abi.function;
-        const char *call_macro = c_call_macro_name(abi->c_call_conv);
-        const char *call_sep = abi->c_call_conv == C_CALL_DEFAULT ? "" : " ";
-
-        if (abi->linkage == SEM_FUNCTION_LINKAGE_EXTERNAL) {
-            fprintf(
-                backend->out,
-                "extern %s%s%s %s(",
-                return_type,
-                call_sep,
-                call_macro,
-                entry->generated_name
-            );
-            emit_parameter_type_list(backend, func, 0);
+    for (size_t i = 0; i < backend->module->function_count; ++i) {
+        const CogIrFunction *function = &backend->module->functions[i];
+        const char *result = function_result_type(backend, function);
+        if (!result)
+            return 0;
+        const char *macro = c_call_macro_name(function->abi.calling_convention);
+        const char *sep = function->abi.calling_convention == COG_IR_CALL_DEFAULT ? "" : " ";
+        if (function->linkage == COG_IR_LINKAGE_EXTERNAL) {
+            fprintf(backend->out, "extern %s%s%s %s(", result, sep, macro, backend->function_names[i]);
+            emit_function_parameter_list(backend, function, 0);
+            if (backend->had_error) return 0;
             fputs(") __asm__(", backend->out);
-            emit_c_string_literal(backend->out, external_symbol_name(entry));
+            emit_c_string_literal(backend->out, function->abi.external_symbol);
             fputs(");\n", backend->out);
         } else {
-            fprintf(
-                backend->out,
-                "static %s%s%s %s(",
-                return_type,
-                call_sep,
-                call_macro,
-                entry->generated_name
-            );
-            emit_parameter_type_list(backend, func, 0);
+            fprintf(backend->out, "static %s%s%s %s(", result, sep, macro, backend->function_names[i]);
+            emit_function_parameter_list(backend, function, 0);
+            if (backend->had_error) return 0;
             fputs(");\n", backend->out);
         }
     }
-
     fputc('\n', backend->out);
     return !backend->had_error;
 }
 
-static int emit_function_bodies(CBackend *backend)
+static char *copy_printf(const char *format, ...)
 {
-    for (int i = 0; i < backend->function_count; i++) {
-        CFunction *entry = &backend->functions[i];
-        Node *func = entry->node;
+    va_list args;
+    va_start(args, format);
+    va_list copy;
+    va_copy(copy, args);
+    int length = vsnprintf(NULL, 0, format, copy);
+    va_end(copy);
+    if (length < 0) {
+        va_end(args);
+        return NULL;
+    }
+    char *text = malloc((size_t)length + 1);
+    if (text)
+        vsnprintf(text, (size_t)length + 1, format, args);
+    va_end(args);
+    return text;
+}
 
-        if (entry->decl_info->abi.function.linkage == SEM_FUNCTION_LINKAGE_EXTERNAL)
-            continue;
+static int set_value_expr(char **exprs, size_t count, CogIrValueId value, char *expr)
+{
+    if (value == COG_IR_VALUE_INVALID || (size_t)value >= count || !expr) {
+        free(expr);
+        return 0;
+    }
+    free(exprs[value]);
+    exprs[value] = expr;
+    return 1;
+}
 
-        const char *return_type = function_return_type(backend, func);
-        if (!return_type) return 0;
+static const char *value_expr(char **exprs, size_t count, CogIrValueId value)
+{
+    if (value == COG_IR_VALUE_INVALID || (size_t)value >= count)
+        return NULL;
+    return exprs[value];
+}
 
-        backend->current_function = func;
+static char *integer_constant_expr(CBackend *backend, const CogIrConstant *constant)
+{
+    const CogIrType *type = cog_ir_get_type(backend->module, constant->type);
+    if (!type)
+        return NULL;
+    const CogIrType *integer = type;
+    const char *cast_type = runtime_type_name(backend, constant->type, source_span_invalid());
+    if (type->kind == COG_IR_TYPE_ENUM)
+        integer = cog_ir_get_type(backend->module, type->as.enumeration.backing_type);
+    if (!integer || integer->kind != COG_IR_TYPE_INTEGER || !cast_type)
+        return NULL;
 
-        const SemFunctionAbiInfo *abi = &entry->decl_info->abi.function;
-        const char *call_macro = c_call_macro_name(abi->c_call_conv);
-        const char *call_sep = abi->c_call_conv == C_CALL_DEFAULT ? "" : " ";
+    unsigned bits = integer->as.integer.bits;
+    uint64_t mask = bits == 64 ? UINT64_MAX : ((UINT64_C(1) << bits) - 1);
+    uint64_t raw = constant->as.integer_bits & mask;
+    if (integer->as.integer.is_signed && (raw & (UINT64_C(1) << (bits - 1)))) {
+        uint64_t magnitude = ((~raw) & mask) + 1;
+        if (magnitude == (UINT64_C(1) << 63))
+            return copy_printf("((%s)(-INT64_C(9223372036854775807) - INT64_C(1)))", cast_type);
+        return copy_printf("((%s)(-%" PRIu64 "LL))", cast_type, magnitude);
+    }
+    return copy_printf("((%s)%" PRIu64 "ULL)", cast_type, raw);
+}
 
-        fprintf(
-            backend->out,
-            "static %s%s%s %s(",
-            return_type,
-            call_sep,
-            call_macro,
-            entry->generated_name
-        );
-        emit_parameter_type_list(backend, func, 1);
-        fputs(")\n{\n", backend->out);
+static char *constant_expr(CBackend *backend, CogIrConstId constant_id)
+{
+    const CogIrConstant *constant = cog_ir_get_constant(backend->module, constant_id);
+    if (!constant)
+        return NULL;
 
-        if (!emit_block(backend, func->as.func_decl.body))
+    switch (constant->kind) {
+        case COG_IR_CONST_ZERO: {
+            const CogIrType *type = cog_ir_get_type(backend->module, constant->type);
+            if (type && (type->kind == COG_IR_TYPE_POINTER ||
+                         type->kind == COG_IR_TYPE_OPAQUE_POINTER ||
+                         type->kind == COG_IR_TYPE_FUNCTION))
+                return copy_printf("NULL");
+            const char *name = runtime_type_name(backend, constant->type, source_span_invalid());
+            return name ? copy_printf("((%s)0)", name) : NULL;
+        }
+        case COG_IR_CONST_BOOL:
+            return copy_printf(constant->as.boolean ? "1" : "0");
+        case COG_IR_CONST_INTEGER:
+            return integer_constant_expr(backend, constant);
+        case COG_IR_CONST_FLOAT32: {
+            float value;
+            uint32_t bits = constant->as.float32_bits;
+            memcpy(&value, &bits, sizeof(value));
+            return copy_printf("%af", (double)value);
+        }
+        case COG_IR_CONST_FLOAT64: {
+            double value;
+            uint64_t bits = constant->as.float64_bits;
+            memcpy(&value, &bits, sizeof(value));
+            return copy_printf("%a", value);
+        }
+        case COG_IR_CONST_NULL:
+            return copy_printf("NULL");
+        case COG_IR_CONST_ARRAY:
+        case COG_IR_CONST_STRUCT:
+            backend_error(backend, source_span_invalid(), "aggregate constants are not lowered as executable C values yet");
+            return NULL;
+    }
+    return NULL;
+}
+
+static int emit_instruction(
+    CBackend *backend,
+    const CogIrFunction *function,
+    const CogIrInstruction *instruction,
+    char **exprs,
+    CogIrFunctionId *function_refs
+) {
+    size_t value_count = function->value_count;
+    CogIrValueId result = instruction->result;
+
+    switch (instruction->op) {
+        case COG_IR_OP_CONST: {
+            char *expr = constant_expr(backend, instruction->as.constant.constant);
+            if (!set_value_expr(exprs, value_count, result, expr))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_FUNCTION_REF: {
+            CogIrFunctionId target = instruction->as.function_ref.function;
+            if ((size_t)target >= backend->module->function_count)
+                goto invalid_result;
+            if (!set_value_expr(exprs, value_count, result,
+                                copy_printf("%s", backend->function_names[target])))
+                goto invalid_result;
+            function_refs[result] = target;
+            return 1;
+        }
+        case COG_IR_OP_LOCAL_ADDR: {
+            CogIrSlotId slot = instruction->as.local_addr.slot;
+            if ((size_t)slot >= function->slot_count)
+                goto invalid_result;
+            if (!set_value_expr(exprs, value_count, result, copy_printf("&cg_s_%u", slot)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_GLOBAL_ADDR: {
+            CogIrGlobalId global = instruction->as.global_addr.global;
+            if ((size_t)global >= backend->module->global_count)
+                goto invalid_result;
+            if (!set_value_expr(exprs, value_count, result,
+                                copy_printf("&%s", backend->global_names[global])))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_ARRAY_ELEM_ADDR: {
+            const char *base = value_expr(exprs, value_count, instruction->as.index_addr.base);
+            const char *index = value_expr(exprs, value_count, instruction->as.index_addr.index);
+            if (!base || !index)
+                goto missing_operand;
+            if (!set_value_expr(exprs, value_count, result,
+                                copy_printf("&((*%s)[%s])", base, index)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_LOAD: {
+            const char *address = value_expr(exprs, value_count, instruction->as.load.address);
+            const char *type = runtime_type_name(backend, instruction->result_type, instruction->span);
+            if (!address || !type)
+                goto missing_operand;
+            fprintf(backend->out, "    %s cg_v_%u = *%s;\n", type, result, address);
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_STORE: {
+            const char *address = value_expr(exprs, value_count, instruction->as.store.address);
+            const char *value = value_expr(exprs, value_count, instruction->as.store.value);
+            if (!address || !value)
+                goto missing_operand;
+            fprintf(backend->out, "    *%s = %s;\n", address, value);
+            return 1;
+        }
+        case COG_IR_OP_PTR_QUALIFY: {
+            const char *operand = value_expr(exprs, value_count, instruction->as.conversion.operand);
+            if (!operand)
+                goto missing_operand;
+            /* C's implicit qualification conversion has exactly the semantics of
+             * this IR operation; retaining the source expression also preserves
+             * an exact C ABI pointer spelling produced by a direct C call. */
+            if (!set_value_expr(exprs, value_count, result, copy_printf("%s", operand)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_C_VARARG_PROMOTE: {
+            const char *operand = value_expr(exprs, value_count, instruction->as.conversion.operand);
+            const CogIrType *type = cog_ir_get_type(backend->module, instruction->result_type);
+            if (!operand || !type)
+                goto missing_operand;
+            const char *c_type = type->kind == COG_IR_TYPE_FLOAT ? "double" : "int";
+            fprintf(backend->out, "    %s cg_v_%u = (%s)(%s);\n", c_type, result, c_type, operand);
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_CALL: {
+            const char *callee = value_expr(exprs, value_count, instruction->as.call.callee);
+            if (!callee)
+                goto missing_operand;
+            CogIrFunctionId callee_id = COG_IR_FUNCTION_INVALID;
+            if ((size_t)instruction->as.call.callee < value_count)
+                callee_id = function_refs[instruction->as.call.callee];
+            if (callee_id == COG_IR_FUNCTION_INVALID) {
+                backend_error(backend, instruction->span, "indirect CogIR calls are not lowered by the host-C backend yet");
+                return 0;
+            }
+
+            const CogIrFunction *callee_function = cog_ir_get_function(backend->module, callee_id);
+            if (!callee_function)
+                goto missing_operand;
+
+            if (instruction->result_type != COG_IR_TYPE_INVALID) {
+                const char *result_type = callee_function->abi.abi == COG_IR_ABI_C
+                    ? abi_type_name(backend, callee_function->abi.return_abi_type, instruction->span)
+                    : runtime_type_name(backend, instruction->result_type, instruction->span);
+                if (!result_type)
+                    return 0;
+                fprintf(backend->out, "    %s cg_v_%u = %s(", result_type, result, callee);
+            } else {
+                fprintf(backend->out, "    %s(", callee);
+            }
+            for (size_t a = 0; a < instruction->as.call.argument_count; ++a) {
+                const char *argument = value_expr(exprs, value_count, instruction->as.call.arguments[a]);
+                if (!argument)
+                    goto missing_operand;
+                fprintf(backend->out, "%s%s", a ? ", " : "", argument);
+            }
+            fputs(");\n", backend->out);
+            if (instruction->result_type != COG_IR_TYPE_INVALID &&
+                !set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
+
+        case COG_IR_OP_IADD_CHECKED:
+        case COG_IR_OP_ISUB_CHECKED:
+        case COG_IR_OP_IMUL_CHECKED:
+        case COG_IR_OP_IDIV_CHECKED:
+        case COG_IR_OP_IREM_CHECKED:
+        case COG_IR_OP_INEG_CHECKED:
+            backend_error(backend, instruction->span, "checked arithmetic CogIR operations are not lowered by the host-C backend yet");
             return 0;
 
-        fputs("}\n\n", backend->out);
-        backend->current_function = NULL;
+        default:
+            backend_error(backend, instruction->span, "CogIR operation is outside the current host-C backend execution subset");
+            return 0;
     }
 
+invalid_result:
+    backend_error(backend, instruction->span, "invalid CogIR instruction result during C lowering");
+    return 0;
+missing_operand:
+    backend_error(backend, instruction->span, "missing CogIR operand expression during C lowering");
+    return 0;
+}
+
+static int emit_function_body(CBackend *backend, const CogIrFunction *function)
+{
+    if (function->kind != COG_IR_FUNCTION_DEFINITION ||
+        function->linkage == COG_IR_LINKAGE_EXTERNAL)
+        return 1;
+
+    if (function->block_count != 1 || function->entry_block == COG_IR_BLOCK_INVALID) {
+        backend_error(backend, function->span, "structured CogIR CFG emission is not implemented by the host-C backend yet");
+        return 0;
+    }
+    const CogIrBlock *block = cog_ir_get_block(function, function->entry_block);
+    if (!block || block->parameter_count != 0) {
+        backend_error(backend, function->span, "CogIR block parameters are not lowered by the host-C backend yet");
+        return 0;
+    }
+
+    const char *result = function_result_type(backend, function);
+    if (!result)
+        return 0;
+    const char *macro = c_call_macro_name(function->abi.calling_convention);
+    const char *sep = function->abi.calling_convention == COG_IR_CALL_DEFAULT ? "" : " ";
+    fprintf(
+        backend->out,
+        "static %s%s%s %s(",
+        result, sep, macro, backend->function_names[function->id]
+    );
+    emit_function_parameter_list(backend, function, 1);
+    if (backend->had_error)
+        return 0;
+    fputs(")\n{\n", backend->out);
+
+    for (size_t s = 0; s < function->slot_count; ++s) {
+        const CogIrSlot *slot = &function->slots[s];
+        const char *type = runtime_type_name(backend, slot->type, slot->span);
+        if (!type)
+            return 0;
+        fprintf(backend->out, "    %s cg_s_%zu;\n", type, s);
+    }
+    if (function->slot_count)
+        fputc('\n', backend->out);
+
+    char **exprs = function->value_count ? calloc(function->value_count, sizeof(*exprs)) : NULL;
+    CogIrFunctionId *function_refs = function->value_count
+        ? malloc(function->value_count * sizeof(*function_refs))
+        : NULL;
+    if (function->value_count && (!exprs || !function_refs)) {
+        free(exprs); free(function_refs);
+        backend_error(backend, function->span, "out of memory while lowering CogIR function body to C");
+        return 0;
+    }
+    for (size_t i = 0; i < function->value_count; ++i)
+        function_refs[i] = COG_IR_FUNCTION_INVALID;
+
+    for (size_t p = 0; p < function->parameter_count; ++p) {
+        CogIrValueId value = function->parameters[p];
+        if (!set_value_expr(exprs, function->value_count, value, copy_printf("cg_p_%zu", p))) {
+            backend_error(backend, function->span, "invalid CogIR function parameter value");
+            goto fail;
+        }
+    }
+
+    for (size_t i = 0; i < block->instruction_count; ++i) {
+        if (!emit_instruction(backend, function, &block->instructions[i], exprs, function_refs))
+            goto fail;
+    }
+
+    switch (block->terminator.kind) {
+        case COG_IR_TERMINATOR_RET:
+            if (block->terminator.as.ret.has_value) {
+                const char *value = value_expr(
+                    exprs, function->value_count, block->terminator.as.ret.value);
+                if (!value) {
+                    backend_error(backend, block->terminator.span, "return terminator has no C value expression");
+                    goto fail;
+                }
+                fprintf(backend->out, "    return %s;\n", value);
+            } else {
+                fputs("    return;\n", backend->out);
+            }
+            break;
+        default:
+            backend_error(backend, block->terminator.span, "CogIR terminator is outside the current host-C backend execution subset");
+            goto fail;
+    }
+
+    fputs("}\n\n", backend->out);
+    for (size_t i = 0; i < function->value_count; ++i)
+        free(exprs[i]);
+    free(exprs);
+    free(function_refs);
+    return 1;
+
+fail:
+    for (size_t i = 0; i < function->value_count; ++i)
+        free(exprs[i]);
+    free(exprs);
+    free(function_refs);
+    return 0;
+}
+
+static int emit_function_bodies(CBackend *backend)
+{
+    for (size_t i = 0; i < backend->module->function_count; ++i)
+        if (!emit_function_body(backend, &backend->module->functions[i]))
+            return 0;
     return !backend->had_error;
 }
 
-static int source_type_is_c_int(const Type *type)
+static const CogIrFunction *find_main_function(const CBackend *backend)
 {
-    return type && type->kind == TYPE_NAMED && sv_equals(type->named_name, "c_int");
+    for (size_t i = 0; i < backend->module->function_count; ++i) {
+        const CogIrFunction *function = &backend->module->functions[i];
+        if (sv_equals(function->debug_name, "main"))
+            return function;
+    }
+    return NULL;
 }
 
 static int emit_entrypoint(CBackend *backend)
 {
-    StringView main_name = string_view_from_cstr("main");
-    CFunction *main_function = find_function(backend, main_name);
-
+    const CogIrFunction *main_function = find_main_function(backend);
     if (!main_function ||
-        main_function->decl_info->abi.function.linkage != SEM_FUNCTION_LINKAGE_INTERNAL ||
-        main_function->decl_info->abi.function.abi != FUNCTION_ABI_COGLET) {
-        backend_error(
-            backend,
-            backend->program,
-            "host executable backend requires a top-level Coglet 'main' function"
-        );
+        main_function->linkage != COG_IR_LINKAGE_INTERNAL ||
+        main_function->abi.abi != COG_IR_ABI_COGLET) {
+        backend_error(backend, source_span_invalid(), "host executable backend requires a top-level Coglet 'main' function");
+        return 0;
+    }
+    const CogIrType *type = cog_ir_get_type(backend->module, main_function->type);
+    if (!type || type->kind != COG_IR_TYPE_FUNCTION ||
+        type->as.function.parameter_count != 0 ||
+        main_function->source_return_c_scalar_kind != COG_IR_C_SCALAR_INT) {
+        backend_error(backend, main_function->span, "host executable entry point must have signature 'main::() -> c_int'");
         return 0;
     }
 
-    Node *func = main_function->node;
-
-    if (func->as.func_decl.params.count != 0 ||
-        !source_type_is_c_int(func->as.func_decl.return_type)) {
-        backend_error(
-            backend,
-            func,
-            "host executable entry point must have signature 'main::() -> c_int'"
-        );
-        return 0;
+    fputs("int main(void)\n{\n", backend->out);
+    if (backend->module->init_function != COG_IR_FUNCTION_INVALID) {
+        if ((size_t)backend->module->init_function >= backend->module->function_count) {
+            backend_error(backend, main_function->span, "module init function is invalid during C lowering");
+            return 0;
+        }
+        fprintf(backend->out, "    %s();\n", backend->function_names[backend->module->init_function]);
     }
-
-    fputs("int main(void)\n{\n    return ", backend->out);
-    fputs(main_function->generated_name, backend->out);
-    fputs("();\n}\n", backend->out);
-
+    fprintf(backend->out, "    return %s();\n}\n", backend->function_names[main_function->id]);
     return 1;
 }
 
-static CBackendStatus c_backend_emit_stream(
-    FILE *out,
-    const char *source_filename,
-    Node *program,
-    SemanticContext *sem
-) {
-    CBackend backend;
-    memset(&backend, 0, sizeof(backend));
-
-    backend.out = out;
-    backend.source_filename = source_filename;
-    backend.program = program;
-    backend.sem = sem;
+static CBackendStatus c_backend_emit_stream(FILE *out, const CogIrModule *module)
+{
+    if (!out || !module) {
+        fprintf(stderr, "C backend error: missing CogIR module\n");
+        return C_BACKEND_STATUS_UNSUPPORTED;
+    }
+    if (!cog_ir_module_is_frozen(module)) {
+        fprintf(stderr, "C backend error: CogIR module must be frozen before backend emission\n");
+        return C_BACKEND_STATUS_UNSUPPORTED;
+    }
 
     TargetInfo host_target = target_info_host();
-    if (!target_info_equal(&sem->target, &host_target)) {
-        fprintf(
-            stderr,
-            "C backend error: host-C backend cannot emit a non-host target\n"
-        );
+    if (!target_info_equal(&module->target, &host_target)) {
+        fprintf(stderr, "C backend error: host-C backend cannot emit a non-host target\n");
         return C_BACKEND_STATUS_UNSUPPORTED;
     }
 
-    if (!collect_enums(&backend) ||
-        !collect_structs(&backend) ||
-        !collect_functions(&backend) ||
-        !prepare_struct_types(&backend) ||
-        !prepare_function_types(&backend))
+    CBackend backend;
+    memset(&backend, 0, sizeof(backend));
+    backend.out = out;
+    backend.module = module;
+    if (!init_backend_storage(&backend)) {
+        fprintf(stderr, "error: out of memory while initializing host-C backend\n");
+        free_backend_storage(&backend);
         return C_BACKEND_STATUS_UNSUPPORTED;
+    }
 
-    fputs("/* Generated by Coglet's initial host-C backend. */\n", out);
+    fputs("/* Generated from CogIR by Coglet's host-C backend. */\n", out);
     fputs("#include <stddef.h>\n#include <stdint.h>\n\n", out);
-
     emit_repr_c_layout_support(&backend);
     emit_c_calling_convention_support(&backend);
-    emit_struct_forward_declarations(&backend);
+    emit_aggregate_forward_declarations(&backend);
 
-    if (!emit_enum_definitions(&backend))
-        return C_BACKEND_STATUS_UNSUPPORTED;
+    if (!emit_enum_definitions(&backend) || !prepare_type_aliases(&backend))
+        goto unsupported;
 
-    for (int i = 0; i < backend.type_alias_count; i++) {
-        fputs(backend.type_aliases[i].definition, out);
-        fputc('\n', out);
-    }
-
-    if (backend.type_alias_count > 0)
+    for (size_t i = 0; i < backend.type_definition_count; ++i)
+        fprintf(out, "%s\n", backend.type_definitions[i]);
+    if (backend.type_definition_count)
         fputc('\n', out);
 
-    if (!emit_struct_definitions(&backend) ||
+    if (!emit_aggregate_definitions(&backend) ||
+        !emit_globals(&backend) ||
         !emit_function_declarations(&backend) ||
         !emit_function_bodies(&backend) ||
-        !emit_entrypoint(&backend)) {
-        return C_BACKEND_STATUS_UNSUPPORTED;
-    }
+        !emit_entrypoint(&backend))
+        goto unsupported;
 
     if (ferror(out)) {
         fprintf(stderr, "error: failed while writing generated C output\n");
+        free_backend_storage(&backend);
         return C_BACKEND_STATUS_IO_ERROR;
     }
 
+    free_backend_storage(&backend);
     return C_BACKEND_STATUS_OK;
+
+unsupported:
+    free_backend_storage(&backend);
+    return C_BACKEND_STATUS_UNSUPPORTED;
 }
 
 CBackendStatus c_backend_emit_file(
     const char *output_path,
-    const char *source_filename,
-    Node *program,
-    SemanticContext *sem
+    const CogIrModule *module
 ) {
     if (!output_path) {
         fprintf(stderr, "error: no C output path provided\n");
@@ -1910,27 +1468,18 @@ CBackendStatus c_backend_emit_file(
         return C_BACKEND_STATUS_IO_ERROR;
     }
 
-    CBackendStatus status = c_backend_emit_stream(
-        out,
-        source_filename,
-        program,
-        sem
-    );
-
+    CBackendStatus status = c_backend_emit_stream(out, module);
     if (fclose(out) != 0 && status == C_BACKEND_STATUS_OK) {
         fprintf(stderr, "error: could not close generated C output '%s': %s\n",
                 output_path, strerror(errno));
         return C_BACKEND_STATUS_IO_ERROR;
     }
-
     return status;
 }
 
 CBackendStatus c_backend_build_executable(
     const char *output_path,
-    const char *source_filename,
-    Node *program,
-    SemanticContext *sem,
+    const CogIrModule *module,
     const CBackendLinkOptions *link_options
 ) {
 #if defined(__unix__) || defined(__APPLE__)
@@ -1954,19 +1503,12 @@ CBackendStatus c_backend_build_executable(
         return C_BACKEND_STATUS_IO_ERROR;
     }
 
-    CBackendStatus emit_status = c_backend_emit_stream(
-        out,
-        source_filename,
-        program,
-        sem
-    );
-
+    CBackendStatus emit_status = c_backend_emit_stream(out, module);
     if (fclose(out) != 0 && emit_status == C_BACKEND_STATUS_OK) {
         fprintf(stderr, "error: could not close temporary C output: %s\n", strerror(errno));
         unlink(temp_path);
         return C_BACKEND_STATUS_IO_ERROR;
     }
-
     if (emit_status != C_BACKEND_STATUS_OK) {
         unlink(temp_path);
         return emit_status;
@@ -1974,16 +1516,6 @@ CBackendStatus c_backend_build_executable(
 
     int library_dir_count = link_options ? link_options->library_dir_count : 0;
     int library_count = link_options ? link_options->library_count : 0;
-
-    /*
-     * Build the complete compiler argv before fork(). Each -L/-l entry is
-     * passed as a separate argv pair. No shell is involved, so paths and
-     * library names are not subject to shell expansion or command
-     * interpretation.
-     *
-     * Keep libraries after the generated source/output options: static
-     * archive resolution is order-sensitive on common Unix linkers.
-     */
     int cc_arg_count = 9 + (library_dir_count * 2) + (library_count * 2);
     char **cc_argv = calloc((size_t)cc_arg_count + 1, sizeof(*cc_argv));
     if (!cc_argv) {
@@ -2002,17 +1534,14 @@ CBackendStatus c_backend_build_executable(
     cc_argv[arg++] = temp_path;
     cc_argv[arg++] = "-o";
     cc_argv[arg++] = (char *)output_path;
-
-    for (int i = 0; i < library_dir_count; i++) {
+    for (int i = 0; i < library_dir_count; ++i) {
         cc_argv[arg++] = "-L";
         cc_argv[arg++] = (char *)link_options->library_dirs[i];
     }
-
-    for (int i = 0; i < library_count; i++) {
+    for (int i = 0; i < library_count; ++i) {
         cc_argv[arg++] = "-l";
         cc_argv[arg++] = (char *)link_options->libraries[i];
     }
-
     cc_argv[arg] = NULL;
 
     pid_t child = fork();
@@ -2022,10 +1551,8 @@ CBackendStatus c_backend_build_executable(
         unlink(temp_path);
         return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
     }
-
     if (child == 0) {
         execvp("cc", cc_argv);
-
         fprintf(stderr, "error: could not execute native C compiler 'cc': %s\n", strerror(errno));
         _exit(127);
     }
@@ -2040,18 +1567,14 @@ CBackendStatus c_backend_build_executable(
 
     free(cc_argv);
     unlink(temp_path);
-
     if (!WIFEXITED(wait_status) || WEXITSTATUS(wait_status) != 0) {
         fprintf(stderr, "error: native C compiler/linker failed\n");
         return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
     }
-
     return C_BACKEND_STATUS_OK;
 #else
     (void)output_path;
-    (void)source_filename;
-    (void)program;
-    (void)sem;
+    (void)module;
     (void)link_options;
     fprintf(stderr, "error: executable host-C backend is not implemented on this host platform\n");
     return C_BACKEND_STATUS_TOOLCHAIN_ERROR;

@@ -9533,6 +9533,11 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
     func_info->abi.function.c_call_conv = func_type->function_call_conv;
     func_info->abi.function.is_variadic = func_type->function_is_variadic;
 
+    if (func_type->function_abi == FUNCTION_ABI_COGLET) {
+        func_info->abi.function.source_return_c_scalar_kind =
+            native_c_scalar_kind(node->as.func_decl.return_type);
+    }
+
     if (func_info->abi.function.linkage == SEM_FUNCTION_LINKAGE_EXTERNAL) {
         func_info->abi.function.external_symbol =
             string_view_is_empty(node->as.func_decl.external_name)

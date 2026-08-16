@@ -148,8 +148,17 @@ int main(int argc, char **argv)
 
     const CogIrLowerDeclBinding *helper = find_binding(&lower, "helper");
     const CogIrFunction *helper_fn = helper ? cog_ir_get_function(&module, helper->as.function) : NULL;
-    if (!helper_fn || helper_fn->kind != COG_IR_FUNCTION_DECLARATION || helper_fn->linkage != COG_IR_LINKAGE_INTERNAL)
+    if (!helper_fn || helper_fn->kind != COG_IR_FUNCTION_DECLARATION ||
+        helper_fn->linkage != COG_IR_LINKAGE_INTERNAL ||
+        helper_fn->source_return_c_scalar_kind != COG_IR_C_SCALAR_NONE)
         return fail("Coglet function was not predeclared with stable identity");
+
+    const CogIrLowerDeclBinding *entry_style = find_binding(&lower, "entry_style");
+    const CogIrFunction *entry_style_fn = entry_style
+        ? cog_ir_get_function(&module, entry_style->as.function) : NULL;
+    if (!entry_style_fn ||
+        entry_style_fn->source_return_c_scalar_kind != COG_IR_C_SCALAR_INT)
+        return fail("ordinary Coglet c_int return spelling was not retained in CogIR");
 
     const CogIrLowerDeclBinding *x = find_binding(&lower, "x");
     const CogIrLowerDeclBinding *local = find_binding(&lower, "local");

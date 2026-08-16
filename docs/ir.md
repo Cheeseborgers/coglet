@@ -876,8 +876,9 @@ Do not block the first IR implementation on:
 - new bounds checks or other language semantics not already specified.
 
 CogIR v1 is successful when the complete currently-supported frontend can lower
-to a verified module and the existing host-C backend can be rewritten to consume
-that module without consulting AST or semantic objects.
+to a verified module and execution backends consume that module without consulting
+AST or semantic objects. The host-C bootstrap backend now satisfies that boundary;
+LLVM/native lowering can build on the same contract.
 
 ## Implementation status
 
@@ -1013,14 +1014,27 @@ future frontend-valid additions must also cross the CogIR boundary. Native-C
 variadic tails are now legalized in CogIR with explicit `c.vararg.promote`
 instructions, and the verifier rejects unpromoted tails.
 
-The host-C parity audit found one source-level policy fact that is not yet retained
-by CogIR: the current executable backend distinguishes `main::() -> c_int` from a
-plain fixed-width `i32` return, while both become the same runtime CogIR integer
-type. That entry-point spelling policy must either be normalized into IR-owned
-metadata or deliberately relaxed before the host-C backend can become CogIR-only.
-All other data presently consumed from normalized C ABI declarations, represented
+The host-C parity audit's final source-level policy fact is now retained by
+CogIR. Ordinary Coglet functions carry `source_return_c_scalar_kind` when their
+return type was spelled with a native-C scalar alias. This is descriptive source
+ABI metadata, not a second runtime type: `main::() -> c_int` and
+`main::() -> i32` still both execute with the same canonical integer type, while
+the former dumps with `source-return=c_int`. Native-C ABI functions do not
+duplicate this marker because their complete C-facing return spelling is already
+stored in `CogIrFunctionAbi.return_abi_type`. The marker survives frontend
+destruction and is sufficient to preserve the current host executable entry
+contract in the CogIR-only host-C backend.
+
+All data presently consumed from normalized C ABI declarations, represented
 aggregates/enums, function/callback types, calling conventions, external symbols,
-pointer qualifiers, and executable expressions has a CogIR-owned representation.
+pointer qualifiers, executable expressions, and the executable entry policy now
+has a CogIR-owned representation. `backend_c.h` accepts `const CogIrModule *` only,
+and the CLI freezes/verifies the module, destroys `CompileResult`, verifies the
+frozen module again, and only then invokes C emission. The current C execution
+emitter deliberately preserves the former backend subset: it supports the
+straight-line operations exercised by the executable/interop suite and rejects
+checked arithmetic or multi-block CFGs until those operations receive dedicated
+C lowering.
 
 ## Implementation sequence
 
@@ -1047,9 +1061,14 @@ pointer qualifiers, and executable expressions has a CogIR-owned representation.
     while constant calls retain the existing constant-materialization path.
 11. ~~Audit and legalize ABI-specific calls, including C variadic default promotions.~~
     C variadic tails now carry explicit non-trapping promotion operations and
-    verifier enforcement. The backend-parity audit identified only the current
-    `main::() -> c_int` source-spelling policy as missing IR-owned information.
-12. Resolve that entry-point parity decision, port the host-C backend to
-    `const CogIrModule *`, and restore all backend tests through
-    AST -> semantic -> CogIR -> C.
-13. Only after that boundary is proven, add LLVM lowering.
+    verifier enforcement.
+12. ~~Resolve the `main::() -> c_int` entry-point parity decision.~~ Ordinary
+    Coglet functions now retain native-C scalar return spelling in IR-owned
+    metadata, preserving the existing entry contract without retaining frontend
+    type objects.
+13. ~~Port the host-C backend to `const CogIrModule *` and restore all backend tests
+    through AST -> semantic -> CogIR -> C.~~ The public backend API is IR-only,
+    frontend lifetime ends before backend invocation, and the existing
+    executable/interop suite runs through CogIR.
+14. Expand host-C instruction/CFG coverage from the current compatibility subset,
+    then begin LLVM lowering on the same verified CogIR contract.

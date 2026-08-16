@@ -533,8 +533,11 @@ static int lower_function_declaration(CogIrLowerContext *ctx, SemDeclInfo *info)
     }
     CogIrLinkage linkage = info->abi_kind == SEM_DECL_ABI_FUNCTION && info->abi.function.linkage == SEM_FUNCTION_LINKAGE_EXTERNAL
         ? COG_IR_LINKAGE_EXTERNAL : COG_IR_LINKAGE_INTERNAL;
+    CogIrCScalarKind source_return_c_scalar_kind = lower_c_scalar_kind(
+        info->abi.function.source_return_c_scalar_kind);
     CogIrFunctionId function = cog_ir_add_function(ctx->module, node->as.func_decl.name, node->span,
-        function_type, COG_IR_FUNCTION_DECLARATION, linkage, 0, abi_ptr);
+        function_type, COG_IR_FUNCTION_DECLARATION, linkage, 0,
+        source_return_c_scalar_kind, abi_ptr);
     free(abi.parameter_abi_types);
     if (function == COG_IR_FUNCTION_INVALID) { lower_error(ctx, node->span, "failed to predeclare CogIR function"); return 0; }
     CogIrLowerDeclBinding *binding = get_decl_binding_mut(ctx, info->id);
@@ -1701,7 +1704,8 @@ static CogIrValueId lower_call_expression(ExecLowerState *state, Node *node)
     }
 
     SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
-    Type *result_sem_type = semantic_get_effective_expr_type(sem, node);
+    SemExprInfo *call_info = semantic_get_expr_info(sem, node);
+    Type *result_sem_type = call_info ? call_info->type : NULL;
     CogIrTypeId result_type = COG_IR_TYPE_INVALID;
     if (result_sem_type && result_sem_type->kind != TYPE_VOID) {
         result_type = cog_ir_lower_type(state->lower, result_sem_type);
@@ -3228,6 +3232,7 @@ static int lower_module_init(CogIrLowerContext *ctx)
         COG_IR_FUNCTION_DEFINITION,
         COG_IR_LINKAGE_INTERNAL,
         1,
+        COG_IR_C_SCALAR_NONE,
         NULL
     );
     if (function == COG_IR_FUNCTION_INVALID || !cog_ir_set_init_function(ctx->module, function)) {

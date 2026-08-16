@@ -201,6 +201,18 @@ typedef struct SemFunctionAbiInfo {
     int is_variadic;
 
     /*
+     * Native-C scalar alias used to spell an ordinary Coglet function's
+     * source return type. C-ABI functions keep this as NONE because their
+     * complete C-facing return spelling already lives in return_abi_type.
+     *
+     * This is intentionally descriptive metadata, not a second semantic
+     * return type. It exists for policies such as the host executable entry
+     * contract, which distinguishes source `c_int` from representation-equal
+     * fixed-width Coglet integers after canonical type resolution.
+     */
+    SemCScalarKind source_return_c_scalar_kind;
+
+    /*
      * Effective native linker symbol for an external declaration. This is
      * normalized to the Coglet function name when #extern(c) omits name=.
      * Internal definitions leave it empty.

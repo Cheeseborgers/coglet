@@ -1,8 +1,7 @@
 #ifndef COGLET_BACKEND_C_H
 #define COGLET_BACKEND_C_H
 
-#include "ast.h"
-#include "semantic_anal.h"
+#include "cog_ir.h"
 
 typedef enum CBackendStatus {
     C_BACKEND_STATUS_OK = 0,
@@ -20,30 +19,24 @@ typedef struct CBackendLinkOptions {
 } CBackendLinkOptions;
 
 /*
- * Emits the current host-C backend subset as a standalone C translation unit.
+ * Emits a frozen CogIR module as a standalone native C translation unit.
  *
- * The frontend must already have parsed and semantically checked program.
- * Diagnostics are written to stderr. This first backend slice intentionally
- * rejects Coglet constructs whose runtime semantics are not lowered yet.
+ * The host-C backend owns no frontend state: AST nodes, semantic symbols, and
+ * frontend Type objects may all be destroyed before this function is called.
  */
 CBackendStatus c_backend_emit_file(
     const char *output_path,
-    const char *source_filename,
-    Node *program,
-    SemanticContext *sem
+    const CogIrModule *module
 );
 
 /*
- * Emits a temporary C translation unit and invokes the native `cc` driver to
- * produce an executable. The native compiler driver is also responsible for
- * resolving ordinary C runtime/libc symbols and any explicitly requested
- * library search paths / libraries.
+ * Emits a temporary C translation unit from a frozen CogIR module and invokes
+ * the native `cc` driver to produce an executable. The native compiler driver
+ * also resolves the C runtime/libc and explicitly requested -L/-l options.
  */
 CBackendStatus c_backend_build_executable(
     const char *output_path,
-    const char *source_filename,
-    Node *program,
-    SemanticContext *sem,
+    const CogIrModule *module,
     const CBackendLinkOptions *link_options
 );
 

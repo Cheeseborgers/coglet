@@ -1,0 +1,7 @@
+main::() -> c_int {
+    return 0;
+}
+
+same_width::() -> i32 {
+    return 0;
+}

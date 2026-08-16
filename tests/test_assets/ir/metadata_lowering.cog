@@ -35,3 +35,7 @@ helper::(x: i32) -> i32 {
     local: i32 = x;
     return local;
 }
+
+entry_style::() -> c_int {
+    return 0;
+}

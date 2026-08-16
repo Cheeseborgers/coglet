@@ -191,6 +191,21 @@ set_tests_properties(
 )
 
 add_test(
+        NAME cog_ir_source_return_spelling_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/source_return_spelling.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/source_return_spelling.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_source_return_spelling_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;metadata;entry;abi-spelling"
+)
+
+add_test(
         NAME cog_ir_semantic_valid_fixture_suite
         COMMAND "${CMAKE_COMMAND}"
         -DEXE=$<TARGET_FILE:dump_ir>
@@ -579,7 +594,7 @@ add_test(
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/unsupported_checked_binary.cog
         -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_unsupported_checked_binary
         -DEXPECT_EXIT=3
-        "-DEXPECT_SUBSTRING=runtime binary operations are not lowered yet"
+        "-DEXPECT_SUBSTRING=checked arithmetic CogIR operations are not lowered by the host-C backend yet"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_failure_test.cmake"
 )
 set_tests_properties(

@@ -888,6 +888,18 @@ static int verify_function(
         ok = 0;
     }
 
+    if (function->source_return_c_scalar_kind < COG_IR_C_SCALAR_NONE ||
+        function->source_return_c_scalar_kind > COG_IR_C_SCALAR_DOUBLE) {
+        ir_error(diagnostics, function->span,
+            "function @f%u has invalid source return C scalar spelling", function->id);
+        ok = 0;
+    } else if (function->abi.abi == COG_IR_ABI_C &&
+               function->source_return_c_scalar_kind != COG_IR_C_SCALAR_NONE) {
+        ir_error(diagnostics, function->span,
+            "C ABI function @f%u duplicates return spelling outside ABI metadata", function->id);
+        ok = 0;
+    }
+
     if (function->linkage == COG_IR_LINKAGE_EXTERNAL && function->kind != COG_IR_FUNCTION_DECLARATION) {
         ir_error(diagnostics, function->span, "external function @f%u must be a declaration", function->id);
         ok = 0;

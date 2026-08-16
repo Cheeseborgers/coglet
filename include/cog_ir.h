@@ -437,6 +437,7 @@ typedef struct CogIrFunction {
     CogIrFunctionKind kind;
     CogIrLinkage linkage;
     int is_compiler_generated;
+    CogIrCScalarKind source_return_c_scalar_kind;
     CogIrFunctionAbi abi;
 
     CogIrValue *values;
@@ -579,6 +580,7 @@ CogIrFunctionId cog_ir_add_function(
     CogIrFunctionKind kind,
     CogIrLinkage linkage,
     int is_compiler_generated,
+    CogIrCScalarKind source_return_c_scalar_kind,
     const CogIrFunctionAbi *abi
 );
 /* Upgrade a predeclared internal function to a definition before adding CFG. */

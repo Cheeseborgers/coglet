@@ -5,6 +5,7 @@
 
 #include "backend_c.h"
 #include "compiler_driver.h"
+#include "cog_ir_lower.h"
 
 static void print_usage(const char *program)
 {
@@ -102,12 +103,61 @@ int main(int argc, char **argv)
 
     int exit_code = 0;
 
+    if (!emit_c_path && !output_path) {
+        compile_result_destroy(&result);
+        return 0;
+    }
+
+    /*
+     * The backend boundary is CogIR, not frontend state. Lower and verify the
+     * complete module while the frontend is alive, freeze it, then destroy the
+     * AST/semantic arenas before invoking any backend entry point. This makes
+     * accidental backend dependence on Node/Symbol/Type lifetime impossible.
+     */
+    CogIrModule ir;
+    cog_ir_module_init(&ir, &result.target);
+
+    Arena *ir_diag_arena = arena_create(16384);
+    if (!ir_diag_arena) {
+        fprintf(stderr, "error: could not allocate CogIR diagnostics\n");
+        cog_ir_module_destroy(&ir);
+        compile_result_destroy(&result);
+        return 3;
+    }
+
+    DiagnosticList ir_diagnostics;
+    diagnostic_list_init(&ir_diagnostics, ir_diag_arena);
+    CogIrLowerContext lower = {0};
+    int ir_ok = cog_ir_lower_context_init(&lower, &result, &ir, &ir_diagnostics) &&
+                cog_ir_lower_program(&lower) &&
+                cog_ir_verify(&ir, &ir_diagnostics);
+
+    if (!ir_ok || ir_diagnostics.count) {
+        diagnostic_print_all(stderr, &ir.sources, &ir_diagnostics);
+        cog_ir_lower_context_destroy(&lower);
+        cog_ir_module_destroy(&ir);
+        arena_destroy(ir_diag_arena);
+        compile_result_destroy(&result);
+        return 3;
+    }
+
+    cog_ir_module_freeze(&ir);
+    cog_ir_lower_context_destroy(&lower);
+    compile_result_destroy(&result);
+
+    DiagnosticList frozen_diagnostics;
+    diagnostic_list_init(&frozen_diagnostics, ir_diag_arena);
+    if (!cog_ir_verify(&ir, &frozen_diagnostics) || frozen_diagnostics.count) {
+        diagnostic_print_all(stderr, &ir.sources, &frozen_diagnostics);
+        cog_ir_module_destroy(&ir);
+        arena_destroy(ir_diag_arena);
+        return 3;
+    }
+
     if (emit_c_path) {
         CBackendStatus backend_status = c_backend_emit_file(
             emit_c_path,
-            result.filename,
-            result.program,
-            &result.sem
+            &ir
         );
 
         if (backend_status != C_BACKEND_STATUS_OK)
@@ -124,9 +174,7 @@ int main(int argc, char **argv)
 
         CBackendStatus backend_status = c_backend_build_executable(
             output_path,
-            result.filename,
-            result.program,
-            &result.sem,
+            &ir,
             &link_options
         );
 
@@ -134,6 +182,7 @@ int main(int argc, char **argv)
             exit_code = 3;
     }
 
-    compile_result_destroy(&result);
+    cog_ir_module_destroy(&ir);
+    arena_destroy(ir_diag_arena);
     return exit_code;
 }

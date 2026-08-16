@@ -483,13 +483,18 @@ all 99 semantic-valid fixture programs lower and verify through `dump_ir`. Nativ
 variadic tails are legalized with explicit `c.vararg.promote` operations, and the
 verifier rejects unpromoted or otherwise ABI-illegal tail values.
 
-The `backend_c.c` parity audit found one remaining frontend-only policy fact:
-the current executable backend requires the source spelling `main::() -> c_int`,
-while CogIR canonicalizes that return to the same runtime integer type as a plain
-fixed-width Coglet integer. Resolve that entry-point metadata/policy decision, then
-move the host-C backend behind `const CogIrModule *` and rerun the executable and
-interop suites through frontend -> CogIR -> C. LLVM/native work follows that
-boundary rather than replacing it.
+The host-C boundary move is now complete without relaxing behavior. Ordinary
+Coglet functions retain native-C scalar source return spelling in IR-owned
+metadata, so the existing `main::() -> c_int` entry contract remains
+distinguishable from representation-equal `i32` after frontend destruction.
+`backend_c.h` accepts only `const CogIrModule *`; the driver lowers, verifies and
+freezes CogIR, destroys the frontend, then emits/builds C. The existing executable
+and C-interop suite therefore runs through frontend -> CogIR -> C.
+
+The host-C emitter currently preserves the old backend's deliberately narrow
+execution subset. Next expand C emission for checked/wrapping arithmetic and
+multi-block CFG operations already present in CogIR, then begin LLVM lowering on
+the same verified module contract rather than creating a second frontend path.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

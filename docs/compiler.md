@@ -863,6 +863,8 @@ Function declarations record:
 - internal definition versus external linker declaration;
 - the normalized C calling convention;
 - C variadic status;
+- for ordinary Coglet functions only, any native-C scalar alias used to spell
+  the source return type;
 - the effective external linker symbol, with omitted `name=` normalized to the
   Coglet declaration name;
 - a normalized C-facing return type for native-C ABI functions.
@@ -897,19 +899,22 @@ pointer, array, and C-function-pointer structure is retained recursively.
 Nominal types and ordinary fixed-width Coglet scalars reuse their resolved
 semantic type directly.
 
-The host-C backend now consumes this normalized metadata for C linkage,
-calling conventions, external symbols, represented aggregate layout, C enum
-backing types, and C-facing function/field type spelling. CogIR already copies
-those contracts into IR-owned declarations and now also makes C-variadic default
-promotions explicit.
+CogIR lowering consumes this normalized metadata for C linkage, calling
+conventions, external symbols, represented aggregate layout, C enum backing
+types, and C-facing function/field type spelling. The host-C backend now consumes
+only those IR-owned copies; it does not inspect `SemDeclInfo`, semantic `Type *`,
+or AST syntax. C-variadic default promotions are likewise explicit in CogIR before
+the backend sees a call.
 
-A parity audit before the host-C port found one remaining frontend-only policy
-fact: the executable backend currently requires the source spelling
-`main::() -> c_int`, while CogIR canonicalizes both `c_int` and a same-width
-signed Coglet integer to the same runtime type. That entry-point rule needs an
-IR-owned marker/ABI spelling or an intentional policy change before the backend
-can consume only CogIR. No other current host-C ABI annotation interpretation
-needs AST or semantic objects after lowering.
+The final parity gap from the pre-port audit is normalized as metadata rather
+than relaxed: ordinary Coglet functions retain a `source_return_c_scalar_kind`
+when their source return spelling is a native-C scalar alias. CogIR copies that
+fact into each function record and the deterministic dump exposes it as, for
+example, `source-return=c_int`. Therefore `main::() -> c_int` remains
+distinguishable from `main::() -> i32` after semantic types are canonicalized and
+after the frontend is destroyed. The driver now destroys `CompileResult` before
+calling the host-C backend, enforcing this boundary in every `--emit-c` and `-o`
+compilation.
 
 ## Semantic-Information Verification
 
@@ -984,5 +989,8 @@ metadata. All 99 programs under `tests/test_assets/semantic/valid/` now lower an
 verify through `dump_ir`. Native-C variadic calls are legalized before the call:
 CogIR inserts `c.vararg.promote` for target-required integer/Boolean/enum and
 `f32` promotions, and the verifier rejects unpromoted C-variadic tails. The
-host-C backend still consumes the frontend until the IR path covers its full
-input surface.
+host-C backend now consumes only a frozen `CogIrModule`. Its current execution
+subset intentionally matches the pre-port backend surface: straight-line calls,
+constants, local loads/stores, C strings, pointer qualification, and C-vararg
+promotion are emitted, while checked arithmetic and structured CFG emission remain
+separate backend-expansion milestones.

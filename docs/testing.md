@@ -56,11 +56,14 @@ ctest \
 ## CogIR Lowering Tests
 
 CogIR golden dumps cover executable, structured-CFG, data/address, explicit
-wrapping lowering, and native-C variadic default promotions. The variadic golden
-covers both direct external calls and indirect `cfn(..., ...)` calls, including
-`bool`, narrow signed/unsigned integers, `#repr(c)` enums, and `f32`. A verifier
-regression separately rejects an unpromoted Boolean variadic tail. A separate
-integration test recursively runs `dump_ir` over
+wrapping lowering, native-C variadic default promotions, and preservation of
+ordinary Coglet function return spelling needed by entry-point policy. The
+source-return golden demonstrates that `main::() -> c_int` and a same-width
+`i32` function retain identical runtime types while only the former carries
+`source-return=c_int`. The variadic golden covers both direct external calls and
+indirect `cfn(..., ...)` calls, including `bool`, narrow signed/unsigned integers,
+`#repr(c)` enums, and `f32`. A verifier regression separately rejects an
+unpromoted Boolean variadic tail. A separate integration test recursively runs `dump_ir` over
 every program under `tests/test_assets/semantic/valid/`, so adding a new
 semantic-valid fixture also extends the frontend -> CogIR compatibility gate.
 
@@ -82,14 +85,20 @@ tests/test_assets/backend/
 ```
 
 The executable tests run the Coglet compiler with `-o`, invoke the generated
-program, and verify its process exit status. The C-interoperability cases cover
+program, and verify its process exit status. These tests now exercise the full
+frontend -> CogIR -> host-C boundary: the compiler freezes/verifies CogIR and
+destroys the frontend before backend emission, so every passing backend fixture
+also guards against accidental AST/semantic lifetime dependencies. The
+C-interoperability cases cover
 default external symbols, `#extern(c, name="...")` overrides, explicit C calling
 conventions (including an x86-64 `win64` callback round trip), and explicit
 `-L`/`-l` resolution against a test-only static library using both split and
 joined flag forms. A separate driver-negative test verifies that linker flags
 are rejected without `-o`. Backend-negative tests verify that runtime checked
-arithmetic is rejected until its trapping semantics are lowered correctly and
-that an unsupported explicit calling convention fails rather than being ignored.
+arithmetic is rejected until its CogIR operation receives host-C trapping
+lowering and that an unsupported explicit calling convention fails rather than
+being ignored. The incomplete-aggregate interop case also exercises runtime
+pointer-qualification lowering across a C call result before C emission.
 
 Run the backend suite with:
 

@@ -10,13 +10,31 @@
 #include "compiler_driver.h"
 #include "cog_ir_lower.h"
 
+typedef enum ExecutableBackend {
+    EXECUTABLE_BACKEND_HOST_C,
+    EXECUTABLE_BACKEND_LLVM,
+} ExecutableBackend;
+
 static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [-o <executable>] [--emit-c <file>] [--emit-llvm <file>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n",
+        "usage: %s <file> [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n",
         program
     );
+}
+
+static int parse_executable_backend(const char *value, ExecutableBackend *backend)
+{
+    if (strcmp(value, "host-c") == 0) {
+        *backend = EXECUTABLE_BACKEND_HOST_C;
+        return 1;
+    }
+    if (strcmp(value, "llvm") == 0) {
+        *backend = EXECUTABLE_BACKEND_LLVM;
+        return 1;
+    }
+    return 0;
 }
 
 int main(int argc, char **argv)
@@ -30,6 +48,8 @@ int main(int argc, char **argv)
     const char *output_path = NULL;
     const char *emit_c_path = NULL;
     const char *emit_llvm_path = NULL;
+    ExecutableBackend executable_backend = EXECUTABLE_BACKEND_HOST_C;
+    int executable_backend_explicit = 0;
 
     /* argc is an upper bound for each repeated option category. */
     const char *library_dirs[argc];
@@ -62,6 +82,27 @@ int main(int argc, char **argv)
                 return COMPILE_STATUS_DRIVER_ERROR;
             }
             emit_llvm_path = argv[++i];
+            continue;
+        }
+
+        if (strcmp(argv[i], "--backend") == 0) {
+            if (i + 1 >= argc || executable_backend_explicit ||
+                !parse_executable_backend(argv[i + 1], &executable_backend)) {
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+            }
+            executable_backend_explicit = 1;
+            ++i;
+            continue;
+        }
+
+        if (strncmp(argv[i], "--backend=", 10) == 0) {
+            if (executable_backend_explicit || argv[i][10] == '\0' ||
+                !parse_executable_backend(argv[i] + 10, &executable_backend)) {
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+            }
+            executable_backend_explicit = 1;
             continue;
         }
 
@@ -102,6 +143,10 @@ int main(int argc, char **argv)
 
     if (!output_path && (library_dir_count > 0 || library_count > 0)) {
         fprintf(stderr, "error: -L/-l linker options require -o <executable>\n");
+        return COMPILE_STATUS_DRIVER_ERROR;
+    }
+    if (!output_path && executable_backend_explicit) {
+        fprintf(stderr, "error: --backend requires -o <executable>\n");
         return COMPILE_STATUS_DRIVER_ERROR;
     }
 
@@ -195,21 +240,45 @@ int main(int argc, char **argv)
     }
 
     if (exit_code == 0 && output_path) {
-        CBackendLinkOptions link_options = {
-            .library_dirs = library_dirs,
-            .library_dir_count = library_dir_count,
-            .libraries = libraries,
-            .library_count = library_count,
-        };
+        if (executable_backend == EXECUTABLE_BACKEND_HOST_C) {
+            CBackendLinkOptions link_options = {
+                .library_dirs = library_dirs,
+                .library_dir_count = library_dir_count,
+                .libraries = libraries,
+                .library_count = library_count,
+            };
 
-        CBackendStatus backend_status = c_backend_build_executable(
-            output_path,
-            &ir,
-            &link_options
-        );
+            CBackendStatus backend_status = c_backend_build_executable(
+                output_path,
+                &ir,
+                &link_options
+            );
 
-        if (backend_status != C_BACKEND_STATUS_OK)
+            if (backend_status != C_BACKEND_STATUS_OK)
+                exit_code = 3;
+        } else {
+#ifdef COGLET_HAS_LLVM_BACKEND
+            LlvmBackendLinkOptions link_options = {
+                .library_dirs = library_dirs,
+                .library_dir_count = library_dir_count,
+                .libraries = libraries,
+                .library_count = library_count,
+            };
+            LlvmBackendStatus backend_status = llvm_backend_build_executable(
+                output_path,
+                &ir,
+                &link_options
+            );
+            if (backend_status != LLVM_BACKEND_STATUS_OK)
+                exit_code = 3;
+#else
+            fprintf(
+                stderr,
+                "error: LLVM backend is not available in this build; configure with COGLET_LLVM=ON and LLVM_DIR\n"
+            );
             exit_code = 3;
+#endif
+        }
     }
 
     cog_ir_module_destroy(&ir);

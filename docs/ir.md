@@ -1198,3 +1198,9 @@ volatile access contract.
     declarations, calls, callbacks, hidden `sret`, `byval`, and register coercions.
     Ordinary Coglet `bool*` remains distinct from addressable `c_bool*` storage.
     Non-x86-64 aggregate classification remains deferred until cross-target work.
+25. ~~Add LLVM native object generation and executable linking.~~ The LLVM backend
+    now reuses its verified module and backend-owned native `TargetMachine` for
+    object emission. Final executable linking is a separate toolchain boundary
+    that consumes the object plus explicit link inputs; CogIR gains no linker,
+    relocation, object-format, or frontend-lifetime dependency. Textual LLVM IR
+    emission remains available independently.

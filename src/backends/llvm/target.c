@@ -29,7 +29,6 @@ int llvm_backend_init_native_target(LlvmBackend *backend)
         llvm_backend_error(backend, "could not initialize LLVM native target");
         return 0;
     }
-
     char *triple = LLVMGetDefaultTargetTriple();
     if (!triple) {
         llvm_backend_error(backend, "could not determine LLVM native target triple");
@@ -83,6 +82,15 @@ int llvm_backend_init_native_target(LlvmBackend *backend)
     LLVMSetTarget(backend->module, triple);
     LLVMSetModuleDataLayout(backend->module, backend->target_data);
     LLVMDisposeMessage(triple);
+    return 1;
+}
+
+int llvm_backend_init_native_asm_printer(LlvmBackend *backend)
+{
+    if (LLVMInitializeNativeAsmPrinter()) {
+        llvm_backend_error(backend, "could not initialize LLVM native asm printer");
+        return 0;
+    }
     return 1;
 }
 

@@ -91,12 +91,13 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
             endif()
             set(COGLET_LLVM_LIBS "${COGLET_LLVM_DYLIB_LIBRARY}")
         else()
-            llvm_map_components_to_libnames(COGLET_LLVM_LIBS core analysis support target native)
+            llvm_map_components_to_libnames(COGLET_LLVM_LIBS core analysis support target native nativecodegen)
         endif()
         separate_arguments(COGLET_LLVM_DEFINITIONS NATIVE_COMMAND "${LLVM_DEFINITIONS}")
 
         add_library(coglet_backend_llvm STATIC
                 src/backends/llvm/backend_llvm.c
+                src/backends/llvm/linker.c
                 src/backends/llvm/lower_types.c
                 src/backends/llvm/lower_integer.c
                 src/backends/llvm/lower_float.c
@@ -1201,6 +1202,47 @@ if(COGLET_HAS_LLVM_BACKEND)
             backend_llvm_stage6_win64_aggregates llvm/stage6_win64_aggregates.cog 86 "win64cc void @coglet_backend_win64_make_large_aggregate"
         )
     endif()
+
+    function(add_llvm_stage7_native_test test_name fixture expected_exit)
+        add_test(
+            NAME ${test_name}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
+            -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+            -DEXPECT_EXIT=${expected_exit}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
+        )
+        set_tests_properties(${test_name}
+            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;codegen;object;linker;stage7")
+    endfunction()
+
+    function(add_llvm_stage7_native_library_test test_name fixture expected_exit style)
+        add_test(
+            NAME ${test_name}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
+            -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+            -DEXPECT_EXIT=${expected_exit}
+            -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
+            -DLIB_NAME=coglet_backend_link_support
+            -DSTYLE=${style}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
+        )
+        set_tests_properties(${test_name}
+            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;codegen;object;linker;interop;abi;stage7")
+    endfunction()
+
+    add_llvm_stage7_native_test(
+        backend_llvm_stage7_native_i32_entry native_i32_entry.cog 42
+    )
+    add_llvm_stage7_native_library_test(
+        backend_llvm_stage7_c_scalar_link extern_c_integer_aliases.cog 29 joined
+    )
+    add_llvm_stage7_native_library_test(
+        backend_llvm_stage7_c_aggregate_link extern_c_repr_struct.cog 37 split
+    )
 
     add_test(
         NAME backend_llvm_stage6_rejects_native_bool_as_c_bool_pointer

@@ -298,13 +298,16 @@ details also remain deferred.
 ## Target Description
 
 
-### LLVM backend Stage 6
+### LLVM backend Stage 7
 
 The LLVM backend lives under `src/backends/llvm/` with its public API under
 `include/backends/llvm/`. It accepts only frozen `CogIrModule` input, constructs
-LLVM IR through the LLVM C API, runs `LLVMVerifyModule`, and then writes textual
-IR. Stage 6 retains the native execution foundation from Stages 1-4 and the
-Stage 5 scalar/pointer/function C ABI surface, then adds target-aware C object
+LLVM IR through the LLVM C API, and runs `LLVMVerifyModule`. Textual IR remains
+available for diagnostics/tests. Stage 7 also reuses that verified module and its
+backend-owned native `TargetMachine` to emit an object file, then hands only the
+object and explicit link inputs to a separate linker/toolchain layer. Stage 6
+retains the native execution foundation from Stages 1-4 and the Stage 5
+scalar/pointer/function C ABI surface, then adds target-aware C object
 storage and represented aggregate classification. Native C scalar aliases, raw
 pointers, incomplete handles, callbacks, variadics/default promotions, external
 symbols, and explicit calling conventions continue to derive only from frozen
@@ -356,9 +359,17 @@ SysV objects fall back to MEMORY, and explicit aggregate alignment is reflected
 in LLVM storage plus `sret`/`byval` alignment attributes. This is a backend ABI
 plan, not an ordinary LLVM-struct shortcut: the same plan drives declarations,
 call sites, C callback definitions, parameter reconstruction, and returns.
-Volatile whole-aggregate accesses, optimization pipelines, object emission,
-linker integration, and non-x86-64 represented aggregate classification remain
-explicitly deferred.
+Volatile whole-aggregate accesses, optimization pipelines, and non-x86-64
+represented aggregate classification remain explicitly deferred.
+
+For executable output, `coglet input.cog -o program --backend llvm` performs
+CogIR -> verified LLVM IR -> native object -> platform link. Object generation
+uses LLVM target APIs and does not invoke an external compiler. `linker.c` is a
+separate backend toolchain boundary: on the currently supported Unix-like host
+path it invokes `cc` directly with `execvp()` (never a shell) only to supply the
+platform startup objects/default runtime libraries and resolve explicit `-L`/`-l`
+inputs. No linker policy or platform-specific object-format detail is stored in
+CogIR. The host-C backend remains the default executable backend.
 
 `COGLET_LLVM=AUTO` enables the backend when `LLVMConfig.cmake` is available;
 `ON` requires LLVM 17 or newer and `OFF` disables it. The CMake integration

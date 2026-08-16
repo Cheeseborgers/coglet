@@ -424,10 +424,27 @@ static int emit_process_entry(LlvmBackend *backend)
     return 1;
 }
 
-LlvmBackendStatus llvm_backend_emit_ir_file(const char *output_path, const CogIrModule *module)
+static void dispose_backend(LlvmBackend *backend)
 {
-    if (!output_path || !module) {
-        fprintf(stderr, "LLVM backend error: missing output path or CogIR module\n");
+    if (!backend)
+        return;
+    free_backend_tables(backend);
+    llvm_backend_dispose_target(backend);
+    if (backend->builder)
+        LLVMDisposeBuilder(backend->builder);
+    if (backend->module)
+        LLVMDisposeModule(backend->module);
+    if (backend->context)
+        LLVMContextDispose(backend->context);
+    memset(backend, 0, sizeof(*backend));
+}
+
+static LlvmBackendStatus lower_verified_module(
+    const CogIrModule *module,
+    LlvmBackend *backend
+) {
+    if (!module) {
+        fprintf(stderr, "LLVM backend error: missing CogIR module\n");
         return LLVM_BACKEND_STATUS_UNSUPPORTED;
     }
     if (!cog_ir_module_is_frozen(module)) {
@@ -435,45 +452,138 @@ LlvmBackendStatus llvm_backend_emit_ir_file(const char *output_path, const CogIr
         return LLVM_BACKEND_STATUS_UNSUPPORTED;
     }
 
-    LlvmBackend backend;
-    memset(&backend, 0, sizeof(backend));
-    backend.ir = module;
-    backend.context = LLVMContextCreate();
-    backend.module = LLVMModuleCreateWithNameInContext("coglet", backend.context);
-    backend.builder = LLVMCreateBuilderInContext(backend.context);
+    memset(backend, 0, sizeof(*backend));
+    backend->ir = module;
+    backend->context = LLVMContextCreate();
+    if (!backend->context) {
+        fprintf(stderr, "LLVM backend error: could not create LLVM context\n");
+        return LLVM_BACKEND_STATUS_CODEGEN_ERROR;
+    }
 
-    LlvmBackendStatus status = LLVM_BACKEND_STATUS_UNSUPPORTED;
-    if (!backend.context || !backend.module || !backend.builder ||
-        !llvm_backend_init_native_target(&backend) ||
-        !allocate_backend_tables(&backend))
-        goto cleanup;
-    if (!declare_globals(&backend) || !declare_functions(&backend) || !lower_functions(&backend) || !emit_process_entry(&backend))
-        goto cleanup;
+    backend->module = LLVMModuleCreateWithNameInContext("coglet", backend->context);
+    if (!backend->module) {
+        fprintf(stderr, "LLVM backend error: could not create LLVM module\n");
+        return LLVM_BACKEND_STATUS_CODEGEN_ERROR;
+    }
+
+    backend->builder = LLVMCreateBuilderInContext(backend->context);
+    if (!backend->builder) {
+        fprintf(stderr, "LLVM backend error: could not create LLVM builder\n");
+        return LLVM_BACKEND_STATUS_CODEGEN_ERROR;
+    }
+
+    if (!llvm_backend_init_native_target(backend) ||
+        !allocate_backend_tables(backend) ||
+        !declare_globals(backend) ||
+        !declare_functions(backend) ||
+        !lower_functions(backend) ||
+        !emit_process_entry(backend)) {
+        return LLVM_BACKEND_STATUS_UNSUPPORTED;
+    }
 
     char *verify_message = NULL;
-    if (LLVMVerifyModule(backend.module, LLVMReturnStatusAction, &verify_message)) {
-        fprintf(stderr, "LLVM backend verifier error: %s", verify_message ? verify_message : "invalid LLVM module\n");
-        if (verify_message) LLVMDisposeMessage(verify_message);
-        status = LLVM_BACKEND_STATUS_INVALID_IR;
-        goto cleanup;
+    if (LLVMVerifyModule(backend->module, LLVMReturnStatusAction, &verify_message)) {
+        fprintf(
+            stderr,
+            "LLVM backend verifier error: %s",
+            verify_message ? verify_message : "invalid LLVM module\n"
+        );
+        if (verify_message)
+            LLVMDisposeMessage(verify_message);
+        return LLVM_BACKEND_STATUS_INVALID_IR;
     }
-    if (verify_message) LLVMDisposeMessage(verify_message);
+    if (verify_message)
+        LLVMDisposeMessage(verify_message);
+
+    return LLVM_BACKEND_STATUS_OK;
+}
+
+LlvmBackendStatus llvm_backend_emit_ir_file(const char *output_path, const CogIrModule *module)
+{
+    if (!output_path) {
+        fprintf(stderr, "LLVM backend error: missing LLVM IR output path\n");
+        return LLVM_BACKEND_STATUS_IO_ERROR;
+    }
+
+    LlvmBackend backend;
+    memset(&backend, 0, sizeof(backend));
+    LlvmBackendStatus status = lower_verified_module(module, &backend);
+    if (status != LLVM_BACKEND_STATUS_OK)
+        goto cleanup;
 
     char *write_error = NULL;
     if (LLVMPrintModuleToFile(backend.module, output_path, &write_error)) {
-        fprintf(stderr, "LLVM backend error: could not write '%s': %s\n", output_path, write_error ? write_error : "unknown error");
-        if (write_error) LLVMDisposeMessage(write_error);
+        fprintf(
+            stderr,
+            "LLVM backend error: could not write '%s': %s\n",
+            output_path,
+            write_error ? write_error : "unknown error"
+        );
+        if (write_error)
+            LLVMDisposeMessage(write_error);
         status = LLVM_BACKEND_STATUS_IO_ERROR;
         goto cleanup;
     }
-    if (write_error) LLVMDisposeMessage(write_error);
+    if (write_error)
+        LLVMDisposeMessage(write_error);
     status = LLVM_BACKEND_STATUS_OK;
 
 cleanup:
-    free_backend_tables(&backend);
-    llvm_backend_dispose_target(&backend);
-    if (backend.builder) LLVMDisposeBuilder(backend.builder);
-    if (backend.module) LLVMDisposeModule(backend.module);
-    if (backend.context) LLVMContextDispose(backend.context);
+    dispose_backend(&backend);
+    return status;
+}
+
+LlvmBackendStatus llvm_backend_emit_object_file(const char *output_path, const CogIrModule *module)
+{
+    if (!output_path) {
+        fprintf(stderr, "LLVM backend error: missing object output path\n");
+        return LLVM_BACKEND_STATUS_IO_ERROR;
+    }
+
+    LlvmBackend backend;
+    memset(&backend, 0, sizeof(backend));
+    LlvmBackendStatus status = lower_verified_module(module, &backend);
+    if (status != LLVM_BACKEND_STATUS_OK)
+        goto cleanup;
+    if (!llvm_backend_init_native_asm_printer(&backend)) {
+        status = LLVM_BACKEND_STATUS_CODEGEN_ERROR;
+        goto cleanup;
+    }
+
+    size_t path_length = strlen(output_path);
+    char *mutable_path = malloc(path_length + 1);
+    if (!mutable_path) {
+        fprintf(stderr, "LLVM backend error: out of memory copying object output path\n");
+        status = LLVM_BACKEND_STATUS_CODEGEN_ERROR;
+        goto cleanup;
+    }
+    memcpy(mutable_path, output_path, path_length + 1);
+
+    char *emit_error = NULL;
+    if (LLVMTargetMachineEmitToFile(
+            backend.target_machine,
+            backend.module,
+            mutable_path,
+            LLVMObjectFile,
+            &emit_error)) {
+        fprintf(
+            stderr,
+            "LLVM backend error: could not emit native object '%s': %s\n",
+            output_path,
+            emit_error ? emit_error : "unknown target code-generation error"
+        );
+        if (emit_error)
+            LLVMDisposeMessage(emit_error);
+        free(mutable_path);
+        status = LLVM_BACKEND_STATUS_CODEGEN_ERROR;
+        goto cleanup;
+    }
+    if (emit_error)
+        LLVMDisposeMessage(emit_error);
+    free(mutable_path);
+    status = LLVM_BACKEND_STATUS_OK;
+
+cleanup:
+    dispose_backend(&backend);
     return status;
 }

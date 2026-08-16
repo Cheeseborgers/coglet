@@ -1805,8 +1805,9 @@ to the host process ABI. A source executable uses `main::() -> i32`; `c_*` types
 remain explicit C-interoperability types rather than a requirement imposed by
 the bootstrap backend. The generated C translation unit provides an
 `int main(void)` adapter that runs module initialization and returns the Coglet
-entry result through the C process interface. Future LLVM/native backends map the
-same resolved CogIR entry to their own target ABI.
+entry result through the C process interface. The LLVM backend maps the same
+resolved CogIR entry to its native process ABI and can emit/link a native
+executable; future native backends must preserve the same language-level contract.
 
 Additional platform-specific conventions beyond the current `cdecl`/`stdcall`/
 `sysv64`/`win64` set, callback lifetime policies beyond raw function pointers,
@@ -1866,10 +1867,10 @@ explicitly requested.
 
 ## Future Direction
 
-A narrow host-C backend now exists, while most runtime lowering remains future
-work. The runtime scalar language contract, explicit wrapping/truncating
-operations, mutable/readonly typed raw pointers, and opaque raw pointers are
-defined at the frontend level and should guide each backend expansion.
+The host-C bootstrap backend and an LLVM native executable path now consume the
+same frozen CogIR contract. Remaining runtime/language work must preserve the
+frontend-defined scalar semantics, explicit wrapping/truncating operations,
+mutable/readonly typed raw pointers, and opaque raw pointers across backends.
 
 Near-term candidate areas include:
 

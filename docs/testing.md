@@ -166,9 +166,13 @@ enables it when CMake can find `LLVMConfig.cmake`; use `COGLET_LLVM=ON` to make
 missing LLVM 17+ development files a configuration error or `COGLET_LLVM=OFF` to
 disable the backend deliberately.
 
-The LLVM tests emit IR through the compiler, which means every success case has
-already passed LLVM's module verifier inside the backend. When `clang` is
-available, the harness also compiles the emitted IR and checks executable status.
+The Stage 1-6 LLVM tests emit IR through the compiler, which means every success
+case has already passed LLVM's module verifier inside the backend. When `clang`
+is available, those compatibility/regression harnesses also compile the emitted IR
+and check executable status. Stage 7 adds direct native-executable tests that use
+`--backend llvm`: the compiler verifies LLVM IR, emits an object with the native
+`TargetMachine`, links it, and executes the result without routing the object path
+through textual `.ll` plus `clang`.
 Stage 1 coverage remains for scalar conditional CFG/direct calls, the resolved
 Coglet entry adapter, and ordered module initialization. Stage 2 adds checked and
 wrapping integer arithmetic, division/remainder traps, bitwise operations, checked
@@ -191,7 +195,10 @@ aligned objects, aggregate callbacks, represented globals, and addressable C
 `_Bool` objects. The x86-64 suite exercises both SysV direct/register and
 `byval`/`sret` paths plus Win64 small and indirect aggregate rules. A negative
 regression keeps ordinary Coglet `bool*` distinct from `c_bool*`, and volatile
-whole-aggregate access remains explicitly unsupported. The float suite includes
+whole-aggregate access remains explicitly unsupported. Stage 7 direct-link
+coverage includes native Coglet `main::() -> i32`, exact C scalar ABI linkage,
+and a represented aggregate C ABI call/return through the independently compiled
+support library. The float suite includes
 NaN/infinity, signed/unsigned range boundaries, and narrowing behavior so LLVM
 conversion instructions are not used before Coglet's checked-cast guards.
 

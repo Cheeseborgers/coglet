@@ -2,7 +2,7 @@
 
 Coglet is focused on building a small, correct systems-language core with explicit semantics and a compiler architecture that remains understandable.
 
-The project remains frontend-led, with a CogIR-only host-C bootstrap backend providing the executable feedback loop. The current host-C/CogIR contract is complete for the exercised language and interop surface. LLVM Stage 6 now provides a second IR-only backend for native scalar/CFG and integer semantics, target-aware memory/pointer and ordinary aggregate lowering, floating-point semantics, switch/trap terminators, native function values/calls, module initialization, entry adaptation, LLVM verification, the scalar/pointer/function C ABI surface, and x86-64 SysV/Win64 represented C object/aggregate ABI lowering. Object generation/linking and optimization are now the next LLVM backend boundaries; non-x86-64 aggregate classifiers remain part of future cross-target work.
+The project remains frontend-led, with a CogIR-only host-C bootstrap backend providing the executable feedback loop. The current host-C/CogIR contract is complete for the exercised language and interop surface. LLVM Stage 7 now provides a second native executable path: after verifier-checked lowering for the Stage 1-6 scalar/CFG, memory/aggregate, floating-point, function-value, C ABI, and x86-64 SysV/Win64 represented-object surface, the backend emits a native object through its LLVM `TargetMachine` and hands that object to a separate host linker-driver boundary. Optimization is the next LLVM backend milestone; non-x86-64 aggregate classifiers remain part of future cross-target work.
 
 ## Current State
 
@@ -489,10 +489,10 @@ into Coglet entry semantics. A source-top-level executable entry is
 canonicalized, and CogIR carries only the resolved entry identity plus its
 backend-neutral runtime type. `backend_c.h` accepts only `const CogIrModule *`;
 the driver lowers, verifies and freezes CogIR, destroys the frontend, then
-emits/builds C. The host-C emitter supplies the C `int main(void)` adapter, while
-future LLVM/native backends can map the same CogIR entry to their target ABI. The
-existing executable and C-interop suite therefore runs through frontend -> CogIR
--> C.
+emits/builds C. The host-C emitter supplies the C `int main(void)` adapter. The
+LLVM backend maps the same CogIR entry to the native process ABI, and future
+native backends must preserve that backend-neutral entry contract. The host-C
+executable and C-interop suite therefore runs through frontend -> CogIR -> C.
 
 The host-C emitter has expanded beyond the old backend's deliberately narrow
 execution subset. Dedicated wrapping integer operations execute with explicit
@@ -524,21 +524,25 @@ entry selection is carried by `module.entry_function` rather than a debug-name
 heuristic. This preserves the source-top-level `main` rule after nested functions
 are flattened, while the verifier enforces the native Coglet `() -> i32` entry
 signature. The CogIR-only host-C bootstrap path is therefore complete for the
-current executable/interop contract. LLVM Stage 6 now consumes the same frozen verified module and additionally
-lowers target C object storage and represented aggregate ABIs. Exact C `_Bool`
+current executable/interop contract. LLVM Stage 6 established the same frozen,
+verified-module boundary and additionally lowered target C object storage and
+represented aggregate ABIs. Exact C `_Bool`
 storage is distinct from logical `bool` values, represented C structs/unions and
 arrays honor packed/explicit alignment, and x86-64 SysV/Win64 aggregate calls use
 an explicit classifier that can split values into registers or select indirect
 `byval`/hidden-`sret` passing. Declarations, calls, and Coglet-defined C callbacks
 all consume the same backend ABI plan. LLVM-specific target layout and callable
 signatures remain backend-owned derivations of frozen CogIR; no frontend object is
-consulted after lowering. The next LLVM milestones are native object/linker
-integration and optimization pipeline work, while aggregate classification for
-additional targets waits for explicit cross-target support.
+consulted after lowering. LLVM Stage 7 now reuses that same verified module and
+backend-owned target machine to emit native objects and links them through a
+separate host toolchain boundary;
+textual LLVM IR emission remains available. The next LLVM milestone is the
+optimization pipeline and user-visible optimization levels, while aggregate
+classification for additional targets waits for explicit cross-target support.
 
-Longer-term alternatives remain possible, including LLVM, a custom native backend,
-or an interpreter for tooling and compile-time execution. The host-C path continues
-to provide executable feedback without defining Coglet semantics by C behavior.
+Longer-term additions remain possible, including a custom native backend or an
+interpreter for tooling and compile-time execution. The host-C path continues to
+provide executable feedback without defining Coglet semantics by C behavior.
 
 ## Self-Hosting Direction
 

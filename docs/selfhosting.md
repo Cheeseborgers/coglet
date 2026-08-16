@@ -34,7 +34,7 @@ The remaining work is primarily backend and language evolution rather than funda
 
 Likely requirements include:
 
-* LLVM/native target code generation beyond the host-C bootstrap path
+* LLVM optimization/code-generation policy beyond the current native object/link path, plus future non-LLVM native backends where justified
 * explicit target ABI lowering for interoperability surfaces that C currently classifies for the compiler
 * basic runtime calls and file I/O
 * arena or general allocation facilities available to Coglet programs
@@ -71,4 +71,4 @@ The frontend now performs:
 * unified reachability analysis
 * switch exhaustiveness analysis
 
-At this stage, the remaining path toward self-hosting is primarily native backend, runtime/library, and compilation-unit engineering rather than another major semantic-analysis subsystem. The host-C backend already proves the current frontend -> CogIR -> backend execution path; major remaining gaps include multi-file/module support, allocation and I/O facilities, and a non-C target-code path suitable for an eventual self-hosted compiler.
+At this stage, the remaining path toward self-hosting is primarily runtime/library, optimization/toolchain, and compilation-unit engineering rather than another major semantic-analysis subsystem. The host-C backend and LLVM Stage 7 native object/link path both consume frozen CogIR; major remaining gaps include multi-file/module support, allocation and I/O facilities, a standard-library boundary, and production-grade native optimization/toolchain policy.

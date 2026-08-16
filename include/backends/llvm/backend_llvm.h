@@ -8,7 +8,17 @@ typedef enum LlvmBackendStatus {
     LLVM_BACKEND_STATUS_UNSUPPORTED,
     LLVM_BACKEND_STATUS_INVALID_IR,
     LLVM_BACKEND_STATUS_IO_ERROR,
+    LLVM_BACKEND_STATUS_CODEGEN_ERROR,
+    LLVM_BACKEND_STATUS_TOOLCHAIN_ERROR,
 } LlvmBackendStatus;
+
+typedef struct LlvmBackendLinkOptions {
+    const char *const *library_dirs;
+    int library_dir_count;
+
+    const char *const *libraries;
+    int library_count;
+} LlvmBackendLinkOptions;
 
 /*
  * Lowers a verified, frozen CogIR module to textual LLVM IR, verifies the
@@ -20,6 +30,28 @@ typedef enum LlvmBackendStatus {
 LlvmBackendStatus llvm_backend_emit_ir_file(
     const char *output_path,
     const CogIrModule *module
+);
+
+/*
+ * Lowers and verifies the same frozen CogIR module, then asks LLVM's native
+ * TargetMachine to emit a target object file. No external compiler process is
+ * involved in object generation.
+ */
+LlvmBackendStatus llvm_backend_emit_object_file(
+    const char *output_path,
+    const CogIrModule *module
+);
+
+/*
+ * Emits a temporary native object through LLVM and invokes the host linker
+ * driver to produce an executable. Linker/toolchain integration is deliberately
+ * separate from LLVM IR lowering and consumes only the emitted object plus the
+ * explicitly requested native -L/-l inputs.
+ */
+LlvmBackendStatus llvm_backend_build_executable(
+    const char *output_path,
+    const CogIrModule *module,
+    const LlvmBackendLinkOptions *link_options
 );
 
 #endif

@@ -37,6 +37,7 @@ typedef struct LlvmBackend {
 void llvm_backend_error(LlvmBackend *backend, const char *message);
 
 int llvm_backend_init_native_target(LlvmBackend *backend);
+int llvm_backend_init_native_asm_printer(LlvmBackend *backend);
 void llvm_backend_dispose_target(LlvmBackend *backend);
 
 LLVMTypeRef llvm_lower_type(LlvmBackend *backend, CogIrTypeId id);

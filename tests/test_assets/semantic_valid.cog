@@ -270,7 +270,7 @@ array_index_valid::() -> i32 {
 }
 
 array_index_valid_last::() -> i32 {
-    values: i32[5];
+    values: i32[5] = [0, 0, 0, 0, 0];
 
     return values[2];
 }
@@ -278,13 +278,13 @@ array_index_valid_last::() -> i32 {
 ARRAY_INDEX_CONST :: 1;
 
 array_index_valid_const::() -> i32 {
-    values: i32[3];
+    values: i32[3] = [0, 0, 0];
 
     return values[ARRAY_INDEX_CONST];
 }
 
 array_index_runtime_allowed::(i: i32) -> i32 {
-    values: i32[3];
+    values: i32[3] = [0, 0, 0];
 
     return values[i];
 }
@@ -306,7 +306,7 @@ compound_assignment_untyped_literal::() -> void {
 }
 
 compound_assignment_array_index::() -> void {
-    values: i32[3];
+    values: i32[3] = [0, 0, 0];
 
     values[0] += 1;
 }
@@ -340,7 +340,7 @@ compound_assignment_float1::() -> void {
 }
 
 compound_assignment_array_index1::() -> void {
-    values: i32[3];
+    values: i32[3] = [0, 0, 0];
 
     values[0] += 1;
     values[1] -= 1;

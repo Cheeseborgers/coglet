@@ -1,4 +1,5 @@
 #include "cog_ir_lower.h"
+#include "string_decode.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -579,9 +580,27 @@ static int lower_remaining_declarations(CogIrLowerContext *ctx)
                 break;
             }
             case NODE_CONST_DECL: {
-                ConstValue value; if (!semantic_get_constant_value(sem, info->node, &value)) { lower_error(ctx, info->node->span, "missing checked constant declaration value during CogIR lowering"); return 0; }
-                CogIrConstId constant = cog_ir_lower_const_value(ctx, &value); if (constant == COG_IR_CONST_INVALID) return 0;
-                binding->kind = COG_IR_LOWER_DECL_CONSTANT; binding->type = cog_ir_lower_type(ctx, value.type); binding->as.constant = constant; break;
+                ConstValue value;
+                if (!semantic_get_constant_value(sem, info->node, &value)) {
+                    lower_error(ctx, info->node->span, "missing checked constant declaration value during CogIR lowering");
+                    return 0;
+                }
+                binding->kind = COG_IR_LOWER_DECL_CONSTANT;
+                if (value.type->kind == TYPE_UNTYPED_INT || value.type->kind == TYPE_UNTYPED_FLOAT) {
+                    /*
+                     * Adaptable constants deliberately have no runtime type at
+                     * declaration time. Each use is materialized from that use's
+                     * SemExprInfo/ConstValue into a concrete CogIR constant.
+                     */
+                    binding->type = COG_IR_TYPE_INVALID;
+                    binding->as.constant = COG_IR_CONST_INVALID;
+                } else {
+                    CogIrConstId constant = cog_ir_lower_const_value(ctx, &value);
+                    if (constant == COG_IR_CONST_INVALID) return 0;
+                    binding->type = cog_ir_lower_type(ctx, value.type);
+                    binding->as.constant = constant;
+                }
+                break;
             }
             case NODE_FUNC_PARAM_DECL:
                 binding->kind = COG_IR_LOWER_DECL_PARAMETER_PENDING; binding->type = cog_ir_lower_type(ctx, info->type); break;
@@ -608,7 +627,12 @@ int cog_ir_lower_prepare_metadata(CogIrLowerContext *ctx)
     }
     if (!predeclare_nominal_types(ctx) || !define_nominal_types(ctx) || !lower_remaining_declarations(ctx)) return 0;
     for (size_t i = 0; i < ctx->decl_binding_count; ++i) {
-        if (ctx->decl_bindings[i].kind == COG_IR_LOWER_DECL_NONE || ctx->decl_bindings[i].type == COG_IR_TYPE_INVALID) {
+        CogIrLowerDeclBinding *binding = &ctx->decl_bindings[i];
+        int adaptable_constant = binding->kind == COG_IR_LOWER_DECL_CONSTANT &&
+                                 binding->type == COG_IR_TYPE_INVALID &&
+                                 binding->as.constant == COG_IR_CONST_INVALID;
+        if (binding->kind == COG_IR_LOWER_DECL_NONE ||
+            (binding->type == COG_IR_TYPE_INVALID && !adaptable_constant)) {
             lower_error(ctx, source_span_invalid(), "CogIR declaration map is incomplete after metadata lowering"); return 0;
         }
     }
@@ -632,6 +656,13 @@ typedef struct ExecLowerState {
     CogIrBlockId block;
     ExecLoopContext *loop;
 } ExecLowerState;
+
+typedef struct LoweredPlace {
+    CogIrValueId address;
+    CogIrTypeId type;
+    int is_volatile;
+    int is_writable;
+} LoweredPlace;
 
 static int block_is_open(const ExecLowerState *state)
 {
@@ -841,6 +872,9 @@ static CogIrLowerDeclBinding *binding_for_expr_ident(CogIrLowerContext *ctx, Nod
 }
 
 static CogIrValueId lower_expression(ExecLowerState *state, Node *node);
+static int expression_may_create_cfg(ExecLowerState *state, Node *node);
+static CogIrSlotId spill_value(ExecLowerState *state, CogIrValueId value, SourceSpan span);
+static CogIrValueId reload_spill(ExecLowerState *state, CogIrSlotId slot, SourceSpan span);
 
 static CogIrValueId lower_identifier_place(ExecLowerState *state, Node *node, int *is_volatile)
 {
@@ -881,6 +915,248 @@ static CogIrValueId lower_identifier_place(ExecLowerState *state, Node *node, in
     }
 }
 
+
+static int string_view_equal(StringView a, StringView b)
+{
+    return a.length == b.length && (!a.length || memcmp(a.data, b.data, a.length) == 0);
+}
+
+static Type *effective_semantic_type(ExecLowerState *state, Node *node)
+{
+    return semantic_get_effective_expr_type(
+        (SemanticContext *)&state->lower->frontend->sem,
+        node
+    );
+}
+
+static int semantic_struct_field_index(Type *type, StringView name)
+{
+    if (!type || type->kind != TYPE_STRUCT)
+        return -1;
+    for (int i = 0; i < type->field_count; ++i)
+        if (string_view_equal(type->fields[i].name, name))
+            return i;
+    return -1;
+}
+
+static int semantic_enum_member_index(Type *type, StringView name)
+{
+    if (!type || type->kind != TYPE_ENUM)
+        return -1;
+    for (int i = 0; i < type->enum_member_count; ++i)
+        if (string_view_equal(type->enum_members[i].name, name))
+            return i;
+    return -1;
+}
+
+static CogIrValueId emit_field_address(
+    ExecLowerState *state,
+    CogIrValueId base,
+    uint32_t field_index,
+    CogIrTypeId field_type,
+    int readonly,
+    int is_volatile,
+    SourceSpan span
+) {
+    CogIrTypeId pointer = cog_ir_type_pointer(
+        state->lower->module,
+        field_type,
+        readonly,
+        is_volatile
+    );
+    if (pointer == COG_IR_TYPE_INVALID) {
+        lower_error(state->lower, span, "failed to construct field address type");
+        return COG_IR_VALUE_INVALID;
+    }
+    CogIrInstruction instruction = {
+        .op = COG_IR_OP_FIELD_ADDR,
+        .result_type = pointer,
+        .span = span,
+        .as.field_addr = { .base = base, .field_index = field_index },
+    };
+    return emit_instruction_value(state, instruction);
+}
+
+static CogIrValueId emit_index_address(
+    ExecLowerState *state,
+    CogIrOp op,
+    CogIrValueId base,
+    CogIrValueId index,
+    CogIrTypeId element_type,
+    int readonly,
+    int is_volatile,
+    SourceSpan span
+) {
+    CogIrTypeId pointer = cog_ir_type_pointer(
+        state->lower->module,
+        element_type,
+        readonly,
+        is_volatile
+    );
+    if (pointer == COG_IR_TYPE_INVALID) {
+        lower_error(state->lower, span, "failed to construct indexed address type");
+        return COG_IR_VALUE_INVALID;
+    }
+    CogIrInstruction instruction = {
+        .op = op,
+        .result_type = pointer,
+        .span = span,
+        .as.index_addr = { .base = base, .index = index },
+    };
+    return emit_instruction_value(state, instruction);
+}
+
+static CogIrValueId emit_aggregate_value(
+    ExecLowerState *state,
+    CogIrOp op,
+    CogIrTypeId type,
+    CogIrValueId *values,
+    size_t value_count,
+    SourceSpan span
+) {
+    CogIrInstruction instruction = {
+        .op = op,
+        .result_type = type,
+        .span = span,
+        .as.aggregate = { .values = values, .value_count = value_count },
+    };
+    return emit_instruction_value(state, instruction);
+}
+
+static CogIrValueId emit_conversion(
+    ExecLowerState *state,
+    CogIrOp op,
+    CogIrValueId operand,
+    CogIrTypeId target_type,
+    SourceSpan span
+) {
+    CogIrInstruction instruction = {
+        .op = op,
+        .result_type = target_type,
+        .span = span,
+        .as.conversion = { .operand = operand, .target_type = target_type },
+    };
+    return emit_instruction_value(state, instruction);
+}
+
+static int lower_place(ExecLowerState *state, Node *node, LoweredPlace *out)
+{
+    if (!state || !node || !out)
+        return 0;
+
+    SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
+    SemExprInfo *expr = semantic_get_expr_info(sem, node);
+    Type *sem_type = semantic_get_effective_expr_type(sem, node);
+    if (!expr || !sem_type || expr->value_category != VALUE_CATEGORY_LVALUE) {
+        lower_error(state->lower, node->span, "expression is not an addressable place during CogIR lowering");
+        return 0;
+    }
+
+    CogIrTypeId value_type = cog_ir_lower_type(state->lower, sem_type);
+    if (value_type == COG_IR_TYPE_INVALID)
+        return 0;
+
+    memset(out, 0, sizeof(*out));
+    out->address = COG_IR_VALUE_INVALID;
+    out->type = value_type;
+    out->is_volatile = !!expr->value_is_volatile;
+    out->is_writable = expr->value_access == VALUE_ACCESS_WRITABLE;
+
+    switch (node->type) {
+        case NODE_IDENT:
+            out->address = lower_identifier_place(state, node, &out->is_volatile);
+            return out->address != COG_IR_VALUE_INVALID;
+
+        case NODE_UNARY:
+            if (node->as.unary.op == TOK_STAR) {
+                out->address = lower_expression(state, node->as.unary.operand);
+                return out->address != COG_IR_VALUE_INVALID;
+            }
+            break;
+
+        case NODE_FIELD: {
+            LoweredPlace base;
+            if (!lower_place(state, node->as.field.object, &base))
+                return 0;
+            Type *object_type = semantic_get_effective_expr_type(sem, node->as.field.object);
+            int field_index = semantic_struct_field_index(object_type, node->as.field.name);
+            if (field_index < 0) {
+                lower_error(state->lower, node->span, "struct field has no semantic field index during CogIR lowering");
+                return 0;
+            }
+            out->address = emit_field_address(
+                state,
+                base.address,
+                (uint32_t)field_index,
+                value_type,
+                !out->is_writable,
+                out->is_volatile,
+                node->span
+            );
+            return out->address != COG_IR_VALUE_INVALID;
+        }
+
+        case NODE_INDEX: {
+            Type *object_type = semantic_get_effective_expr_type(sem, node->as.index.object);
+            if (!object_type) {
+                lower_error(state->lower, node->span, "indexed object has no semantic type during CogIR lowering");
+                return 0;
+            }
+
+            CogIrValueId base = COG_IR_VALUE_INVALID;
+            CogIrOp op;
+            if (object_type->kind == TYPE_ARRAY) {
+                LoweredPlace array_place;
+                if (!lower_place(state, node->as.index.object, &array_place))
+                    return 0;
+                base = array_place.address;
+                op = COG_IR_OP_ARRAY_ELEM_ADDR;
+            } else if (object_type->kind == TYPE_POINTER) {
+                base = lower_expression(state, node->as.index.object);
+                op = COG_IR_OP_PTR_INDEX_ADDR;
+            } else {
+                lower_error(state->lower, node->span, "indexed expression is neither an array nor typed pointer");
+                return 0;
+            }
+            if (base == COG_IR_VALUE_INVALID)
+                return 0;
+
+            CogIrSlotId base_spill = COG_IR_SLOT_INVALID;
+            if (expression_may_create_cfg(state, node->as.index.index)) {
+                base_spill = spill_value(state, base, node->as.index.object->span);
+                if (base_spill == COG_IR_SLOT_INVALID)
+                    return 0;
+            }
+            CogIrValueId index = lower_expression(state, node->as.index.index);
+            if (index == COG_IR_VALUE_INVALID)
+                return 0;
+            if (base_spill != COG_IR_SLOT_INVALID) {
+                base = reload_spill(state, base_spill, node->as.index.object->span);
+                if (base == COG_IR_VALUE_INVALID)
+                    return 0;
+            }
+
+            out->address = emit_index_address(
+                state,
+                op,
+                base,
+                index,
+                value_type,
+                !out->is_writable,
+                out->is_volatile,
+                node->span
+            );
+            return out->address != COG_IR_VALUE_INVALID;
+        }
+
+        default:
+            break;
+    }
+
+    lower_error(state->lower, node->span, "place expression is outside the current CogIR data/address lowering slice");
+    return 0;
+}
+
 static CogIrOp lower_arithmetic_binary_op(CogIrLowerContext *ctx, Node *node, CogIrTypeId type)
 {
     const CogIrType *ir_type = cog_ir_get_type(ctx->module, type);
@@ -894,6 +1170,14 @@ static CogIrOp lower_arithmetic_binary_op(CogIrLowerContext *ctx, Node *node, Co
             case TOK_STAR: return COG_IR_OP_IMUL_CHECKED;
             case TOK_SLASH: return COG_IR_OP_IDIV_CHECKED;
             case TOK_PERCENT: return COG_IR_OP_IREM_CHECKED;
+            case TOK_AND: return COG_IR_OP_BIT_AND;
+            case TOK_OR: return COG_IR_OP_BIT_OR;
+            case TOK_XOR: return COG_IR_OP_BIT_XOR;
+            case TOK_SHIFT_LEFT: return COG_IR_OP_SHL_CHECKED_COUNT;
+            case TOK_SHIFT_RIGHT:
+                return ir_type->as.integer.is_signed
+                    ? COG_IR_OP_SHR_SIGNED_CHECKED_COUNT
+                    : COG_IR_OP_SHR_UNSIGNED_CHECKED_COUNT;
             default: return (CogIrOp)-1;
         }
     }
@@ -1068,6 +1352,23 @@ static int expression_may_create_cfg(ExecLowerState *state, Node *node)
                    expression_may_create_cfg(state, node->as.binary.right);
         case NODE_UNARY:
             return expression_may_create_cfg(state, node->as.unary.operand);
+        case NODE_CAST:
+            return expression_may_create_cfg(state, node->as.cast_expr.expression);
+        case NODE_FIELD:
+            return expression_may_create_cfg(state, node->as.field.object);
+        case NODE_INDEX:
+            return expression_may_create_cfg(state, node->as.index.object) ||
+                   expression_may_create_cfg(state, node->as.index.index);
+        case NODE_ARRAY_LITERAL:
+            for (int i = 0; i < node->as.array_literal.elements.count; ++i)
+                if (expression_may_create_cfg(state, node->as.array_literal.elements.items[i]))
+                    return 1;
+            return 0;
+        case NODE_STRUCT_INIT:
+            for (int i = 0; i < node->as.struct_init.fields.count; ++i)
+                if (expression_may_create_cfg(state, node->as.struct_init.fields.items[i]->as.field_init.value))
+                    return 1;
+            return 0;
         case NODE_CALL:
             if (expression_may_create_cfg(state, node->as.call.callee))
                 return 1;
@@ -1272,7 +1573,413 @@ static CogIrValueId lower_call_expression(ExecLowerState *state, Node *node)
     return result_type == COG_IR_TYPE_INVALID ? COG_IR_VALUE_INVALID : result;
 }
 
-static CogIrValueId lower_expression(ExecLowerState *state, Node *node)
+
+static CogIrValueId lower_character_literal(ExecLowerState *state, Node *node)
+{
+    StringDecodeInfo info = string_analyze(node->as.char_literal);
+    if (!info.ok || info.decoded_length != 1) {
+        lower_error(state->lower, node->span, "invalid character literal reached CogIR lowering");
+        return COG_IR_VALUE_INVALID;
+    }
+    char decoded = 0;
+    if (!string_decode_into(node->as.char_literal, &decoded).ok)
+        return COG_IR_VALUE_INVALID;
+    CogIrTypeId type = cog_ir_lower_type(state->lower, effective_semantic_type(state, node));
+    CogIrConstId constant = cog_ir_const_integer(
+        state->lower->module,
+        type,
+        (uint8_t)decoded
+    );
+    return constant == COG_IR_CONST_INVALID ? COG_IR_VALUE_INVALID
+                                            : emit_constant_value(state, constant, node->span);
+}
+
+static CogIrValueId lower_array_value_from_bytes(
+    ExecLowerState *state,
+    CogIrTypeId array_type,
+    CogIrTypeId element_type,
+    const unsigned char *bytes,
+    size_t count,
+    SourceSpan span
+) {
+    CogIrValueId *values = count ? calloc(count, sizeof(*values)) : NULL;
+    if (count && !values) {
+        lower_error(state->lower, span, "out of memory while lowering string bytes");
+        return COG_IR_VALUE_INVALID;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        CogIrConstId c = cog_ir_const_integer(state->lower->module, element_type, bytes[i]);
+        values[i] = c == COG_IR_CONST_INVALID ? COG_IR_VALUE_INVALID
+                                              : emit_constant_value(state, c, span);
+        if (values[i] == COG_IR_VALUE_INVALID) {
+            free(values);
+            return COG_IR_VALUE_INVALID;
+        }
+    }
+    CogIrValueId result = emit_aggregate_value(
+        state,
+        COG_IR_OP_MAKE_ARRAY,
+        array_type,
+        values,
+        count,
+        span
+    );
+    free(values);
+    return result;
+}
+
+static int decode_string_bytes(Node *node, unsigned char **out_bytes, size_t *out_count)
+{
+    *out_bytes = NULL;
+    *out_count = 0;
+    StringDecodeInfo info = string_analyze(node->as.string_literal);
+    if (!info.ok)
+        return 0;
+    size_t count = (size_t)info.decoded_length + 1;
+    unsigned char *bytes = calloc(count ? count : 1, 1);
+    if (!bytes)
+        return 0;
+    if (info.decoded_length && !string_decode_into(node->as.string_literal, (char *)bytes).ok) {
+        free(bytes);
+        return 0;
+    }
+    bytes[count - 1] = 0;
+    *out_bytes = bytes;
+    *out_count = count;
+    return 1;
+}
+
+static CogIrValueId lower_string_literal(ExecLowerState *state, Node *node)
+{
+    Type *sem_type = effective_semantic_type(state, node);
+    CogIrTypeId result_type = cog_ir_lower_type(state->lower, sem_type);
+    const CogIrType *ir_type = cog_ir_get_type(state->lower->module, result_type);
+    if (!sem_type || result_type == COG_IR_TYPE_INVALID || !ir_type)
+        return COG_IR_VALUE_INVALID;
+
+    unsigned char *bytes = NULL;
+    size_t count = 0;
+    if (!decode_string_bytes(node, &bytes, &count)) {
+        lower_error(state->lower, node->span, "invalid string literal reached CogIR lowering");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    if (ir_type->kind == COG_IR_TYPE_ARRAY) {
+        CogIrValueId value = lower_array_value_from_bytes(
+            state,
+            result_type,
+            ir_type->as.array.element_type,
+            bytes,
+            count,
+            node->span
+        );
+        free(bytes);
+        return value;
+    }
+
+    if (ir_type->kind == COG_IR_TYPE_POINTER) {
+        CogIrTypeId element_type = ir_type->as.pointer.pointee;
+        CogIrTypeId array_type = cog_ir_type_array(state->lower->module, element_type, count);
+        CogIrConstId *elements = count ? calloc(count, sizeof(*elements)) : NULL;
+        if (array_type == COG_IR_TYPE_INVALID || (count && !elements)) {
+            free(bytes); free(elements);
+            lower_error(state->lower, node->span, "failed to construct C string backing array");
+            return COG_IR_VALUE_INVALID;
+        }
+        for (size_t i = 0; i < count; ++i) {
+            elements[i] = cog_ir_const_integer(state->lower->module, element_type, bytes[i]);
+            if (elements[i] == COG_IR_CONST_INVALID) {
+                free(bytes); free(elements);
+                return COG_IR_VALUE_INVALID;
+            }
+        }
+        CogIrConstId initializer = cog_ir_const_array(state->lower->module, array_type, elements, count);
+        free(elements); free(bytes);
+        if (initializer == COG_IR_CONST_INVALID)
+            return COG_IR_VALUE_INVALID;
+        CogIrGlobalId global = cog_ir_add_global(
+            state->lower->module,
+            string_view_from_cstr(".str"),
+            node->span,
+            array_type,
+            COG_IR_LINKAGE_INTERNAL,
+            1,
+            1,
+            initializer
+        );
+        if (global == COG_IR_GLOBAL_INVALID) {
+            lower_error(state->lower, node->span, "failed to create C string backing global");
+            return COG_IR_VALUE_INVALID;
+        }
+        CogIrValueId base = emit_global_address(state, global, array_type, 1, node->span);
+        CogIrTypeId index_type = cog_ir_type_integer(state->lower->module, 32, 0);
+        CogIrConstId zero = cog_ir_const_integer(state->lower->module, index_type, 0);
+        CogIrValueId index = emit_constant_value(state, zero, node->span);
+        if (base == COG_IR_VALUE_INVALID || index == COG_IR_VALUE_INVALID)
+            return COG_IR_VALUE_INVALID;
+        return emit_index_address(
+            state,
+            COG_IR_OP_ARRAY_ELEM_ADDR,
+            base,
+            index,
+            element_type,
+            ir_type->as.pointer.is_readonly,
+            ir_type->as.pointer.is_volatile,
+            node->span
+        );
+    }
+
+    free(bytes);
+    lower_error(state->lower, node->span, "string literal has unsupported CogIR destination type");
+    return COG_IR_VALUE_INVALID;
+}
+
+static CogIrValueId lower_array_literal(ExecLowerState *state, Node *node)
+{
+    Type *sem_type = effective_semantic_type(state, node);
+    CogIrTypeId type = cog_ir_lower_type(state->lower, sem_type);
+    const CogIrType *ir_type = cog_ir_get_type(state->lower->module, type);
+    size_t count = (size_t)node->as.array_literal.elements.count;
+    if (!ir_type || ir_type->kind != COG_IR_TYPE_ARRAY || ir_type->as.array.length != count) {
+        lower_error(state->lower, node->span, "array literal type/count mismatch during CogIR lowering");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    CogIrValueId *values = count ? calloc(count, sizeof(*values)) : NULL;
+    CogIrSlotId *spills = count ? calloc(count, sizeof(*spills)) : NULL;
+    int needs_spills = expression_may_create_cfg(state, node);
+    if (count && (!values || !spills)) {
+        free(values); free(spills);
+        lower_error(state->lower, node->span, "out of memory while lowering array literal");
+        return COG_IR_VALUE_INVALID;
+    }
+    for (size_t i = 0; i < count; ++i)
+        spills[i] = COG_IR_SLOT_INVALID;
+
+    for (size_t i = 0; i < count; ++i) {
+        Node *element = node->as.array_literal.elements.items[i];
+        CogIrValueId value = lower_expression(state, element);
+        if (value == COG_IR_VALUE_INVALID) goto fail;
+        if (needs_spills) {
+            spills[i] = spill_value(state, value, element->span);
+            if (spills[i] == COG_IR_SLOT_INVALID) goto fail;
+        } else {
+            values[i] = value;
+        }
+    }
+    if (needs_spills) {
+        for (size_t i = 0; i < count; ++i) {
+            values[i] = reload_spill(state, spills[i], node->as.array_literal.elements.items[i]->span);
+            if (values[i] == COG_IR_VALUE_INVALID) goto fail;
+        }
+    }
+    {
+        CogIrValueId result = emit_aggregate_value(state, COG_IR_OP_MAKE_ARRAY, type, values, count, node->span);
+        free(values); free(spills);
+        return result;
+    }
+fail:
+    free(values); free(spills);
+    return COG_IR_VALUE_INVALID;
+}
+
+static CogIrValueId lower_struct_initializer(ExecLowerState *state, Node *node)
+{
+    Type *sem_type = effective_semantic_type(state, node);
+    CogIrTypeId type = cog_ir_lower_type(state->lower, sem_type);
+    const CogIrType *ir_type = cog_ir_get_type(state->lower->module, type);
+    if (!sem_type || sem_type->kind != TYPE_STRUCT || !ir_type || ir_type->kind != COG_IR_TYPE_STRUCT) {
+        lower_error(state->lower, node->span, "struct initializer has invalid CogIR type");
+        return COG_IR_VALUE_INVALID;
+    }
+    size_t field_count = (size_t)sem_type->field_count;
+    CogIrValueId *fields = field_count ? calloc(field_count, sizeof(*fields)) : NULL;
+    CogIrSlotId *spills = field_count ? calloc(field_count, sizeof(*spills)) : NULL;
+    int needs_spills = expression_may_create_cfg(state, node);
+    if (field_count && (!fields || !spills)) {
+        free(fields); free(spills);
+        lower_error(state->lower, node->span, "out of memory while lowering struct initializer");
+        return COG_IR_VALUE_INVALID;
+    }
+    for (size_t i = 0; i < field_count; ++i) spills[i] = COG_IR_SLOT_INVALID;
+
+    for (int i = 0; i < node->as.struct_init.fields.count; ++i) {
+        Node *field_init = node->as.struct_init.fields.items[i];
+        int field_index = semantic_struct_field_index(sem_type, field_init->as.field_init.name);
+        if (field_index < 0) {
+            lower_error(state->lower, field_init->span, "struct initializer field has no semantic index");
+            goto fail;
+        }
+        Node *value_node = field_init->as.field_init.value;
+        CogIrValueId value = lower_expression(state, value_node);
+        if (value == COG_IR_VALUE_INVALID) goto fail;
+        if (needs_spills) {
+            spills[field_index] = spill_value(state, value, value_node->span);
+            if (spills[field_index] == COG_IR_SLOT_INVALID) goto fail;
+        } else {
+            fields[field_index] = value;
+        }
+    }
+    if (needs_spills) {
+        for (size_t i = 0; i < field_count; ++i) {
+            if (spills[i] == COG_IR_SLOT_INVALID) {
+                lower_error(state->lower, node->span, "struct initializer is missing a lowered field");
+                goto fail;
+            }
+            fields[i] = reload_spill(state, spills[i], node->span);
+            if (fields[i] == COG_IR_VALUE_INVALID) goto fail;
+        }
+    }
+    {
+        CogIrValueId result = emit_aggregate_value(state, COG_IR_OP_MAKE_STRUCT, type, fields, field_count, node->span);
+        free(fields); free(spills);
+        return result;
+    }
+fail:
+    free(fields); free(spills);
+    return COG_IR_VALUE_INVALID;
+}
+
+
+static CogIrValueId emit_semantic_constant_as_type(ExecLowerState *state,
+                                                    const ConstValue *value,
+                                                    Type *target_sem,
+                                                    SourceSpan span)
+{
+    if (!state || !value || !target_sem)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrTypeId target = cog_ir_lower_type(state->lower, target_sem);
+    if (target == COG_IR_TYPE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrConstId constant = COG_IR_CONST_INVALID;
+    switch (value->kind) {
+        case CONST_VALUE_NULL:
+            constant = cog_ir_const_null(state->lower->module, target);
+            break;
+
+        case CONST_VALUE_BOOL:
+            if (target_sem->kind != TYPE_BOOL)
+                return COG_IR_VALUE_INVALID;
+            constant = cog_ir_const_bool(state->lower->module, target, value->as.boolean);
+            break;
+
+        case CONST_VALUE_INT: {
+            unsigned width = integer_type_width(target_sem);
+            if (width) {
+                constant = cog_ir_const_integer(state->lower->module, target,
+                                                integer_value_bits(value->as.integer, width));
+                break;
+            }
+            if (target_sem->kind == TYPE_F32 || target_sem->kind == TYPE_F64) {
+                double converted = (double)value->as.integer.magnitude;
+                if (value->as.integer.is_negative)
+                    converted = -converted;
+                if (target_sem->kind == TYPE_F32) {
+                    float rounded = (float)converted;
+                    uint32_t bits;
+                    memcpy(&bits, &rounded, sizeof(bits));
+                    constant = cog_ir_const_float32(state->lower->module, target, bits);
+                } else {
+                    uint64_t bits;
+                    memcpy(&bits, &converted, sizeof(bits));
+                    constant = cog_ir_const_float64(state->lower->module, target, bits);
+                }
+            }
+            break;
+        }
+
+        case CONST_VALUE_FLOAT:
+            if (target_sem->kind == TYPE_F32) {
+                float rounded = (float)value->as.floating;
+                uint32_t bits;
+                memcpy(&bits, &rounded, sizeof(bits));
+                constant = cog_ir_const_float32(state->lower->module, target, bits);
+            } else if (target_sem->kind == TYPE_F64) {
+                uint64_t bits;
+                double exact = value->as.floating;
+                memcpy(&bits, &exact, sizeof(bits));
+                constant = cog_ir_const_float64(state->lower->module, target, bits);
+            } else {
+                unsigned width = integer_type_width(target_sem);
+                if (width) {
+                    IntegerValue converted = {0};
+                    double source = value->as.floating;
+                    converted.is_negative = source < 0.0;
+                    if (converted.is_negative) source = -source;
+                    converted.magnitude = (uint64_t)source;
+                    constant = cog_ir_const_integer(state->lower->module, target,
+                                                    integer_value_bits(converted, width));
+                }
+            }
+            break;
+    }
+
+    if (constant == COG_IR_CONST_INVALID) {
+        lower_error(state->lower, span, "constant cannot be materialized as the checked cast target type");
+        return COG_IR_VALUE_INVALID;
+    }
+    return emit_constant_value(state, constant, span);
+}
+
+static CogIrValueId lower_cast_expression(ExecLowerState *state, Node *node)
+{
+    Type *target_sem = effective_semantic_type(state, node);
+    CogIrTypeId target = cog_ir_lower_type(state->lower, target_sem);
+    if (target == COG_IR_TYPE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    /*
+     * An explicit cast supplies the concrete context for an otherwise frontend-only
+     * adaptable literal (`untyped-int`, `untyped-float`, or `null`).  Those source
+     * values must never be materialized as standalone CogIR types.  Semantic analysis
+     * has already checked representability, so materialize the source constant directly
+     * in the cast destination representation.
+     */
+    ConstValue source_constant;
+    if (semantic_get_constant_value((SemanticContext *)&state->lower->frontend->sem,
+                                    node->as.cast_expr.expression, &source_constant) &&
+        source_constant.type &&
+        (source_constant.type->kind == TYPE_UNTYPED_INT ||
+         source_constant.type->kind == TYPE_UNTYPED_FLOAT ||
+         source_constant.type->kind == TYPE_NULL)) {
+        return emit_semantic_constant_as_type(state, &source_constant, target_sem, node->span);
+    }
+
+    CogIrValueId operand = lower_expression(state, node->as.cast_expr.expression);
+    if (operand == COG_IR_VALUE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrOp op;
+    switch (node->as.cast_expr.kind) {
+        case CAST_TRUNCATING:
+            op = COG_IR_OP_INT_TRUNCATE;
+            break;
+        case CAST_REINTERPRET:
+            op = COG_IR_OP_PTR_REINTERPRET;
+            break;
+        case CAST_CHECKED: {
+            const CogIrFunction *function = cog_ir_get_function(state->lower->module, state->function);
+            const CogIrValue *value = function ? cog_ir_get_value(function, operand) : NULL;
+            const CogIrType *source = value ? cog_ir_get_type(state->lower->module, value->type) : NULL;
+            const CogIrType *dest = cog_ir_get_type(state->lower->module, target);
+            if (source && dest &&
+                ((source->kind == COG_IR_TYPE_POINTER && dest->kind == COG_IR_TYPE_POINTER) ||
+                 (source->kind == COG_IR_TYPE_OPAQUE_POINTER && dest->kind == COG_IR_TYPE_OPAQUE_POINTER)))
+                op = COG_IR_OP_PTR_QUALIFY;
+            else
+                op = COG_IR_OP_CAST_CHECKED;
+            break;
+        }
+        default:
+            lower_error(state->lower, node->span, "unknown cast kind during CogIR lowering");
+            return COG_IR_VALUE_INVALID;
+    }
+    return emit_conversion(state, op, operand, target, node->span);
+}
+
+static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
 {
     if (!node) {
         lower_error(state->lower, source_span_invalid(), "missing expression during CogIR lowering");
@@ -1281,7 +1988,10 @@ static CogIrValueId lower_expression(ExecLowerState *state, Node *node)
 
     SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
     ConstValue constant_value;
-    if (semantic_get_constant_value(sem, node, &constant_value)) {
+    if (semantic_get_constant_value(sem, node, &constant_value) && constant_value.type &&
+        constant_value.type->kind != TYPE_UNTYPED_INT &&
+        constant_value.type->kind != TYPE_UNTYPED_FLOAT &&
+        constant_value.type->kind != TYPE_NULL) {
         CogIrConstId constant = cog_ir_lower_const_value(state->lower, &constant_value);
         if (constant == COG_IR_CONST_INVALID)
             return COG_IR_VALUE_INVALID;
@@ -1323,6 +2033,63 @@ static CogIrValueId lower_expression(ExecLowerState *state, Node *node)
     }
 
     switch (node->type) {
+        case NODE_CHAR:
+            return lower_character_literal(state, node);
+
+        case NODE_STRING:
+            return lower_string_literal(state, node);
+
+        case NODE_ARRAY_LITERAL:
+            return lower_array_literal(state, node);
+
+        case NODE_STRUCT_INIT:
+            return lower_struct_initializer(state, node);
+
+        case NODE_CAST:
+            return lower_cast_expression(state, node);
+
+        case NODE_FIELD:
+        case NODE_INDEX: {
+            SemExprInfo *expr = semantic_get_expr_info(sem, node);
+            if (node->type == NODE_FIELD && expr && expr->symbol && expr->symbol->kind == SYMBOL_TYPE &&
+                expr->type && expr->type->kind == TYPE_ENUM) {
+                int member = semantic_enum_member_index(expr->type, node->as.field.name);
+                unsigned width = integer_type_width(expr->type);
+                CogIrTypeId enum_type = cog_ir_lower_type(state->lower, expr->type);
+                if (member < 0 || !width || enum_type == COG_IR_TYPE_INVALID) {
+                    lower_error(state->lower, node->span, "enum member has no CogIR constant mapping");
+                    return COG_IR_VALUE_INVALID;
+                }
+                uint64_t bits = integer_value_bits(expr->type->enum_members[member].value, width);
+                CogIrConstId constant = cog_ir_const_integer(state->lower->module, enum_type, bits);
+                return constant == COG_IR_CONST_INVALID ? COG_IR_VALUE_INVALID
+                                                        : emit_constant_value(state, constant, node->span);
+            }
+            if (expr && expr->value_category == VALUE_CATEGORY_LVALUE) {
+                LoweredPlace place;
+                if (!lower_place(state, node, &place))
+                    return COG_IR_VALUE_INVALID;
+                return emit_load(state, place.address, place.type, place.is_volatile, node->span);
+            }
+            if (node->type == NODE_FIELD) {
+                CogIrValueId aggregate = lower_expression(state, node->as.field.object);
+                Type *object_type = semantic_get_effective_expr_type(sem, node->as.field.object);
+                int field_index = semantic_struct_field_index(object_type, node->as.field.name);
+                CogIrTypeId result_type = cog_ir_lower_type(state->lower, semantic_get_effective_expr_type(sem, node));
+                if (aggregate == COG_IR_VALUE_INVALID || field_index < 0 || result_type == COG_IR_TYPE_INVALID)
+                    return COG_IR_VALUE_INVALID;
+                CogIrInstruction instruction = {
+                    .op = COG_IR_OP_EXTRACT_FIELD,
+                    .result_type = result_type,
+                    .span = node->span,
+                    .as.extract = { .aggregate = aggregate, .index = (uint32_t)field_index },
+                };
+                return emit_instruction_value(state, instruction);
+            }
+            lower_error(state->lower, node->span, "non-place array indexing is not supported by CogIR lowering");
+            return COG_IR_VALUE_INVALID;
+        }
+
         case NODE_IDENT: {
             CogIrLowerDeclBinding *binding = binding_for_expr_ident(state->lower, node);
             if (!binding) {
@@ -1397,6 +2164,19 @@ static CogIrValueId lower_expression(ExecLowerState *state, Node *node)
         }
 
         case NODE_UNARY: {
+            if (node->as.unary.op == TOK_AND) {
+                LoweredPlace place;
+                if (!lower_place(state, node->as.unary.operand, &place))
+                    return COG_IR_VALUE_INVALID;
+                return place.address;
+            }
+            if (node->as.unary.op == TOK_STAR) {
+                LoweredPlace place;
+                if (!lower_place(state, node, &place))
+                    return COG_IR_VALUE_INVALID;
+                return emit_load(state, place.address, place.type, place.is_volatile, node->span);
+            }
+
             Type *sem_type = semantic_get_effective_expr_type(sem, node);
             CogIrTypeId result_type = cog_ir_lower_type(state->lower, sem_type);
             CogIrValueId operand = lower_expression(state, node->as.unary.operand);
@@ -1410,6 +2190,8 @@ static CogIrValueId lower_expression(ExecLowerState *state, Node *node)
                 op = COG_IR_OP_FNEG;
             else if (node->as.unary.op == TOK_BANG && type && type->kind == COG_IR_TYPE_BOOL)
                 op = COG_IR_OP_BOOL_NOT;
+            else if (node->as.unary.op == TOK_TILDE && type && type->kind == COG_IR_TYPE_INTEGER)
+                op = COG_IR_OP_BIT_NOT;
             if ((int)op < 0) {
                 lower_error(state->lower, node->span, "unary operation is outside the current CogIR executable-lowering slice");
                 return COG_IR_VALUE_INVALID;
@@ -1432,27 +2214,82 @@ static CogIrValueId lower_expression(ExecLowerState *state, Node *node)
     }
 }
 
+static CogIrValueId lower_expression(ExecLowerState *state, Node *node)
+{
+    CogIrValueId value = lower_expression_raw(state, node);
+    if (value == COG_IR_VALUE_INVALID || !node)
+        return value;
+
+    SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
+    SemExprInfo *info = semantic_get_expr_info(sem, node);
+    if (!info || info->contextual_conversion == SEM_CONTEXT_CONVERSION_NONE || !info->contextual_type)
+        return value;
+
+    CogIrTypeId target = cog_ir_lower_type(state->lower, info->contextual_type);
+    const CogIrFunction *function = cog_ir_get_function(state->lower->module, state->function);
+    const CogIrValue *ir_value = function ? cog_ir_get_value(function, value) : NULL;
+    if (target == COG_IR_TYPE_INVALID || !ir_value)
+        return COG_IR_VALUE_INVALID;
+    if (ir_value->type == target)
+        return value; /* constants/string literals may already be materialized to the effective type */
+
+    switch (info->contextual_conversion) {
+        case SEM_CONTEXT_CONVERSION_POINTER_QUALIFICATION:
+            return emit_pointer_qualify(state, value, target, node->span);
+
+        case SEM_CONTEXT_CONVERSION_INT_MATERIALIZE:
+        case SEM_CONTEXT_CONVERSION_INT_TO_FLOAT_MATERIALIZE:
+        case SEM_CONTEXT_CONVERSION_FLOAT_MATERIALIZE:
+        case SEM_CONTEXT_CONVERSION_NULL_TO_POINTER:
+        case SEM_CONTEXT_CONVERSION_C_STRING_TO_POINTER:
+            lower_error(state->lower, node->span, "contextual materialization did not produce its concrete CogIR type");
+            return COG_IR_VALUE_INVALID;
+
+        case SEM_CONTEXT_CONVERSION_NONE:
+            break;
+    }
+    return value;
+}
+
 static int lower_assignment_statement(ExecLowerState *state, Node *node)
 {
-    int is_volatile = 0;
-    if (!node->as.assign.target || node->as.assign.target->type != NODE_IDENT) {
-        lower_error(state->lower, node->span, "only identifier assignment targets are supported by this CogIR lowering slice");
-        return 0;
+    Node *target = node->as.assign.target;
+    int rhs_cfg = expression_may_create_cfg(state, node->as.assign.value);
+
+    /*
+     * A plain identifier address is side-effect-free and can be materialized
+     * after a CFG-producing RHS. Keep that common case spill-free while
+     * complex places are evaluated once and preserved across the RHS.
+     */
+    if (target && target->type == NODE_IDENT && rhs_cfg) {
+        CogIrValueId value = lower_expression(state, node->as.assign.value);
+        LoweredPlace place;
+        if (value == COG_IR_VALUE_INVALID || !lower_place(state, target, &place))
+            return 0;
+        return emit_store(state, place.address, value, place.is_volatile, node->span);
     }
-    CogIrValueId address = COG_IR_VALUE_INVALID;
-    CogIrValueId value = COG_IR_VALUE_INVALID;
-    if (expression_may_create_cfg(state, node->as.assign.value)) {
-        value = lower_expression(state, node->as.assign.value);
-        if (value != COG_IR_VALUE_INVALID)
-            address = lower_identifier_place(state, node->as.assign.target, &is_volatile);
-    } else {
-        address = lower_identifier_place(state, node->as.assign.target, &is_volatile);
-        if (address != COG_IR_VALUE_INVALID)
-            value = lower_expression(state, node->as.assign.value);
-    }
-    if (address == COG_IR_VALUE_INVALID || value == COG_IR_VALUE_INVALID)
+
+    LoweredPlace place;
+    if (!lower_place(state, target, &place))
         return 0;
-    return emit_store(state, address, value, is_volatile, node->span);
+
+    CogIrValueId address = place.address;
+    CogIrSlotId address_spill = COG_IR_SLOT_INVALID;
+    if (rhs_cfg) {
+        address_spill = spill_value(state, address, target->span);
+        if (address_spill == COG_IR_SLOT_INVALID)
+            return 0;
+    }
+
+    CogIrValueId value = lower_expression(state, node->as.assign.value);
+    if (value == COG_IR_VALUE_INVALID)
+        return 0;
+    if (address_spill != COG_IR_SLOT_INVALID) {
+        address = reload_spill(state, address_spill, target->span);
+        if (address == COG_IR_VALUE_INVALID)
+            return 0;
+    }
+    return emit_store(state, address, value, place.is_volatile, node->span);
 }
 
 static CogIrOp compound_assignment_op(CogIrModule *module, CogIrTypeId type_id, TokenType op)
@@ -1490,34 +2327,47 @@ static CogIrOp compound_assignment_op(CogIrModule *module, CogIrTypeId type_id, 
 static int lower_compound_assignment_statement(ExecLowerState *state, Node *node)
 {
     Node *target = node->as.compound_assign.target;
-    if (!target || target->type != NODE_IDENT) {
-        lower_error(state->lower, node->span, "only identifier compound-assignment targets are supported by this CogIR lowering slice");
+    LoweredPlace place;
+    if (!lower_place(state, target, &place))
         return 0;
-    }
-    CogIrLowerDeclBinding *binding = binding_for_expr_ident(state->lower, target);
-    if (!binding) {
-        lower_error(state->lower, target->span, "compound-assignment target has no CogIR binding");
+
+    CogIrValueId address = place.address;
+    CogIrValueId lhs = emit_load(state, address, place.type, place.is_volatile, target->span);
+    if (lhs == COG_IR_VALUE_INVALID)
         return 0;
+
+    CogIrSlotId address_spill = COG_IR_SLOT_INVALID;
+    CogIrSlotId lhs_spill = COG_IR_SLOT_INVALID;
+    if (expression_may_create_cfg(state, node->as.compound_assign.value)) {
+        address_spill = spill_value(state, address, target->span);
+        lhs_spill = spill_value(state, lhs, target->span);
+        if (address_spill == COG_IR_SLOT_INVALID || lhs_spill == COG_IR_SLOT_INVALID)
+            return 0;
     }
-    int is_volatile = 0;
-    CogIrValueId address = lower_identifier_place(state, target, &is_volatile);
-    CogIrValueId lhs = address == COG_IR_VALUE_INVALID ? COG_IR_VALUE_INVALID
-        : emit_load(state, address, binding->type, is_volatile, target->span);
+
     CogIrValueId rhs = lower_expression(state, node->as.compound_assign.value);
-    CogIrOp op = compound_assignment_op(state->lower->module, binding->type, node->as.compound_assign.op);
-    if (address == COG_IR_VALUE_INVALID || lhs == COG_IR_VALUE_INVALID || rhs == COG_IR_VALUE_INVALID || (int)op < 0) {
-        if ((int)op < 0)
-            lower_error(state->lower, node->span, "compound assignment is outside the current CogIR lowering slice");
+    if (rhs == COG_IR_VALUE_INVALID)
+        return 0;
+    if (address_spill != COG_IR_SLOT_INVALID) {
+        address = reload_spill(state, address_spill, target->span);
+        lhs = reload_spill(state, lhs_spill, target->span);
+        if (address == COG_IR_VALUE_INVALID || lhs == COG_IR_VALUE_INVALID)
+            return 0;
+    }
+
+    CogIrOp op = compound_assignment_op(state->lower->module, place.type, node->as.compound_assign.op);
+    if ((int)op < 0) {
+        lower_error(state->lower, node->span, "compound assignment is outside the current CogIR lowering slice");
         return 0;
     }
     CogIrInstruction instruction = {
         .op = op,
-        .result_type = binding->type,
+        .result_type = place.type,
         .span = node->span,
         .as.binary = { .lhs = lhs, .rhs = rhs },
     };
     CogIrValueId result = emit_instruction_value(state, instruction);
-    return result != COG_IR_VALUE_INVALID && emit_store(state, address, result, is_volatile, node->span);
+    return result != COG_IR_VALUE_INVALID && emit_store(state, address, result, place.is_volatile, node->span);
 }
 
 static CogIrConstId one_constant_for_type(CogIrLowerContext *ctx, CogIrTypeId type_id)
@@ -1537,38 +2387,31 @@ static CogIrConstId one_constant_for_type(CogIrLowerContext *ctx, CogIrTypeId ty
 static int lower_inc_dec_statement(ExecLowerState *state, Node *node)
 {
     Node *target = node->as.inc_dec.target;
-    if (!target || target->type != NODE_IDENT) {
-        lower_error(state->lower, node->span, "only identifier increment/decrement targets are supported by this CogIR lowering slice");
+    LoweredPlace place;
+    if (!lower_place(state, target, &place))
         return 0;
-    }
-    CogIrLowerDeclBinding *binding = binding_for_expr_ident(state->lower, target);
-    if (!binding)
-        return 0;
-    int is_volatile = 0;
-    CogIrValueId address = lower_identifier_place(state, target, &is_volatile);
-    CogIrValueId lhs = address == COG_IR_VALUE_INVALID ? COG_IR_VALUE_INVALID
-        : emit_load(state, address, binding->type, is_volatile, target->span);
-    CogIrConstId one_const = one_constant_for_type(state->lower, binding->type);
+    CogIrValueId lhs = emit_load(state, place.address, place.type, place.is_volatile, target->span);
+    CogIrConstId one_const = one_constant_for_type(state->lower, place.type);
     CogIrValueId one = one_const == COG_IR_CONST_INVALID ? COG_IR_VALUE_INVALID
         : emit_constant_value(state, one_const, node->span);
-    const CogIrType *type = cog_ir_get_type(state->lower->module, binding->type);
+    const CogIrType *type = cog_ir_get_type(state->lower->module, place.type);
     CogIrOp op = (CogIrOp)-1;
     if (type && type->kind == COG_IR_TYPE_INTEGER)
         op = node->as.inc_dec.op == TOK_PLUS_PLUS ? COG_IR_OP_IADD_CHECKED : COG_IR_OP_ISUB_CHECKED;
     else if (type && type->kind == COG_IR_TYPE_FLOAT)
         op = node->as.inc_dec.op == TOK_PLUS_PLUS ? COG_IR_OP_FADD : COG_IR_OP_FSUB;
-    if (address == COG_IR_VALUE_INVALID || lhs == COG_IR_VALUE_INVALID || one == COG_IR_VALUE_INVALID || (int)op < 0) {
+    if (lhs == COG_IR_VALUE_INVALID || one == COG_IR_VALUE_INVALID || (int)op < 0) {
         lower_error(state->lower, node->span, "increment/decrement is outside the current CogIR lowering slice");
         return 0;
     }
     CogIrInstruction instruction = {
         .op = op,
-        .result_type = binding->type,
+        .result_type = place.type,
         .span = node->span,
         .as.binary = { .lhs = lhs, .rhs = one },
     };
     CogIrValueId result = emit_instruction_value(state, instruction);
-    return result != COG_IR_VALUE_INVALID && emit_store(state, address, result, is_volatile, node->span);
+    return result != COG_IR_VALUE_INVALID && emit_store(state, place.address, result, place.is_volatile, node->span);
 }
 
 static int lower_global_initializer(ExecLowerState *state, Node *node);
@@ -1795,8 +2638,14 @@ static int lower_statement_expression(ExecLowerState *state, Node *node)
         case NODE_INC_DEC:
             return lower_inc_dec_statement(state, node);
         default: {
+            SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
+            Type *type = semantic_get_effective_expr_type(sem, node);
+            if (type && (type->kind == TYPE_UNTYPED_INT || type->kind == TYPE_UNTYPED_FLOAT)) {
+                ConstValue ignored;
+                if (semantic_get_constant_value(sem, node, &ignored))
+                    return 1; /* discarded adaptable compile-time value has no runtime effect */
+            }
             CogIrValueId value = lower_expression(state, node);
-            Type *type = semantic_get_effective_expr_type((SemanticContext *)&state->lower->frontend->sem, node);
             return (type && type->kind == TYPE_VOID) || value != COG_IR_VALUE_INVALID;
         }
     }

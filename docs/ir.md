@@ -947,9 +947,53 @@ parameter declaration bindings transition from pending identities to concrete
 function/slot mappings. No lexical lookup is performed during this stage: every
 identifier is recovered through semantic `SemDeclId` information.
 
-Pointer/aggregate lvalues beyond direct identifiers, arrays/struct values, casts,
-wrapping builtins, strings, and C variadic ABI legalization remain deliberately
-outside the current executable slice.
+### Data, address, aggregate, and cast lowering
+
+The executable lowerer now has a first-class `lower_place()` path rather than
+special-casing identifier mutation. A lowered place carries one evaluated address,
+its value type, writability, and volatility. Identifier storage, typed-pointer
+dereference, fixed-array indexing, typed-pointer indexing, and struct/union fields
+all use that path. Assignment, compound assignment, and increment/decrement
+therefore evaluate complex mutation targets exactly once before loading/storing.
+This is especially important for indexed read-modify-write expressions whose
+index may contain calls or short-circuit control flow.
+
+Aggregate rvalues now lower through `make_array` and `make_struct`, while aggregate
+assignment, by-value arguments, and returns use the ordinary typed load/store/call
+machinery. Struct fields map source names to declaration field indices during
+lowering; backends never perform field-name lookup. Array/struct values that must
+survive a CFG-producing sibling expression reuse the existing spill/reload rule.
+
+Address-of returns the address produced by `lower_place()`. Dereference uses the
+pointer value itself as a place address. `field_addr`, `array_elem_addr`, and
+`ptr_index_addr` retain readonly/volatile access in their result pointer types,
+and memory operations emit explicit `.volatile` loads/stores when semantic access
+requires it. The verifier checks these address/result type and qualifier
+relationships.
+
+Checked numeric casts, integer truncation, raw-pointer reinterpretation, and safe
+pointer qualification now lower to their dedicated CogIR operations. Explicit
+casts are also responsible for materializing frontend-only adaptable literals:
+for example `cast(f32, 0.0)` and `cast(i32*, null)` directly produce concrete
+CogIR constants instead of attempting to create `untyped-float` or `null` IR
+values. Reinterpret verification restricts the operation to typed/opaque raw
+pointer crossings and rejects qualifier loss.
+
+Character literals lower as concrete integer values. Fixed-array string literals
+lower as decoded byte-array values. The narrow direct `#extern(c)` C-string
+conversion emits an IR-owned private readonly byte-array global and passes the
+address of its first element; this does not introduce general array-to-pointer
+decay.
+
+The large `tests/test_assets/semantic_valid.cog` fixture is now an executable
+CogIR integration target after its previously-uninitialized arrays are given
+explicit initial values. A separate data/address golden test covers fields,
+indexes, aggregates, pointers, volatile access, casts/reinterpretation, character
+and string values, and the C-string boundary. At this stage 98 of the 99
+`semantic/valid` fixture programs lower successfully through `dump_ir`; the
+remaining fixture exercises `wrapping_*` compiler builtins, which stay in the
+next operation-lowering slice. C variadic ABI legalization also remains backend/
+ABI work rather than part of generic data/address lowering.
 
 ## Implementation sequence
 
@@ -965,7 +1009,11 @@ outside the current executable slice.
 7. ~~Add branches/loops/switches and short-circuit Boolean CFG lowering.~~
    Structured CFG lowering now includes comparisons, block-parameter short
    circuiting, loop targets, exhaustive switch handling, and CFG-safe value spills.
-8. Add pointers, arrays, structs, volatile memory, casts, and full C ABI metadata.
+8. ~~Add pointers, arrays, structs, volatile memory, casts, and string/data lowering.~~
+   Places now cover identifiers, fields, indexes, and dereferences; aggregate values,
+   address-of, casts/reinterpretation, volatile accesses, and string/character values
+   are lowered and verifier-checked. Wrapping builtins and ABI-specific call
+   legalization remain separate.
 9. ~~Make successful lowering independent: destroy `CompileResult` before invoking
    IR-only test consumers.~~ `dump_ir` verifies and dumps after frontend destruction.
 10. Port the host-C backend to `const CogIrModule *` and restore all backend

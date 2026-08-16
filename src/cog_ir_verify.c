@@ -361,10 +361,7 @@ static int verify_instruction(
         case COG_IR_OP_IMUL_WRAP:
         case COG_IR_OP_BIT_AND:
         case COG_IR_OP_BIT_OR:
-        case COG_IR_OP_BIT_XOR:
-        case COG_IR_OP_SHL_CHECKED_COUNT:
-        case COG_IR_OP_SHR_SIGNED_CHECKED_COUNT:
-        case COG_IR_OP_SHR_UNSIGNED_CHECKED_COUNT: {
+        case COG_IR_OP_BIT_XOR: {
             REQUIRE_VALUE(instruction->as.binary.lhs, "left");
             REQUIRE_VALUE(instruction->as.binary.rhs, "right");
             const CogIrValue *lhs = cog_ir_get_value(function, instruction->as.binary.lhs);
@@ -373,19 +370,30 @@ static int verify_instruction(
                 ir_error(diagnostics, instruction->span, "%s requires matching integer operands/result", cog_ir_op_name(instruction->op));
                 ok = 0;
             }
-            if (instruction->op == COG_IR_OP_SHR_SIGNED_CHECKED_COUNT && lhs) {
-                const CogIrType *type = cog_ir_get_type(module, lhs->type);
-                if (!type || !type->as.integer.is_signed) {
-                    ir_error(diagnostics, instruction->span, "signed right shift requires signed integer operand");
-                    ok = 0;
-                }
+            break;
+        }
+
+        case COG_IR_OP_SHL_CHECKED_COUNT:
+        case COG_IR_OP_SHR_SIGNED_CHECKED_COUNT:
+        case COG_IR_OP_SHR_UNSIGNED_CHECKED_COUNT: {
+            REQUIRE_VALUE(instruction->as.binary.lhs, "left");
+            REQUIRE_VALUE(instruction->as.binary.rhs, "right");
+            const CogIrValue *lhs = cog_ir_get_value(function, instruction->as.binary.lhs);
+            const CogIrValue *rhs = cog_ir_get_value(function, instruction->as.binary.rhs);
+            const CogIrType *lhs_type = lhs ? cog_ir_get_type(module, lhs->type) : NULL;
+            if (!lhs || !rhs || !lhs_type || lhs_type->kind != COG_IR_TYPE_INTEGER ||
+                !is_integer_type(module, rhs->type) || lhs->type != instruction->result_type) {
+                ir_error(diagnostics, instruction->span, "%s requires integer operands and a result matching the left operand", cog_ir_op_name(instruction->op));
+                ok = 0;
+                break;
             }
-            if (instruction->op == COG_IR_OP_SHR_UNSIGNED_CHECKED_COUNT && lhs) {
-                const CogIrType *type = cog_ir_get_type(module, lhs->type);
-                if (!type || type->as.integer.is_signed) {
-                    ir_error(diagnostics, instruction->span, "unsigned right shift requires unsigned integer operand");
-                    ok = 0;
-                }
+            if (instruction->op == COG_IR_OP_SHR_SIGNED_CHECKED_COUNT && !lhs_type->as.integer.is_signed) {
+                ir_error(diagnostics, instruction->span, "signed right shift requires signed left operand");
+                ok = 0;
+            }
+            if (instruction->op == COG_IR_OP_SHR_UNSIGNED_CHECKED_COUNT && lhs_type->as.integer.is_signed) {
+                ir_error(diagnostics, instruction->span, "unsigned right shift requires unsigned left operand");
+                ok = 0;
             }
             break;
         }
@@ -529,16 +537,59 @@ static int verify_instruction(
             break;
         }
 
-        case COG_IR_OP_CAST_CHECKED:
-        case COG_IR_OP_INT_TRUNCATE:
-        case COG_IR_OP_PTR_REINTERPRET:
+        case COG_IR_OP_CAST_CHECKED: {
             REQUIRE_VALUE(instruction->as.conversion.operand, "operand");
-            if (instruction->as.conversion.target_type != instruction->result_type ||
-                !cog_ir_get_type(module, instruction->result_type)) {
-                ir_error(diagnostics, instruction->span, "%s has invalid target/result type", cog_ir_op_name(instruction->op));
+            const CogIrValue *operand = cog_ir_get_value(function, instruction->as.conversion.operand);
+            const CogIrType *source = operand ? cog_ir_get_type(module, operand->type) : NULL;
+            const CogIrType *target = cog_ir_get_type(module, instruction->result_type);
+            int valid = operand && source && target &&
+                        instruction->as.conversion.target_type == instruction->result_type;
+            if (valid && operand->type != instruction->result_type) {
+                int source_numeric = source->kind == COG_IR_TYPE_INTEGER || source->kind == COG_IR_TYPE_FLOAT;
+                int target_numeric = target->kind == COG_IR_TYPE_INTEGER || target->kind == COG_IR_TYPE_FLOAT;
+                valid = (source_numeric && target_numeric) ||
+                        (source->kind == COG_IR_TYPE_ENUM && target->kind == COG_IR_TYPE_INTEGER);
+            }
+            if (!valid) {
+                ir_error(diagnostics, instruction->span, "cast.checked has invalid source/target types");
                 ok = 0;
             }
             break;
+        }
+
+        case COG_IR_OP_INT_TRUNCATE: {
+            REQUIRE_VALUE(instruction->as.conversion.operand, "operand");
+            const CogIrValue *operand = cog_ir_get_value(function, instruction->as.conversion.operand);
+            const CogIrType *source = operand ? cog_ir_get_type(module, operand->type) : NULL;
+            const CogIrType *target = cog_ir_get_type(module, instruction->result_type);
+            if (!operand || !source || !target || source->kind != COG_IR_TYPE_INTEGER ||
+                target->kind != COG_IR_TYPE_INTEGER ||
+                instruction->as.conversion.target_type != instruction->result_type) {
+                ir_error(diagnostics, instruction->span, "int.truncate requires integer source and target types");
+                ok = 0;
+            }
+            break;
+        }
+
+        case COG_IR_OP_PTR_REINTERPRET: {
+            REQUIRE_VALUE(instruction->as.conversion.operand, "operand");
+            const CogIrValue *operand = cog_ir_get_value(function, instruction->as.conversion.operand);
+            const CogIrType *source = operand ? cog_ir_get_type(module, operand->type) : NULL;
+            const CogIrType *target = cog_ir_get_type(module, instruction->result_type);
+            int source_raw = source && (source->kind == COG_IR_TYPE_POINTER || source->kind == COG_IR_TYPE_OPAQUE_POINTER);
+            int target_raw = target && (target->kind == COG_IR_TYPE_POINTER || target->kind == COG_IR_TYPE_OPAQUE_POINTER);
+            int source_ro = source && (source->kind == COG_IR_TYPE_POINTER ? source->as.pointer.is_readonly : source->as.opaque_pointer.is_readonly);
+            int target_ro = target && (target->kind == COG_IR_TYPE_POINTER ? target->as.pointer.is_readonly : target->as.opaque_pointer.is_readonly);
+            int source_vol = source && (source->kind == COG_IR_TYPE_POINTER ? source->as.pointer.is_volatile : source->as.opaque_pointer.is_volatile);
+            int target_vol = target && (target->kind == COG_IR_TYPE_POINTER ? target->as.pointer.is_volatile : target->as.opaque_pointer.is_volatile);
+            if (!operand || !source_raw || !target_raw || source->kind == target->kind ||
+                (source_ro && !target_ro) || (source_vol && !target_vol) ||
+                instruction->as.conversion.target_type != instruction->result_type) {
+                ir_error(diagnostics, instruction->span, "ptr.reinterpret must cross typed/opaque raw pointers without discarding qualifiers");
+                ok = 0;
+            }
+            break;
+        }
 
         case COG_IR_OP_CALL: {
             REQUIRE_VALUE(instruction->as.call.callee, "callee");
@@ -578,15 +629,123 @@ static int verify_instruction(
             break;
         }
 
-        case COG_IR_OP_FIELD_ADDR:
-        case COG_IR_OP_ARRAY_ELEM_ADDR:
-        case COG_IR_OP_PTR_INDEX_ADDR:
-        case COG_IR_OP_MAKE_STRUCT:
-        case COG_IR_OP_MAKE_ARRAY:
-        case COG_IR_OP_EXTRACT_FIELD:
-        case COG_IR_OP_EXTRACT_ELEMENT:
-            /* Fully validated when lowering for these operations is introduced. */
+        case COG_IR_OP_FIELD_ADDR: {
+            REQUIRE_VALUE(instruction->as.field_addr.base, "base");
+            const CogIrValue *base = cog_ir_get_value(function, instruction->as.field_addr.base);
+            CogIrTypeId aggregate_id = COG_IR_TYPE_INVALID;
+            int base_readonly = 0, base_volatile = 0;
+            const CogIrType *aggregate = NULL;
+            CogIrTypeId result_pointee = COG_IR_TYPE_INVALID;
+            int result_readonly = 0, result_volatile = 0;
+            if (base && pointer_pointee(module, base->type, &aggregate_id, &base_readonly, &base_volatile))
+                aggregate = cog_ir_get_type(module, aggregate_id);
+            int valid = aggregate &&
+                        (aggregate->kind == COG_IR_TYPE_STRUCT || aggregate->kind == COG_IR_TYPE_UNION) &&
+                        instruction->as.field_addr.field_index < aggregate->as.aggregate.field_count &&
+                        pointer_pointee(module, instruction->result_type, &result_pointee, &result_readonly, &result_volatile) &&
+                        result_pointee == aggregate->as.aggregate.fields[instruction->as.field_addr.field_index].type &&
+                        result_readonly == base_readonly && result_volatile == base_volatile;
+            if (!valid) {
+                ir_error(diagnostics, instruction->span, "field_addr has invalid aggregate field or access qualifiers");
+                ok = 0;
+            }
             break;
+        }
+
+        case COG_IR_OP_ARRAY_ELEM_ADDR: {
+            REQUIRE_VALUE(instruction->as.index_addr.base, "base");
+            REQUIRE_VALUE(instruction->as.index_addr.index, "index");
+            const CogIrValue *base = cog_ir_get_value(function, instruction->as.index_addr.base);
+            const CogIrValue *index = cog_ir_get_value(function, instruction->as.index_addr.index);
+            CogIrTypeId array_id = COG_IR_TYPE_INVALID, result_pointee = COG_IR_TYPE_INVALID;
+            int base_ro = 0, base_vol = 0, result_ro = 0, result_vol = 0;
+            const CogIrType *array = NULL;
+            if (base && pointer_pointee(module, base->type, &array_id, &base_ro, &base_vol))
+                array = cog_ir_get_type(module, array_id);
+            int valid = array && array->kind == COG_IR_TYPE_ARRAY && index && is_integer_type(module, index->type) &&
+                        pointer_pointee(module, instruction->result_type, &result_pointee, &result_ro, &result_vol) &&
+                        result_pointee == array->as.array.element_type && result_ro == base_ro && result_vol == base_vol;
+            if (!valid) {
+                ir_error(diagnostics, instruction->span, "array_elem_addr has invalid array base/index/result type");
+                ok = 0;
+            }
+            break;
+        }
+
+        case COG_IR_OP_PTR_INDEX_ADDR: {
+            REQUIRE_VALUE(instruction->as.index_addr.base, "base");
+            REQUIRE_VALUE(instruction->as.index_addr.index, "index");
+            const CogIrValue *base = cog_ir_get_value(function, instruction->as.index_addr.base);
+            const CogIrValue *index = cog_ir_get_value(function, instruction->as.index_addr.index);
+            if (!base || !index || !is_integer_type(module, index->type) || base->type != instruction->result_type ||
+                !pointer_pointee(module, base->type, NULL, NULL, NULL)) {
+                ir_error(diagnostics, instruction->span, "ptr_index_addr requires typed pointer base, integer index, and matching result pointer");
+                ok = 0;
+            }
+            break;
+        }
+
+        case COG_IR_OP_MAKE_STRUCT: {
+            const CogIrType *type = cog_ir_get_type(module, instruction->result_type);
+            if (!type || type->kind != COG_IR_TYPE_STRUCT || !type->as.aggregate.is_complete ||
+                instruction->as.aggregate.value_count != type->as.aggregate.field_count) {
+                ir_error(diagnostics, instruction->span, "make_struct has invalid result type or field count");
+                ok = 0;
+                break;
+            }
+            for (size_t i = 0; i < instruction->as.aggregate.value_count; ++i) {
+                REQUIRE_VALUE(instruction->as.aggregate.values[i], "field");
+                const CogIrValue *value = cog_ir_get_value(function, instruction->as.aggregate.values[i]);
+                if (!value || value->type != type->as.aggregate.fields[i].type) {
+                    ir_error(diagnostics, instruction->span, "make_struct field %zu has wrong type", i);
+                    ok = 0;
+                }
+            }
+            break;
+        }
+
+        case COG_IR_OP_MAKE_ARRAY: {
+            const CogIrType *type = cog_ir_get_type(module, instruction->result_type);
+            if (!type || type->kind != COG_IR_TYPE_ARRAY || instruction->as.aggregate.value_count != type->as.array.length) {
+                ir_error(diagnostics, instruction->span, "make_array has invalid result type or element count");
+                ok = 0;
+                break;
+            }
+            for (size_t i = 0; i < instruction->as.aggregate.value_count; ++i) {
+                REQUIRE_VALUE(instruction->as.aggregate.values[i], "element");
+                const CogIrValue *value = cog_ir_get_value(function, instruction->as.aggregate.values[i]);
+                if (!value || value->type != type->as.array.element_type) {
+                    ir_error(diagnostics, instruction->span, "make_array element %zu has wrong type", i);
+                    ok = 0;
+                }
+            }
+            break;
+        }
+
+        case COG_IR_OP_EXTRACT_FIELD: {
+            REQUIRE_VALUE(instruction->as.extract.aggregate, "aggregate");
+            const CogIrValue *value = cog_ir_get_value(function, instruction->as.extract.aggregate);
+            const CogIrType *type = value ? cog_ir_get_type(module, value->type) : NULL;
+            if (!type || (type->kind != COG_IR_TYPE_STRUCT && type->kind != COG_IR_TYPE_UNION) ||
+                instruction->as.extract.index >= type->as.aggregate.field_count ||
+                instruction->result_type != type->as.aggregate.fields[instruction->as.extract.index].type) {
+                ir_error(diagnostics, instruction->span, "extract_field has invalid aggregate/index/result type");
+                ok = 0;
+            }
+            break;
+        }
+
+        case COG_IR_OP_EXTRACT_ELEMENT: {
+            REQUIRE_VALUE(instruction->as.extract.aggregate, "aggregate");
+            const CogIrValue *value = cog_ir_get_value(function, instruction->as.extract.aggregate);
+            const CogIrType *type = value ? cog_ir_get_type(module, value->type) : NULL;
+            if (!type || type->kind != COG_IR_TYPE_ARRAY || instruction->as.extract.index >= type->as.array.length ||
+                instruction->result_type != type->as.array.element_type) {
+                ir_error(diagnostics, instruction->span, "extract_element has invalid array/index/result type");
+                ok = 0;
+            }
+            break;
+        }
     }
 
 #undef REQUIRE_VALUE

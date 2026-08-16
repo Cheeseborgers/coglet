@@ -1,0 +1,52 @@
+Point::struct {
+    x: i32;
+    y: i32;
+}
+
+#extern(c)
+puts::(s: readonly c_char*) -> c_int;
+
+consume_array::(a: i32[3]) -> i32[3] {
+    return a;
+}
+
+consume_point::(p: Point) -> Point {
+    return p;
+}
+
+volatile_io::(p: volatile i32*) -> i32 {
+    *p = *p + 1;
+    return *p;
+}
+
+data_address::() -> i64 {
+    point := Point { x = 1, y = 2 };
+    values: i32[3] = [3, 4, 5];
+    name: u8[6] = "hello";
+    ch: u8 = 'A';
+
+    point.x = values[0];
+    point.y += values[1];
+    point.x++;
+
+    px: i32* = &point.x;
+    *px = *px + values[2];
+    values[1] = point.y;
+    values[2]++;
+
+    copy: i32[3] = consume_array(values);
+    copy = [7, 8, 9];
+    point2: Point = consume_point(point);
+
+    raw: opaque* = reinterpret(opaque*, px);
+    px2: i32* = reinterpret(i32*, raw);
+    readonly_px: readonly i32* = cast(readonly i32*, px2);
+
+    widened: i64 = cast(i64, *readonly_px);
+    narrowed: u8 = truncate(u8, widened);
+    widened2: i64 = cast(i64, narrowed);
+
+    puts("hello");
+
+    return widened + widened2 + cast(i64, ch) + cast(i64, copy[0]) + cast(i64, point2.x) + cast(i64, name[0]);
+}

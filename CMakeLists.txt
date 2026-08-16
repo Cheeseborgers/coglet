@@ -146,6 +146,30 @@ set_tests_properties(
 )
 
 add_test(
+        NAME cog_ir_data_address_lowering_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/data_address_lowering.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/data_address_lowering.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_data_address_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;data;aggregate;pointer;volatile;cast;string"
+)
+
+add_test(
+        NAME cog_ir_semantic_valid_integration
+        COMMAND $<TARGET_FILE:dump_ir> ${CMAKE_SOURCE_DIR}/tests/test_assets/semantic_valid.cog
+)
+set_tests_properties(
+        cog_ir_semantic_valid_integration
+        PROPERTIES LABELS "ir;ir.lowering;ir.integration;semantic"
+)
+
+add_test(
         NAME target_info_cross_target_scalar_mapping
         COMMAND "$<TARGET_FILE:check_target_info>"
                 "${CMAKE_SOURCE_DIR}/tests/test_assets/target/abi_scalar_mapping.cog"

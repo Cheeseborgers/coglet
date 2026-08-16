@@ -35,12 +35,9 @@ Implemented areas include:
 - explicit contextual-conversion metadata for IR-ready expression lowering
 - centralized, post-semantic constant-value metadata for IR lowering
 - constant-aware loop reachability and explicit function-local control-flow isolation
-- multi-file-capable source provenance with shared parser/semantic diagnostic infrastructure
 - CogIR typed-CFG design with explicit ordered module initialization
-- CogIR core representation, verifier, deterministic dumper, and IR-owned source provenance
-- semantic type/ABI/declaration/constant lowering into CogIR with frontend-lifetime independence
-- initial executable CogIR lowering for globals/module init, slots, checked arithmetic, calls, and returns
-- structured CogIR CFG lowering for comparisons, short-circuit logic, branches, loops, switches, and compound mutation
+- executable CogIR lowering for structured control flow, short-circuit logic, comparisons, loops, and switches
+- CogIR data/address lowering for aggregates, pointers, fields/indexes, casts, volatile access, and strings
 
 ## Recently Completed
 
@@ -126,12 +123,11 @@ Regression coverage now explicitly locks down `return` outside a function and
 function-local loop ownership: a nested function begins with no inherited loop,
 so its `break`/`continue` statements cannot target an enclosing function's loop.
 
-The audit also exposed a separate program-initialization policy that should not
-be decided accidentally as part of control-flow cleanup. Existing Coglet
-semantics accept top-level expression/mutation statements and at least one
-runtime-call global initializer. A future CogIR/module design must therefore
-either define ordered module initialization or deliberately tighten program
-scope/global initializer rules. This milestone does not impose a partial policy.
+The audit also exposed a separate program-initialization policy. CogIR now
+resolves that policy by representing program-scope runtime execution as an
+explicit ordered module-initializer CFG. Source globals receive module-lifetime
+storage before initialization; their explicit initializers and other top-level
+runtime statements execute in source order. See `docs/ir.md`.
 
 ### Definite Assignment and Unified Reachability
 
@@ -475,19 +471,23 @@ work.
 
 ## Execution Work
 
-The host-C transpilation backend remains the bootstrap/execution path, while the
-backend-neutral CogIR path is now under active implementation. CogIR currently
-owns concrete runtime/ABI types, constants, globals, functions, source provenance,
-verification and deterministic dumps, and lowers straight-line execution plus
-structured CFG control flow from the checked frontend.
+The host-C transpilation backend remains the bootstrap execution path, while the
+compiler-owned CogIR path now lowers checked scalar execution, structured CFGs,
+module initialization, aggregate values, general places/storage, pointer
+addressing, volatile access, casts, and string/character values. The large
+semantic-valid integration fixture lowers and verifies through CogIR after its
+uninitialized-array cases are made semantically valid.
 
-The next CogIR lowering work is the data/address surface: pointer dereference and
-address-of, array indexing, struct/union fields, aggregate values, casts and
-reinterpretation, volatile memory behavior, strings, explicit wrapping/truncating
-operations, and C-variadic ABI legalization. Once the existing language surface is
-representable through CogIR, the host-C backend should be ported to consume CogIR
-rather than AST/semantic state. LLVM and later native backends can then share the
-same verified IR contract.
+The immediate CogIR coverage gap is explicit wrapping-builtin lowering, followed
+by ABI-specific call legalization where required (notably C variadic promotions).
+Once the current runtime surface lowers through CogIR, the host-C backend should
+be moved behind `const CogIrModule *` to prove that backends no longer depend on
+AST or semantic objects. LLVM/native work follows that boundary rather than
+replacing it.
+
+Longer-term alternatives remain possible, including LLVM, a custom native backend,
+or an interpreter for tooling and compile-time execution. The host-C path continues
+to provide executable feedback without defining Coglet semantics by C behavior.
 
 ## Self-Hosting Direction
 

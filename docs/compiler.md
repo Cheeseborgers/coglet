@@ -18,6 +18,15 @@ Its current responsibilities are:
 The driver does not perform token or AST snapshot dumping. `dump_tokens` remains
 lexer-only and `dump_ast` remains parser-only.
 
+
+## Post-semantic IR boundary
+
+The planned backend boundary is specified in `docs/ir.md`. Successful semantic
+state lowers into an IR-owned typed CFG (`CogIR`), including an explicit ordered
+module initializer for runtime-bearing program-scope code. Backends will consume
+only the verified `CogIrModule`; they will not retain AST, `Symbol *`, frontend
+`Type *`, or `SemanticContext *` dependencies.
+
 ## Ownership
 
 `CompileResult` owns:
@@ -955,7 +964,13 @@ calls, assignment/compound mutation, `if`, short-circuit Boolean expressions,
 Ordered source global/top-level execution uses the same machinery inside the
 synthetic module initializer. Values that must survive a short-circuit CFG split
 are spilled to compiler-generated slots rather than relying on implicit dominance.
-Richer pointer/aggregate lvalues, aggregate values, casts, strings, wrapping
-builtins, and full C ABI call legalization remain for subsequent lowering slices;
-the host-C backend still consumes the frontend until the IR path covers its full
-input surface.
+Executable lowering now also uses a generic place abstraction for identifier,
+field, array-index, pointer-index, and dereference storage. Aggregate construction
+and by-value flow, address-of/dereference, checked/truncating/reinterpret casts,
+volatile loads/stores, character literals, fixed-array strings, and the direct C
+string-literal boundary all lower into verifier-checked CogIR. Explicit casts
+materialize adaptable numeric/null constants directly in their checked destination
+type so frontend-only types never escape into IR. The remaining semantic-valid
+coverage gap is the explicit `wrapping_*` compiler-builtin family; C variadic ABI
+promotion/legalization remains ABI/backend work. The host-C backend still consumes
+the frontend until the IR path covers its full input surface.

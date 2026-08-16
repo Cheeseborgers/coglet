@@ -1,0 +1,8 @@
+shift_value::(value: i8, count: u32) -> i8 {
+    return value >> count;
+}
+
+main::() -> c_int {
+    shift_value(-1, 8);
+    return 91;
+}

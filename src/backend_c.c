@@ -1252,6 +1252,128 @@ static int emit_wrapping_integer_instruction(
     return 1;
 }
 
+static int emit_shift_instruction(
+    CBackend *backend,
+    const CogIrFunction *function,
+    const CogIrInstruction *instruction,
+    char **exprs
+) {
+    const CogIrType *type = cog_ir_get_type(backend->module, instruction->result_type);
+    const CogIrValue *count_value = cog_ir_get_value(function, instruction->as.binary.rhs);
+    const CogIrType *count_type = count_value
+        ? cog_ir_get_type(backend->module, count_value->type)
+        : NULL;
+    if (!type || type->kind != COG_IR_TYPE_INTEGER ||
+        !count_type || count_type->kind != COG_IR_TYPE_INTEGER) {
+        backend_error(backend, instruction->span, "shift requires integer operand types");
+        return 0;
+    }
+
+    unsigned bits = type->as.integer.bits;
+    if (bits != 8 && bits != 16 && bits != 32 && bits != 64) {
+        backend_error(backend, instruction->span, "shift integer width is not supported by the host-C backend");
+        return 0;
+    }
+
+    const char *lhs = value_expr(exprs, function->value_count, instruction->as.binary.lhs);
+    const char *rhs = value_expr(exprs, function->value_count, instruction->as.binary.rhs);
+    if (!lhs || !rhs)
+        return 0;
+
+    CogIrValueId result = instruction->result;
+    if (count_type->as.integer.is_signed) {
+        fprintf(backend->out,
+                "    if ((%s) < 0 || (uint64_t)(%s) >= UINT64_C(%u)) abort();\n",
+                rhs, rhs, bits);
+    } else {
+        fprintf(backend->out,
+                "    if ((uint64_t)(%s) >= UINT64_C(%u)) abort();\n",
+                rhs, bits);
+    }
+
+    uint64_t mask = integer_width_mask(bits);
+    fprintf(backend->out,
+            "    uint64_t cg_shift_bits_%u = (uint64_t)(%s)",
+            result, lhs);
+    if (bits != 64)
+        fprintf(backend->out, " & UINT64_C(0x%" PRIx64 ")", mask);
+    fputs(";\n", backend->out);
+
+    switch (instruction->op) {
+        case COG_IR_OP_SHL_CHECKED_COUNT:
+            fprintf(backend->out,
+                    "    cg_shift_bits_%u = cg_shift_bits_%u << (unsigned)(%s)",
+                    result, result, rhs);
+            if (bits != 64)
+                fprintf(backend->out, " & UINT64_C(0x%" PRIx64 ")", mask);
+            fputs(";\n", backend->out);
+            break;
+
+        case COG_IR_OP_SHR_UNSIGNED_CHECKED_COUNT:
+            fprintf(backend->out,
+                    "    cg_shift_bits_%u >>= (unsigned)(%s);\n",
+                    result, rhs);
+            break;
+
+        case COG_IR_OP_SHR_SIGNED_CHECKED_COUNT: {
+            uint64_t sign_bit = UINT64_C(1) << (bits - 1);
+            fprintf(backend->out,
+                    "    if ((cg_shift_bits_%u & UINT64_C(0x%" PRIx64 ")) != 0 && (unsigned)(%s) != 0) {\n",
+                    result, sign_bit, rhs);
+            fprintf(backend->out,
+                    "        uint64_t cg_shift_fill_%u = UINT64_C(0x%" PRIx64 ") ^ "
+                    "(UINT64_C(0x%" PRIx64 ") >> (unsigned)(%s));\n",
+                    result, mask, mask, rhs);
+            fprintf(backend->out,
+                    "        cg_shift_bits_%u = (cg_shift_bits_%u >> (unsigned)(%s)) | cg_shift_fill_%u;\n",
+                    result, result, rhs, result);
+            fputs("    } else {\n", backend->out);
+            fprintf(backend->out,
+                    "        cg_shift_bits_%u >>= (unsigned)(%s);\n",
+                    result, rhs);
+            fputs("    }\n", backend->out);
+            break;
+        }
+
+        default:
+            backend_error(backend, instruction->span, "invalid shift operation during C lowering");
+            return 0;
+    }
+
+    const char *result_type = runtime_type_name(backend, instruction->result_type, instruction->span);
+    if (!result_type)
+        return 0;
+
+    if (!type->as.integer.is_signed) {
+        fprintf(backend->out,
+                "    %s cg_v_%u = (%s)cg_shift_bits_%u;\n",
+                result_type, result, result_type, result);
+    } else {
+        uint64_t sign_bit = UINT64_C(1) << (bits - 1);
+        uint64_t low_mask = sign_bit - UINT64_C(1);
+        if (bits == 64) {
+            fprintf(backend->out,
+                    "    %s cg_v_%u = (cg_shift_bits_%u & UINT64_C(0x%" PRIx64 ")) "
+                    "? (INT64_MIN + (int64_t)(cg_shift_bits_%u & UINT64_C(0x%" PRIx64 "))) "
+                    ": (int64_t)cg_shift_bits_%u;\n",
+                    result_type, result, result, sign_bit, result, low_mask, result);
+        } else {
+            fprintf(backend->out,
+                    "    %s cg_v_%u = (cg_shift_bits_%u & UINT64_C(0x%" PRIx64 ")) "
+                    "? (%s)(-INT64_C(%" PRIu64 ") + (int64_t)(cg_shift_bits_%u & UINT64_C(0x%" PRIx64 "))) "
+                    ": (%s)cg_shift_bits_%u;\n",
+                    result_type, result, result, sign_bit, result_type, sign_bit,
+                    result, low_mask, result_type, result);
+        }
+    }
+
+    if (!set_value_expr(exprs, function->value_count, result, copy_printf("cg_v_%u", result))) {
+        backend_error(backend, instruction->span, "invalid shift result during C lowering");
+        return 0;
+    }
+    return 1;
+}
+
 static const char *signed_integer_min_name(unsigned bits)
 {
     switch (bits) {
@@ -1735,6 +1857,15 @@ static int emit_instruction(
                 goto invalid_result;
             return 1;
         }
+        case COG_IR_OP_SHL_CHECKED_COUNT:
+        case COG_IR_OP_SHR_SIGNED_CHECKED_COUNT:
+        case COG_IR_OP_SHR_UNSIGNED_CHECKED_COUNT:
+            if (!emit_shift_instruction(backend, function, instruction, exprs)) {
+                if (!backend->had_error)
+                    goto missing_operand;
+                return 0;
+            }
+            return 1;
         case COG_IR_OP_IADD_WRAP:
         case COG_IR_OP_ISUB_WRAP:
         case COG_IR_OP_IMUL_WRAP:

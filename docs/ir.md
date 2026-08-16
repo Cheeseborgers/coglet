@@ -1039,9 +1039,11 @@ and call `abort()` on the CogIR trap path. Reachable multi-block CFGs now emit a
 labels/gotos with parallel block-parameter edge transfer, `br`, `cond_br`,
 `switch`, `trap`, and `unreachable`; integer comparisons and Boolean negation
 provide the scalar predicates required by that slice. The host-C execution subset
-now also covers non-trapping integer bitwise operations, floating arithmetic and
-comparisons/negation for both `f32` and `f64`, and pointer equality/inequality.
-Scalar globals are emitted
+now also covers non-trapping integer bitwise operations, checked-count shifts,
+floating arithmetic and comparisons/negation for both `f32` and `f64`, and
+pointer equality/inequality. Shift emission validates the runtime count before
+shifting and implements fixed-width left shift/explicit signed sign-fill without
+relying on host-C signed-shift behavior. Scalar globals are emitted
 with their CogIR static initializer, so ordered runtime global/top-level execution
 through the synthetic module initializer works through host-C as well. Aggregate
 globals and the remaining non-CFG instruction families are still separate backend
@@ -1085,8 +1087,9 @@ coverage work.
     Wrapping and checked integer arithmetic, integer predicates, scalar globals and
     ordered module initialization now execute through reachable block labels/gotos
     with parallel block-parameter transfer, branches, switches, traps, and
-    unreachable terminators. Non-trapping bitwise operations, floating arithmetic/
-    comparisons/negation, and pointer equality/inequality now execute through the
-    same emitter. Remaining shift, data/cast, indirect-call, and aggregate-global
-    families can be filled in independently while LLVM lowering begins on the same
+    unreachable terminators. Non-trapping bitwise operations, checked-count shifts,
+    floating arithmetic/comparisons/negation, and pointer equality/inequality now
+    execute through the same emitter. Remaining data/cast, indirect-call, and
+    aggregate-global families can be filled in independently while LLVM lowering
+    begins on the same
     verified CogIR contract.

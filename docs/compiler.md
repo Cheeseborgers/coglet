@@ -999,8 +999,12 @@ before evaluating the host operation; failures realize the CogIR arithmetic trap
 with standard C `abort()`. The backend also emits reachable multi-block CFGs as C
 labels/gotos, including parallel block-parameter edge transfer, `br`, `cond_br`,
 `switch`, `trap`, and `unreachable`. Integer predicates and Boolean negation support
-that control-flow slice. Ordinary bitwise operations, `f32`/`f64` arithmetic and
+that control-flow slice. Ordinary bitwise operations, checked-count shifts, `f32`/`f64` arithmetic and
 comparisons, floating negation, and pointer equality/inequality also execute
-through CogIR without falling back to frontend semantics. Scalar source globals
+through CogIR without falling back to frontend semantics. Runtime shifts guard
+`0 <= count < width` before any C shift; left shift operates on fixed-width
+unsigned bit patterns and signed right shift synthesizes sign fill explicitly, so
+the backend does not depend on implementation-defined right shift of negative C
+integers. Scalar source globals
 plus the ordered module-init function make top-level runtime control flow executable
 through the same IR-only path.

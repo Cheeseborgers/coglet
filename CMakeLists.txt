@@ -632,6 +632,36 @@ set_tests_properties(
         PROPERTIES LABELS "backend;backend.c;ir;scalar;bitwise;float;pointer"
 )
 
+add_test(
+        NAME backend_shifts
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/shifts.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_shifts
+        -DEXPECT_EXIT=0
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(
+        backend_shifts
+        PROPERTIES LABELS "backend;backend.c;ir;shift;checked-count"
+)
+
+foreach(shift_trap_case IN ITEMS negative_count wide_count)
+    add_test(
+            NAME backend_shift_${shift_trap_case}_trap
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/shift_${shift_trap_case}_trap.cog
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_shift_${shift_trap_case}_trap
+            -DNO_TRAP_EXIT=91
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_trap_test.cmake"
+    )
+    set_tests_properties(
+            backend_shift_${shift_trap_case}_trap
+            PROPERTIES LABELS "backend;backend.c;ir;shift;checked-count;trap"
+    )
+endforeach()
+
 foreach(trap_case IN ITEMS overflow division_by_zero division_overflow)
     if(trap_case STREQUAL "overflow")
         set(trap_exit 96)

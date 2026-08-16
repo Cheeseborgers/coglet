@@ -112,6 +112,9 @@ of dead synthetic CFG blocks from generated C. The scalar-operations backend
 regression executes integer bitwise operators, `f32`/`f64` arithmetic and
 comparisons, floating negation, and pointer equality/inequality through runtime
 function parameters so those paths cannot disappear through constant folding.
+The shift backend regression covers fixed-width left shift, zero-filling unsigned
+right shift, arithmetic signed right shift (including count zero), and separate
+runtime traps for negative and width-sized counts.
 
 Run the backend suite with:
 

@@ -618,6 +618,20 @@ set_tests_properties(
         PROPERTIES LABELS "backend;backend.c;ir;cfg;module-init"
 )
 
+add_test(
+        NAME backend_scalar_ops
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/scalar_ops.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_scalar_ops
+        -DEXPECT_EXIT=0
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(
+        backend_scalar_ops
+        PROPERTIES LABELS "backend;backend.c;ir;scalar;bitwise;float;pointer"
+)
+
 foreach(trap_case IN ITEMS overflow division_by_zero division_overflow)
     if(trap_case STREQUAL "overflow")
         set(trap_exit 96)

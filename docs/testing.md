@@ -108,7 +108,10 @@ operations rather than constant folding. The structured-CFG backend regression
 executes ordered scalar global initialization plus top-level `if`, short-circuit
 block-parameter transfer, function `if/else`, a loop backedge/comparison, and a
 `switch` through the CogIR-only backend. It also guards reachability-based omission
-of dead synthetic CFG blocks from generated C.
+of dead synthetic CFG blocks from generated C. The scalar-operations backend
+regression executes integer bitwise operators, `f32`/`f64` arithmetic and
+comparisons, floating negation, and pointer equality/inequality through runtime
+function parameters so those paths cannot disappear through constant folding.
 
 Run the backend suite with:
 

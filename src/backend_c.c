@@ -1646,6 +1646,86 @@ static int emit_instruction(
                 goto invalid_result;
             return 1;
         }
+        case COG_IR_OP_BIT_AND:
+        case COG_IR_OP_BIT_OR:
+        case COG_IR_OP_BIT_XOR:
+        case COG_IR_OP_FADD:
+        case COG_IR_OP_FSUB:
+        case COG_IR_OP_FMUL:
+        case COG_IR_OP_FDIV: {
+            const char *lhs = value_expr(exprs, value_count, instruction->as.binary.lhs);
+            const char *rhs = value_expr(exprs, value_count, instruction->as.binary.rhs);
+            const char *type = runtime_type_name(backend, instruction->result_type, instruction->span);
+            if (!lhs || !rhs || !type)
+                goto missing_operand;
+
+            const char *operator_text = NULL;
+            switch (instruction->op) {
+                case COG_IR_OP_BIT_AND: operator_text = "&"; break;
+                case COG_IR_OP_BIT_OR:  operator_text = "|"; break;
+                case COG_IR_OP_BIT_XOR: operator_text = "^"; break;
+                case COG_IR_OP_FADD:    operator_text = "+"; break;
+                case COG_IR_OP_FSUB:    operator_text = "-"; break;
+                case COG_IR_OP_FMUL:    operator_text = "*"; break;
+                case COG_IR_OP_FDIV:    operator_text = "/"; break;
+                default: break;
+            }
+            if (!operator_text)
+                goto invalid_result;
+
+            fprintf(backend->out, "    %s cg_v_%u = (%s) %s (%s);\n",
+                    type, result, lhs, operator_text, rhs);
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_BIT_NOT:
+        case COG_IR_OP_FNEG: {
+            const char *operand = value_expr(exprs, value_count, instruction->as.unary.operand);
+            const char *type = runtime_type_name(backend, instruction->result_type, instruction->span);
+            if (!operand || !type)
+                goto missing_operand;
+            const char *operator_text = instruction->op == COG_IR_OP_BIT_NOT ? "~" : "-";
+            fprintf(backend->out, "    %s cg_v_%u = %s(%s);\n",
+                    type, result, operator_text, operand);
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_FCMP_EQ:
+        case COG_IR_OP_FCMP_NE:
+        case COG_IR_OP_FCMP_LT:
+        case COG_IR_OP_FCMP_LE:
+        case COG_IR_OP_FCMP_GT:
+        case COG_IR_OP_FCMP_GE:
+        case COG_IR_OP_PTR_EQ:
+        case COG_IR_OP_PTR_NE: {
+            const char *lhs = value_expr(exprs, value_count, instruction->as.binary.lhs);
+            const char *rhs = value_expr(exprs, value_count, instruction->as.binary.rhs);
+            if (!lhs || !rhs)
+                goto missing_operand;
+
+            const char *operator_text = NULL;
+            switch (instruction->op) {
+                case COG_IR_OP_FCMP_EQ:
+                case COG_IR_OP_PTR_EQ: operator_text = "=="; break;
+                case COG_IR_OP_FCMP_NE:
+                case COG_IR_OP_PTR_NE: operator_text = "!="; break;
+                case COG_IR_OP_FCMP_LT: operator_text = "<"; break;
+                case COG_IR_OP_FCMP_LE: operator_text = "<="; break;
+                case COG_IR_OP_FCMP_GT: operator_text = ">"; break;
+                case COG_IR_OP_FCMP_GE: operator_text = ">="; break;
+                default: break;
+            }
+            if (!operator_text)
+                goto invalid_result;
+
+            fprintf(backend->out, "    _Bool cg_v_%u = (%s) %s (%s);\n",
+                    result, lhs, operator_text, rhs);
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
         case COG_IR_OP_BOOL_NOT: {
             const char *operand = value_expr(exprs, value_count, instruction->as.unary.operand);
             if (!operand)

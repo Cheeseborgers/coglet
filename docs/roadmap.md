@@ -498,11 +498,12 @@ overflow. Checked integer add/subtract/multiply, division/remainder, and signed
 negation execute with explicit precondition guards and abort on the CogIR
 arithmetic-trap path. Reachable multi-block CFGs now emit as labels/gotos with
 parallel block-parameter edge transfer, conditional/unconditional branches,
-switches, traps, and unreachable terminators. Integer predicates and scalar globals
-complete the exercised module-initializer/control-flow path. Begin LLVM lowering on
-the same verified module contract while filling remaining host-C operation and
-aggregate-global coverage as isolated compatibility milestones rather than creating
-a second frontend path.
+switches, traps, and unreachable terminators. Integer predicates, scalar globals,
+non-trapping bitwise operations, floating arithmetic/comparisons/negation, and
+pointer equality complete the exercised scalar module-initializer/control-flow
+path. Begin LLVM lowering on the same verified module contract while filling
+remaining host-C shift, data/cast, indirect-call, and aggregate-global coverage as
+isolated compatibility milestones rather than creating a second frontend path.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

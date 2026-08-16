@@ -996,5 +996,9 @@ checked integer operations. Wrapping C emission performs the operation in unsign
 signed results without host signed overflow or implementation-defined narrowing.
 Checked `+ - * / %` and signed negation test representability/divisor preconditions
 before evaluating the host operation; failures realize the CogIR arithmetic trap
-with standard C `abort()`. Structured CFG emission remains a separate backend-
-expansion milestone.
+with standard C `abort()`. The backend also emits reachable multi-block CFGs as C
+labels/gotos, including parallel block-parameter edge transfer, `br`, `cond_br`,
+`switch`, `trap`, and `unreachable`. Integer predicates and Boolean negation support
+that control-flow slice, while scalar source globals plus the ordered module-init
+function make top-level runtime control flow executable through the same IR-only
+path.

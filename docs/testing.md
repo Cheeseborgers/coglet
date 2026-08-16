@@ -104,7 +104,11 @@ interop case also exercises runtime
 pointer-qualification lowering across a C call result before C emission. The
 wrapping-arithmetic executable regression checks runtime signed/unsigned narrow
 wraparound and the signed 64-bit minimum edge through dedicated CogIR wrapping
-operations rather than constant folding.
+operations rather than constant folding. The structured-CFG backend regression
+executes ordered scalar global initialization plus top-level `if`, short-circuit
+block-parameter transfer, function `if/else`, a loop backedge/comparison, and a
+`switch` through the CogIR-only backend. It also guards reachability-based omission
+of dead synthetic CFG blocks from generated C.
 
 Run the backend suite with:
 

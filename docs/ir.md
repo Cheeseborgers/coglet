@@ -1032,11 +1032,17 @@ has a CogIR-owned representation. `backend_c.h` accepts `const CogIrModule *` on
 and the CLI freezes/verifies the module, destroys `CompileResult`, verifies the
 frozen module again, and only then invokes C emission. The current C execution
 emitter supports the straight-line operations exercised by the executable/interop
-suite and now lowers `iadd.wrap`, `isub.wrap`, `imul.wrap`, and `ineg.wrap` with
+suite and lowers `iadd.wrap`, `isub.wrap`, `imul.wrap`, and `ineg.wrap` with
 explicit fixed-width bit-pattern semantics. Checked integer add/subtract/multiply,
-division/remainder, and signed negation now emit explicit guards before the C
-operation and call `abort()` on the CogIR trap path. Multi-block CFGs remain the
-next major host-C execution gap.
+division/remainder, and signed negation emit explicit guards before the C operation
+and call `abort()` on the CogIR trap path. Reachable multi-block CFGs now emit as
+labels/gotos with parallel block-parameter edge transfer, `br`, `cond_br`,
+`switch`, `trap`, and `unreachable`; integer comparisons and Boolean negation
+provide the scalar predicates required by that slice. Scalar globals are emitted
+with their CogIR static initializer, so ordered runtime global/top-level execution
+through the synthetic module initializer works through host-C as well. Aggregate
+globals and the remaining non-CFG instruction families are still separate backend
+coverage work.
 
 ## Implementation sequence
 
@@ -1072,7 +1078,10 @@ next major host-C execution gap.
     through AST -> semantic -> CogIR -> C.~~ The public backend API is IR-only,
     frontend lifetime ends before backend invocation, and the existing
     executable/interop suite runs through CogIR.
-14. Expand host-C instruction/CFG coverage from the current compatibility subset,
-    then begin LLVM lowering on the same verified CogIR contract. Wrapping and
-    checked integer arithmetic are now executable through host-C; structured CFG
-    remains the next backend slice.
+14. ~~Expand the host-C backend through the core structured-CFG execution slice.~~
+    Wrapping and checked integer arithmetic, integer predicates, scalar globals and
+    ordered module initialization now execute through reachable block labels/gotos
+    with parallel block-parameter transfer, branches, switches, traps, and
+    unreachable terminators. Remaining data/cast instruction families and aggregate
+    globals can be filled in independently while LLVM lowering begins on the same
+    verified CogIR contract.

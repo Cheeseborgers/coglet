@@ -1,0 +1,33 @@
+counter: c_int = 0;
+flag: bool = true;
+
+if flag {
+    counter = 2;
+} else {
+    counter = 1;
+}
+
+run_cfg::(a, b: bool) -> c_int {
+    value: c_int = counter;
+
+    if a && b {
+        value += 3;
+    } else {
+        value += 1;
+    }
+
+    while value < 7 {
+        value += 1;
+    }
+
+    switch value {
+        case 7:
+            return 101;
+        default:
+            return 102;
+    }
+}
+
+main::() -> c_int {
+    return run_cfg(true, true);
+}

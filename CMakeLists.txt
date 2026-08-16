@@ -604,6 +604,20 @@ set_tests_properties(
         PROPERTIES LABELS "backend;backend.c;ir;checked-arithmetic"
 )
 
+add_test(
+        NAME backend_structured_cfg
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/structured_cfg.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_structured_cfg
+        -DEXPECT_EXIT=101
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(
+        backend_structured_cfg
+        PROPERTIES LABELS "backend;backend.c;ir;cfg;module-init"
+)
+
 foreach(trap_case IN ITEMS overflow division_by_zero division_overflow)
     if(trap_case STREQUAL "overflow")
         set(trap_exit 96)

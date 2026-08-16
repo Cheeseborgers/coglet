@@ -201,6 +201,7 @@ static const char *c_scalar_name(CogIrCScalarKind scalar)
 
 static const char *runtime_type_name(CBackend *backend, CogIrTypeId type_id, SourceSpan span);
 static const char *abi_type_name(CBackend *backend, CogIrAbiTypeId abi_id, SourceSpan span);
+static char *constant_expr(CBackend *backend, CogIrConstId constant_id);
 
 static const char *nominal_type_name(CBackend *backend, const CogIrType *type)
 {
@@ -866,12 +867,8 @@ static int emit_aggregate_definitions(CBackend *backend)
     return !backend->had_error;
 }
 
-static int string_global_bytes(
-    CBackend *backend,
-    const CogIrGlobal *global,
-    const unsigned char **unused
-) {
-    (void)unused;
+static int is_string_global(CBackend *backend, const CogIrGlobal *global)
+{
     const CogIrType *type = cog_ir_get_type(backend->module, global->type);
     const CogIrConstant *init = cog_ir_get_constant(backend->module, global->static_initializer);
     if (!type || type->kind != COG_IR_TYPE_ARRAY ||
@@ -888,22 +885,44 @@ static int emit_globals(CBackend *backend)
 {
     for (size_t i = 0; i < backend->module->global_count; ++i) {
         const CogIrGlobal *global = &backend->module->globals[i];
-        if (!string_global_bytes(backend, global, NULL)) {
-            backend_error(backend, global->span, "non-string CogIR globals are not lowered by the host-C backend yet");
+        if (is_string_global(backend, global)) {
+            const CogIrType *type = cog_ir_get_type(backend->module, global->type);
+            const CogIrConstant *init = cog_ir_get_constant(backend->module, global->static_initializer);
+            fprintf(backend->out, "static const char %s[%zu] = {", backend->global_names[i], type->as.array.length);
+            for (size_t e = 0; e < init->as.aggregate.element_count; ++e) {
+                const CogIrConstant *element = cog_ir_get_constant(backend->module, init->as.aggregate.elements[e]);
+                if (!element || element->kind != COG_IR_CONST_INTEGER) {
+                    backend_error(backend, global->span, "string global has non-integer byte constant");
+                    return 0;
+                }
+                fprintf(backend->out, "%s0x%02" PRIx64, e ? ", " : "", element->as.integer_bits & UINT64_C(0xff));
+            }
+            fputs("};\n", backend->out);
+            continue;
+        }
+
+        const CogIrType *type = cog_ir_get_type(backend->module, global->type);
+        if (!type || type->kind == COG_IR_TYPE_ARRAY ||
+            type->kind == COG_IR_TYPE_STRUCT || type->kind == COG_IR_TYPE_UNION) {
+            backend_error(backend, global->span, "aggregate CogIR globals are not lowered by the host-C backend yet");
             return 0;
         }
-        const CogIrType *type = cog_ir_get_type(backend->module, global->type);
-        const CogIrConstant *init = cog_ir_get_constant(backend->module, global->static_initializer);
-        fprintf(backend->out, "static const char %s[%zu] = {", backend->global_names[i], type->as.array.length);
-        for (size_t e = 0; e < init->as.aggregate.element_count; ++e) {
-            const CogIrConstant *element = cog_ir_get_constant(backend->module, init->as.aggregate.elements[e]);
-            if (!element || element->kind != COG_IR_CONST_INTEGER) {
-                backend_error(backend, global->span, "string global has non-integer byte constant");
-                return 0;
-            }
-            fprintf(backend->out, "%s0x%02" PRIx64, e ? ", " : "", element->as.integer_bits & UINT64_C(0xff));
+        const char *type_name = runtime_type_name(backend, global->type, global->span);
+        char *initializer = constant_expr(backend, global->static_initializer);
+        if (!type_name || !initializer) {
+            free(initializer);
+            backend_error(backend, global->span, "CogIR global has no C type or static initializer");
+            return 0;
         }
-        fputs("};\n", backend->out);
+        fprintf(
+            backend->out,
+            "static %s%s %s = %s;\n",
+            global->is_readonly ? "const " : "",
+            type_name,
+            backend->global_names[i],
+            initializer
+        );
+        free(initializer);
     }
     if (backend->module->global_count)
         fputc('\n', backend->out);
@@ -1583,6 +1602,59 @@ static int emit_instruction(
                 goto invalid_result;
             return 1;
         }
+        case COG_IR_OP_ICMP_EQ:
+        case COG_IR_OP_ICMP_NE:
+        case COG_IR_OP_ICMP_SLT:
+        case COG_IR_OP_ICMP_SLE:
+        case COG_IR_OP_ICMP_SGT:
+        case COG_IR_OP_ICMP_SGE:
+        case COG_IR_OP_ICMP_ULT:
+        case COG_IR_OP_ICMP_ULE:
+        case COG_IR_OP_ICMP_UGT:
+        case COG_IR_OP_ICMP_UGE: {
+            const char *lhs = value_expr(exprs, value_count, instruction->as.binary.lhs);
+            const char *rhs = value_expr(exprs, value_count, instruction->as.binary.rhs);
+            if (!lhs || !rhs)
+                goto missing_operand;
+
+            const char *operator_text = NULL;
+            switch (instruction->op) {
+                case COG_IR_OP_ICMP_EQ:  operator_text = "=="; break;
+                case COG_IR_OP_ICMP_NE:  operator_text = "!="; break;
+                case COG_IR_OP_ICMP_SLT:
+                case COG_IR_OP_ICMP_ULT: operator_text = "<"; break;
+                case COG_IR_OP_ICMP_SLE:
+                case COG_IR_OP_ICMP_ULE: operator_text = "<="; break;
+                case COG_IR_OP_ICMP_SGT:
+                case COG_IR_OP_ICMP_UGT: operator_text = ">"; break;
+                case COG_IR_OP_ICMP_SGE:
+                case COG_IR_OP_ICMP_UGE: operator_text = ">="; break;
+                default: break;
+            }
+            if (!operator_text)
+                goto invalid_result;
+
+            fprintf(
+                backend->out,
+                "    _Bool cg_v_%u = (%s) %s (%s);\n",
+                result,
+                lhs,
+                operator_text,
+                rhs
+            );
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_BOOL_NOT: {
+            const char *operand = value_expr(exprs, value_count, instruction->as.unary.operand);
+            if (!operand)
+                goto missing_operand;
+            fprintf(backend->out, "    _Bool cg_v_%u = !(%s);\n", result, operand);
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
         case COG_IR_OP_IADD_WRAP:
         case COG_IR_OP_ISUB_WRAP:
         case COG_IR_OP_IMUL_WRAP:
@@ -1658,25 +1730,324 @@ missing_operand:
     return 0;
 }
 
+static int emit_branch_edge(
+    CBackend *backend,
+    const CogIrFunction *function,
+    CogIrBlockId source_block,
+    const CogIrBranchEdge *edge,
+    char **exprs,
+    size_t edge_tag,
+    const char *indent
+) {
+    const CogIrBlock *target = cog_ir_get_block(function, edge->target);
+    if (!target || target->parameter_count != edge->argument_count) {
+        backend_error(backend, source_span_invalid(), "invalid CogIR branch edge during C lowering");
+        return 0;
+    }
+
+    for (size_t i = 0; i < edge->argument_count; ++i) {
+        const char *argument = value_expr(exprs, function->value_count, edge->arguments[i]);
+        const char *type = runtime_type_name(backend, target->parameters[i].type, target->parameters[i].span);
+        if (!argument || !type) {
+            backend_error(backend, target->parameters[i].span, "branch edge argument has no C value expression");
+            return 0;
+        }
+        fprintf(
+            backend->out,
+            "%s%s cg_edge_%u_%zu_%zu = %s;\n",
+            indent,
+            type,
+            source_block,
+            edge_tag,
+            i,
+            argument
+        );
+    }
+
+    for (size_t i = 0; i < edge->argument_count; ++i) {
+        const char *parameter = value_expr(exprs, function->value_count, target->parameters[i].value);
+        if (!parameter) {
+            backend_error(backend, target->parameters[i].span, "branch target parameter has no C storage");
+            return 0;
+        }
+        fprintf(
+            backend->out,
+            "%s%s = cg_edge_%u_%zu_%zu;\n",
+            indent,
+            parameter,
+            source_block,
+            edge_tag,
+            i
+        );
+    }
+
+    fprintf(backend->out, "%sgoto cg_bb_%u;\n", indent, edge->target);
+    return 1;
+}
+
+static int emit_terminator(
+    CBackend *backend,
+    const CogIrFunction *function,
+    const CogIrBlock *block,
+    char **exprs
+) {
+    const CogIrTerminator *terminator = &block->terminator;
+    switch (terminator->kind) {
+        case COG_IR_TERMINATOR_BR:
+            return emit_branch_edge(
+                backend,
+                function,
+                block->id,
+                &terminator->as.branch.edge,
+                exprs,
+                0,
+                "    "
+            );
+
+        case COG_IR_TERMINATOR_COND_BR: {
+            const char *condition = value_expr(
+                exprs,
+                function->value_count,
+                terminator->as.cond_branch.condition
+            );
+            if (!condition) {
+                backend_error(backend, terminator->span, "conditional branch has no C condition expression");
+                return 0;
+            }
+            fprintf(backend->out, "    if (%s) {\n", condition);
+            if (!emit_branch_edge(
+                    backend,
+                    function,
+                    block->id,
+                    &terminator->as.cond_branch.if_true,
+                    exprs,
+                    0,
+                    "        "))
+                return 0;
+            fputs("    } else {\n", backend->out);
+            if (!emit_branch_edge(
+                    backend,
+                    function,
+                    block->id,
+                    &terminator->as.cond_branch.if_false,
+                    exprs,
+                    1,
+                    "        "))
+                return 0;
+            fputs("    }\n", backend->out);
+            return 1;
+        }
+
+        case COG_IR_TERMINATOR_SWITCH: {
+            const char *value = value_expr(
+                exprs,
+                function->value_count,
+                terminator->as.switch_term.value
+            );
+            if (!value) {
+                backend_error(backend, terminator->span, "switch terminator has no C value expression");
+                return 0;
+            }
+
+            fprintf(backend->out, "    switch (%s) {\n", value);
+            for (size_t i = 0; i < terminator->as.switch_term.case_count; ++i) {
+                char *key = constant_expr(backend, terminator->as.switch_term.cases[i].key);
+                if (!key) {
+                    if (!backend->had_error)
+                        backend_error(backend, terminator->span, "switch case has no C constant expression");
+                    return 0;
+                }
+                fprintf(backend->out, "        case %s: {\n", key);
+                free(key);
+                if (!emit_branch_edge(
+                        backend,
+                        function,
+                        block->id,
+                        &terminator->as.switch_term.cases[i].edge,
+                        exprs,
+                        i,
+                        "            "))
+                    return 0;
+                fputs("        }\n", backend->out);
+            }
+            fputs("        default: {\n", backend->out);
+            if (!emit_branch_edge(
+                    backend,
+                    function,
+                    block->id,
+                    &terminator->as.switch_term.default_edge,
+                    exprs,
+                    terminator->as.switch_term.case_count,
+                    "            "))
+                return 0;
+            fputs("        }\n    }\n", backend->out);
+            return 1;
+        }
+
+        case COG_IR_TERMINATOR_RET:
+            if (terminator->as.ret.has_value) {
+                const char *value = value_expr(
+                    exprs,
+                    function->value_count,
+                    terminator->as.ret.value
+                );
+                if (!value) {
+                    backend_error(backend, terminator->span, "return terminator has no C value expression");
+                    return 0;
+                }
+                fprintf(backend->out, "    return %s;\n", value);
+            } else {
+                fputs("    return;\n", backend->out);
+            }
+            return 1;
+
+        case COG_IR_TERMINATOR_TRAP:
+            fputs("    abort();\n", backend->out);
+            return 1;
+
+        case COG_IR_TERMINATOR_UNREACHABLE:
+            fputs("    abort(); /* CogIR unreachable */\n", backend->out);
+            return 1;
+
+        case COG_IR_TERMINATOR_NONE:
+            backend_error(backend, terminator->span, "CogIR block has no terminator during C lowering");
+            return 0;
+    }
+    return 0;
+}
+
+static int mark_reachable_edge(
+    CBackend *backend,
+    const CogIrFunction *function,
+    const CogIrBranchEdge *edge,
+    unsigned char *reachable,
+    int *changed,
+    SourceSpan span
+) {
+    if (edge->target == COG_IR_BLOCK_INVALID || (size_t)edge->target >= function->block_count) {
+        backend_error(backend, span, "invalid CogIR branch target during C lowering");
+        return 0;
+    }
+    if (!reachable[edge->target]) {
+        reachable[edge->target] = 1;
+        *changed = 1;
+    }
+    return 1;
+}
+
+static int compute_reachable_blocks(
+    CBackend *backend,
+    const CogIrFunction *function,
+    unsigned char *reachable
+) {
+    reachable[function->entry_block] = 1;
+
+    int changed;
+    do {
+        changed = 0;
+        for (size_t b = 0; b < function->block_count; ++b) {
+            if (!reachable[b])
+                continue;
+
+            const CogIrTerminator *terminator = &function->blocks[b].terminator;
+            switch (terminator->kind) {
+                case COG_IR_TERMINATOR_BR:
+                    if (!mark_reachable_edge(
+                            backend,
+                            function,
+                            &terminator->as.branch.edge,
+                            reachable,
+                            &changed,
+                            terminator->span))
+                        return 0;
+                    break;
+
+                case COG_IR_TERMINATOR_COND_BR:
+                    if (!mark_reachable_edge(
+                            backend,
+                            function,
+                            &terminator->as.cond_branch.if_true,
+                            reachable,
+                            &changed,
+                            terminator->span) ||
+                        !mark_reachable_edge(
+                            backend,
+                            function,
+                            &terminator->as.cond_branch.if_false,
+                            reachable,
+                            &changed,
+                            terminator->span))
+                        return 0;
+                    break;
+
+                case COG_IR_TERMINATOR_SWITCH:
+                    for (size_t i = 0; i < terminator->as.switch_term.case_count; ++i) {
+                        if (!mark_reachable_edge(
+                                backend,
+                                function,
+                                &terminator->as.switch_term.cases[i].edge,
+                                reachable,
+                                &changed,
+                                terminator->span))
+                            return 0;
+                    }
+                    if (!mark_reachable_edge(
+                            backend,
+                            function,
+                            &terminator->as.switch_term.default_edge,
+                            reachable,
+                            &changed,
+                            terminator->span))
+                        return 0;
+                    break;
+
+                case COG_IR_TERMINATOR_RET:
+                case COG_IR_TERMINATOR_TRAP:
+                case COG_IR_TERMINATOR_UNREACHABLE:
+                    break;
+
+                case COG_IR_TERMINATOR_NONE:
+                    backend_error(backend, terminator->span, "CogIR block has no terminator during C lowering");
+                    return 0;
+            }
+        }
+    } while (changed);
+
+    return 1;
+}
+
 static int emit_function_body(CBackend *backend, const CogIrFunction *function)
 {
     if (function->kind != COG_IR_FUNCTION_DEFINITION ||
         function->linkage == COG_IR_LINKAGE_EXTERNAL)
         return 1;
 
-    if (function->block_count != 1 || function->entry_block == COG_IR_BLOCK_INVALID) {
-        backend_error(backend, function->span, "structured CogIR CFG emission is not implemented by the host-C backend yet");
+    if (function->block_count == 0 || function->entry_block == COG_IR_BLOCK_INVALID ||
+        (size_t)function->entry_block >= function->block_count) {
+        backend_error(backend, function->span, "CogIR function has no valid entry block during C lowering");
         return 0;
     }
-    const CogIrBlock *block = cog_ir_get_block(function, function->entry_block);
-    if (!block || block->parameter_count != 0) {
-        backend_error(backend, function->span, "CogIR block parameters are not lowered by the host-C backend yet");
+    const CogIrBlock *entry = cog_ir_get_block(function, function->entry_block);
+    if (!entry || entry->parameter_count != 0) {
+        backend_error(backend, function->span, "CogIR entry block must not have parameters during C lowering");
+        return 0;
+    }
+
+    unsigned char *reachable = calloc(function->block_count, sizeof(*reachable));
+    if (!reachable) {
+        backend_error(backend, function->span, "out of memory while computing CogIR CFG reachability");
+        return 0;
+    }
+    if (!compute_reachable_blocks(backend, function, reachable)) {
+        free(reachable);
         return 0;
     }
 
     const char *result = function_result_type(backend, function);
-    if (!result)
+    if (!result) {
+        free(reachable);
         return 0;
+    }
     const char *macro = c_call_macro_name(function->abi.calling_convention);
     const char *sep = function->abi.calling_convention == COG_IR_CALL_DEFAULT ? "" : " ";
     fprintf(
@@ -1685,15 +2056,19 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
         result, sep, macro, backend->function_names[function->id]
     );
     emit_function_parameter_list(backend, function, 1);
-    if (backend->had_error)
+    if (backend->had_error) {
+        free(reachable);
         return 0;
+    }
     fputs(")\n{\n", backend->out);
 
     for (size_t s = 0; s < function->slot_count; ++s) {
         const CogIrSlot *slot = &function->slots[s];
         const char *type = runtime_type_name(backend, slot->type, slot->span);
-        if (!type)
+        if (!type) {
+            free(reachable);
             return 0;
+        }
         fprintf(backend->out, "    %s cg_s_%zu;\n", type, s);
     }
     if (function->slot_count)
@@ -1705,6 +2080,7 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
         : NULL;
     if (function->value_count && (!exprs || !function_refs)) {
         free(exprs); free(function_refs);
+        free(reachable);
         backend_error(backend, function->span, "out of memory while lowering CogIR function body to C");
         return 0;
     }
@@ -1719,28 +2095,45 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
         }
     }
 
-    for (size_t i = 0; i < block->instruction_count; ++i) {
-        if (!emit_instruction(backend, function, &block->instructions[i], exprs, function_refs))
-            goto fail;
-    }
-
-    switch (block->terminator.kind) {
-        case COG_IR_TERMINATOR_RET:
-            if (block->terminator.as.ret.has_value) {
-                const char *value = value_expr(
-                    exprs, function->value_count, block->terminator.as.ret.value);
-                if (!value) {
-                    backend_error(backend, block->terminator.span, "return terminator has no C value expression");
-                    goto fail;
-                }
-                fprintf(backend->out, "    return %s;\n", value);
-            } else {
-                fputs("    return;\n", backend->out);
+    int has_block_parameters = 0;
+    for (size_t b = 0; b < function->block_count; ++b) {
+        if (!reachable[b])
+            continue;
+        const CogIrBlock *block = &function->blocks[b];
+        for (size_t p = 0; p < block->parameter_count; ++p) {
+            const CogIrBlockParam *parameter = &block->parameters[p];
+            const char *type = runtime_type_name(backend, parameter->type, parameter->span);
+            if (!type)
+                goto fail;
+            fprintf(backend->out, "    %s cg_bp_%u;\n", type, parameter->value);
+            if (!set_value_expr(
+                    exprs,
+                    function->value_count,
+                    parameter->value,
+                    copy_printf("cg_bp_%u", parameter->value))) {
+                backend_error(backend, parameter->span, "invalid CogIR block parameter value");
+                goto fail;
             }
-            break;
-        default:
-            backend_error(backend, block->terminator.span, "CogIR terminator is outside the current host-C backend execution subset");
+            has_block_parameters = 1;
+        }
+    }
+    if (has_block_parameters)
+        fputc('\n', backend->out);
+
+    fprintf(backend->out, "    goto cg_bb_%u;\n\n", function->entry_block);
+
+    for (size_t b = 0; b < function->block_count; ++b) {
+        if (!reachable[b])
+            continue;
+        const CogIrBlock *block = &function->blocks[b];
+        fprintf(backend->out, "cg_bb_%u: ;\n", block->id);
+        for (size_t i = 0; i < block->instruction_count; ++i) {
+            if (!emit_instruction(backend, function, &block->instructions[i], exprs, function_refs))
+                goto fail;
+        }
+        if (!emit_terminator(backend, function, block, exprs))
             goto fail;
+        fputc('\n', backend->out);
     }
 
     fputs("}\n\n", backend->out);
@@ -1748,6 +2141,7 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
         free(exprs[i]);
     free(exprs);
     free(function_refs);
+    free(reachable);
     return 1;
 
 fail:
@@ -1755,6 +2149,7 @@ fail:
         free(exprs[i]);
     free(exprs);
     free(function_refs);
+    free(reachable);
     return 0;
 }
 

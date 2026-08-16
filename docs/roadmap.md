@@ -491,14 +491,18 @@ distinguishable from representation-equal `i32` after frontend destruction.
 freezes CogIR, destroys the frontend, then emits/builds C. The existing executable
 and C-interop suite therefore runs through frontend -> CogIR -> C.
 
-The host-C emitter has started expanding beyond the old backend's deliberately
-narrow execution subset. Dedicated wrapping integer operations now execute with
-explicit modulo-width bit-pattern lowering, including signed edge cases without
-using host signed overflow. Checked integer add/subtract/multiply,
-division/remainder, and signed negation now execute with explicit precondition
-guards and abort on the CogIR arithmetic-trap path. Next add multi-block CFG
-operations already present in CogIR, then begin LLVM lowering on the same verified
-module contract rather than creating a second frontend path.
+The host-C emitter has expanded beyond the old backend's deliberately narrow
+execution subset. Dedicated wrapping integer operations execute with explicit
+modulo-width bit-pattern lowering, including signed edge cases without host signed
+overflow. Checked integer add/subtract/multiply, division/remainder, and signed
+negation execute with explicit precondition guards and abort on the CogIR
+arithmetic-trap path. Reachable multi-block CFGs now emit as labels/gotos with
+parallel block-parameter edge transfer, conditional/unconditional branches,
+switches, traps, and unreachable terminators. Integer predicates and scalar globals
+complete the exercised module-initializer/control-flow path. Begin LLVM lowering on
+the same verified module contract while filling remaining host-C operation and
+aggregate-global coverage as isolated compatibility milestones rather than creating
+a second frontend path.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

@@ -13,7 +13,7 @@ if(NOT emit_result EQUAL 0)
 endif()
 
 file(READ "${OUTPUT_IR}" llvm_ir)
-foreach(required IN ITEMS "define i32 @main()" "cog.fn.")
+foreach(required IN ITEMS "target datalayout =" "target triple =" "define i32 @main()" "cog.fn.")
     string(FIND "${llvm_ir}" "${required}" pos)
     if(pos EQUAL -1)
         message(FATAL_ERROR "LLVM IR is missing required text '${required}':\n${llvm_ir}")

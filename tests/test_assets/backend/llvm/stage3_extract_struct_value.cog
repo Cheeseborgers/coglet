@@ -1,0 +1,15 @@
+Pair::struct {
+    x: i32;
+    y: i32;
+}
+
+make_pair::() -> Pair {
+    return Pair {
+        x = 4,
+        y = 9,
+    };
+}
+
+main::() -> i32 {
+    return make_pair().y;
+}

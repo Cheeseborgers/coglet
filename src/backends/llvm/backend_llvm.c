@@ -16,118 +16,8 @@ void llvm_backend_error(LlvmBackend *backend, const char *message)
 
 static void backend_unsupported_op(LlvmBackend *backend, CogIrOp op)
 {
-    fprintf(stderr, "LLVM backend error: unsupported CogIR operation '%s' in Stage 2\n", cog_ir_op_name(op));
+    fprintf(stderr, "LLVM backend error: unsupported CogIR operation '%s' in Stage 3\n", cog_ir_op_name(op));
     backend->had_error = 1;
-}
-
-static LLVMTypeRef lower_type(LlvmBackend *backend, CogIrTypeId id);
-
-static LLVMTypeRef lower_function_type(LlvmBackend *backend, const CogIrType *type)
-{
-    if (!type || type->kind != COG_IR_TYPE_FUNCTION)
-        return NULL;
-    if (type->as.function.abi != COG_IR_ABI_COGLET || type->as.function.is_variadic) {
-        llvm_backend_error(backend, "Stage 2 supports only non-variadic Coglet ABI functions");
-        return NULL;
-    }
-
-    LLVMTypeRef result = lower_type(backend, type->as.function.result_type);
-    if (!result)
-        return NULL;
-
-    LLVMTypeRef *params = NULL;
-    if (type->as.function.parameter_count) {
-        params = calloc(type->as.function.parameter_count, sizeof(*params));
-        if (!params) {
-            llvm_backend_error(backend, "out of memory lowering function type");
-            return NULL;
-        }
-        for (size_t i = 0; i < type->as.function.parameter_count; ++i) {
-            params[i] = lower_type(backend, type->as.function.parameter_types[i]);
-            if (!params[i]) {
-                free(params);
-                return NULL;
-            }
-        }
-    }
-
-    LLVMTypeRef fn = LLVMFunctionType(result, params, (unsigned)type->as.function.parameter_count, 0);
-    free(params);
-    return fn;
-}
-
-static LLVMTypeRef lower_type(LlvmBackend *backend, CogIrTypeId id)
-{
-    if (id == COG_IR_TYPE_INVALID || (size_t)id >= backend->ir->type_count) {
-        llvm_backend_error(backend, "invalid CogIR type id");
-        return NULL;
-    }
-    if (backend->types[id])
-        return backend->types[id];
-
-    const CogIrType *type = cog_ir_get_type(backend->ir, id);
-    LLVMTypeRef result = NULL;
-    switch (type->kind) {
-        case COG_IR_TYPE_VOID:
-            result = LLVMVoidTypeInContext(backend->context);
-            break;
-        case COG_IR_TYPE_BOOL:
-            result = LLVMIntTypeInContext(backend->context, 1);
-            break;
-        case COG_IR_TYPE_INTEGER:
-            result = LLVMIntTypeInContext(backend->context, type->as.integer.bits);
-            break;
-        case COG_IR_TYPE_POINTER:
-        case COG_IR_TYPE_OPAQUE_POINTER:
-            result = LLVMPointerTypeInContext(backend->context, 0);
-            break;
-        case COG_IR_TYPE_FUNCTION:
-            result = lower_function_type(backend, type);
-            break;
-        case COG_IR_TYPE_ENUM:
-            result = lower_type(backend, type->as.enumeration.backing_type);
-            if (!result)
-                return NULL;
-            break;
-        case COG_IR_TYPE_FLOAT:
-        case COG_IR_TYPE_ARRAY:
-        case COG_IR_TYPE_STRUCT:
-        case COG_IR_TYPE_UNION:
-            llvm_backend_error(backend, "CogIR type is outside the LLVM Stage 2 subset");
-            return NULL;
-    }
-    backend->types[id] = result;
-    return result;
-}
-
-static LLVMValueRef lower_constant(LlvmBackend *backend, CogIrConstId id)
-{
-    const CogIrConstant *constant = cog_ir_get_constant(backend->ir, id);
-    if (!constant) {
-        llvm_backend_error(backend, "invalid CogIR constant id");
-        return NULL;
-    }
-    LLVMTypeRef type = lower_type(backend, constant->type);
-    if (!type)
-        return NULL;
-
-    switch (constant->kind) {
-        case COG_IR_CONST_ZERO:
-            return LLVMConstNull(type);
-        case COG_IR_CONST_BOOL:
-            return LLVMConstInt(type, constant->as.boolean ? 1 : 0, 0);
-        case COG_IR_CONST_INTEGER:
-            return LLVMConstInt(type, constant->as.integer_bits, 0);
-        case COG_IR_CONST_NULL:
-            return LLVMConstNull(type);
-        case COG_IR_CONST_FLOAT32:
-        case COG_IR_CONST_FLOAT64:
-        case COG_IR_CONST_ARRAY:
-        case COG_IR_CONST_STRUCT:
-            llvm_backend_error(backend, "CogIR constant is outside the LLVM Stage 2 subset");
-            return NULL;
-    }
-    return NULL;
 }
 
 static int allocate_backend_tables(LlvmBackend *backend)
@@ -157,7 +47,7 @@ static int declare_globals(LlvmBackend *backend)
 {
     for (size_t i = 0; i < backend->ir->global_count; ++i) {
         const CogIrGlobal *global = &backend->ir->globals[i];
-        LLVMTypeRef type = lower_type(backend, global->type);
+        LLVMTypeRef type = llvm_lower_type(backend, global->type);
         if (!type)
             return 0;
         char name[64];
@@ -166,7 +56,7 @@ static int declare_globals(LlvmBackend *backend)
         LLVMSetLinkage(value, global->linkage == COG_IR_LINKAGE_INTERNAL ? LLVMInternalLinkage : LLVMExternalLinkage);
         LLVMSetGlobalConstant(value, global->is_readonly ? 1 : 0);
         if (global->static_initializer != COG_IR_CONST_INVALID) {
-            LLVMValueRef init = lower_constant(backend, global->static_initializer);
+            LLVMValueRef init = llvm_lower_constant(backend, global->static_initializer);
             if (!init)
                 return 0;
             LLVMSetInitializer(value, init);
@@ -186,10 +76,10 @@ static int declare_functions(LlvmBackend *backend)
             return 0;
         }
         if (function->abi.abi != COG_IR_ABI_COGLET || function->abi.is_variadic || function->kind != COG_IR_FUNCTION_DEFINITION) {
-            llvm_backend_error(backend, "Stage 2 supports only defined non-variadic Coglet ABI functions");
+            llvm_backend_error(backend, "Stage 3 supports only defined non-variadic Coglet ABI functions");
             return 0;
         }
-        LLVMTypeRef llvm_type = lower_function_type(backend, type);
+        LLVMTypeRef llvm_type = llvm_lower_type(backend, function->type);
         if (!llvm_type)
             return 0;
         char name[64];
@@ -268,7 +158,7 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
     LLVMValueRef result = NULL;
     switch (insn->op) {
         case COG_IR_OP_CONST:
-            result = lower_constant(backend, insn->as.constant.constant);
+            result = llvm_lower_constant(backend, insn->as.constant.constant);
             break;
         case COG_IR_OP_FUNCTION_REF: {
             CogIrFunctionId id = insn->as.function_ref.function;
@@ -282,28 +172,23 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
             break;
         }
         case COG_IR_OP_LOCAL_ADDR:
-            result = state->slots[insn->as.local_addr.slot];
-            break;
         case COG_IR_OP_GLOBAL_ADDR:
-            result = backend->globals[insn->as.global_addr.global];
+        case COG_IR_OP_FIELD_ADDR:
+        case COG_IR_OP_ARRAY_ELEM_ADDR:
+        case COG_IR_OP_PTR_INDEX_ADDR:
+        case COG_IR_OP_LOAD:
+        case COG_IR_OP_STORE:
+        case COG_IR_OP_MAKE_STRUCT:
+        case COG_IR_OP_MAKE_ARRAY:
+        case COG_IR_OP_EXTRACT_FIELD:
+        case COG_IR_OP_EXTRACT_ELEMENT:
+        case COG_IR_OP_PTR_EQ:
+        case COG_IR_OP_PTR_NE:
+        case COG_IR_OP_PTR_REINTERPRET:
+        case COG_IR_OP_PTR_QUALIFY:
+            if (!llvm_lower_memory_instruction(backend, function, state, insn, &result))
+                return 0;
             break;
-        case COG_IR_OP_LOAD: {
-            const CogIrValue *value = cog_ir_get_value(function, insn->result);
-            LLVMTypeRef type = value ? lower_type(backend, value->type) : NULL;
-            LLVMValueRef address = state->values[insn->as.load.address];
-            if (!type || !address) return 0;
-            result = LLVMBuildLoad2(backend->builder, type, address, "");
-            if (insn->as.load.is_volatile) LLVMSetVolatile(result, 1);
-            break;
-        }
-        case COG_IR_OP_STORE: {
-            LLVMValueRef address = state->values[insn->as.store.address];
-            LLVMValueRef value = state->values[insn->as.store.value];
-            if (!address || !value) { llvm_backend_error(backend, "store references unavailable LLVM value"); return 0; }
-            result = LLVMBuildStore(backend->builder, value, address);
-            if (insn->as.store.is_volatile) LLVMSetVolatile(result, 1);
-            break;
-        }
         case COG_IR_OP_ICMP_EQ: case COG_IR_OP_ICMP_NE:
         case COG_IR_OP_ICMP_SLT: case COG_IR_OP_ICMP_SLE:
         case COG_IR_OP_ICMP_SGT: case COG_IR_OP_ICMP_SGE:
@@ -320,7 +205,7 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
             LLVMValueRef callee = state->values[insn->as.call.callee];
             LLVMTypeRef callable = state->callable_types[insn->as.call.callee];
             if (!callee || !callable) {
-                llvm_backend_error(backend, "Stage 2 supports direct calls from function_ref values only");
+                llvm_backend_error(backend, "Stage 3 supports direct calls from function_ref values only");
                 return 0;
             }
             LLVMValueRef *args = NULL;
@@ -344,12 +229,9 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
                 return 0;
             break;
 
-        case COG_IR_OP_FIELD_ADDR: case COG_IR_OP_ARRAY_ELEM_ADDR: case COG_IR_OP_PTR_INDEX_ADDR:
-        case COG_IR_OP_MAKE_STRUCT: case COG_IR_OP_MAKE_ARRAY: case COG_IR_OP_EXTRACT_FIELD: case COG_IR_OP_EXTRACT_ELEMENT:
         case COG_IR_OP_FADD: case COG_IR_OP_FSUB: case COG_IR_OP_FMUL: case COG_IR_OP_FDIV: case COG_IR_OP_FNEG:
         case COG_IR_OP_FCMP_EQ: case COG_IR_OP_FCMP_NE: case COG_IR_OP_FCMP_LT: case COG_IR_OP_FCMP_LE:
-        case COG_IR_OP_FCMP_GT: case COG_IR_OP_FCMP_GE: case COG_IR_OP_PTR_EQ: case COG_IR_OP_PTR_NE:
-        case COG_IR_OP_PTR_REINTERPRET: case COG_IR_OP_PTR_QUALIFY: case COG_IR_OP_C_VARARG_PROMOTE:
+        case COG_IR_OP_FCMP_GT: case COG_IR_OP_FCMP_GE: case COG_IR_OP_C_VARARG_PROMOTE:
             backend_unsupported_op(backend, insn->op);
             return 0;
     }
@@ -383,10 +265,10 @@ static int lower_terminator(LlvmBackend *backend, const CogIrFunction *function,
             LLVMBuildUnreachable(backend->builder);
             return 1;
         case COG_IR_TERMINATOR_SWITCH:
-            llvm_backend_error(backend, "switch terminators are outside the LLVM Stage 2 subset");
+            llvm_backend_error(backend, "switch terminators are outside the LLVM Stage 3 subset");
             return 0;
         case COG_IR_TERMINATOR_TRAP:
-            llvm_backend_error(backend, "trap terminators are outside the LLVM Stage 2 subset");
+            llvm_backend_error(backend, "trap terminators are outside the LLVM Stage 3 subset");
             return 0;
         case COG_IR_TERMINATOR_NONE:
             llvm_backend_error(backend, "CogIR block has no terminator");
@@ -417,7 +299,7 @@ static int lower_function_body(LlvmBackend *backend, const CogIrFunction *functi
         const CogIrBlock *block = &function->blocks[i];
         LLVMPositionBuilderAtEnd(backend->builder, state.blocks[i]);
         for (size_t p = 0; p < block->parameter_count; ++p) {
-            LLVMTypeRef type = lower_type(backend, block->parameters[p].type);
+            LLVMTypeRef type = llvm_lower_type(backend, block->parameters[p].type);
             if (!type) goto fail;
             state.values[block->parameters[p].value] = LLVMBuildPhi(backend->builder, type, "");
         }
@@ -425,7 +307,7 @@ static int lower_function_body(LlvmBackend *backend, const CogIrFunction *functi
 
     LLVMPositionBuilderAtEnd(backend->builder, state.blocks[function->entry_block]);
     for (size_t i = 0; i < function->slot_count; ++i) {
-        LLVMTypeRef type = lower_type(backend, function->slots[i].type);
+        LLVMTypeRef type = llvm_lower_type(backend, function->slots[i].type);
         if (!type) goto fail;
         state.slots[i] = LLVMBuildAlloca(backend->builder, type, "");
     }
@@ -498,7 +380,9 @@ LlvmBackendStatus llvm_backend_emit_ir_file(const char *output_path, const CogIr
     backend.builder = LLVMCreateBuilderInContext(backend.context);
 
     LlvmBackendStatus status = LLVM_BACKEND_STATUS_UNSUPPORTED;
-    if (!backend.context || !backend.module || !backend.builder || !allocate_backend_tables(&backend))
+    if (!backend.context || !backend.module || !backend.builder ||
+        !llvm_backend_init_native_target(&backend) ||
+        !allocate_backend_tables(&backend))
         goto cleanup;
     if (!declare_globals(&backend) || !declare_functions(&backend) || !lower_functions(&backend) || !emit_process_entry(&backend))
         goto cleanup;
@@ -524,6 +408,7 @@ LlvmBackendStatus llvm_backend_emit_ir_file(const char *output_path, const CogIr
 
 cleanup:
     free_backend_tables(&backend);
+    llvm_backend_dispose_target(&backend);
     if (backend.builder) LLVMDisposeBuilder(backend.builder);
     if (backend.module) LLVMDisposeModule(backend.module);
     if (backend.context) LLVMContextDispose(backend.context);

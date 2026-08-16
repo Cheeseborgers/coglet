@@ -4,6 +4,8 @@
 #include "cog_ir.h"
 
 #include <llvm-c/Core.h>
+#include <llvm-c/Target.h>
+#include <llvm-c/TargetMachine.h>
 
 typedef struct LlvmFunctionState {
     LLVMValueRef function;
@@ -18,6 +20,8 @@ typedef struct LlvmBackend {
     LLVMContextRef context;
     LLVMModuleRef module;
     LLVMBuilderRef builder;
+    LLVMTargetMachineRef target_machine;
+    LLVMTargetDataRef target_data;
     LLVMTypeRef *types;
     LLVMValueRef *globals;
     LLVMValueRef *functions;
@@ -27,7 +31,21 @@ typedef struct LlvmBackend {
 
 void llvm_backend_error(LlvmBackend *backend, const char *message);
 
+int llvm_backend_init_native_target(LlvmBackend *backend);
+void llvm_backend_dispose_target(LlvmBackend *backend);
+
+LLVMTypeRef llvm_lower_type(LlvmBackend *backend, CogIrTypeId id);
+LLVMValueRef llvm_lower_constant(LlvmBackend *backend, CogIrConstId id);
+
 int llvm_lower_integer_instruction(
+    LlvmBackend *backend,
+    const CogIrFunction *function,
+    LlvmFunctionState *state,
+    const CogIrInstruction *instruction,
+    LLVMValueRef *out_result
+);
+
+int llvm_lower_memory_instruction(
     LlvmBackend *backend,
     const CogIrFunction *function,
     LlvmFunctionState *state,

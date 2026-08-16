@@ -91,13 +91,16 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
             endif()
             set(COGLET_LLVM_LIBS "${COGLET_LLVM_DYLIB_LIBRARY}")
         else()
-            llvm_map_components_to_libnames(COGLET_LLVM_LIBS core analysis support)
+            llvm_map_components_to_libnames(COGLET_LLVM_LIBS core analysis support target native)
         endif()
         separate_arguments(COGLET_LLVM_DEFINITIONS NATIVE_COMMAND "${LLVM_DEFINITIONS}")
 
         add_library(coglet_backend_llvm STATIC
                 src/backends/llvm/backend_llvm.c
+                src/backends/llvm/lower_types.c
                 src/backends/llvm/lower_integer.c
+                src/backends/llvm/lower_memory.c
+                src/backends/llvm/target.c
         )
         target_include_directories(coglet_backend_llvm
                 PUBLIC include
@@ -849,7 +852,7 @@ add_host_c_library_test(
         "backend;backend.c;interop;abi;volatile"
 )
 
-# --- LLVM Stage 1 backend tests. ---
+# --- LLVM backend tests. ---
 if(COGLET_HAS_LLVM_BACKEND)
     find_program(COGLET_CLANG_EXECUTABLE NAMES clang)
 
@@ -964,14 +967,68 @@ if(COGLET_HAS_LLVM_BACKEND)
     endforeach()
 
     add_test(
-        NAME backend_llvm_stage2_rejects_pointer_compare
+        NAME backend_llvm_stage3_pointer_compare
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_unsupported_pointer_compare.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_unsupported.ll
-        "-DEXPECT_SUBSTRING=unsupported CogIR operation 'ptr.eq' in Stage 2"
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_pointer_compare.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_pointer_compare.ll
+        -DEXPECT_EXIT=0
+        "-DEXPECT_IR_SUBSTRING=icmp eq ptr"
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage3_pointer_compare
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;pointer;comparison")
+
+    add_test(
+        NAME backend_llvm_stage3_memory_aggregates
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_memory_aggregates.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_memory_aggregates.ll
+        -DEXPECT_EXIT=73
+        "-DEXPECT_IR_SUBSTRING=getelementptr inbounds"
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage3_memory_aggregates
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;memory;pointer;array;struct;aggregate;module-init")
+
+    add_test(
+        NAME backend_llvm_stage3_extract_struct_value
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_extract_struct_value.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_extract_struct_value.ll
+        -DEXPECT_EXIT=9
+        "-DEXPECT_IR_SUBSTRING=extractvalue %cog.struct"
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage3_extract_struct_value
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;struct;aggregate;extract")
+
+    add_test(
+        NAME backend_llvm_stage3_rejects_volatile_aggregate
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_rejects_volatile_aggregate.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_volatile_aggregate_unsupported.ll
+        "-DEXPECT_SUBSTRING=volatile aggregate loads are outside the LLVM Stage 3 subset"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage2_rejects_pointer_compare
-        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;pointer")
+    set_tests_properties(backend_llvm_stage3_rejects_volatile_aggregate
+        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;aggregate;volatile")
+
+    add_test(
+        NAME backend_llvm_stage3_rejects_repr_c_aggregate
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_rejects_repr_c_aggregate.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_repr_c_unsupported.ll
+        "-DEXPECT_SUBSTRING=#repr(c) aggregate layout is outside the LLVM Stage 3 subset"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage3_rejects_repr_c_aggregate
+        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;aggregate;interop;abi")
 endif()

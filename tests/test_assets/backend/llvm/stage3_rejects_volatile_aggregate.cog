@@ -1,0 +1,11 @@
+Box::struct {
+    x: i32;
+    y: i32;
+}
+
+main::() -> i32 {
+    box: Box = Box { x = 1, y = 2, };
+    pointer: volatile Box* = &box;
+    copy := *pointer;
+    return copy.x;
+}

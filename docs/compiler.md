@@ -298,23 +298,40 @@ details also remain deferred.
 ## Target Description
 
 
-### LLVM backend Stage 2
+### LLVM backend Stage 3
 
 The LLVM backend lives under `src/backends/llvm/` with its public API under
 `include/backends/llvm/`. It accepts only frozen `CogIrModule` input, constructs
 LLVM IR through the LLVM C API, runs `LLVMVerifyModule`, and then writes textual
-IR. Stage 2 retains the Stage 1 scalar/CFG/function/module-init/entry foundation
-and adds integer-backed enums, checked signed/unsigned add/subtract/multiply,
-checked division/remainder and negation, wrapping arithmetic, bitwise operations,
-checked-count shifts, and checked/truncating integer conversions. Runtime failure
-paths branch to `llvm.trap`; overflow arithmetic uses LLVM's `*.with.overflow`
-intrinsics rather than relying on poison-producing flags or host-language behavior.
+IR. Stage 3 retains the scalar/CFG/function/module-init/entry foundation and the
+Stage 2 integer semantics, then adds ordinary Coglet storage and aggregate
+lowering: local/global addresses, loads/stores, field and array addressing,
+typed-pointer indexing, pointer equality, pointer qualification/reinterpretation,
+first-class arrays, ordinary nominal structs, aggregate construction/extraction,
+and aggregate arguments/returns/copies.
 
-Aggregate lowering, general pointer operations/comparisons, floating point, C ABI
-lowering, optimization pipelines, and target object emission remain intentionally
-rejected or deferred rather than approximated.
+Before lowering types, the backend initializes LLVM's native target, creates a
+target machine, and stamps the module with the resulting target triple and
+`DataLayout`. These LLVM-specific objects remain backend-owned; they are not
+added to CogIR or frontend `TargetInfo`. Stage 3 remains host-target-only until
+Coglet has explicit target selection and cross-toolchain policy.
+
+Runtime integer failure paths still branch to `llvm.trap`; checked overflow uses
+LLVM's `*.with.overflow` intrinsics rather than relying on poison-producing flags
+or host-language behavior. Backend-created trap/continuation blocks preserve
+CogIR block-parameter semantics by recording the actual current LLVM predecessor
+when adding PHI inputs.
+
+`#repr(c)` aggregate layout, unions, volatile whole-aggregate accesses, floating
+point, indirect function calls, C ABI lowering, optimization pipelines, and
+object emission remain intentionally rejected or deferred rather than
+approximated. In particular, ordinary Coglet struct layout in LLVM must not be
+mistaken for target C ABI classification.
+
 `COGLET_LLVM=AUTO` enables the backend when `LLVMConfig.cmake` is available;
-`ON` requires it and `OFF` disables it.
+`ON` requires LLVM 17 or newer and `OFF` disables it. The CMake integration
+supports both monolithic LLVM shared-library packages and component-library
+installations.
 
 `TargetInfo` is the backend-neutral target contract needed by the frontend. Its
 fields are expressed in bits and currently cover:
@@ -328,12 +345,14 @@ The host target constructor is isolated in `src/target_info.c`; this is the only
 frontend-support code that queries the C implementation used to build Coglet.
 `semantic_anal.c` consumes only the copied `TargetInfo`. LLVM data layout,
 register information, object format, relocation model, and calling-convention
-lowering are intentionally not part of this structure. Those belong to backend
-or later target-lowering layers.
+lowering are intentionally not part of this structure. The LLVM backend now
+constructs its own target machine and `DataLayout` from the selected native LLVM
+target without extending frontend object lifetimes or writing those backend facts
+back into CogIR.
 
-The structure is expected to grow as native ABI layout needs become concrete;
-the current milestone only moves facts already required by semantic C-scalar
-resolution behind an explicit target boundary.
+The structure is expected to grow only when frontend-visible target semantics
+require additional backend-neutral facts; LLVM implementation details remain
+owned by the LLVM backend.
 
 ## Semantic Type Identity
 

@@ -172,8 +172,12 @@ available, the harness also compiles the emitted IR and checks executable status
 Stage 1 coverage remains for scalar conditional CFG/direct calls, the resolved
 Coglet entry adapter, and ordered module initialization. Stage 2 adds checked and
 wrapping integer arithmetic, division/remainder traps, bitwise operations, checked
-shift counts, integer-backed enums, integer conversions, Fibonacci loop execution,
-and explicit rejection of operations still outside the subset.
+shift counts, integer-backed enums, integer conversions, and Fibonacci loop
+execution. Stage 3 adds native target triple/data-layout emission, pointer
+comparison and reinterpretation, field/array/pointer addressing, ordinary struct
+and array values, aggregate copies/arguments/returns, aggregate globals, and
+negative coverage that keeps `#repr(c)` and volatile whole-aggregate behavior out
+of the subset until their ABI/access semantics are implemented explicitly.
 
 Run only these tests with:
 

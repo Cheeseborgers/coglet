@@ -331,7 +331,7 @@ static int lower_checked_integer_cast(
     );
     const CogIrType *target = cog_ir_get_type(backend->ir, instruction->result_type);
     if (!source || !target || target->kind != COG_IR_TYPE_INTEGER) {
-        llvm_backend_error(backend, "Stage 2 supports cast.checked only between integer-backed scalar types");
+        llvm_backend_error(backend, "Stage 3 supports cast.checked only between integer-backed scalar types");
         return 0;
     }
 

@@ -1155,3 +1155,15 @@ volatile access contract.
     and adapts the resolved Coglet `() -> i32` entry through an LLVM `main` wrapper.
     Unsupported CogIR operations fail explicitly so later milestones can add their
     semantics without approximation.
+20. ~~Lower Coglet integer semantics through LLVM.~~ Checked and wrapping integer
+    arithmetic, division/remainder traps, checked-count shifts, bitwise operations,
+    integer-backed enums, and checked/truncating conversions use explicit LLVM
+    operations and trap control flow rather than undefined/poison approximations.
+21. ~~Establish target-aware native memory and aggregate lowering.~~ The LLVM backend
+    creates its native target machine, stamps the module with the target triple and
+    `DataLayout`, and lowers ordinary Coglet loads/stores, addresses, pointer
+    equality/qualification/reinterpretation, arrays, nominal structs, aggregate
+    construction/extraction, copies, arguments, returns, and globals. The LLVM
+    target objects remain backend-owned. `#repr(c)` aggregates and unions remain
+    deferred to explicit C ABI/layout lowering rather than leaking backend layout
+    facts into CogIR.

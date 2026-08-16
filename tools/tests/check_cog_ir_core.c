@@ -170,8 +170,8 @@ int main(void)
         COG_IR_C_SCALAR_NONE,
         NULL
     );
-    if (bump == COG_IR_FUNCTION_INVALID)
-        return fail("function builder failed");
+    if (bump == COG_IR_FUNCTION_INVALID || !cog_ir_set_entry_function(&module, bump))
+        return fail("function/entry builder failed");
 
     const CogIrFunction *bump_fn = cog_ir_get_function(&module, bump);
     if (!bump_fn || bump_fn->parameter_count != 1)
@@ -286,6 +286,7 @@ int main(void)
 
     if (!dump_contains(&module, "global @g0 \"counter\" : i32") ||
         !dump_contains(&module, "iadd.checked") ||
+        !dump_contains(&module, "entry @f0") ||
         !dump_contains(&module, "init @f1") ||
         !dump_contains(&module, "type %t"))
         return fail("deterministic CogIR dump is missing expected entities");

@@ -229,8 +229,8 @@ runtime/libc symbols. External declarations are emitted under generated C
 identifiers with `__asm__("symbol")` labels, so `name="..."` overrides affect
 the actual linker symbol without requiring that symbol to be a safe C identifier.
 
-The backend is intentionally smaller than the frontend, but it now consumes
-CogIR only and covers the core scalar/CFG execution path. Direct named calls,
+The backend now consumes CogIR only and has explicit emission for every current
+`CogIrOp`. Direct named calls,
 locals, scalar globals/module initialization, checked and wrapping integer
 arithmetic, checked-count shifts, floating arithmetic/comparisons, structured
 control flow, field/array-field/pointer addressing, volatile scalar loads/stores,
@@ -242,7 +242,10 @@ calls use the same verifier-owned ABI contract as direct extern calls, including
 variadic callbacks. String escapes are decoded using Coglet's literal rules and
 lowered through IR-owned backing data at supported C ABI boundaries. Host
 executables continue to require `main::() -> c_int` using the source-return
-spelling retained in CogIR. Aggregate values now execute through assignable C
+spelling retained in CogIR. Lowering also records the source-top-level `main` as
+`module.entry_function`, so the backend selects entry by IR identity rather than
+scanning debug names after nested functions have been flattened. Aggregate values
+now execute through assignable C
 wrapper structs for Coglet arrays while addressable array storage remains native C
 arrays, preserving represented aggregate layout and by-value Coglet semantics.
 Struct/array construction and extraction, aggregate globals, aggregate arguments

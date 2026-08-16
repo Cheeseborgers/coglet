@@ -110,9 +110,22 @@ A later optimization may move a source initializer into static data only when
 it proves the transformation observationally equivalent to the ordered module
 initializer.
 
-### Module initializer
+### Executable entry and module initializer
 
-A module has an optional distinguished internal function:
+A module may carry an optional resolved source executable entry:
+
+```text
+module.entry_function : function
+```
+
+For the current language this is set only by lowering a source-top-level declaration
+named `main`. It is an IR-owned declaration identity, not a backend name lookup.
+Nested non-capturing functions are still flattened into the module function table, but
+a nested function named `main` is therefore never mistaken for the process entry
+after frontend destruction. Signature/ABI policy such as `main::() -> c_int` remains
+a backend executable contract rather than an IR type-system rule.
+
+A module also has an optional distinguished internal initializer function:
 
 ```text
 module.init_function : () -> void
@@ -720,6 +733,7 @@ check at least:
 - all source spans refer to copied source files or are explicitly synthetic;
 - external declarations have no body and definitions have the required body;
 - ABI metadata matches the associated runtime function/aggregate shape;
+- `module.entry_function`, when present, references a non-compiler-generated function and is distinct from module init;
 - `module.init_function`, when present, is an internal `() -> void` definition.
 
 ### Constants/globals
@@ -824,6 +838,7 @@ typedef struct CogIrModule {
     CogIrFunction *functions;
     size_t function_count;
 
+    CogIrFunctionId entry_function;
     CogIrFunctionId init_function;
 } CogIrModule;
 
@@ -1125,6 +1140,11 @@ volatile access contract.
     use assignable wrapper structs while array storage remains native C arrays;
     construction/extraction, copies, aggregate arguments/returns, ordered aggregate
     global initialization, represented aggregate interop, and string backing data
-    now execute from CogIR. The next step is a final backend-parity audit and
-    removal of any remaining legacy/frontend assumptions before declaring the
-    CogIR-only host-C path complete.
+    now execute from CogIR.
+18. ~~Complete the host-C parity/cleanup audit.~~ Every current `CogIrOp` has an
+    explicit emitter path, the public backend remains IR-only after frontend
+    destruction, and executable entry selection is now an explicit
+    `module.entry_function` identity rather than a debug-name scan. A nested
+    function named `main` cannot become the process entry accidentally. The
+    CogIR-only host-C bootstrap path is complete for the current executable/interop
+    contract; LLVM lowering can start from the same frozen verified module.

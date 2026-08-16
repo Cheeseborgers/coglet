@@ -116,6 +116,7 @@ void cog_ir_module_init(CogIrModule *module, const TargetInfo *target)
     module->arena = arena_create(COG_IR_ARENA_BLOCK_SIZE);
     module->target = *target;
     source_manager_init(&module->sources, module->arena);
+    module->entry_function = COG_IR_FUNCTION_INVALID;
     module->init_function = COG_IR_FUNCTION_INVALID;
 }
 
@@ -126,6 +127,7 @@ void cog_ir_module_destroy(CogIrModule *module)
 
     Arena *arena = module->arena;
     memset(module, 0, sizeof(*module));
+    module->entry_function = COG_IR_FUNCTION_INVALID;
     module->init_function = COG_IR_FUNCTION_INVALID;
 
     if (arena)
@@ -1090,6 +1092,14 @@ int cog_ir_begin_function_definition(CogIrModule *module, CogIrFunctionId functi
         return 0;
 
     function->kind = COG_IR_FUNCTION_DEFINITION;
+    return 1;
+}
+
+int cog_ir_set_entry_function(CogIrModule *module, CogIrFunctionId function)
+{
+    if (!module_mutable(module) || !cog_ir_get_function(module, function))
+        return 0;
+    module->entry_function = function;
     return 1;
 }
 

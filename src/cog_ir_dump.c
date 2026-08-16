@@ -343,6 +343,8 @@ void cog_ir_dump(FILE *stream, const CogIrModule *module)
         const CogIrType *type = cog_ir_get_type(module, function->type);
         if (function->id == module->init_function)
             fprintf(stream, "init ");
+        else if (function->id == module->entry_function)
+            fprintf(stream, "entry ");
         else
             fprintf(stream, "%s ", function->kind == COG_IR_FUNCTION_DECLARATION ? "declare" : "func");
         fprintf(stream, "@f%zu", i);

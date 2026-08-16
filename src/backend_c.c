@@ -38,12 +38,6 @@ typedef struct CBackend {
     size_t temporary_id;
 } CBackend;
 
-static int sv_equals(StringView view, const char *text)
-{
-    size_t length = strlen(text);
-    return view.length == length && memcmp(view.data, text, length) == 0;
-}
-
 static const char *source_filename_for_span(const CBackend *backend, SourceSpan span)
 {
     if (!backend || !backend->module)
@@ -3069,7 +3063,7 @@ static int emit_instruction(
             return 1;
 
         default:
-            backend_error(backend, instruction->span, "CogIR operation is outside the current host-C backend execution subset");
+            backend_error(backend, instruction->span, "unhandled CogIR operation reached the host-C backend");
             return 0;
     }
 
@@ -3506,19 +3500,10 @@ static int emit_function_bodies(CBackend *backend)
     return !backend->had_error;
 }
 
-static const CogIrFunction *find_main_function(const CBackend *backend)
-{
-    for (size_t i = 0; i < backend->module->function_count; ++i) {
-        const CogIrFunction *function = &backend->module->functions[i];
-        if (sv_equals(function->debug_name, "main"))
-            return function;
-    }
-    return NULL;
-}
-
 static int emit_entrypoint(CBackend *backend)
 {
-    const CogIrFunction *main_function = find_main_function(backend);
+    const CogIrFunction *main_function =
+        cog_ir_get_function(backend->module, backend->module->entry_function);
     if (!main_function ||
         main_function->linkage != COG_IR_LINKAGE_INTERNAL ||
         main_function->abi.abi != COG_IR_ABI_COGLET) {

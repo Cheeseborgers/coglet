@@ -507,6 +507,18 @@ static int define_nominal_types(CogIrLowerContext *ctx)
     return 1;
 }
 
+static int source_function_is_top_level(const CogIrLowerContext *ctx, const Node *function)
+{
+    const Node *program = ctx && ctx->frontend ? ctx->frontend->program : NULL;
+    if (!program || program->type != NODE_PROGRAM || !function)
+        return 0;
+
+    for (int i = 0; i < program->as.program.statements.count; ++i)
+        if (program->as.program.statements.items[i] == function)
+            return 1;
+    return 0;
+}
+
 static int lower_function_declaration(CogIrLowerContext *ctx, SemDeclInfo *info)
 {
     Node *node = info->node; CogIrTypeId function_type = cog_ir_lower_type(ctx, info->type);
@@ -542,6 +554,13 @@ static int lower_function_declaration(CogIrLowerContext *ctx, SemDeclInfo *info)
     if (function == COG_IR_FUNCTION_INVALID) { lower_error(ctx, node->span, "failed to predeclare CogIR function"); return 0; }
     CogIrLowerDeclBinding *binding = get_decl_binding_mut(ctx, info->id);
     binding->kind = COG_IR_LOWER_DECL_FUNCTION; binding->type = function_type; binding->as.function = function;
+
+    if (source_function_is_top_level(ctx, node) &&
+        string_view_equals_cstr(node->as.func_decl.name, "main") &&
+        !cog_ir_set_entry_function(ctx->module, function)) {
+        lower_error(ctx, node->span, "failed to record CogIR source entry function");
+        return 0;
+    }
 
     SemanticContext *sem = (SemanticContext *)&ctx->frontend->sem;
     for (int i = 0; i < node->as.func_decl.params.count; ++i) {

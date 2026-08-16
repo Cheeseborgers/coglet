@@ -514,9 +514,14 @@ execute from CogIR too: assignable wrapper structs represent first-class Coglet
 array values, native C arrays remain the storage/layout representation, aggregate
 construction/extraction and by-value calls use the same boundary, represented
 aggregate interop preserves exact C field layout, and strings share the general
-array-storage path. The next milestone is a final host-C parity/cleanup audit,
-followed by declaring the CogIR-only host-C path complete and beginning LLVM
-lowering on the same verified module contract.
+array-storage path. The final host-C parity/cleanup audit is complete: every
+current CogIR operation has an explicit emitter path, backend entry points accept
+only frozen CogIR, frontend lifetime ends before emission, and source executable
+entry selection is carried by `module.entry_function` rather than a debug-name
+heuristic. This also preserves the old top-level-`main` rule after nested functions
+are flattened. The CogIR-only host-C bootstrap path is therefore complete for the
+current executable/interop contract; the next backend milestone is LLVM lowering
+on the same verified module contract.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

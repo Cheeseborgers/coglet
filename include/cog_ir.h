@@ -486,6 +486,8 @@ typedef struct CogIrModule {
     size_t function_count;
     size_t function_capacity;
 
+    /* Optional source-language executable entry declaration. */
+    CogIrFunctionId entry_function;
     CogIrFunctionId init_function;
     int is_frozen;
 } CogIrModule;
@@ -590,6 +592,7 @@ CogIrFunctionId cog_ir_add_function(
 /* Upgrade a predeclared internal function to a definition before adding CFG. */
 int cog_ir_begin_function_definition(CogIrModule *module, CogIrFunctionId function);
 
+int cog_ir_set_entry_function(CogIrModule *module, CogIrFunctionId function);
 int cog_ir_set_init_function(CogIrModule *module, CogIrFunctionId function);
 CogIrSlotId cog_ir_add_slot(CogIrModule *module, CogIrFunctionId function, StringView debug_name, SourceSpan span, CogIrTypeId type);
 int cog_ir_set_slot_abi_type(CogIrModule *module, CogIrFunctionId function, CogIrSlotId slot, CogIrAbiTypeId abi_type);

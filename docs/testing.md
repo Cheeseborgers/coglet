@@ -88,8 +88,10 @@ The executable tests run the Coglet compiler with `-o`, invoke the generated
 program, and verify its process exit status. These tests now exercise the full
 frontend -> CogIR -> host-C boundary: the compiler freezes/verifies CogIR and
 destroys the frontend before backend emission, so every passing backend fixture
-also guards against accidental AST/semantic lifetime dependencies. The
-C-interoperability cases cover
+also guards against accidental AST/semantic lifetime dependencies. A dedicated
+negative entrypoint regression verifies that a nested function named `main` is not
+accepted as the process entry after CogIR flattens nested functions into the module
+function table. The C-interoperability cases cover
 default external symbols, `#extern(c, name="...")` overrides, explicit C calling
 conventions (including an x86-64 `win64` callback round trip), and explicit
 `-L`/`-l` resolution against a test-only static library using both split and

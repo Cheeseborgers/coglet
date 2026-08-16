@@ -1,0 +1,7 @@
+outer::() -> i32 {
+    main::() -> c_int {
+        return 7;
+    }
+
+    return main();
+}

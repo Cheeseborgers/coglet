@@ -1216,6 +1216,18 @@ int cog_ir_verify(const CogIrModule *module, DiagnosticList *diagnostics)
             ok = 0;
     }
 
+    if (module->entry_function != COG_IR_FUNCTION_INVALID) {
+        const CogIrFunction *entry = cog_ir_get_function(module, module->entry_function);
+        if (!entry || entry->is_compiler_generated || module->entry_function == module->init_function) {
+            ir_error(
+                diagnostics,
+                entry ? entry->span : source_span_invalid(),
+                "module entry function must reference a non-compiler-generated function distinct from module init"
+            );
+            ok = 0;
+        }
+    }
+
     if (module->init_function != COG_IR_FUNCTION_INVALID) {
         const CogIrFunction *init = cog_ir_get_function(module, module->init_function);
         const CogIrType *type = init ? cog_ir_get_type(module, init->type) : NULL;

@@ -977,6 +977,21 @@ set_tests_properties(
 )
 endif()
 
+add_test(
+        NAME backend_rejects_nested_main_as_entry
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/nested_main_not_entry.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_nested_main_not_entry
+        -DEXPECT_EXIT=3
+        "-DEXPECT_SUBSTRING=requires a top-level Coglet 'main' function"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_failure_test.cmake"
+)
+set_tests_properties(
+        backend_rejects_nested_main_as_entry
+        PROPERTIES LABELS "backend;backend.c;backend.invalid;ir;entrypoint;nested-function"
+)
+
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
    CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64" AND
    NOT WIN32)

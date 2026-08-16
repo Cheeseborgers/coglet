@@ -35,6 +35,12 @@ Implemented areas include:
 - explicit contextual-conversion metadata for IR-ready expression lowering
 - centralized, post-semantic constant-value metadata for IR lowering
 - constant-aware loop reachability and explicit function-local control-flow isolation
+- multi-file-capable source provenance with shared parser/semantic diagnostic infrastructure
+- CogIR typed-CFG design with explicit ordered module initialization
+- CogIR core representation, verifier, deterministic dumper, and IR-owned source provenance
+- semantic type/ABI/declaration/constant lowering into CogIR with frontend-lifetime independence
+- initial executable CogIR lowering for globals/module init, slots, checked arithmetic, calls, and returns
+- structured CogIR CFG lowering for comparisons, short-circuit logic, branches, loops, switches, and compound mutation
 
 ## Recently Completed
 
@@ -469,17 +475,19 @@ work.
 
 ## Execution Work
 
-A host-C transpilation backend is now the initial bootstrap/execution strategy.
-It is intentionally narrow rather than a commitment that C must be Coglet's
-permanent optimizing backend. The next backend work should expand only where
-Coglet's semantics can be preserved explicitly, especially checked arithmetic,
-control flow, storage, strings, and pointer operations.
+The host-C transpilation backend remains the bootstrap/execution path, while the
+backend-neutral CogIR path is now under active implementation. CogIR currently
+owns concrete runtime/ABI types, constants, globals, functions, source provenance,
+verification and deterministic dumps, and lowers straight-line execution plus
+structured CFG control flow from the checked frontend.
 
-Longer-term alternatives remain possible, including a custom IR/native backend,
-LLVM or another existing backend, or an interpreter for tooling and compile-time
-execution. The host-C path provides executable feedback without closing those
-options. Direct C-string literal lowering is now part of that bootstrap path;
-general storage and pointer/view lowering remain separate work.
+The next CogIR lowering work is the data/address surface: pointer dereference and
+address-of, array indexing, struct/union fields, aggregate values, casts and
+reinterpretation, volatile memory behavior, strings, explicit wrapping/truncating
+operations, and C-variadic ABI legalization. Once the existing language surface is
+representable through CogIR, the host-C backend should be ported to consume CogIR
+rather than AST/semantic state. LLVM and later native backends can then share the
+same verified IR contract.
 
 ## Self-Hosting Direction
 

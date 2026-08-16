@@ -1,0 +1,101 @@
+Mode :: enum(u8) {
+    Zero = 0,
+    One = 1,
+}
+
+classify::(x: i32, flag: bool) -> i32 {
+    acc: i32 = 0;
+
+    if flag && x > 0 {
+        acc = 1;
+    } else {
+        acc = 2;
+    }
+
+    while acc < 4 {
+        acc += 1;
+
+        if acc == 3 {
+            continue;
+        }
+
+        if acc == 4 {
+            break;
+        }
+    }
+
+    for acc < 6 : acc++ {
+        acc += 1;
+    }
+
+    switch acc {
+        case 6:
+            return 60;
+        default:
+            return acc;
+    }
+}
+
+accept_bool::(x: bool) -> bool {
+    return x;
+}
+
+cfg_values::(a, b, c: bool) -> bool {
+    x: bool = a && b;
+    x = a || c;
+    return x == (b && c);
+}
+
+cfg_call::(a, b, c: bool) -> bool {
+    return accept_bool(a && b) == accept_bool(c || a);
+}
+
+float_less::(a, b: f64) -> bool {
+    return a < b;
+}
+
+unsigned_less::(a, b: u32) -> bool {
+    return a < b;
+}
+
+ptr_qual_equal::(a: i32*, b: readonly i32*) -> bool {
+    return a == b;
+}
+
+callback_missing::(cb: cfn(i32) -> i32) -> bool {
+    return cb == null;
+}
+
+bool_switch::(b: bool) -> i32 {
+    switch b {
+        case true:
+            return 1;
+        case false:
+            return 0;
+    }
+}
+
+mode_switch::(m: Mode) -> i32 {
+    switch m {
+        case Mode.Zero:
+            return 10;
+        case Mode.One:
+            return 11;
+    }
+}
+
+forever::(done: bool) -> i32 {
+    while true {
+        if done {
+            return 7;
+        }
+        continue;
+    }
+}
+
+global_counter: i32 = 0;
+global_flag: bool = true;
+
+if global_flag {
+    global_counter = classify(1, true);
+}

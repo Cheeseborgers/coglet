@@ -945,9 +945,17 @@ complete semantic side table. With `--dump-semantic-info`, a partial table may
 be printed for diagnosis; it is not passed through successful-program
 completeness verification.
 
-The first CogIR lowering slice is implemented as metadata preparation. It copies
-source provenance into IR ownership, maps resolved semantic/ABI types and
-compile-time values, predeclares nominal types/functions, creates zero-initialized
-global storage, and records `SemDeclId` -> CogIR declaration bindings. Executable
-AST/CFG lowering remains separate; the host-C backend still consumes the frontend
-directly until that path is complete.
+CogIR lowering has two explicit stages. Metadata preparation copies source
+provenance into IR ownership, maps resolved semantic/ABI types and compile-time
+values, predeclares nominal types/functions, creates zero-initialized global
+storage, and records `SemDeclId` -> CogIR declaration bindings. Executable
+lowering now covers direct locals/globals, checked arithmetic, comparisons, typed
+calls, assignment/compound mutation, `if`, short-circuit Boolean expressions,
+`while`, `for`, nearest-loop `break`/`continue`, and non-fallthrough `switch` CFGs.
+Ordered source global/top-level execution uses the same machinery inside the
+synthetic module initializer. Values that must survive a short-circuit CFG split
+are spilled to compiler-generated slots rather than relying on implicit dominance.
+Richer pointer/aggregate lvalues, aggregate values, casts, strings, wrapping
+builtins, and full C ABI call legalization remain for subsequent lowering slices;
+the host-C backend still consumes the frontend until the IR path covers its full
+input surface.

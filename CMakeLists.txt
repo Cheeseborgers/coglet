@@ -108,8 +108,42 @@ target_link_libraries(dump_tokens PRIVATE compiler_core)
 add_executable(dump_ast tools/dump_ast.c ${COMMON_SOURCES})
 target_link_libraries(dump_ast PRIVATE compiler_core)
 
+# --- CogIR textual dump tool. ---
+add_executable(dump_ir tools/dump_ir.c)
+target_link_libraries(dump_ir PRIVATE compiler_core)
+
 # --- Tests ---
 enable_testing()
+
+add_test(
+        NAME cog_ir_executable_lowering_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/executable_lowering.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/executable_lowering.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_executable_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;cfg;module-init"
+)
+
+add_test(
+        NAME cog_ir_structured_cfg_lowering_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/structured_cfg_lowering.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/structured_cfg_lowering.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_structured_cfg_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;cfg;control-flow;short-circuit;switch;module-init"
+)
 
 add_test(
         NAME target_info_cross_target_scalar_mapping

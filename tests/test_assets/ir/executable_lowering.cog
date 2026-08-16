@@ -1,0 +1,22 @@
+counter: i32 = 3;
+seed: i32 = 4;
+
+add::(a: i32, b: i32) -> i32 {
+    sum: i32 = a + b;
+    return sum;
+}
+
+bump::(x: i32) -> i32 {
+    x = x + 1;
+    y: i32 = x;
+    y = y + 1;
+    return add(y, 2);
+}
+
+touch::(x: i32) -> void {
+    local: i32 = x;
+}
+
+counter = bump(counter);
+touch(seed);
+add(seed, 5);

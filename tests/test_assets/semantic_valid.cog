@@ -264,7 +264,7 @@ return_good_while_true_nested::(b: bool) -> i32 {
 }
 
 array_index_valid::() -> i32 {
-    values: i32[3];
+    values: i32[3] = [0, 0, 0];
 
     return values[0];
 }

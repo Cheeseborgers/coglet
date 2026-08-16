@@ -1,0 +1,92 @@
+module target(pointer=64)
+global @g0 "counter" : i32 = @c0(zeroinit)
+global @g1 "seed" : i32 = @c0(zeroinit)
+func @f0 "add"(%0: i32, %1: i32) -> i32 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : i32 "a"
+    $s1 : i32 "b"
+    $s2 : i32 "sum"
+  bb0 "entry"():
+    %2 = local_addr $s0
+    store %2, %0
+    %3 = local_addr $s1
+    store %3, %1
+    %4 = local_addr $s2
+    %5 = local_addr $s0
+    %6 = load %5
+    %7 = local_addr $s1
+    %8 = load %7
+    %9 = iadd.checked %6, %8
+    store %4, %9
+    %10 = local_addr $s2
+    %11 = load %10
+    ret %11
+}
+func @f1 "bump"(%0: i32) -> i32 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : i32 "x"
+    $s1 : i32 "y"
+  bb0 "entry"():
+    %1 = local_addr $s0
+    store %1, %0
+    %2 = local_addr $s0
+    %3 = local_addr $s0
+    %4 = load %3
+    %5 = const i32 @c1(0x1)
+    %6 = iadd.checked %4, %5
+    store %2, %6
+    %7 = local_addr $s1
+    %8 = local_addr $s0
+    %9 = load %8
+    store %7, %9
+    %10 = local_addr $s1
+    %11 = local_addr $s1
+    %12 = load %11
+    %13 = const i32 @c1(0x1)
+    %14 = iadd.checked %12, %13
+    store %10, %14
+    %15 = function_ref @f0
+    %16 = local_addr $s1
+    %17 = load %16
+    %18 = const i32 @c2(0x2)
+    %19 = call %15(%17, %18)
+    ret %19
+}
+func @f2 "touch"(%0: i32) -> void [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : i32 "x"
+    $s1 : i32 "local"
+  bb0 "entry"():
+    %1 = local_addr $s0
+    store %1, %0
+    %2 = local_addr $s1
+    %3 = local_addr $s0
+    %4 = load %3
+    store %2, %4
+    ret
+}
+init @f3 "__coglet_module_init"() -> void [abi=coglet, linkage=internal] {
+  bb0 "entry"():
+    %0 = global_addr @g0
+    %1 = const i32 @c3(0x3)
+    store %0, %1
+    %2 = global_addr @g1
+    %3 = const i32 @c4(0x4)
+    store %2, %3
+    %4 = global_addr @g0
+    %5 = function_ref @f1
+    %6 = global_addr @g0
+    %7 = load %6
+    %8 = call %5(%7)
+    store %4, %8
+    %9 = function_ref @f2
+    %10 = global_addr @g1
+    %11 = load %10
+    call %9(%11)
+    %12 = function_ref @f0
+    %13 = global_addr @g1
+    %14 = load %13
+    %15 = const i32 @c5(0x5)
+    %16 = call %12(%14, %15)
+    ret
+}

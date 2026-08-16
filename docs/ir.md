@@ -884,10 +884,9 @@ The first CogIR core milestone now provides:
 - deterministic `cog_ir_dump()` output;
 - a standalone core regression that constructs and verifies CogIR without AST/semantic objects.
 
-AST/semantic lowering is deliberately not part of this milestone. A command-line
-`dump_ir` tool will become useful once that lowering path exists; until then the
-dumper is exercised directly by the IR-core regression rather than exposing a
-CLI that can only print synthetic data.
+The IR core remains independently constructible without frontend objects. The
+source-program `dump_ir` tool now exercises the real frontend lowering path and
+verifies the frozen IR again after `CompileResult` has been destroyed.
 
 ### Frontend metadata lowering
 
@@ -906,21 +905,69 @@ are added. The metadata-only module is verifier-valid, and regression coverage
 destroys `CompileResult` and verifies the module again to prove there is no
 frontend-lifetime dependency.
 
+### Executable and structured-CFG lowering
+
+`cog_ir_lower_executable()` now lowers straight-line execution and structured
+control flow after metadata preparation. Internal functions transition from their
+predeclared identity to definitions, parameters receive addressable slots, and
+local declarations receive slots at their source declaration. The lowering
+supports concrete/checked constants, local/parameter/global/function identifiers,
+identifier assignment, arithmetic compound assignment, increment/decrement,
+returns, unary numeric negation/Boolean not, checked integer `+ - * / %`, floating
+`+ - * /`, signed/unsigned/float/pointer/function-pointer comparisons, and typed
+calls.
+
+`if`/`else`, `while`, `for`, `break`, `continue`, and `switch` lower to explicit
+basic blocks and terminators. `&&` and `||` use short-circuit CFGs with a Boolean
+block parameter at the join rather than eager binary instructions. `for` continue
+edges target the post block, while nested loop contexts retain independent break
+and continue targets. Compile-time-true loops with no reachable break terminate
+their synthetic exit block with `unreachable`, matching the frontend's non-
+continuation analysis. Exhaustive Boolean/enum switches likewise route their
+impossible unmatched edge to `unreachable`; non-exhaustive switches retain an
+implicit path to the merge block.
+
+Function-local instruction values are deliberately block-local in CogIR v1. If
+evaluating a later subexpression can introduce CFG (notably short-circuit Boolean
+arguments), lowering spills values that must survive the split to compiler-
+generated slots and reloads them in the continuation block. This preserves source
+evaluation order without weakening the verifier into assuming unproven dominance.
+Pointer equality across immediate readonly/volatile qualifier differences emits a
+`ptr.qualify` operation to a common qualified pointer type before comparison.
+
+Source globals remain statically zero-initialized. Their explicit initializers and
+top-level runtime statements, including structured control flow, are emitted in
+source order into the synthetic internal `__coglet_module_init` function. This is
+the implementation of the module-initialization model specified above rather than
+relying on generated-C initialization behavior.
+
+The lowering context records a strict two-stage state (`metadata_prepared`, then
+`executable_lowered`) so a module cannot accidentally be lowered twice. Local and
+parameter declaration bindings transition from pending identities to concrete
+function/slot mappings. No lexical lookup is performed during this stage: every
+identifier is recovered through semantic `SemDeclId` information.
+
+Pointer/aggregate lvalues beyond direct identifiers, arrays/struct values, casts,
+wrapping builtins, strings, and C variadic ABI legalization remain deliberately
+outside the current executable slice.
+
 ## Implementation sequence
 
 1. ~~Add `include/cog_ir.h` with IDs, module/type/constant/function/CFG structures.~~
 2. ~~Add an arena-backed builder in `src/cog_ir.c`.~~
-3. ~~Add deterministic `cog_ir_dump()`.~~ Add the `dump_ir` source-program tool with frontend lowering.
+3. ~~Add deterministic `cog_ir_dump()` and the `dump_ir` source-program tool.~~
 4. ~~Add `cog_ir_verify()` and verifier unit tests.~~
 5. ~~Add semantic-to-IR type/declaration/source/constant maps.~~
    Metadata preparation now owns source provenance, nominal/function
    predeclaration, ABI/type mapping, constants, and zeroed global storage.
-6. Lower constants, globals/module init, slots, returns, arithmetic, comparisons,
-   and simple calls first.
-7. Add branches/loops/switches and short-circuit Boolean CFG lowering.
+6. ~~Lower constants, globals/module init, slots, returns, basic arithmetic, and
+   simple calls first.~~ Comparisons join the control-flow slice next.
+7. ~~Add branches/loops/switches and short-circuit Boolean CFG lowering.~~
+   Structured CFG lowering now includes comparisons, block-parameter short
+   circuiting, loop targets, exhaustive switch handling, and CFG-safe value spills.
 8. Add pointers, arrays, structs, volatile memory, casts, and full C ABI metadata.
-9. Make successful lowering independent: destroy `CompileResult` before invoking
-   IR-only test consumers.
+9. ~~Make successful lowering independent: destroy `CompileResult` before invoking
+   IR-only test consumers.~~ `dump_ir` verifies and dumps after frontend destruction.
 10. Port the host-C backend to `const CogIrModule *` and restore all backend
     tests through AST -> semantic -> CogIR -> C.
 11. Only after that boundary is proven, add LLVM lowering.

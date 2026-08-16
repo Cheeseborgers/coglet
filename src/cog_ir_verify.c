@@ -48,10 +48,12 @@ static int is_float_type(const CogIrModule *module, CogIrTypeId id)
     return type && type->kind == COG_IR_TYPE_FLOAT;
 }
 
-static int is_pointer_type(const CogIrModule *module, CogIrTypeId id)
+static int is_pointer_comparable_type(const CogIrModule *module, CogIrTypeId id)
 {
     const CogIrType *type = cog_ir_get_type(module, id);
-    return type && (type->kind == COG_IR_TYPE_POINTER || type->kind == COG_IR_TYPE_OPAQUE_POINTER);
+    return type && (type->kind == COG_IR_TYPE_POINTER ||
+                    type->kind == COG_IR_TYPE_OPAQUE_POINTER ||
+                    type->kind == COG_IR_TYPE_FUNCTION);
 }
 
 static int pointer_pointee(
@@ -484,7 +486,7 @@ static int verify_instruction(
             const CogIrValue *lhs = cog_ir_get_value(function, instruction->as.binary.lhs);
             const CogIrValue *rhs = cog_ir_get_value(function, instruction->as.binary.rhs);
             const CogIrType *result_type = cog_ir_get_type(module, instruction->result_type);
-            if (!lhs || !rhs || lhs->type != rhs->type || !is_pointer_type(module, lhs->type) ||
+            if (!lhs || !rhs || lhs->type != rhs->type || !is_pointer_comparable_type(module, lhs->type) ||
                 !result_type || result_type->kind != COG_IR_TYPE_BOOL) {
                 ir_error(diagnostics, instruction->span, "%s has invalid pointer comparison types", cog_ir_op_name(instruction->op));
                 ok = 0;
@@ -503,10 +505,33 @@ static int verify_instruction(
             break;
         }
 
+        case COG_IR_OP_PTR_QUALIFY: {
+            REQUIRE_VALUE(instruction->as.conversion.operand, "operand");
+            const CogIrValue *operand = cog_ir_get_value(function, instruction->as.conversion.operand);
+            const CogIrType *source = operand ? cog_ir_get_type(module, operand->type) : NULL;
+            const CogIrType *target = cog_ir_get_type(module, instruction->as.conversion.target_type);
+            int valid = operand && source && target &&
+                        instruction->as.conversion.target_type == instruction->result_type;
+            if (valid && source->kind == COG_IR_TYPE_POINTER && target->kind == COG_IR_TYPE_POINTER) {
+                valid = source->as.pointer.pointee == target->as.pointer.pointee &&
+                        (!source->as.pointer.is_readonly || target->as.pointer.is_readonly) &&
+                        (!source->as.pointer.is_volatile || target->as.pointer.is_volatile);
+            } else if (valid && source->kind == COG_IR_TYPE_OPAQUE_POINTER && target->kind == COG_IR_TYPE_OPAQUE_POINTER) {
+                valid = (!source->as.opaque_pointer.is_readonly || target->as.opaque_pointer.is_readonly) &&
+                        (!source->as.opaque_pointer.is_volatile || target->as.opaque_pointer.is_volatile);
+            } else {
+                valid = 0;
+            }
+            if (!valid) {
+                ir_error(diagnostics, instruction->span, "ptr.qualify must preserve pointer identity and may only add qualifiers");
+                ok = 0;
+            }
+            break;
+        }
+
         case COG_IR_OP_CAST_CHECKED:
         case COG_IR_OP_INT_TRUNCATE:
         case COG_IR_OP_PTR_REINTERPRET:
-        case COG_IR_OP_PTR_QUALIFY:
             REQUIRE_VALUE(instruction->as.conversion.operand, "operand");
             if (instruction->as.conversion.target_type != instruction->result_type ||
                 !cog_ir_get_type(module, instruction->result_type)) {
@@ -681,8 +706,12 @@ static int verify_function(
 
             case COG_IR_TERMINATOR_SWITCH: {
                 const CogIrValue *value = cog_ir_get_value(function, term->as.switch_term.value);
-                if (!value || !terminator_value_available(function, block->id, value->id)) {
-                    ir_error(diagnostics, term->span, "switch value is not available in its block");
+                const CogIrType *value_type = value ? cog_ir_get_type(module, value->type) : NULL;
+                if (!value || !terminator_value_available(function, block->id, value->id) ||
+                    !value_type || (value_type->kind != COG_IR_TYPE_INTEGER &&
+                                    value_type->kind != COG_IR_TYPE_BOOL &&
+                                    value_type->kind != COG_IR_TYPE_ENUM)) {
+                    ir_error(diagnostics, term->span, "switch value is not an available integer, bool, or enum value");
                     ok = 0;
                 }
                 for (size_t i = 0; i < term->as.switch_term.case_count; ++i) {

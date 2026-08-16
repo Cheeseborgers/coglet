@@ -16,6 +16,8 @@ typedef enum CogIrLowerDeclKind {
     COG_IR_LOWER_DECL_ENUM_MEMBER,
     COG_IR_LOWER_DECL_LOCAL_PENDING,
     COG_IR_LOWER_DECL_PARAMETER_PENDING,
+    COG_IR_LOWER_DECL_LOCAL,
+    COG_IR_LOWER_DECL_PARAMETER,
 } CogIrLowerDeclKind;
 
 typedef struct CogIrLowerDeclBinding {
@@ -39,6 +41,18 @@ typedef struct CogIrLowerDeclBinding {
             uint32_t index;
             CogIrConstId constant;
         } enum_member;
+
+        struct {
+            CogIrFunctionId function;
+            CogIrSlotId slot;
+        } local;
+
+        struct {
+            CogIrFunctionId function;
+            CogIrSlotId slot;
+            CogIrValueId incoming_value;
+            uint32_t index;
+        } parameter;
     } as;
 } CogIrLowerDeclBinding;
 
@@ -68,6 +82,8 @@ typedef struct CogIrLowerContext {
     CogIrLowerDeclBinding *decl_bindings;
     size_t decl_binding_count;
 
+    int metadata_prepared;
+    int executable_lowered;
     int failed;
 } CogIrLowerContext;
 
@@ -80,6 +96,8 @@ int cog_ir_lower_context_init(
 void cog_ir_lower_context_destroy(CogIrLowerContext *ctx);
 
 int cog_ir_lower_prepare_metadata(CogIrLowerContext *ctx);
+int cog_ir_lower_executable(CogIrLowerContext *ctx);
+int cog_ir_lower_program(CogIrLowerContext *ctx);
 
 CogIrTypeId cog_ir_lower_type(CogIrLowerContext *ctx, const Type *type);
 CogIrAbiTypeId cog_ir_lower_abi_type(CogIrLowerContext *ctx, const SemAbiType *type);

@@ -1,0 +1,80 @@
+#extern(c)
+coglet_backend_varargs_probe::(marker: c_int, ...) -> c_int;
+
+#extern(c)
+coglet_backend_return_callback::() -> cfn(c_int) -> c_int;
+
+#repr(c)
+plus_one::(value: c_int) -> c_int {
+    return value + 1;
+}
+
+#repr(c)
+identity::(value: c_int) -> c_int {
+    return value;
+}
+
+#repr(c)
+bool_value::(flag: c_bool) -> c_int {
+    if flag {
+        return 1;
+    }
+    return 0;
+}
+
+invoke::(callback: cfn(c_int) -> c_int, value: c_int) -> c_int {
+    return callback(value);
+}
+
+invoke_spilled::(
+    callback: cfn(c_bool) -> c_int,
+    left: bool,
+    right: bool
+) -> c_int {
+    return callback(left && right);
+}
+
+local_calls::(value: c_int) -> c_int {
+    explicit: cfn(c_int) -> c_int = plus_one;
+    inferred := plus_one;
+    return explicit(value) + inferred(value);
+}
+
+forward_varargs::(
+    callback: cfn(c_int, ...) -> c_int,
+    small: c_short,
+    single: c_float
+) -> c_int {
+    return callback(
+        91,
+        small,
+        true,
+        single,
+        -2.5,
+        "ok",
+        identity
+    );
+}
+
+main::() -> c_int {
+    if invoke(plus_one, 40) != 41 {
+        return 1;
+    }
+    if local_calls(20) != 42 {
+        return 2;
+    }
+    if invoke_spilled(bool_value, true, true) != 1 {
+        return 3;
+    }
+    if invoke_spilled(bool_value, true, false) != 0 {
+        return 4;
+    }
+    if forward_varargs(coglet_backend_varargs_probe, -3, 1.25) != 57 {
+        return 5;
+    }
+    returned := coglet_backend_return_callback();
+    if returned(40) != 42 {
+        return 6;
+    }
+    return 0;
+}

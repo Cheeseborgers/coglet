@@ -123,6 +123,12 @@ signed-to-unsigned checked cast, an out-of-range float-to-integer cast, and a fi
 `f64` value outside the `f32` range. The success case includes fractional values at
 integer boundaries to verify that float-to-integer checking applies truncation
 toward zero before representability testing.
+The indirect-call backend regression covers fixed callback parameters, explicit
+and inferred `cfn` locals, a callback callee preserved across short-circuit CFG
+spilling, indirect C variadic calls after CogIR default promotions, and a callback
+value returned by an external C function. This keeps exact callback ABI spelling
+in the tested IR/backend contract rather than relying on representation-compatible
+host-C function pointer types.
 
 Run the backend suite with:
 

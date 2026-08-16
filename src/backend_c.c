@@ -545,6 +545,22 @@ static const char *abi_type_name(CBackend *backend, CogIrAbiTypeId abi_id, Sourc
     return name;
 }
 
+static const char *value_type_name(
+    CBackend *backend,
+    const CogIrFunction *function,
+    CogIrValueId value_id,
+    SourceSpan span
+) {
+    const CogIrValue *value = cog_ir_get_value(function, value_id);
+    if (!value) {
+        backend_error(backend, span, "invalid CogIR value type during C lowering");
+        return NULL;
+    }
+    if (value->abi_type != COG_IR_ABI_TYPE_INVALID)
+        return abi_type_name(backend, value->abi_type, span);
+    return runtime_type_name(backend, value->type, span);
+}
+
 static void emit_c_string_literal(FILE *out, StringView value)
 {
     fputc('"', out);
@@ -782,9 +798,20 @@ static int prepare_type_aliases(CBackend *backend)
                 if (!runtime_type_name(backend, type->as.function.parameter_types[p], function->span))
                     return 0;
         }
-        for (size_t s = 0; s < function->slot_count; ++s)
-            if (!runtime_type_name(backend, function->slots[s].type, function->slots[s].span))
+        for (size_t v = 0; v < function->value_count; ++v) {
+            const CogIrValue *value = &function->values[v];
+            if (value->abi_type != COG_IR_ABI_TYPE_INVALID &&
+                !abi_type_name(backend, value->abi_type, value->span))
                 return 0;
+        }
+        for (size_t s = 0; s < function->slot_count; ++s) {
+            const CogIrSlot *slot = &function->slots[s];
+            const char *name = slot->abi_type != COG_IR_ABI_TYPE_INVALID
+                ? abi_type_name(backend, slot->abi_type, slot->span)
+                : runtime_type_name(backend, slot->type, slot->span);
+            if (!name)
+                return 0;
+        }
         if (!prepare_instruction_runtime_aliases(backend, function))
             return 0;
     }
@@ -978,8 +1005,13 @@ static const char *function_parameter_type(
     const CogIrType *type = cog_ir_get_type(backend->module, function->type);
     if (!type || type->kind != COG_IR_TYPE_FUNCTION || index >= type->as.function.parameter_count)
         return NULL;
-    return function->abi.abi == COG_IR_ABI_C
-        ? abi_type_name(backend, function->abi.parameter_abi_types[index], function->span)
+    if (function->abi.abi == COG_IR_ABI_C)
+        return abi_type_name(backend, function->abi.parameter_abi_types[index], function->span);
+
+    CogIrValueId value_id = function->parameters[index];
+    const CogIrValue *value = cog_ir_get_value(function, value_id);
+    return value && value->abi_type != COG_IR_ABI_TYPE_INVALID
+        ? abi_type_name(backend, value->abi_type, function->span)
         : runtime_type_name(backend, type->as.function.parameter_types[index], function->span);
 }
 
@@ -2031,8 +2063,7 @@ static int emit_instruction(
     CBackend *backend,
     const CogIrFunction *function,
     const CogIrInstruction *instruction,
-    char **exprs,
-    CogIrFunctionId *function_refs
+    char **exprs
 ) {
     size_t value_count = function->value_count;
     CogIrValueId result = instruction->result;
@@ -2051,7 +2082,6 @@ static int emit_instruction(
             if (!set_value_expr(exprs, value_count, result,
                                 copy_printf("%s", backend->function_names[target])))
                 goto invalid_result;
-            function_refs[result] = target;
             return 1;
         }
         case COG_IR_OP_LOCAL_ADDR: {
@@ -2117,7 +2147,7 @@ static int emit_instruction(
         }
         case COG_IR_OP_LOAD: {
             const char *address = value_expr(exprs, value_count, instruction->as.load.address);
-            const char *type = runtime_type_name(backend, instruction->result_type, instruction->span);
+            const char *type = value_type_name(backend, function, result, instruction->span);
             if (!address || !type)
                 goto missing_operand;
             if (instruction->as.load.is_volatile) {
@@ -2363,24 +2393,25 @@ static int emit_instruction(
             return 1;
         case COG_IR_OP_CALL: {
             const char *callee = value_expr(exprs, value_count, instruction->as.call.callee);
-            if (!callee)
+            const CogIrValue *callee_value = cog_ir_get_value(function, instruction->as.call.callee);
+            const CogIrType *callee_type = callee_value
+                ? cog_ir_get_type(backend->module, callee_value->type)
+                : NULL;
+            if (!callee || !callee_type || callee_type->kind != COG_IR_TYPE_FUNCTION)
                 goto missing_operand;
-            CogIrFunctionId callee_id = COG_IR_FUNCTION_INVALID;
-            if ((size_t)instruction->as.call.callee < value_count)
-                callee_id = function_refs[instruction->as.call.callee];
-            if (callee_id == COG_IR_FUNCTION_INVALID) {
-                backend_error(backend, instruction->span, "indirect CogIR calls are not lowered by the host-C backend yet");
-                return 0;
+            if (callee_type->as.function.abi == COG_IR_ABI_C) {
+                const CogIrAbiType *callee_abi = callee_value->abi_type != COG_IR_ABI_TYPE_INVALID
+                    ? cog_ir_get_abi_type(backend->module, callee_value->abi_type)
+                    : NULL;
+                if (!callee_abi || callee_abi->kind != COG_IR_ABI_TYPE_FUNCTION) {
+                    backend_error(backend, instruction->span,
+                                  "C function value is missing exact callback ABI metadata");
+                    return 0;
+                }
             }
 
-            const CogIrFunction *callee_function = cog_ir_get_function(backend->module, callee_id);
-            if (!callee_function)
-                goto missing_operand;
-
             if (instruction->result_type != COG_IR_TYPE_INVALID) {
-                const char *result_type = callee_function->abi.abi == COG_IR_ABI_C
-                    ? abi_type_name(backend, callee_function->abi.return_abi_type, instruction->span)
-                    : runtime_type_name(backend, instruction->result_type, instruction->span);
+                const char *result_type = value_type_name(backend, function, result, instruction->span);
                 if (!result_type)
                     return 0;
                 fprintf(backend->out, "    %s cg_v_%u = %s(", result_type, result, callee);
@@ -2760,7 +2791,9 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
 
     for (size_t s = 0; s < function->slot_count; ++s) {
         const CogIrSlot *slot = &function->slots[s];
-        const char *type = runtime_type_name(backend, slot->type, slot->span);
+        const char *type = slot->abi_type != COG_IR_ABI_TYPE_INVALID
+            ? abi_type_name(backend, slot->abi_type, slot->span)
+            : runtime_type_name(backend, slot->type, slot->span);
         if (!type) {
             free(reachable);
             return 0;
@@ -2771,17 +2804,11 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
         fputc('\n', backend->out);
 
     char **exprs = function->value_count ? calloc(function->value_count, sizeof(*exprs)) : NULL;
-    CogIrFunctionId *function_refs = function->value_count
-        ? malloc(function->value_count * sizeof(*function_refs))
-        : NULL;
-    if (function->value_count && (!exprs || !function_refs)) {
-        free(exprs); free(function_refs);
+    if (function->value_count && !exprs) {
         free(reachable);
         backend_error(backend, function->span, "out of memory while lowering CogIR function body to C");
         return 0;
     }
-    for (size_t i = 0; i < function->value_count; ++i)
-        function_refs[i] = COG_IR_FUNCTION_INVALID;
 
     for (size_t p = 0; p < function->parameter_count; ++p) {
         CogIrValueId value = function->parameters[p];
@@ -2798,7 +2825,7 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
         const CogIrBlock *block = &function->blocks[b];
         for (size_t p = 0; p < block->parameter_count; ++p) {
             const CogIrBlockParam *parameter = &block->parameters[p];
-            const char *type = runtime_type_name(backend, parameter->type, parameter->span);
+            const char *type = value_type_name(backend, function, parameter->value, parameter->span);
             if (!type)
                 goto fail;
             fprintf(backend->out, "    %s cg_bp_%u;\n", type, parameter->value);
@@ -2824,7 +2851,7 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
         const CogIrBlock *block = &function->blocks[b];
         fprintf(backend->out, "cg_bb_%u: ;\n", block->id);
         for (size_t i = 0; i < block->instruction_count; ++i) {
-            if (!emit_instruction(backend, function, &block->instructions[i], exprs, function_refs))
+            if (!emit_instruction(backend, function, &block->instructions[i], exprs))
                 goto fail;
         }
         if (!emit_terminator(backend, function, block, exprs))
@@ -2836,7 +2863,6 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
     for (size_t i = 0; i < function->value_count; ++i)
         free(exprs[i]);
     free(exprs);
-    free(function_refs);
     free(reachable);
     return 1;
 
@@ -2844,7 +2870,6 @@ fail:
     for (size_t i = 0; i < function->value_count; ++i)
         free(exprs[i]);
     free(exprs);
-    free(function_refs);
     free(reachable);
     return 0;
 }

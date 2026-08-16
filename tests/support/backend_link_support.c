@@ -172,6 +172,16 @@ int coglet_backend_enum_packet_probe(CogletBackendMode mode, CogletBackendEnumPa
 
 typedef int (*CogletBackendUnaryCallback)(int);
 
+static int coglet_backend_callback_add_two(int value)
+{
+    return value + 2;
+}
+
+CogletBackendUnaryCallback coglet_backend_return_callback(void)
+{
+    return coglet_backend_callback_add_two;
+}
+
 int coglet_backend_callback_probe(
     CogletBackendUnaryCallback callback,
     CogletBackendUnaryCallback missing,

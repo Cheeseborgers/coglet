@@ -36,6 +36,17 @@ static int valid_span(const CogIrModule *module, SourceSpan span)
     return span.start_offset <= span.end_offset && span.end_offset <= file->length;
 }
 
+static int optional_abi_matches_runtime(
+    const CogIrModule *module,
+    CogIrAbiTypeId abi_type,
+    CogIrTypeId runtime_type
+) {
+    if (abi_type == COG_IR_ABI_TYPE_INVALID)
+        return 1;
+    const CogIrAbiType *abi = cog_ir_get_abi_type(module, abi_type);
+    return abi && abi->runtime_type == runtime_type;
+}
+
 static int is_integer_type(const CogIrModule *module, CogIrTypeId id)
 {
     const CogIrType *type = cog_ir_get_type(module, id);
@@ -700,6 +711,17 @@ static int verify_instruction(
                 ok = 0;
                 break;
             }
+            if (callee_type->as.function.abi == COG_IR_ABI_C) {
+                const CogIrAbiType *callee_abi = callee && callee->abi_type != COG_IR_ABI_TYPE_INVALID
+                    ? cog_ir_get_abi_type(module, callee->abi_type)
+                    : NULL;
+                if (!callee_abi || callee_abi->kind != COG_IR_ABI_TYPE_FUNCTION ||
+                    callee_abi->runtime_type != callee->type) {
+                    ir_error(diagnostics, instruction->span,
+                             "C call callee is missing exact function-pointer ABI metadata");
+                    ok = 0;
+                }
+            }
             if (instruction->as.call.argument_count < callee_type->as.function.parameter_count ||
                 (!callee_type->as.function.is_variadic && instruction->as.call.argument_count != callee_type->as.function.parameter_count)) {
                 ir_error(diagnostics, instruction->span, "call argument count does not match function signature");
@@ -905,6 +927,16 @@ static int verify_function(
         ok = 0;
     }
 
+    for (size_t i = 0; i < function->value_count; ++i) {
+        const CogIrValue *value = &function->values[i];
+        if (!optional_abi_matches_runtime(module, value->abi_type, value->type)) {
+            ir_error(diagnostics, value->span,
+                     "value %%%zu in function @f%u has ABI metadata for the wrong runtime type",
+                     i, function->id);
+            ok = 0;
+        }
+    }
+
     if (function->kind == COG_IR_FUNCTION_DECLARATION) {
         if (function->block_count || function->slot_count || function->entry_block != COG_IR_BLOCK_INVALID) {
             ir_error(diagnostics, function->span, "function declaration @f%u unexpectedly has a body", function->id);
@@ -930,7 +962,8 @@ static int verify_function(
 
     for (size_t i = 0; i < function->slot_count; ++i) {
         const CogIrSlot *slot = &function->slots[i];
-        if (slot->id != i || !cog_ir_get_type(module, slot->type) || !valid_span(module, slot->span)) {
+        if (slot->id != i || !cog_ir_get_type(module, slot->type) || !valid_span(module, slot->span) ||
+            !optional_abi_matches_runtime(module, slot->abi_type, slot->type)) {
             ir_error(diagnostics, slot->span, "slot $s%zu in function @f%u is invalid", i, function->id);
             ok = 0;
         }

@@ -296,6 +296,15 @@ This remains separate from the normal CogIR type table. It exists so the host-C
 backend and target ABI lowering can honor exact C contracts without turning
 CogIR itself into a C IR.
 
+First-class native-C function values also carry an optional ABI-type annotation
+on their `CogIrValue`/`CogIrSlot` storage. The runtime function type still owns
+calling convention, variadic status, and canonical parameter/result types; the
+annotation preserves only the recursive C spelling erased by canonicalization
+(such as `c_long` versus a representation-equal fixed-width integer). Lowering
+propagates this annotation through function references, callback parameters and
+locals, CFG spills/reloads, and callback-valued C call results. The verifier
+requires a C-call callee to have matching function ABI metadata.
+
 Represented aggregate metadata retains struct-vs-union, incomplete, packed, and
 explicit-alignment information. Represented enum metadata retains its exact C
 backing spelling.
@@ -1051,8 +1060,10 @@ volatile scalar loads/stores now execute from their address operations. Checked
 numeric casts guard representability/non-finite cases before invoking a C
 conversion, truncating integer casts use explicit low-bit semantics, and
 typed/opaque pointer reinterpretation is emitted as the corresponding object-
-pointer conversion. Aggregate construction/extraction, standalone array values,
-aggregate globals, and indirect calls are still separate backend coverage work.
+pointer conversion. Native-C indirect calls now execute through exact callback
+ABI aliases, including variadic callbacks and callback values returned from C.
+Aggregate construction/extraction, standalone array values, and aggregate globals
+remain separate backend coverage work.
 
 ## Implementation sequence
 
@@ -1099,6 +1110,9 @@ aggregate globals, and indirect calls are still separate backend coverage work.
     slice.~~ Represented field and array-field places, typed-pointer indexing,
     volatile scalar memory operations, checked numeric conversions, integer
     truncation, and typed/opaque raw-pointer reinterpretation now execute directly
-    from CogIR. Remaining indirect-call and aggregate value/global families can be
-    filled in independently while LLVM lowering begins on the same verified CogIR
-    contract.
+    from CogIR.
+16. ~~Lower first-class native-C function values and indirect calls through the
+    host-C backend.~~ Exact callback ABI metadata now survives parameters, locals,
+    CFG spills/reloads, and callback-valued C call results; fixed and variadic
+    `cfn` calls execute from CogIR without recovering frontend type spelling.
+    Aggregate value/global families remain the principal host-C parity work.

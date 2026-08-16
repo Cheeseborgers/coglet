@@ -1656,47 +1656,18 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
 
         case TYPE_ARRAY: {
             char element[128];
-
-            format_type_name(
-                type->element,
-                element,
-                sizeof(element)
-            );
+            format_type_name(type->element, element, sizeof(element));
 
             if (type->array_size >= 0) {
-                int suffix_size = snprintf(
-                    NULL,
-                    0,
-                    "[%d]",
-                    type->array_size
-                );
-
-                size_t max_element = 0;
-
-                if (buffer_size > (size_t)suffix_size + 1) {
-                    max_element = buffer_size - (size_t)suffix_size - 1;
-                }
-
                 snprintf(
                     buffer,
                     buffer_size,
-                    "%.*s[%d]",
-                    (int)max_element,
+                    "%s[%d]",
                     element,
                     type->array_size
                 );
             } else {
-                size_t max_element = buffer_size > 3
-                    ? buffer_size - 3
-                    : 0;
-
-                snprintf(
-                    buffer,
-                    buffer_size,
-                    "%.*s[]",
-                    (int)max_element,
-                    element
-                );
+                snprintf(buffer, buffer_size, "%s[]", element);
             }
 
             return;
@@ -8840,6 +8811,7 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
     }
 
     Type *type = node->as.var_decl.var_type;
+    Type *source_type = type;
     Node *init = node->as.var_decl.initializer;
 
     /*
@@ -8918,6 +8890,18 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
 
     classify_variable_symbol(ctx, symbol, storage);
 
+    /*
+     * cfn values need their exact C-facing spelling after semantic type
+     * canonicalization. Explicitly typed variables preserve that spelling in
+     * declaration metadata; inferred cfn locals can inherit it from their
+     * initializer during CogIR lowering.
+     */
+    if (source_type && type->kind == TYPE_FUNCTION &&
+        type->function_abi == FUNCTION_ABI_C) {
+        SemDeclInfo *decl_info = sem_find_decl_info(ctx, node);
+        assert(decl_info);
+        decl_info->abi_type = make_sem_abi_type(ctx, source_type, type);
+    }
 
     if (storage == VARIABLE_STORAGE_LOCAL) {
         flow_register_variable(
@@ -9597,7 +9581,9 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
             NULL
         );
 
-        if (func_type->function_abi == FUNCTION_ABI_C) {
+        if (func_type->function_abi == FUNCTION_ABI_C ||
+            (func_type->parameters[i]->kind == TYPE_FUNCTION &&
+             func_type->parameters[i]->function_abi == FUNCTION_ABI_C)) {
             param_info->abi_type = make_sem_abi_type(
                 ctx,
                 param->as.param_decl.var_type,

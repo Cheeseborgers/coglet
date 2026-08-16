@@ -328,10 +328,22 @@ int main(void)
     CogIrTypeId variadic_type = cog_ir_type_function(
         &bad_vararg, vararg_void, vararg_params, 1,
         COG_IR_ABI_C, COG_IR_CALL_DEFAULT, 1);
+    CogIrAbiTypeId vararg_void_abi = cog_ir_abi_type_semantic(&bad_vararg, vararg_void);
+    CogIrAbiTypeId vararg_int_abi = cog_ir_abi_type_c_scalar(
+        &bad_vararg, vararg_int, COG_IR_C_SCALAR_INT);
+    CogIrAbiTypeId variadic_param_abis[] = { vararg_int_abi };
+    CogIrFunctionAbi variadic_abi = {
+        .abi = COG_IR_ABI_C,
+        .calling_convention = COG_IR_CALL_DEFAULT,
+        .is_variadic = 1,
+        .return_abi_type = vararg_void_abi,
+        .parameter_abi_types = variadic_param_abis,
+        .parameter_count = 1,
+    };
     CogIrFunctionId variadic = cog_ir_add_function(
         &bad_vararg, string_view_from_cstr("variadic"), source_span_invalid(),
         variadic_type, COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_EXTERNAL, 0,
-        COG_IR_C_SCALAR_NONE, NULL);
+        COG_IR_C_SCALAR_NONE, &variadic_abi);
     CogIrTypeId caller_type = cog_ir_type_function(
         &bad_vararg, vararg_void, NULL, 0,
         COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
@@ -347,6 +359,11 @@ int main(void)
     CogIrValueId variadic_ref = COG_IR_VALUE_INVALID;
     if (!cog_ir_emit(&bad_vararg, caller, caller_entry, &op, &variadic_ref))
         return fail("negative variadic function_ref emission failed");
+    CogIrAbiTypeId variadic_callback_abi = cog_ir_abi_type_function(
+        &bad_vararg, variadic_type, vararg_void_abi, variadic_param_abis, 1);
+    if (variadic_callback_abi == COG_IR_ABI_TYPE_INVALID ||
+        !cog_ir_set_value_abi_type(&bad_vararg, caller, variadic_ref, variadic_callback_abi))
+        return fail("negative variadic callback ABI annotation failed");
 
     CogIrConstId marker_const = cog_ir_const_integer(&bad_vararg, vararg_int, 1);
     op = instruction(COG_IR_OP_CONST, vararg_int, source_span_invalid());

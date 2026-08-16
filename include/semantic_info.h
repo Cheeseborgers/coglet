@@ -251,10 +251,10 @@ typedef struct SemDeclInfo {
     Type *type;
 
     /*
-     * Exact C-facing type spelling for declarations that sit directly on a
-     * C ABI surface, currently #extern(c)/#repr(c) parameters and #repr(c)
-     * aggregate fields. NULL for declarations where no native-C spelling must
-     * survive semantic type canonicalization.
+     * Exact C-facing type spelling for declarations whose native-C spelling
+     * must survive semantic type canonicalization. This includes direct C ABI
+     * surfaces and first-class cfn values stored in Coglet parameters/locals.
+     * NULL when runtime semantic type identity is sufficient.
      */
     SemAbiType *abi_type;
 

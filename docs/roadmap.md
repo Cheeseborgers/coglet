@@ -506,10 +506,13 @@ represented field/array-field places, typed-pointer indexing, volatile scalar
 loads/stores, checked numeric casts, truncating integer conversion, and typed/
 opaque pointer reinterpretation now execute from CogIR. Checked casts guard
 range/non-finite failures before host conversions, and truncation reconstructs
-signed destination values from explicit low-bit patterns. Begin LLVM lowering on
-the same verified module contract while filling the remaining indirect-call and
-aggregate value/global coverage as isolated compatibility milestones rather than
-creating a second frontend path.
+signed destination values from explicit low-bit patterns. First-class native-C
+function values now retain exact C ABI spelling across parameters, locals, CFG
+spills, and callback-valued C calls; the host-C emitter executes fixed and
+variadic indirect `cfn` calls from that metadata. Begin LLVM lowering on the same
+verified module contract while filling the remaining aggregate value/global
+coverage as isolated compatibility milestones rather than creating a second
+frontend path.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

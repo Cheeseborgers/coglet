@@ -236,10 +236,13 @@ arithmetic, checked-count shifts, floating arithmetic/comparisons, structured
 control flow, field/array-field/pointer addressing, volatile scalar loads/stores,
 and checked/truncating/raw-pointer casts execute from verifier-checked IR. Native-C
 variadic promotions are explicit CogIR operations rather than an implicit host-C
-side effect. String escapes are decoded using Coglet's literal rules and lowered
-through IR-owned backing data at supported C ABI boundaries. Host executables
-continue to require `main::() -> c_int` using the source-return spelling retained
-in CogIR. Indirect calls, general aggregate value construction/extraction and
+side effect. First-class `cfn` values preserve their exact recursive C ABI spelling
+through parameters, locals, loads, CFG spills, and C-call results, so indirect
+calls use the same verifier-owned ABI contract as direct extern calls, including
+variadic callbacks. String escapes are decoded using Coglet's literal rules and
+lowered through IR-owned backing data at supported C ABI boundaries. Host
+executables continue to require `main::() -> c_int` using the source-return
+spelling retained in CogIR. General aggregate value construction/extraction and
 aggregate globals remain separate compatibility work; checked operations are not
 lowered through C behavior that would introduce undefined or implementation-defined
 semantics where Coglet requires a trap or fixed-width result.

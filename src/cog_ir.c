@@ -974,6 +974,7 @@ static CogIrValueId append_value(
     memset(value, 0, sizeof(*value));
     value->id = id;
     value->type = type;
+    value->abi_type = COG_IR_ABI_TYPE_INVALID;
     value->kind = kind;
     value->block = block;
     value->ordinal = ordinal;
@@ -1064,6 +1065,12 @@ CogIrFunctionId cog_ir_add_function(
             if (value == COG_IR_VALUE_INVALID)
                 return COG_IR_FUNCTION_INVALID;
             function->parameters[i] = value;
+            if (abi && i < abi->parameter_count) {
+                const CogIrAbiType *parameter_abi = cog_ir_get_abi_type(
+                    module, abi->parameter_abi_types[i]);
+                if (parameter_abi && parameter_abi->kind == COG_IR_ABI_TYPE_FUNCTION)
+                    function->values[value].abi_type = abi->parameter_abi_types[i];
+            }
         }
     }
 
@@ -1123,7 +1130,46 @@ CogIrSlotId cog_ir_add_slot(
     slot->debug_name = copy_string_view(module, debug_name);
     slot->span = span;
     slot->type = type;
+    slot->abi_type = COG_IR_ABI_TYPE_INVALID;
     return id;
+}
+
+int cog_ir_set_slot_abi_type(
+    CogIrModule *module,
+    CogIrFunctionId function_id,
+    CogIrSlotId slot_id,
+    CogIrAbiTypeId abi_type
+) {
+    if (!module_mutable(module))
+        return 0;
+    CogIrFunction *function = get_function_mut(module, function_id);
+    if (!function || slot_id == COG_IR_SLOT_INVALID || (size_t)slot_id >= function->slot_count)
+        return 0;
+    const CogIrAbiType *abi = cog_ir_get_abi_type(module, abi_type);
+    CogIrSlot *slot = &function->slots[slot_id];
+    if (!abi || abi->runtime_type != slot->type)
+        return 0;
+    slot->abi_type = abi_type;
+    return 1;
+}
+
+int cog_ir_set_value_abi_type(
+    CogIrModule *module,
+    CogIrFunctionId function_id,
+    CogIrValueId value_id,
+    CogIrAbiTypeId abi_type
+) {
+    if (!module_mutable(module))
+        return 0;
+    CogIrFunction *function = get_function_mut(module, function_id);
+    if (!function || value_id == COG_IR_VALUE_INVALID || (size_t)value_id >= function->value_count)
+        return 0;
+    const CogIrAbiType *abi = cog_ir_get_abi_type(module, abi_type);
+    CogIrValue *value = &function->values[value_id];
+    if (!abi || abi->runtime_type != value->type)
+        return 0;
+    value->abi_type = abi_type;
+    return 1;
 }
 
 CogIrBlockId cog_ir_add_block(

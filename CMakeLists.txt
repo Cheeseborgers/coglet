@@ -649,6 +649,23 @@ set_tests_properties(
         PROPERTIES LABELS "backend;backend.c;ir;data;address;cast;volatile"
 )
 
+add_test(
+        NAME backend_indirect_calls
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/indirect_calls.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_indirect_calls
+        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
+        -DLIB_NAME=coglet_backend_link_support
+        -DSTYLE=joined
+        -DEXPECT_EXIT=0
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+)
+set_tests_properties(
+        backend_indirect_calls
+        PROPERTIES LABELS "backend;backend.c;ir;abi;callback;indirect-call;variadic"
+)
+
 foreach(cast_trap_case IN ITEMS integer float_integer float_narrow)
     add_test(
             NAME backend_checked_cast_${cast_trap_case}_trap

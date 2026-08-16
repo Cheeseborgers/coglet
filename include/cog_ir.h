@@ -230,6 +230,8 @@ typedef enum CogIrValueKind {
 typedef struct CogIrValue {
     CogIrValueId id;
     CogIrTypeId type;
+    /* Optional exact native-C ABI spelling for values whose runtime type alone is insufficient. */
+    CogIrAbiTypeId abi_type;
     CogIrValueKind kind;
     CogIrBlockId block;
     size_t ordinal;
@@ -241,6 +243,8 @@ typedef struct CogIrSlot {
     StringView debug_name;
     SourceSpan span;
     CogIrTypeId type;
+    /* Optional exact native-C ABI spelling preserved across local storage/spills. */
+    CogIrAbiTypeId abi_type;
 } CogIrSlot;
 
 typedef struct CogIrBlockParam {
@@ -588,6 +592,8 @@ int cog_ir_begin_function_definition(CogIrModule *module, CogIrFunctionId functi
 
 int cog_ir_set_init_function(CogIrModule *module, CogIrFunctionId function);
 CogIrSlotId cog_ir_add_slot(CogIrModule *module, CogIrFunctionId function, StringView debug_name, SourceSpan span, CogIrTypeId type);
+int cog_ir_set_slot_abi_type(CogIrModule *module, CogIrFunctionId function, CogIrSlotId slot, CogIrAbiTypeId abi_type);
+int cog_ir_set_value_abi_type(CogIrModule *module, CogIrFunctionId function, CogIrValueId value, CogIrAbiTypeId abi_type);
 CogIrBlockId cog_ir_add_block(CogIrModule *module, CogIrFunctionId function, StringView debug_name, SourceSpan span);
 CogIrValueId cog_ir_add_block_parameter(CogIrModule *module, CogIrFunctionId function, CogIrBlockId block, CogIrTypeId type, StringView debug_name, SourceSpan span);
 int cog_ir_emit(CogIrModule *module, CogIrFunctionId function, CogIrBlockId block, const CogIrInstruction *instruction, CogIrValueId *out_result);

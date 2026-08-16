@@ -1860,7 +1860,9 @@ static void verify_function_abi_info(
         if (!param_info)
             continue;
 
-        if (expected_abi == FUNCTION_ABI_C) {
+        if (expected_abi == FUNCTION_ABI_C ||
+            (type->parameters[i]->kind == TYPE_FUNCTION &&
+             type->parameters[i]->function_abi == FUNCTION_ABI_C)) {
             verify_abi_type(
                 verifier,
                 param,
@@ -2073,9 +2075,25 @@ static void verify_declaration_info(Verifier *verifier, Node *declaration) {
                     "lexical declaration has no resolved Symbol");
             }
 
-            if (info->abi_kind != SEM_DECL_ABI_NONE || info->abi_type) {
+            if (info->abi_kind != SEM_DECL_ABI_NONE) {
                 verifier_error(verifier, declaration,
-                    "ordinary value declaration unexpectedly carries ABI metadata");
+                    "ordinary value declaration unexpectedly carries declaration ABI metadata");
+            }
+
+            if (declaration->type == NODE_VAR_DECL &&
+                declaration->as.var_decl.var_type &&
+                info->type && info->type->kind == TYPE_FUNCTION &&
+                info->type->function_abi == FUNCTION_ABI_C) {
+                verify_abi_type(
+                    verifier,
+                    declaration,
+                    declaration->as.var_decl.var_type,
+                    info->type,
+                    info->abi_type
+                );
+            } else if (info->abi_type) {
+                verifier_error(verifier, declaration,
+                    "ordinary value declaration unexpectedly carries a direct ABI type spelling");
             }
             break;
 

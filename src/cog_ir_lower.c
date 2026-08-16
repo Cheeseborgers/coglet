@@ -767,6 +767,58 @@ static CogIrValueId emit_instruction_value(
     return value;
 }
 
+static int annotate_value_abi(
+    ExecLowerState *state,
+    CogIrValueId value,
+    CogIrAbiTypeId abi_type,
+    SourceSpan span
+) {
+    if (abi_type == COG_IR_ABI_TYPE_INVALID)
+        return 1;
+    if (!cog_ir_set_value_abi_type(
+            state->lower->module, state->function, value, abi_type)) {
+        lower_error(state->lower, span, "failed to attach CogIR value ABI metadata");
+        return 0;
+    }
+    return 1;
+}
+
+static int annotate_slot_abi(
+    ExecLowerState *state,
+    CogIrSlotId slot,
+    CogIrAbiTypeId abi_type,
+    SourceSpan span
+) {
+    if (abi_type == COG_IR_ABI_TYPE_INVALID)
+        return 1;
+    if (!cog_ir_set_slot_abi_type(
+            state->lower->module, state->function, slot, abi_type)) {
+        lower_error(state->lower, span, "failed to attach CogIR slot ABI metadata");
+        return 0;
+    }
+    return 1;
+}
+
+static CogIrAbiTypeId function_value_abi_type(
+    ExecLowerState *state,
+    CogIrFunctionId function_id,
+    SourceSpan span
+) {
+    const CogIrFunction *function = cog_ir_get_function(state->lower->module, function_id);
+    if (!function || function->abi.abi != COG_IR_ABI_C)
+        return COG_IR_ABI_TYPE_INVALID;
+    CogIrAbiTypeId abi_type = cog_ir_abi_type_function(
+        state->lower->module,
+        function->type,
+        function->abi.return_abi_type,
+        function->abi.parameter_abi_types,
+        function->abi.parameter_count
+    );
+    if (abi_type == COG_IR_ABI_TYPE_INVALID)
+        lower_error(state->lower, span, "failed to construct CogIR C function-pointer ABI metadata");
+    return abi_type;
+}
+
 static int emit_instruction_void(ExecLowerState *state, CogIrInstruction instruction)
 {
     if (!cog_ir_emit(state->lower->module, state->function, state->block, &instruction, NULL)) {
@@ -1404,6 +1456,8 @@ static CogIrSlotId spill_value(ExecLowerState *state, CogIrValueId value, Source
         lower_error(state->lower, span, "failed to allocate CogIR CFG spill slot");
         return COG_IR_SLOT_INVALID;
     }
+    if (!annotate_slot_abi(state, slot, ir_value->abi_type, span))
+        return COG_IR_SLOT_INVALID;
     CogIrValueId address = emit_local_address(state, slot, type, span);
     if (address == COG_IR_VALUE_INVALID || !emit_store(state, address, value, 0, span))
         return COG_IR_SLOT_INVALID;
@@ -1420,8 +1474,13 @@ static CogIrValueId reload_spill(ExecLowerState *state, CogIrSlotId slot, Source
     }
     CogIrTypeId type = ir_slot->type;
     CogIrValueId address = emit_local_address(state, slot, type, span);
-    return address == COG_IR_VALUE_INVALID ? COG_IR_VALUE_INVALID
-                                           : emit_load(state, address, type, 0, span);
+    if (address == COG_IR_VALUE_INVALID)
+        return COG_IR_VALUE_INVALID;
+    CogIrValueId value = emit_load(state, address, type, 0, span);
+    if (value == COG_IR_VALUE_INVALID ||
+        !annotate_value_abi(state, value, ir_slot->abi_type, span))
+        return COG_IR_VALUE_INVALID;
+    return value;
 }
 
 static CogIrValueId lower_logical_expression(ExecLowerState *state, Node *node)
@@ -1733,6 +1792,22 @@ static CogIrValueId lower_call_expression(ExecLowerState *state, Node *node)
         lower_error(state->lower, node->span, "failed to emit CogIR call");
         return COG_IR_VALUE_INVALID;
     }
+
+    if (result_type != COG_IR_TYPE_INVALID) {
+        const CogIrFunction *function = cog_ir_get_function(state->lower->module, state->function);
+        const CogIrValue *callee_value = function ? cog_ir_get_value(function, callee) : NULL;
+        const CogIrAbiType *callee_abi = callee_value && callee_value->abi_type != COG_IR_ABI_TYPE_INVALID
+            ? cog_ir_get_abi_type(state->lower->module, callee_value->abi_type)
+            : NULL;
+        if (callee_abi && callee_abi->kind == COG_IR_ABI_TYPE_FUNCTION) {
+            const CogIrAbiType *return_abi = cog_ir_get_abi_type(
+                state->lower->module, callee_abi->return_type);
+            if (return_abi && return_abi->runtime_type == result_type &&
+                !annotate_value_abi(state, result, return_abi->id, node->span))
+                return COG_IR_VALUE_INVALID;
+        }
+    }
+
     return result_type == COG_IR_TYPE_INVALID ? COG_IR_VALUE_INVALID : result;
 }
 
@@ -2266,7 +2341,15 @@ static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
                     .span = node->span,
                     .as.function_ref = { .function = binding->as.function },
                 };
-                return emit_instruction_value(state, instruction);
+                CogIrValueId value = emit_instruction_value(state, instruction);
+                if (value == COG_IR_VALUE_INVALID)
+                    return COG_IR_VALUE_INVALID;
+                CogIrAbiTypeId abi_type = function_value_abi_type(
+                    state, binding->as.function, node->span);
+                if (abi_type != COG_IR_ABI_TYPE_INVALID &&
+                    !annotate_value_abi(state, value, abi_type, node->span))
+                    return COG_IR_VALUE_INVALID;
+                return value;
             }
             if (binding->kind == COG_IR_LOWER_DECL_CONSTANT || binding->kind == COG_IR_LOWER_DECL_ENUM_MEMBER) {
                 CogIrConstId constant = binding->kind == COG_IR_LOWER_DECL_CONSTANT
@@ -2277,7 +2360,22 @@ static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
             CogIrValueId address = lower_identifier_place(state, node, &is_volatile);
             if (address == COG_IR_VALUE_INVALID)
                 return COG_IR_VALUE_INVALID;
-            return emit_load(state, address, binding->type, is_volatile, node->span);
+            CogIrValueId value = emit_load(state, address, binding->type, is_volatile, node->span);
+            if (value == COG_IR_VALUE_INVALID)
+                return COG_IR_VALUE_INVALID;
+
+            CogIrSlotId slot = COG_IR_SLOT_INVALID;
+            if (binding->kind == COG_IR_LOWER_DECL_LOCAL)
+                slot = binding->as.local.slot;
+            else if (binding->kind == COG_IR_LOWER_DECL_PARAMETER)
+                slot = binding->as.parameter.slot;
+            if (slot != COG_IR_SLOT_INVALID) {
+                const CogIrFunction *function = cog_ir_get_function(state->lower->module, state->function);
+                const CogIrSlot *ir_slot = function ? cog_ir_get_slot(function, slot) : NULL;
+                if (ir_slot && !annotate_value_abi(state, value, ir_slot->abi_type, node->span))
+                    return COG_IR_VALUE_INVALID;
+            }
+            return value;
         }
 
         case NODE_BINARY: {
@@ -2603,6 +2701,14 @@ static int bind_local_declaration(ExecLowerState *state, Node *node)
         lower_error(state->lower, node->span, "failed to allocate CogIR local slot");
         return 0;
     }
+    CogIrAbiTypeId declared_abi = info->abi_type
+        ? cog_ir_lower_abi_type(state->lower, info->abi_type)
+        : COG_IR_ABI_TYPE_INVALID;
+    if (info->abi_type && declared_abi == COG_IR_ABI_TYPE_INVALID)
+        return 0;
+    if (!annotate_slot_abi(state, slot, declared_abi, node->span))
+        return 0;
+
     binding->kind = COG_IR_LOWER_DECL_LOCAL;
     binding->as.local.function = state->function;
     binding->as.local.slot = slot;
@@ -2621,6 +2727,15 @@ static int bind_local_declaration(ExecLowerState *state, Node *node)
         }
         if (address == COG_IR_VALUE_INVALID || value == COG_IR_VALUE_INVALID)
             return 0;
+        if (declared_abi == COG_IR_ABI_TYPE_INVALID) {
+            const CogIrType *slot_type = cog_ir_get_type(state->lower->module, binding->type);
+            const CogIrFunction *function = cog_ir_get_function(state->lower->module, state->function);
+            const CogIrValue *ir_value = function ? cog_ir_get_value(function, value) : NULL;
+            if (slot_type && slot_type->kind == COG_IR_TYPE_FUNCTION &&
+                ir_value && ir_value->abi_type != COG_IR_ABI_TYPE_INVALID &&
+                !annotate_slot_abi(state, slot, ir_value->abi_type, node->span))
+                return 0;
+        }
         if (!emit_store(state, address, value, 0, node->span))
             return 0;
     }
@@ -3077,6 +3192,23 @@ static int bind_function_parameters(ExecLowerState *state, Node *function_node)
             return 0;
         }
         CogIrValueId incoming = function->parameters[i];
+        const CogIrType *parameter_type = cog_ir_get_type(
+            state->lower->module, binding->type);
+        int needs_value_abi = parameter_type &&
+            parameter_type->kind == COG_IR_TYPE_FUNCTION &&
+            parameter_type->as.function.abi == COG_IR_ABI_C;
+        CogIrAbiTypeId parameter_abi = needs_value_abi && info->abi_type
+            ? cog_ir_lower_abi_type(state->lower, info->abi_type)
+            : COG_IR_ABI_TYPE_INVALID;
+        if (needs_value_abi && (!info->abi_type || parameter_abi == COG_IR_ABI_TYPE_INVALID)) {
+            lower_error(state->lower, param->span,
+                        "missing normalized cfn ABI metadata during CogIR lowering");
+            return 0;
+        }
+        if (!annotate_value_abi(state, incoming, parameter_abi, param->span) ||
+            !annotate_slot_abi(state, slot, parameter_abi, param->span))
+            return 0;
+
         binding->kind = COG_IR_LOWER_DECL_PARAMETER;
         binding->as.parameter.function = state->function;
         binding->as.parameter.slot = slot;

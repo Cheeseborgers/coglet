@@ -1,8 +1,34 @@
-fibonacci :: (n: u32) -> u64 {
-    if (n == 0)
+Mode::enum(u8) {
+    Zero,
+    One,
+    Two,
+}
+
+Bundle::struct {
+    tag: i32;
+    values: i32[3];
+}
+
+global_seed: i32 = 9;
+global_values: i32[3] = [4, 5, 6];
+global_bundle: Bundle = Bundle {
+    tag = 7,
+    values = [8, 9, 10],
+};
+
+increment::(value: i32) -> i32 {
+    return value + 1;
+}
+
+decrement::(value: i32) -> i32 {
+    return value - 1;
+}
+
+fibonacci::(n: u32) -> u64 {
+    if n == 0
         return 0;
 
-    if (n == 1)
+    if n == 1
         return 1;
 
     a: u64 = 0;
@@ -17,6 +43,323 @@ fibonacci :: (n: u32) -> u64 {
     return b;
 }
 
-main :: () -> i32 {
-    return cast(i32, fibonacci(10));
+control_flow_checks::() -> i32 {
+    sum: i32 = 0;
+
+    for (i: i32 = 0; i < 6; i++) {
+        if i == 2
+            continue;
+        if i == 5
+            break;
+        sum = sum + i;
+    }
+
+    if sum != 8
+        return 1;
+
+    j: i32 = 0;
+    while j < 3
+        j++;
+
+    if j != 3
+        return 2;
+
+    k: i32 = 0;
+    compact_sum: i32 = 0;
+    for (k < 3 : k++)
+        compact_sum = compact_sum + k;
+
+    if compact_sum != 3
+        return 3;
+
+    if !(sum == 8 && j == 3)
+        return 4;
+
+    if sum == 0 || j == 0
+        return 5;
+
+    return 0;
+}
+
+integer_checks::() -> i32 {
+    a: i32 = 40;
+    b: i32 = 2;
+
+    if a + b != 42
+        return 11;
+    if -40 - b != -42
+        return 12;
+    if 6 * 7 != 42
+        return 13;
+    if 85 / b != 42
+        return 14;
+    if 85 % b != 1
+        return 15;
+    if -a != -40
+        return 16;
+
+    ua: u32 = 40;
+    ub: u32 = 2;
+    if ua + ub != 42
+        return 17;
+    if ua - ub != 38
+        return 18;
+    if cast(u32, 6) * cast(u32, 7) != 42
+        return 19;
+
+    if wrapping_add(cast(i8, 127), cast(i8, 1)) != -128
+        return 20;
+    if wrapping_sub(cast(i8, -128), cast(i8, 1)) != 127
+        return 21;
+    if wrapping_mul(cast(u8, 20), cast(u8, 20)) != 144
+        return 22;
+    if wrapping_neg(cast(u8, 1)) != 255
+        return 23;
+
+    bits_a: u8 = 170;
+    bits_b: u8 = 85;
+    if (bits_a & bits_b) != 0
+        return 24;
+    if (bits_a | bits_b) != 255
+        return 25;
+    if (bits_a ^ bits_b) != 255
+        return 26;
+    if ~bits_a != 85
+        return 27;
+
+    if (cast(u8, 42) << cast(u8, 1)) != 84
+        return 28;
+    if (cast(u8, 42) >> cast(i32, 1)) != 21
+        return 29;
+    if (cast(i8, -3) >> cast(i32, 1)) != -2
+        return 30;
+
+    wide_signed: i64 = 255;
+    wide_unsigned: u64 = 255;
+    if cast(u8, wide_signed) != 255
+        return 31;
+    if cast(i64, wide_unsigned) != 255
+        return 32;
+    if truncate(i8, wide_unsigned) != -1
+        return 33;
+    if truncate(u16, cast(i8, -1)) != 65535
+        return 34;
+
+    if cast(i16, Mode.Two) != 2
+        return 35;
+
+    return 0;
+}
+
+make_values::(base: i32) -> i32[3] {
+    return [base, base + 1, base + 2];
+}
+
+sum_values::(values: i32[3]) -> i32 {
+    return values[0] + values[1] + values[2];
+}
+
+make_bundle::(base: i32) -> Bundle {
+    return Bundle {
+        tag = base,
+        values = [base + 1, base + 2, base + 3],
+    };
+}
+
+memory_checks::() -> i32 {
+    values := make_values(11);
+    copy := values;
+    copy[1] = 20;
+
+    if values[1] != 12 || copy[1] != 20
+        return 41;
+
+    if sum_values(make_values(3)) != 12
+        return 42;
+
+    bundle := make_bundle(30);
+    extracted := bundle.values;
+    if bundle.tag != 30 || extracted[0] != 31 || extracted[2] != 33
+        return 43;
+
+    copied_bundle := bundle;
+    copied_bundle.values[0] = 99;
+    if bundle.values[0] != 31 || copied_bundle.values[0] != 99
+        return 44;
+
+    pointer: i32* = &copy[0];
+    pointer[2] = 41;
+
+    *cast(volatile i32*, pointer) = 19;
+    loaded := *cast(readonly volatile i32*, pointer);
+    if loaded != 19
+        return 45;
+
+    raw: opaque* = reinterpret(opaque*, pointer);
+    recovered: i32* = reinterpret(i32*, raw);
+    recovered[0] = 23;
+
+    if recovered != pointer || copy[0] != 23
+        return 46;
+
+    ro: readonly i32* = pointer;
+    if ro != cast(readonly i32*, pointer)
+        return 47;
+
+    missing: i32* = null;
+    if missing == pointer
+        return 48;
+
+    if global_seed != 9
+        return 49;
+    if global_values[0] != 4 || global_values[2] != 6
+        return 50;
+    if global_bundle.tag != 7 || global_bundle.values[1] != 9
+        return 51;
+
+    return 0;
+}
+
+float_checks::() -> i32 {
+    left: f64 = 2.75;
+    right: f64 = 3.75;
+    zero: f64 = 0.0;
+
+    sum := left + right;
+    difference := sum - 1.0;
+    product := difference * 2.0;
+    quotient := product / 4.0;
+    negative := -quotient;
+
+    if quotient != 2.75 || negative != -2.75
+        return 61;
+
+    nan := zero / zero;
+    if nan == nan
+        return 62;
+    if !(nan != nan)
+        return 63;
+    if nan < left || nan <= left || nan > left || nan >= left
+        return 64;
+
+    if cast(i32, left) != 2
+        return 65;
+    if cast(u8, right) != 3
+        return 66;
+
+    signed_float := cast(f64, cast(i64, -258));
+    unsigned_float := cast(f64, cast(u64, 255));
+    if signed_float != -258.0 || unsigned_float != 255.0
+        return 67;
+
+    narrow: f32 = cast(f32, 1.5);
+    widened := cast(f64, narrow);
+    if widened != 1.5
+        return 68;
+
+    narrowed := cast(f32, right);
+    if cast(f64, narrowed) != 3.75
+        return 69;
+
+    f32_sum := narrow + cast(f32, 0.5);
+    if cast(f64, f32_sum) != 2.0
+        return 70;
+
+    positive_infinity := left / zero;
+    narrowed_infinity := cast(f32, positive_infinity);
+    if !(cast(f64, narrowed_infinity) > 1e300)
+        return 71;
+
+    narrowed_nan := cast(f32, nan);
+    if narrowed_nan == narrowed_nan
+        return 72;
+
+    return 0;
+}
+
+integer_switch::(value: i32) -> i32 {
+    switch value {
+        case 1:
+            return 11;
+        case 2:
+            return 22;
+        default:
+            return 33;
+    }
+}
+
+boolean_switch::(value: bool) -> i32 {
+    switch value {
+        case false:
+            return 4;
+        case true:
+            return 5;
+    }
+}
+
+enum_switch::(value: Mode) -> i32 {
+    switch value {
+        case Mode.Zero:
+            return 1;
+        case Mode.One:
+            return 2;
+        case Mode.Two:
+            return 3;
+    }
+}
+
+switch_checks::() -> i32 {
+    if integer_switch(2) != 22
+        return 81;
+    if boolean_switch(true) != 5
+        return 82;
+    if enum_switch(Mode.One) != 2
+        return 83;
+    return 0;
+}
+
+indirect_call_checks::() -> i32 {
+    callback := decrement;
+    if true
+        callback = increment;
+
+    if callback(41) != 42
+        return 91;
+
+    callback = decrement;
+    if callback(43) != 42
+        return 92;
+
+    return 0;
+}
+
+main::() -> i32 {
+    result := control_flow_checks();
+    if result != 0
+        return result;
+
+    result = integer_checks();
+    if result != 0
+        return result;
+
+    result = memory_checks();
+    if result != 0
+        return result;
+
+    result = float_checks();
+    if result != 0
+        return result;
+
+    result = switch_checks();
+    if result != 0
+        return result;
+
+    result = indirect_call_checks();
+    if result != 0
+        return result;
+
+    if fibonacci(10) != 55
+        return 101;
+
+    return 200;
 }

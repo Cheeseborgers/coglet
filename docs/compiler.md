@@ -989,8 +989,10 @@ metadata. All 99 programs under `tests/test_assets/semantic/valid/` now lower an
 verify through `dump_ir`. Native-C variadic calls are legalized before the call:
 CogIR inserts `c.vararg.promote` for target-required integer/Boolean/enum and
 `f32` promotions, and the verifier rejects unpromoted C-variadic tails. The
-host-C backend now consumes only a frozen `CogIrModule`. Its current execution
-subset intentionally matches the pre-port backend surface: straight-line calls,
-constants, local loads/stores, C strings, pointer qualification, and C-vararg
-promotion are emitted, while checked arithmetic and structured CFG emission remain
-separate backend-expansion milestones.
+host-C backend now consumes only a frozen `CogIrModule`. Its execution subset
+includes the pre-port straight-line surface plus dedicated CogIR wrapping integer
+operations. Wrapping C emission performs the operation in unsigned `uint64_t`
+bit-pattern space, masks narrower widths explicitly, and reconstructs signed
+results without host signed overflow or implementation-defined narrowing. Checked
+arithmetic and structured CFG emission remain separate backend-expansion
+milestones.

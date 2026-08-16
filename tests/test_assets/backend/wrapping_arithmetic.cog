@@ -1,0 +1,56 @@
+#extern(c)
+coglet_backend_wrapping_probe::(
+    signed_add: c_schar,
+    signed_sub: c_schar,
+    signed_mul: c_schar,
+    signed_neg: c_schar,
+    unsigned_add: c_uchar,
+    unsigned_sub: c_uchar,
+    unsigned_mul: c_uchar,
+    unsigned_neg: c_uchar,
+    signed_wide_add: c_longlong,
+    signed_wide_neg: c_longlong
+) -> c_int;
+
+run_wrapping::(
+    signed_max: c_schar,
+    signed_min: c_schar,
+    signed_one: c_schar,
+    signed_sixty_four: c_schar,
+    unsigned_max: c_uchar,
+    unsigned_zero: c_uchar,
+    unsigned_one: c_uchar,
+    unsigned_twenty: c_uchar,
+    signed_wide_max: c_longlong,
+    signed_wide_min: c_longlong,
+    signed_wide_one: c_longlong
+) -> c_int {
+    return coglet_backend_wrapping_probe(
+        wrapping_add(signed_max, signed_one),
+        wrapping_sub(signed_min, signed_one),
+        wrapping_mul(signed_sixty_four, cast(c_schar, 2)),
+        wrapping_neg(signed_min),
+        wrapping_add(unsigned_max, unsigned_one),
+        wrapping_sub(unsigned_zero, unsigned_one),
+        wrapping_mul(unsigned_twenty, unsigned_twenty),
+        wrapping_neg(unsigned_one),
+        wrapping_add(signed_wide_max, signed_wide_one),
+        wrapping_neg(signed_wide_min)
+    );
+}
+
+main::() -> c_int {
+    return run_wrapping(
+        127,
+        -128,
+        1,
+        64,
+        255,
+        0,
+        1,
+        20,
+        9223372036854775807,
+        -9223372036854775808,
+        1
+    );
+}

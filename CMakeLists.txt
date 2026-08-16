@@ -705,6 +705,23 @@ set_tests_properties(
 )
 
 add_test(
+        NAME backend_wrapping_arithmetic
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/wrapping_arithmetic.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_wrapping_arithmetic
+        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
+        -DLIB_NAME=coglet_backend_link_support
+        -DSTYLE=joined
+        -DEXPECT_EXIT=93
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+)
+set_tests_properties(
+        backend_wrapping_arithmetic
+        PROPERTIES LABELS "backend;backend.c;ir;wrapping"
+)
+
+add_test(
         NAME backend_extern_c_repr_struct
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>

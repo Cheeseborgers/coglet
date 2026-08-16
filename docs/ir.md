@@ -1031,10 +1031,10 @@ pointer qualifiers, executable expressions, and the executable entry policy now
 has a CogIR-owned representation. `backend_c.h` accepts `const CogIrModule *` only,
 and the CLI freezes/verifies the module, destroys `CompileResult`, verifies the
 frozen module again, and only then invokes C emission. The current C execution
-emitter deliberately preserves the former backend subset: it supports the
-straight-line operations exercised by the executable/interop suite and rejects
-checked arithmetic or multi-block CFGs until those operations receive dedicated
-C lowering.
+emitter supports the straight-line operations exercised by the executable/interop
+suite and now lowers `iadd.wrap`, `isub.wrap`, `imul.wrap`, and `ineg.wrap` with
+explicit fixed-width bit-pattern semantics. It still rejects checked arithmetic
+or multi-block CFGs until those operations receive dedicated C lowering.
 
 ## Implementation sequence
 
@@ -1071,4 +1071,6 @@ C lowering.
     frontend lifetime ends before backend invocation, and the existing
     executable/interop suite runs through CogIR.
 14. Expand host-C instruction/CFG coverage from the current compatibility subset,
-    then begin LLVM lowering on the same verified CogIR contract.
+    then begin LLVM lowering on the same verified CogIR contract. Wrapping integer
+    arithmetic is now executable through host-C; checked arithmetic and structured
+    CFG remain the next backend slices.

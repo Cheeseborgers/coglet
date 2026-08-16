@@ -1088,6 +1088,151 @@ static char *constant_expr(CBackend *backend, CogIrConstId constant_id)
     return NULL;
 }
 
+static uint64_t integer_width_mask(unsigned bits)
+{
+    return bits == 64
+        ? UINT64_MAX
+        : ((UINT64_C(1) << bits) - UINT64_C(1));
+}
+
+static int emit_wrapping_integer_instruction(
+    CBackend *backend,
+    const CogIrFunction *function,
+    const CogIrInstruction *instruction,
+    char **exprs
+) {
+    const CogIrType *type = cog_ir_get_type(backend->module, instruction->result_type);
+    if (!type || type->kind != COG_IR_TYPE_INTEGER) {
+        backend_error(backend, instruction->span, "wrapping arithmetic requires an integer result type");
+        return 0;
+    }
+
+    unsigned bits = type->as.integer.bits;
+    if (bits != 8 && bits != 16 && bits != 32 && bits != 64) {
+        backend_error(backend, instruction->span, "wrapping arithmetic integer width is not supported by the host-C backend");
+        return 0;
+    }
+
+    const char *operand = NULL;
+    const char *lhs = NULL;
+    const char *rhs = NULL;
+    const char *operator_text = NULL;
+    switch (instruction->op) {
+        case COG_IR_OP_IADD_WRAP:
+            operator_text = "+";
+            break;
+        case COG_IR_OP_ISUB_WRAP:
+            operator_text = "-";
+            break;
+        case COG_IR_OP_IMUL_WRAP:
+            operator_text = "*";
+            break;
+        case COG_IR_OP_INEG_WRAP:
+            operand = value_expr(
+                exprs,
+                function->value_count,
+                instruction->as.unary.operand
+            );
+            break;
+        default:
+            backend_error(backend, instruction->span, "invalid wrapping arithmetic operation during C lowering");
+            return 0;
+    }
+
+    if (operator_text) {
+        lhs = value_expr(exprs, function->value_count, instruction->as.binary.lhs);
+        rhs = value_expr(exprs, function->value_count, instruction->as.binary.rhs);
+        if (!lhs || !rhs)
+            return 0;
+    } else if (!operand) {
+        return 0;
+    }
+
+    CogIrValueId result = instruction->result;
+    uint64_t mask = integer_width_mask(bits);
+    if (operator_text) {
+        fprintf(
+            backend->out,
+            "    uint64_t cg_wrap_bits_%u = ((uint64_t)(%s) %s (uint64_t)(%s))",
+            result,
+            lhs,
+            operator_text,
+            rhs
+        );
+    } else {
+        fprintf(
+            backend->out,
+            "    uint64_t cg_wrap_bits_%u = (UINT64_C(0) - (uint64_t)(%s))",
+            result,
+            operand
+        );
+    }
+    if (bits != 64)
+        fprintf(backend->out, " & UINT64_C(0x%" PRIx64 ")", mask);
+    fputs(";\n", backend->out);
+
+    const char *result_type = runtime_type_name(backend, instruction->result_type, instruction->span);
+    if (!result_type)
+        return 0;
+
+    if (!type->as.integer.is_signed) {
+        fprintf(
+            backend->out,
+            "    %s cg_v_%u = (%s)cg_wrap_bits_%u;\n",
+            result_type,
+            result,
+            result_type,
+            result
+        );
+    } else {
+        uint64_t sign_bit = UINT64_C(1) << (bits - 1);
+        uint64_t low_mask = sign_bit - UINT64_C(1);
+        if (bits == 64) {
+            fprintf(
+                backend->out,
+                "    %s cg_v_%u = (cg_wrap_bits_%u & UINT64_C(0x%" PRIx64 ")) "
+                "? (INT64_MIN + (int64_t)(cg_wrap_bits_%u & UINT64_C(0x%" PRIx64 "))) "
+                ": (int64_t)cg_wrap_bits_%u;\n",
+                result_type,
+                result,
+                result,
+                sign_bit,
+                result,
+                low_mask,
+                result
+            );
+        } else {
+            uint64_t min_magnitude = sign_bit;
+            fprintf(
+                backend->out,
+                "    %s cg_v_%u = (cg_wrap_bits_%u & UINT64_C(0x%" PRIx64 ")) "
+                "? (%s)(-INT64_C(%" PRIu64 ") + (int64_t)(cg_wrap_bits_%u & UINT64_C(0x%" PRIx64 "))) "
+                ": (%s)cg_wrap_bits_%u;\n",
+                result_type,
+                result,
+                result,
+                sign_bit,
+                result_type,
+                min_magnitude,
+                result,
+                low_mask,
+                result_type,
+                result
+            );
+        }
+    }
+
+    if (!set_value_expr(
+            exprs,
+            function->value_count,
+            result,
+            copy_printf("cg_v_%u", result))) {
+        backend_error(backend, instruction->span, "invalid wrapping arithmetic result during C lowering");
+        return 0;
+    }
+    return 1;
+}
+
 static int emit_instruction(
     CBackend *backend,
     const CogIrFunction *function,
@@ -1182,6 +1327,16 @@ static int emit_instruction(
                 goto invalid_result;
             return 1;
         }
+        case COG_IR_OP_IADD_WRAP:
+        case COG_IR_OP_ISUB_WRAP:
+        case COG_IR_OP_IMUL_WRAP:
+        case COG_IR_OP_INEG_WRAP:
+            if (!emit_wrapping_integer_instruction(backend, function, instruction, exprs)) {
+                if (!backend->had_error)
+                    goto missing_operand;
+                return 0;
+            }
+            return 1;
         case COG_IR_OP_CALL: {
             const char *callee = value_expr(exprs, value_count, instruction->as.call.callee);
             if (!callee)

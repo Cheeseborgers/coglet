@@ -381,3 +381,32 @@ int coglet_backend_volatile_probe(
 
     return 89;
 }
+
+int coglet_backend_wrapping_probe(
+    signed char signed_add,
+    signed char signed_sub,
+    signed char signed_mul,
+    signed char signed_neg,
+    unsigned char unsigned_add,
+    unsigned char unsigned_sub,
+    unsigned char unsigned_mul,
+    unsigned char unsigned_neg,
+    long long signed_wide_add,
+    long long signed_wide_neg
+)
+{
+    if (signed_add != -128 ||
+        signed_sub != 127 ||
+        signed_mul != -128 ||
+        signed_neg != -128 ||
+        unsigned_add != 0 ||
+        unsigned_sub != 255 ||
+        unsigned_mul != 144 ||
+        unsigned_neg != 255 ||
+        signed_wide_add != (-9223372036854775807LL - 1LL) ||
+        signed_wide_neg != (-9223372036854775807LL - 1LL)) {
+        return 94;
+    }
+
+    return 93;
+}

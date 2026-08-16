@@ -98,7 +98,10 @@ are rejected without `-o`. Backend-negative tests verify that runtime checked
 arithmetic is rejected until its CogIR operation receives host-C trapping
 lowering and that an unsupported explicit calling convention fails rather than
 being ignored. The incomplete-aggregate interop case also exercises runtime
-pointer-qualification lowering across a C call result before C emission.
+pointer-qualification lowering across a C call result before C emission. The
+wrapping-arithmetic executable regression checks runtime signed/unsigned narrow
+wraparound and the signed 64-bit minimum edge through dedicated CogIR wrapping
+operations rather than constant folding.
 
 Run the backend suite with:
 

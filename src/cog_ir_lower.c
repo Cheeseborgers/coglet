@@ -1474,6 +1474,140 @@ static CogIrValueId lower_logical_expression(ExecLowerState *state, Node *node)
     return join_value;
 }
 
+static CogIrValueId lower_wrapping_builtin_call(
+    ExecLowerState *state,
+    Node *node,
+    BuiltinKind builtin_kind
+) {
+    size_t expected_count = builtin_kind == BUILTIN_WRAPPING_NEG ? 1u : 2u;
+    if ((size_t)node->as.call.arguments.count != expected_count) {
+        lower_error(state->lower, node->span, "wrapping builtin has invalid checked argument count during CogIR lowering");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
+    Type *result_sem_type = semantic_get_effective_expr_type(sem, node);
+    CogIrTypeId result_type = cog_ir_lower_type(state->lower, result_sem_type);
+    if (result_type == COG_IR_TYPE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrOp op = (CogIrOp)-1;
+    switch (builtin_kind) {
+        case BUILTIN_WRAPPING_ADD: op = COG_IR_OP_IADD_WRAP; break;
+        case BUILTIN_WRAPPING_SUB: op = COG_IR_OP_ISUB_WRAP; break;
+        case BUILTIN_WRAPPING_MUL: op = COG_IR_OP_IMUL_WRAP; break;
+        case BUILTIN_WRAPPING_NEG: op = COG_IR_OP_INEG_WRAP; break;
+        case BUILTIN_NONE:
+            break;
+    }
+    if ((int)op < 0) {
+        lower_error(state->lower, node->span, "unknown wrapping builtin during CogIR lowering");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    Node *first_node = node->as.call.arguments.items[0];
+    CogIrValueId first = lower_expression(state, first_node);
+    if (first == COG_IR_VALUE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    if (expected_count == 1u) {
+        CogIrInstruction instruction = {
+            .op = op,
+            .result_type = result_type,
+            .span = node->span,
+            .as.unary = { .operand = first },
+        };
+        return emit_instruction_value(state, instruction);
+    }
+
+    Node *second_node = node->as.call.arguments.items[1];
+    CogIrSlotId first_spill = COG_IR_SLOT_INVALID;
+    if (expression_may_create_cfg(state, second_node)) {
+        first_spill = spill_value(state, first, first_node->span);
+        if (first_spill == COG_IR_SLOT_INVALID)
+            return COG_IR_VALUE_INVALID;
+    }
+
+    CogIrValueId second = lower_expression(state, second_node);
+    if (second == COG_IR_VALUE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    if (first_spill != COG_IR_SLOT_INVALID) {
+        first = reload_spill(state, first_spill, first_node->span);
+        if (first == COG_IR_VALUE_INVALID)
+            return COG_IR_VALUE_INVALID;
+    }
+
+    CogIrInstruction instruction = {
+        .op = op,
+        .result_type = result_type,
+        .span = node->span,
+        .as.binary = { .lhs = first, .rhs = second },
+    };
+    return emit_instruction_value(state, instruction);
+}
+
+static CogIrTypeId c_variadic_promotion_target(
+    CogIrModule *module,
+    CogIrTypeId source_type
+)
+{
+    const CogIrType *source = cog_ir_get_type(module, source_type);
+    if (!source)
+        return COG_IR_TYPE_INVALID;
+
+    if (source->kind == COG_IR_TYPE_BOOL)
+        return cog_ir_type_integer(module, module->target.c_int_bits, 1);
+
+    if (source->kind == COG_IR_TYPE_FLOAT && source->as.floating.bits == 32)
+        return cog_ir_type_float(module, 64);
+
+    const CogIrType *integer = source;
+    if (source->kind == COG_IR_TYPE_ENUM)
+        integer = cog_ir_get_type(module, source->as.enumeration.backing_type);
+
+    if (integer && integer->kind == COG_IR_TYPE_INTEGER &&
+        integer->as.integer.bits < module->target.c_int_bits) {
+        /* A strictly wider C int represents every value of both the signed and
+         * unsigned source width, so the C integer promotions select int. */
+        return cog_ir_type_integer(module, module->target.c_int_bits, 1);
+    }
+
+    return source_type;
+}
+
+static CogIrValueId lower_c_variadic_argument(
+    ExecLowerState *state,
+    CogIrValueId value,
+    SourceSpan span
+)
+{
+    const CogIrFunction *function =
+        cog_ir_get_function(state->lower->module, state->function);
+    const CogIrValue *source_value = function ? cog_ir_get_value(function, value) : NULL;
+    if (!source_value) {
+        lower_error(state->lower, span, "C variadic argument has no CogIR value");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    CogIrTypeId target =
+        c_variadic_promotion_target(state->lower->module, source_value->type);
+    if (target == COG_IR_TYPE_INVALID) {
+        lower_error(state->lower, span, "failed to determine C variadic promotion type");
+        return COG_IR_VALUE_INVALID;
+    }
+    if (target == source_value->type)
+        return value;
+
+    return emit_conversion(
+        state,
+        COG_IR_OP_C_VARARG_PROMOTE,
+        value,
+        target,
+        span
+    );
+}
+
 static CogIrValueId lower_call_expression(ExecLowerState *state, Node *node)
 {
     size_t count = (size_t)node->as.call.arguments.count;
@@ -1482,6 +1616,20 @@ static CogIrValueId lower_call_expression(ExecLowerState *state, Node *node)
     CogIrValueId callee = lower_expression(state, node->as.call.callee);
     if (callee == COG_IR_VALUE_INVALID)
         return COG_IR_VALUE_INVALID;
+
+    const CogIrFunction *function =
+        cog_ir_get_function(state->lower->module, state->function);
+    const CogIrValue *callee_value = function ? cog_ir_get_value(function, callee) : NULL;
+    const CogIrType *callee_type =
+        callee_value ? cog_ir_get_type(state->lower->module, callee_value->type) : NULL;
+    if (!callee_type || callee_type->kind != COG_IR_TYPE_FUNCTION) {
+        lower_error(state->lower, node->span, "call callee has no CogIR function type");
+        return COG_IR_VALUE_INVALID;
+    }
+    const size_t fixed_parameter_count = callee_type->as.function.parameter_count;
+    const int is_c_variadic =
+        callee_type->as.function.abi == COG_IR_ABI_C &&
+        callee_type->as.function.is_variadic;
 
     CogIrSlotId callee_slot = COG_IR_SLOT_INVALID;
     CogIrSlotId *argument_slots = NULL;
@@ -1514,6 +1662,17 @@ static CogIrValueId lower_call_expression(ExecLowerState *state, Node *node)
         if (argument == COG_IR_VALUE_INVALID) {
             free(arguments); free(argument_slots);
             return COG_IR_VALUE_INVALID;
+        }
+        if (is_c_variadic && i >= fixed_parameter_count) {
+            argument = lower_c_variadic_argument(
+                state,
+                argument,
+                node->as.call.arguments.items[i]->span
+            );
+            if (argument == COG_IR_VALUE_INVALID) {
+                free(arguments); free(argument_slots);
+                return COG_IR_VALUE_INVALID;
+            }
         }
         if (needs_spills) {
             argument_slots[i] = spill_value(state, argument, node->as.call.arguments.items[i]->span);
@@ -2205,8 +2364,12 @@ static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
             return emit_instruction_value(state, instruction);
         }
 
-        case NODE_CALL:
+        case NODE_CALL: {
+            SemExprInfo *call_info = semantic_get_expr_info(sem, node);
+            if (call_info && call_info->symbol && call_info->symbol->kind == SYMBOL_BUILTIN)
+                return lower_wrapping_builtin_call(state, node, call_info->symbol->builtin_kind);
             return lower_call_expression(state, node);
+        }
 
         default:
             lower_error(state->lower, node->span, "expression is outside the current CogIR executable-lowering slice");

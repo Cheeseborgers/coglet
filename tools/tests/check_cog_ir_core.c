@@ -312,6 +312,71 @@ int main(void)
     arena_destroy(diag_arena);
     cog_ir_module_destroy(&bad);
 
+    /* Negative verifier regression: C variadic tails must already carry the
+     * target default argument promotions before the call instruction. */
+    CogIrModule bad_vararg;
+    cog_ir_module_init(&bad_vararg, &target);
+    CogIrTypeId vararg_void = cog_ir_type_void(&bad_vararg);
+    CogIrTypeId vararg_bool = cog_ir_type_bool(&bad_vararg);
+    CogIrTypeId vararg_int = cog_ir_type_integer(
+        &bad_vararg, target.c_int_bits, 1);
+    CogIrTypeId vararg_params[] = { vararg_int };
+    CogIrTypeId variadic_type = cog_ir_type_function(
+        &bad_vararg, vararg_void, vararg_params, 1,
+        COG_IR_ABI_C, COG_IR_CALL_DEFAULT, 1);
+    CogIrFunctionId variadic = cog_ir_add_function(
+        &bad_vararg, string_view_from_cstr("variadic"), source_span_invalid(),
+        variadic_type, COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_EXTERNAL, 0, NULL);
+    CogIrTypeId caller_type = cog_ir_type_function(
+        &bad_vararg, vararg_void, NULL, 0,
+        COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
+    CogIrFunctionId caller = cog_ir_add_function(
+        &bad_vararg, string_view_from_cstr("caller"), source_span_invalid(),
+        caller_type, COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
+    CogIrBlockId caller_entry = cog_ir_add_block(
+        &bad_vararg, caller, string_view_from_cstr("entry"), source_span_invalid());
+
+    op = instruction(COG_IR_OP_FUNCTION_REF, variadic_type, source_span_invalid());
+    op.as.function_ref.function = variadic;
+    CogIrValueId variadic_ref = COG_IR_VALUE_INVALID;
+    if (!cog_ir_emit(&bad_vararg, caller, caller_entry, &op, &variadic_ref))
+        return fail("negative variadic function_ref emission failed");
+
+    CogIrConstId marker_const = cog_ir_const_integer(&bad_vararg, vararg_int, 1);
+    op = instruction(COG_IR_OP_CONST, vararg_int, source_span_invalid());
+    op.as.constant.constant = marker_const;
+    CogIrValueId marker_value = COG_IR_VALUE_INVALID;
+    if (!cog_ir_emit(&bad_vararg, caller, caller_entry, &op, &marker_value))
+        return fail("negative variadic marker emission failed");
+
+    CogIrConstId bool_const = cog_ir_const_bool(&bad_vararg, vararg_bool, 1);
+    op = instruction(COG_IR_OP_CONST, vararg_bool, source_span_invalid());
+    op.as.constant.constant = bool_const;
+    CogIrValueId bool_value = COG_IR_VALUE_INVALID;
+    if (!cog_ir_emit(&bad_vararg, caller, caller_entry, &op, &bool_value))
+        return fail("negative variadic bool emission failed");
+
+    CogIrValueId call_args[] = { marker_value, bool_value };
+    op = instruction(COG_IR_OP_CALL, COG_IR_TYPE_INVALID, source_span_invalid());
+    op.as.call.callee = variadic_ref;
+    op.as.call.arguments = call_args;
+    op.as.call.argument_count = 2;
+    if (!cog_ir_emit(&bad_vararg, caller, caller_entry, &op, NULL))
+        return fail("negative variadic call emission failed");
+
+    term = ret_void(source_span_invalid());
+    if (!cog_ir_set_terminator(&bad_vararg, caller, caller_entry, &term))
+        return fail("negative variadic terminator emission failed");
+
+    cog_ir_module_freeze(&bad_vararg);
+    diag_arena = arena_create(4096);
+    diagnostic_list_init(&diagnostics, diag_arena);
+    if (cog_ir_verify(&bad_vararg, &diagnostics) || diagnostics.count == 0)
+        return fail("verifier accepted an unpromoted C variadic argument");
+
+    arena_destroy(diag_arena);
+    cog_ir_module_destroy(&bad_vararg);
+
     puts("CogIR core builder/verifier/dump passed");
     return 0;
 }

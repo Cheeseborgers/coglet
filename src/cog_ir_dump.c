@@ -215,6 +215,7 @@ static void dump_instruction(FILE *stream, const CogIrModule *module, const CogI
         case COG_IR_OP_INT_TRUNCATE:
         case COG_IR_OP_PTR_REINTERPRET:
         case COG_IR_OP_PTR_QUALIFY:
+        case COG_IR_OP_C_VARARG_PROMOTE:
             fprintf(stream, " %%%u to ", instruction->as.conversion.operand);
             dump_type_ref(stream, module, instruction->as.conversion.target_type);
             break;
@@ -330,6 +331,11 @@ void cog_ir_dump(FILE *stream, const CogIrModule *module)
             if (p) fprintf(stream, ", ");
             fprintf(stream, "%%%u: ", function->parameters[p]);
             dump_type_ref(stream, module, type->as.function.parameter_types[p]);
+        }
+        if (type->as.function.is_variadic) {
+            if (function->parameter_count)
+                fprintf(stream, ", ");
+            fprintf(stream, "...");
         }
         fprintf(stream, ") -> ");
         dump_type_ref(stream, module, type->as.function.result_type);

@@ -1,0 +1,129 @@
+module target(pointer=64)
+func @f0 "choose_i8"(%0: bool) -> i8 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : bool "flag"
+  bb0 "entry"():
+    %1 = local_addr $s0
+    store %1, %0
+    %2 = local_addr $s0
+    %3 = load %2
+    cond_br %3, bb1(), bb2()
+  bb1 "if.then"():
+    %4 = const i8 @c0(0x1)
+    ret %4
+  bb2 "if.end"():
+    %5 = const i8 @c1(0x2)
+    ret %5
+}
+func @f1 "wrapping_ops"(%0: i8, %1: i8, %2: u64, %3: u64, %4: bool, %5: bool) -> i8 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : i8 "signed_left"
+    $s1 : i8 "signed_right"
+    $s2 : u64 "unsigned_left"
+    $s3 : u64 "unsigned_right"
+    $s4 : bool "a"
+    $s5 : bool "b"
+    $s6 : i8 "signed_add"
+    $s7 : i8 "signed_sub"
+    $s8 : i8 "signed_mul"
+    $s9 : i8 "signed_neg"
+    $s10 : u64 "unsigned_add"
+    $s11 : u64 "unsigned_sub"
+    $s12 : u64 "unsigned_mul"
+    $s13 : u64 "unsigned_neg"
+    $s14 : i8 ".cfg.tmp"
+    $s15 : fn(bool) -> i8 ".cfg.tmp"
+    $s16 : bool ".cfg.tmp"
+  bb0 "entry"():
+    %6 = local_addr $s0
+    store %6, %0
+    %7 = local_addr $s1
+    store %7, %1
+    %8 = local_addr $s2
+    store %8, %2
+    %9 = local_addr $s3
+    store %9, %3
+    %10 = local_addr $s4
+    store %10, %4
+    %11 = local_addr $s5
+    store %11, %5
+    %12 = local_addr $s6
+    %13 = local_addr $s0
+    %14 = load %13
+    %15 = local_addr $s1
+    %16 = load %15
+    %17 = iadd.wrap %14, %16
+    store %12, %17
+    %18 = local_addr $s7
+    %19 = local_addr $s0
+    %20 = load %19
+    %21 = local_addr $s1
+    %22 = load %21
+    %23 = isub.wrap %20, %22
+    store %18, %23
+    %24 = local_addr $s8
+    %25 = local_addr $s0
+    %26 = load %25
+    %27 = local_addr $s1
+    %28 = load %27
+    %29 = imul.wrap %26, %28
+    store %24, %29
+    %30 = local_addr $s9
+    %31 = local_addr $s0
+    %32 = load %31
+    %33 = ineg.wrap %32
+    store %30, %33
+    %34 = local_addr $s10
+    %35 = local_addr $s2
+    %36 = load %35
+    %37 = local_addr $s3
+    %38 = load %37
+    %39 = iadd.wrap %36, %38
+    store %34, %39
+    %40 = local_addr $s11
+    %41 = local_addr $s2
+    %42 = load %41
+    %43 = local_addr $s3
+    %44 = load %43
+    %45 = isub.wrap %42, %44
+    store %40, %45
+    %46 = local_addr $s12
+    %47 = local_addr $s2
+    %48 = load %47
+    %49 = local_addr $s3
+    %50 = load %49
+    %51 = imul.wrap %48, %50
+    store %46, %51
+    %52 = local_addr $s13
+    %53 = local_addr $s2
+    %54 = load %53
+    %55 = ineg.wrap %54
+    store %52, %55
+    %56 = local_addr $s6
+    %57 = load %56
+    %58 = local_addr $s14
+    store %58, %57
+    %59 = function_ref @f0
+    %60 = local_addr $s15
+    store %60, %59
+    %61 = local_addr $s4
+    %62 = load %61
+    %64 = const bool @c2(false)
+    cond_br %62, bb1(), bb2(%64)
+  bb1 "logic.and.rhs"():
+    %65 = local_addr $s5
+    %66 = load %65
+    br bb2(%66)
+  bb2 "logic.and.join"(%63: bool):
+    %67 = local_addr $s16
+    store %67, %63
+    %68 = local_addr $s15
+    %69 = load %68
+    %70 = local_addr $s16
+    %71 = load %70
+    %72 = call %69(%71)
+    %73 = local_addr $s14
+    %74 = load %73
+    %75 = iadd.wrap %74, %72
+    ret %75
+}

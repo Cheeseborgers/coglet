@@ -161,6 +161,48 @@ set_tests_properties(
 )
 
 add_test(
+        NAME cog_ir_wrapping_lowering_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/wrapping_lowering.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/wrapping_lowering.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_wrapping_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;wrapping;builtin"
+)
+
+add_test(
+        NAME cog_ir_c_variadic_lowering_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/c_variadic_lowering.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/c_variadic_lowering.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_c_variadic_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;interop;abi;variadic"
+)
+
+add_test(
+        NAME cog_ir_semantic_valid_fixture_suite
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DFIXTURE_DIR=${CMAKE_SOURCE_DIR}/tests/test_assets/semantic/valid
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_ir_valid_suite.cmake"
+)
+set_tests_properties(
+        cog_ir_semantic_valid_fixture_suite
+        PROPERTIES LABELS "ir;ir.lowering;ir.integration;semantic;semantic.valid"
+)
+
+add_test(
         NAME cog_ir_semantic_valid_integration
         COMMAND $<TARGET_FILE:dump_ir> ${CMAKE_SOURCE_DIR}/tests/test_assets/semantic_valid.cog
 )

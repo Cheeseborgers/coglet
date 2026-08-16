@@ -319,6 +319,9 @@ typedef enum CogIrOp {
     COG_IR_OP_PTR_REINTERPRET,
     COG_IR_OP_PTR_QUALIFY,
 
+    /* Target-C default argument promotion at a variadic call boundary. */
+    COG_IR_OP_C_VARARG_PROMOTE,
+
     COG_IR_OP_CALL,
 } CogIrOp;
 

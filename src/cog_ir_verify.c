@@ -87,6 +87,85 @@ static unsigned integer_width(const CogIrModule *module, CogIrTypeId id)
     return 0;
 }
 
+static int is_native_c_int_type(const CogIrModule *module, const CogIrType *type)
+{
+    return type && type->kind == COG_IR_TYPE_INTEGER &&
+           type->as.integer.bits == module->target.c_int_bits &&
+           type->as.integer.is_signed;
+}
+
+static int c_vararg_promotion_valid(
+    const CogIrModule *module,
+    const CogIrType *source,
+    const CogIrType *target
+)
+{
+    if (!source || !target || source->id == target->id)
+        return 0;
+
+    if (source->kind == COG_IR_TYPE_BOOL)
+        return is_native_c_int_type(module, target);
+
+    if (source->kind == COG_IR_TYPE_FLOAT)
+        return source->as.floating.bits == 32 &&
+               target->kind == COG_IR_TYPE_FLOAT &&
+               target->as.floating.bits == 64;
+
+    const CogIrType *integer = source;
+    if (source->kind == COG_IR_TYPE_ENUM) {
+        if (!source->as.enumeration.is_repr_c)
+            return 0;
+        integer = cog_ir_get_type(module, source->as.enumeration.backing_type);
+    }
+
+    return integer && integer->kind == COG_IR_TYPE_INTEGER &&
+           integer->as.integer.bits < module->target.c_int_bits &&
+           is_native_c_int_type(module, target);
+}
+
+static int c_vararg_argument_type_is_legal(
+    const CogIrModule *module,
+    CogIrTypeId type_id
+)
+{
+    const CogIrType *type = cog_ir_get_type(module, type_id);
+    if (!type)
+        return 0;
+
+    switch (type->kind) {
+        case COG_IR_TYPE_INTEGER:
+            return type->as.integer.bits >= module->target.c_int_bits;
+
+        case COG_IR_TYPE_FLOAT:
+            return type->as.floating.bits == 64;
+
+        case COG_IR_TYPE_POINTER:
+        case COG_IR_TYPE_OPAQUE_POINTER:
+            return 1;
+
+        case COG_IR_TYPE_ENUM: {
+            if (!type->as.enumeration.is_repr_c)
+                return 0;
+            const CogIrType *backing =
+                cog_ir_get_type(module, type->as.enumeration.backing_type);
+            return backing && backing->kind == COG_IR_TYPE_INTEGER &&
+                   backing->as.integer.bits >= module->target.c_int_bits;
+        }
+
+        case COG_IR_TYPE_FUNCTION:
+            return type->as.function.abi == COG_IR_ABI_C;
+
+        case COG_IR_TYPE_VOID:
+        case COG_IR_TYPE_BOOL:
+        case COG_IR_TYPE_ARRAY:
+        case COG_IR_TYPE_STRUCT:
+        case COG_IR_TYPE_UNION:
+            return 0;
+    }
+
+    return 0;
+}
+
 static int constant_matches_type(
     const CogIrModule *module,
     const CogIrConstant *constant,
@@ -591,6 +670,27 @@ static int verify_instruction(
             break;
         }
 
+        case COG_IR_OP_C_VARARG_PROMOTE: {
+            REQUIRE_VALUE(instruction->as.conversion.operand, "operand");
+            const CogIrValue *operand =
+                cog_ir_get_value(function, instruction->as.conversion.operand);
+            const CogIrType *source = operand
+                ? cog_ir_get_type(module, operand->type)
+                : NULL;
+            const CogIrType *target = cog_ir_get_type(module, instruction->result_type);
+            if (!operand ||
+                instruction->as.conversion.target_type != instruction->result_type ||
+                !c_vararg_promotion_valid(module, source, target)) {
+                ir_error(
+                    diagnostics,
+                    instruction->span,
+                    "c.vararg.promote does not match a required C default argument promotion"
+                );
+                ok = 0;
+            }
+            break;
+        }
+
         case COG_IR_OP_CALL: {
             REQUIRE_VALUE(instruction->as.call.callee, "callee");
             const CogIrValue *callee = cog_ir_get_value(function, instruction->as.call.callee);
@@ -608,9 +708,20 @@ static int verify_instruction(
             for (size_t i = 0; i < instruction->as.call.argument_count; ++i) {
                 REQUIRE_VALUE(instruction->as.call.arguments[i], "call argument");
                 const CogIrValue *argument = cog_ir_get_value(function, instruction->as.call.arguments[i]);
-                if (i < callee_type->as.function.parameter_count &&
-                    (!argument || argument->type != callee_type->as.function.parameter_types[i])) {
-                    ir_error(diagnostics, instruction->span, "call argument %zu has wrong type", i);
+                if (i < callee_type->as.function.parameter_count) {
+                    if (!argument || argument->type != callee_type->as.function.parameter_types[i]) {
+                        ir_error(diagnostics, instruction->span, "call argument %zu has wrong type", i);
+                        ok = 0;
+                    }
+                } else if (callee_type->as.function.is_variadic &&
+                           callee_type->as.function.abi == COG_IR_ABI_C &&
+                           (!argument || !c_vararg_argument_type_is_legal(module, argument->type))) {
+                    ir_error(
+                        diagnostics,
+                        instruction->span,
+                        "C variadic call argument %zu is not default-promoted or ABI-legal",
+                        i
+                    );
                     ok = 0;
                 }
             }
@@ -1002,6 +1113,17 @@ int cog_ir_verify(const CogIrModule *module, DiagnosticList *diagnostics)
                 break;
             }
             case COG_IR_TYPE_FUNCTION:
+                if (type->as.function.is_variadic &&
+                    (type->as.function.abi != COG_IR_ABI_C ||
+                     type->as.function.calling_convention == COG_IR_CALL_STDCALL)) {
+                    ir_error(
+                        diagnostics,
+                        type->span,
+                        "variadic function type %%t%zu must use the C ABI and may not use stdcall",
+                        i
+                    );
+                    ok = 0;
+                }
                 if (!cog_ir_get_type(module, type->as.function.result_type)) {
                     ir_error(diagnostics, type->span, "function type %%t%zu has invalid return type", i);
                     ok = 0;

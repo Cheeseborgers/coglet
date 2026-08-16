@@ -300,10 +300,15 @@ Represented aggregate metadata retains struct-vs-union, incomplete, packed, and
 explicit-alignment information. Represented enum metadata retains its exact C
 backing spelling.
 
-Concrete C variadic default promotions remain ABI-lowering work. CogIR call
-sites retain the C-variadic function contract and already-concrete Coglet
-argument values; an LLVM/native ABI lowering phase must perform the target C
-default promotions that the host-C backend can delegate to the C compiler.
+C variadic default promotions are explicit in executable CogIR. Before a
+value enters the variadic tail of a native-C call, lowering inserts
+`c.vararg.promote` whenever the target C ABI changes its runtime representation:
+`bool` and integer/`#repr(c)` enum values narrower than native `c_int` become
+native-width signed `c_int`, and `f32` becomes `f64`/C `double`. Values already
+at or above the promoted representation, supported pointers, native C function
+values, and already-materialized `c_int`/`f64` literals pass through unchanged.
+The verifier rejects a C-variadic call whose tail still contains a representation
+that requires one of these default promotions.
 
 ## Constants
 
@@ -556,6 +561,7 @@ cast.checked        source value -> concrete destination type
 int.truncate        integer -> concrete integer destination
 ptr.reinterpret     typed raw pointer <-> opaque raw pointer
 ptr.qualify         immediate readonly/volatile addition when needed
+c.vararg.promote    required non-trapping C default argument promotion
 ```
 
 `cast.checked` retains trap semantics for runtime-dependent checked numeric
@@ -567,6 +573,9 @@ but CogIR v1 keeps the source semantic contract explicit.
 
 Contextual numeric materialization normally disappears into the selected
 constant/instruction type rather than generating a runtime conversion.
+`c.vararg.promote` is different: it is ABI legalization, not a checked Coglet
+cast, and therefore cannot trap. Its source type determines signed versus
+unsigned integer extension; `#repr(c)` enums use their CogIR backing type.
 
 ## Function values and calls
 
@@ -584,8 +593,10 @@ source span
 ```
 
 The callee's function type carries ABI/calling-convention/variadic information.
-The verifier checks fixed arguments against the concrete signature. ABI-specific
-variadic promotions are handled by the ABI lowering/backend as described above.
+The verifier checks fixed arguments against the concrete signature, requires
+variadic function types to use the native-C ABI (and not `stdcall`), and requires
+C-variadic tail values to be ABI-legal after default promotion. Lowering emits
+`c.vararg.promote` before the call when the target representation changes.
 
 Nested Coglet functions are closure-free today. They therefore lower as ordinary
 module-level internal functions with unique IDs; lexical nesting affects source
@@ -989,11 +1000,27 @@ The large `tests/test_assets/semantic_valid.cog` fixture is now an executable
 CogIR integration target after its previously-uninitialized arrays are given
 explicit initial values. A separate data/address golden test covers fields,
 indexes, aggregates, pointers, volatile access, casts/reinterpretation, character
-and string values, and the C-string boundary. At this stage 98 of the 99
-`semantic/valid` fixture programs lower successfully through `dump_ir`; the
-remaining fixture exercises `wrapping_*` compiler builtins, which stay in the
-next operation-lowering slice. C variadic ABI legalization also remains backend/
-ABI work rather than part of generic data/address lowering.
+and string values, and the C-string boundary. Runtime `wrapping_add`,
+`wrapping_sub`, `wrapping_mul`, and `wrapping_neg` calls
+now lower to their dedicated wrapping instructions. The lowerer preserves ordinary
+left-to-right evaluation and spills an earlier operand when a later wrapping
+argument can introduce CFG. Compile-time wrapping calls still use semantic
+constant metadata and therefore materialize as typed CogIR constants.
+
+All 99 `semantic/valid` fixture programs now lower successfully through `dump_ir`.
+A registered integration test recursively runs the entire fixture directory so
+future frontend-valid additions must also cross the CogIR boundary. Native-C
+variadic tails are now legalized in CogIR with explicit `c.vararg.promote`
+instructions, and the verifier rejects unpromoted tails.
+
+The host-C parity audit found one source-level policy fact that is not yet retained
+by CogIR: the current executable backend distinguishes `main::() -> c_int` from a
+plain fixed-width `i32` return, while both become the same runtime CogIR integer
+type. That entry-point spelling policy must either be normalized into IR-owned
+metadata or deliberately relaxed before the host-C backend can become CogIR-only.
+All other data presently consumed from normalized C ABI declarations, represented
+aggregates/enums, function/callback types, calling conventions, external symbols,
+pointer qualifiers, and executable expressions has a CogIR-owned representation.
 
 ## Implementation sequence
 
@@ -1012,10 +1039,17 @@ ABI work rather than part of generic data/address lowering.
 8. ~~Add pointers, arrays, structs, volatile memory, casts, and string/data lowering.~~
    Places now cover identifiers, fields, indexes, and dereferences; aggregate values,
    address-of, casts/reinterpretation, volatile accesses, and string/character values
-   are lowered and verifier-checked. Wrapping builtins and ABI-specific call
-   legalization remain separate.
+   are lowered and verifier-checked.
 9. ~~Make successful lowering independent: destroy `CompileResult` before invoking
    IR-only test consumers.~~ `dump_ir` verifies and dumps after frontend destruction.
-10. Port the host-C backend to `const CogIrModule *` and restore all backend
-    tests through AST -> semantic -> CogIR -> C.
-11. Only after that boundary is proven, add LLVM lowering.
+10. ~~Lower explicit wrapping builtins to dedicated wrapping operations.~~ Runtime
+    wrapping calls now emit `iadd.wrap`, `isub.wrap`, `imul.wrap`, or `ineg.wrap`,
+    while constant calls retain the existing constant-materialization path.
+11. ~~Audit and legalize ABI-specific calls, including C variadic default promotions.~~
+    C variadic tails now carry explicit non-trapping promotion operations and
+    verifier enforcement. The backend-parity audit identified only the current
+    `main::() -> c_int` source-spelling policy as missing IR-owned information.
+12. Resolve that entry-point parity decision, port the host-C backend to
+    `const CogIrModule *`, and restore all backend tests through
+    AST -> semantic -> CogIR -> C.
+13. Only after that boundary is proven, add LLVM lowering.

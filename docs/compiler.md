@@ -845,8 +845,11 @@ and supported C literal boundaries.
 Explicit casts are intentionally not represented as contextual conversions:
 their conversion kind and destination already exist explicitly in the
 `NODE_CAST` AST. Likewise, C default argument promotions for already-concrete
-variadic values (for example `f32` to C `double`) remain ABI-lowering rules.
-Only otherwise-untyped variadic literals receive semantic materialization.
+variadic values remain ABI-lowering rules rather than semantic contextual
+conversions. Only otherwise-untyped variadic literals receive semantic
+materialization; CogIR lowering now legalizes concrete variadic values with an
+explicit non-trapping `c.vararg.promote` operation (`bool`/narrow integer or
+`#repr(c)` enum -> native `c_int`, `f32` -> `f64`).
 
 ## Normalized ABI Declaration Metadata
 
@@ -896,14 +899,17 @@ semantic type directly.
 
 The host-C backend now consumes this normalized metadata for C linkage,
 calling conventions, external symbols, represented aggregate layout, C enum
-backing types, and C-facing function/field type spelling. Its remaining direct
-source-type reads are ordinary Coglet implementation details plus the current
-host-executable `main::() -> c_int` policy, not interpretation of ABI
-annotations.
+backing types, and C-facing function/field type spelling. CogIR already copies
+those contracts into IR-owned declarations and now also makes C-variadic default
+promotions explicit.
 
-This is the intended pre-IR boundary: CogIR lowering can copy these facts into
-IR-owned declarations once, after which native/LLVM/host-C backends will not
-need syntax nodes to recover ABI intent.
+A parity audit before the host-C port found one remaining frontend-only policy
+fact: the executable backend currently requires the source spelling
+`main::() -> c_int`, while CogIR canonicalizes both `c_int` and a same-width
+signed Coglet integer to the same runtime type. That entry-point rule needs an
+IR-owned marker/ABI spelling or an intentional policy change before the backend
+can consume only CogIR. No other current host-C ABI annotation interpretation
+needs AST or semantic objects after lowering.
 
 ## Semantic-Information Verification
 
@@ -970,7 +976,13 @@ and by-value flow, address-of/dereference, checked/truncating/reinterpret casts,
 volatile loads/stores, character literals, fixed-array strings, and the direct C
 string-literal boundary all lower into verifier-checked CogIR. Explicit casts
 materialize adaptable numeric/null constants directly in their checked destination
-type so frontend-only types never escape into IR. The remaining semantic-valid
-coverage gap is the explicit `wrapping_*` compiler-builtin family; C variadic ABI
-promotion/legalization remains ABI/backend work. The host-C backend still consumes
-the frontend until the IR path covers its full input surface.
+type so frontend-only types never escape into IR. Runtime `wrapping_add`,
+`wrapping_sub`, `wrapping_mul`, and `wrapping_neg` calls
+now lower directly to `iadd.wrap`, `isub.wrap`, `imul.wrap`, and `ineg.wrap`;
+compile-time wrapping calls continue to materialize through checked constant
+metadata. All 99 programs under `tests/test_assets/semantic/valid/` now lower and
+verify through `dump_ir`. Native-C variadic calls are legalized before the call:
+CogIR inserts `c.vararg.promote` for target-required integer/Boolean/enum and
+`f32` promotions, and the verifier rejects unpromoted C-variadic tails. The
+host-C backend still consumes the frontend until the IR path covers its full
+input surface.

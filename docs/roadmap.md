@@ -478,12 +478,18 @@ addressing, volatile access, casts, and string/character values. The large
 semantic-valid integration fixture lowers and verifies through CogIR after its
 uninitialized-array cases are made semantically valid.
 
-The immediate CogIR coverage gap is explicit wrapping-builtin lowering, followed
-by ABI-specific call legalization where required (notably C variadic promotions).
-Once the current runtime surface lowers through CogIR, the host-C backend should
-be moved behind `const CogIrModule *` to prove that backends no longer depend on
-AST or semantic objects. LLVM/native work follows that boundary rather than
-replacing it.
+Explicit wrapping builtins now lower to dedicated CogIR wrapping operations, and
+all 99 semantic-valid fixture programs lower and verify through `dump_ir`. Native-C
+variadic tails are legalized with explicit `c.vararg.promote` operations, and the
+verifier rejects unpromoted or otherwise ABI-illegal tail values.
+
+The `backend_c.c` parity audit found one remaining frontend-only policy fact:
+the current executable backend requires the source spelling `main::() -> c_int`,
+while CogIR canonicalizes that return to the same runtime integer type as a plain
+fixed-width Coglet integer. Resolve that entry-point metadata/policy decision, then
+move the host-C backend behind `const CogIrModule *` and rerun the executable and
+interop suites through frontend -> CogIR -> C. LLVM/native work follows that
+boundary rather than replacing it.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

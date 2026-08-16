@@ -1,0 +1,37 @@
+#repr(c)
+Tiny::enum(c_uchar) {
+    Zero = 0,
+    High = 200,
+}
+
+#extern(c)
+sink::(tag: c_int, ...) -> c_int;
+
+forward::(
+    callback: cfn(c_int, ...) -> c_int,
+    small: c_short,
+    unsigned_small: c_ushort,
+    single: c_float,
+    tiny: Tiny,
+    wide: c_long,
+    double_value: c_double,
+    raw: opaque*
+) -> c_int {
+    callback(1, small, true, unsigned_small, single, tiny, wide, double_value, raw);
+
+    return sink(
+        2,
+        small,
+        true,
+        unsigned_small,
+        single,
+        tiny,
+        wide,
+        double_value,
+        raw,
+        "ok",
+        callback,
+        7,
+        1.5
+    );
+}

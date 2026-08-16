@@ -53,7 +53,25 @@ ctest \
     --show-only=json-v1
 ```
 
+## CogIR Lowering Tests
 
+CogIR golden dumps cover executable, structured-CFG, data/address, explicit
+wrapping lowering, and native-C variadic default promotions. The variadic golden
+covers both direct external calls and indirect `cfn(..., ...)` calls, including
+`bool`, narrow signed/unsigned integers, `#repr(c)` enums, and `f32`. A verifier
+regression separately rejects an unpromoted Boolean variadic tail. A separate
+integration test recursively runs `dump_ir` over
+every program under `tests/test_assets/semantic/valid/`, so adding a new
+semantic-valid fixture also extends the frontend -> CogIR compatibility gate.
+
+Run the CogIR suite with:
+
+```bash
+ctest \
+    --test-dir cmake-build-debug \
+    -L ir \
+    --output-on-failure
+```
 
 ## Host-C Backend Tests
 

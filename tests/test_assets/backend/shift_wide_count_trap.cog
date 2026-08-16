@@ -2,7 +2,7 @@ shift_value::(value: i8, count: u32) -> i8 {
     return value >> count;
 }
 
-main::() -> c_int {
+main::() -> i32 {
     shift_value(-1, 8);
     return 91;
 }

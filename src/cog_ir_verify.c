@@ -910,17 +910,6 @@ static int verify_function(
         ok = 0;
     }
 
-    if (function->source_return_c_scalar_kind < COG_IR_C_SCALAR_NONE ||
-        function->source_return_c_scalar_kind > COG_IR_C_SCALAR_DOUBLE) {
-        ir_error(diagnostics, function->span,
-            "function @f%u has invalid source return C scalar spelling", function->id);
-        ok = 0;
-    } else if (function->abi.abi == COG_IR_ABI_C &&
-               function->source_return_c_scalar_kind != COG_IR_C_SCALAR_NONE) {
-        ir_error(diagnostics, function->span,
-            "C ABI function @f%u duplicates return spelling outside ABI metadata", function->id);
-        ok = 0;
-    }
 
     if (function->linkage == COG_IR_LINKAGE_EXTERNAL && function->kind != COG_IR_FUNCTION_DECLARATION) {
         ir_error(diagnostics, function->span, "external function @f%u must be a declaration", function->id);
@@ -1218,11 +1207,22 @@ int cog_ir_verify(const CogIrModule *module, DiagnosticList *diagnostics)
 
     if (module->entry_function != COG_IR_FUNCTION_INVALID) {
         const CogIrFunction *entry = cog_ir_get_function(module, module->entry_function);
-        if (!entry || entry->is_compiler_generated || module->entry_function == module->init_function) {
+        const CogIrType *type = entry ? cog_ir_get_type(module, entry->type) : NULL;
+        const CogIrType *result = type && type->kind == COG_IR_TYPE_FUNCTION
+            ? cog_ir_get_type(module, type->as.function.result_type) : NULL;
+        if (!entry || !type || type->kind != COG_IR_TYPE_FUNCTION ||
+            entry->kind != COG_IR_FUNCTION_DEFINITION ||
+            entry->linkage != COG_IR_LINKAGE_INTERNAL ||
+            entry->is_compiler_generated || module->entry_function == module->init_function ||
+            type->as.function.abi != COG_IR_ABI_COGLET ||
+            type->as.function.calling_convention != COG_IR_CALL_DEFAULT ||
+            type->as.function.is_variadic || type->as.function.parameter_count != 0 ||
+            !result || result->kind != COG_IR_TYPE_INTEGER ||
+            result->as.integer.bits != 32 || !result->as.integer.is_signed) {
             ir_error(
                 diagnostics,
                 entry ? entry->span : source_span_invalid(),
-                "module entry function must reference a non-compiler-generated function distinct from module init"
+                "module entry function must be an internal Coglet () -> i32 definition distinct from module init"
             );
             ok = 0;
         }

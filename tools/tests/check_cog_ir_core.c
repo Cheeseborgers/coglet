@@ -167,11 +167,10 @@ int main(void)
         COG_IR_FUNCTION_DEFINITION,
         COG_IR_LINKAGE_INTERNAL,
         0,
-        COG_IR_C_SCALAR_NONE,
         NULL
     );
-    if (bump == COG_IR_FUNCTION_INVALID || !cog_ir_set_entry_function(&module, bump))
-        return fail("function/entry builder failed");
+    if (bump == COG_IR_FUNCTION_INVALID)
+        return fail("function builder failed");
 
     const CogIrFunction *bump_fn = cog_ir_get_function(&module, bump);
     if (!bump_fn || bump_fn->parameter_count != 1)
@@ -219,6 +218,26 @@ int main(void)
         !cog_ir_set_terminator(&module, bump, entry, &term))
         return fail("instruction/terminator builder failed");
 
+    CogIrTypeId main_type = cog_ir_type_function(
+        &module, i32_type, NULL, 0,
+        COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
+    CogIrFunctionId main_function = cog_ir_add_function(
+        &module, string_view_from_cstr("main"), function_span, main_type,
+        COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
+    CogIrBlockId main_entry = cog_ir_add_block(
+        &module, main_function, string_view_from_cstr("entry"), function_span);
+    op = instruction(COG_IR_OP_CONST, i32_type, function_span);
+    op.as.constant.constant = one_i32;
+    CogIrValueId main_result = COG_IR_VALUE_INVALID;
+    if (!cog_ir_emit(&module, main_function, main_entry, &op, &main_result))
+        return fail("entry result emission failed");
+    term = ret_value(main_result, function_span);
+    if (main_function == COG_IR_FUNCTION_INVALID || main_entry == COG_IR_BLOCK_INVALID ||
+        main_result == COG_IR_VALUE_INVALID ||
+        !cog_ir_set_terminator(&module, main_function, main_entry, &term) ||
+        !cog_ir_set_entry_function(&module, main_function))
+        return fail("entry function builder failed");
+
     CogIrTypeId init_type = cog_ir_type_function(
         &module, void_type, NULL, 0,
         COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
@@ -230,7 +249,6 @@ int main(void)
         COG_IR_FUNCTION_DEFINITION,
         COG_IR_LINKAGE_INTERNAL,
         1,
-        COG_IR_C_SCALAR_NONE,
         NULL
     );
     CogIrBlockId init_entry = cog_ir_add_block(
@@ -261,8 +279,7 @@ int main(void)
 
     CogIrFunctionId late_defined = cog_ir_add_function(
         &module, string_view_from_cstr("late_defined"), function_span, init_type,
-        COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_INTERNAL, 0,
-        COG_IR_C_SCALAR_NONE, NULL);
+        COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
     if (late_defined == COG_IR_FUNCTION_INVALID ||
         !cog_ir_begin_function_definition(&module, late_defined))
         return fail("function predeclaration upgrade failed");
@@ -286,8 +303,8 @@ int main(void)
 
     if (!dump_contains(&module, "global @g0 \"counter\" : i32") ||
         !dump_contains(&module, "iadd.checked") ||
-        !dump_contains(&module, "entry @f0") ||
-        !dump_contains(&module, "init @f1") ||
+        !dump_contains(&module, "entry @f1") ||
+        !dump_contains(&module, "init @f2") ||
         !dump_contains(&module, "type %t"))
         return fail("deterministic CogIR dump is missing expected entities");
 
@@ -304,8 +321,7 @@ int main(void)
         &bad, bad_void, NULL, 0, COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
     CogIrFunctionId bad_fn = cog_ir_add_function(
         &bad, string_view_from_cstr("broken"), source_span_invalid(), bad_fn_type,
-        COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0,
-        COG_IR_C_SCALAR_NONE, NULL);
+        COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
     (void)cog_ir_add_block(&bad, bad_fn, string_view_from_cstr("entry"), source_span_invalid());
     cog_ir_module_freeze(&bad);
 
@@ -316,6 +332,38 @@ int main(void)
 
     arena_destroy(diag_arena);
     cog_ir_module_destroy(&bad);
+
+    /* Negative verifier regression: the resolved executable entry has a
+     * backend-neutral Coglet () -> i32 contract. */
+    CogIrModule bad_entry;
+    cog_ir_module_init(&bad_entry, &target);
+    CogIrTypeId bad_entry_i32 = cog_ir_type_integer(&bad_entry, 32, 1);
+    CogIrTypeId bad_entry_params[] = { bad_entry_i32 };
+    CogIrTypeId bad_entry_type = cog_ir_type_function(
+        &bad_entry, bad_entry_i32, bad_entry_params, 1,
+        COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
+    CogIrFunctionId bad_entry_fn = cog_ir_add_function(
+        &bad_entry, string_view_from_cstr("main"), source_span_invalid(), bad_entry_type,
+        COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
+    CogIrBlockId bad_entry_block = cog_ir_add_block(
+        &bad_entry, bad_entry_fn, string_view_from_cstr("entry"), source_span_invalid());
+    const CogIrFunction *bad_entry_function = cog_ir_get_function(&bad_entry, bad_entry_fn);
+    if (!bad_entry_function || bad_entry_function->parameter_count != 1)
+        return fail("negative entry parameter creation failed");
+    term = ret_value(bad_entry_function->parameters[0], source_span_invalid());
+    if (bad_entry_block == COG_IR_BLOCK_INVALID ||
+        !cog_ir_set_terminator(&bad_entry, bad_entry_fn, bad_entry_block, &term) ||
+        !cog_ir_set_entry_function(&bad_entry, bad_entry_fn))
+        return fail("negative entry construction failed");
+    cog_ir_module_freeze(&bad_entry);
+
+    diag_arena = arena_create(4096);
+    diagnostic_list_init(&diagnostics, diag_arena);
+    if (cog_ir_verify(&bad_entry, &diagnostics) || diagnostics.count == 0)
+        return fail("verifier did not reject non-() -> i32 module entry");
+
+    arena_destroy(diag_arena);
+    cog_ir_module_destroy(&bad_entry);
 
     /* Negative verifier regression: C variadic tails must already carry the
      * target default argument promotions before the call instruction. */
@@ -343,15 +391,13 @@ int main(void)
     };
     CogIrFunctionId variadic = cog_ir_add_function(
         &bad_vararg, string_view_from_cstr("variadic"), source_span_invalid(),
-        variadic_type, COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_EXTERNAL, 0,
-        COG_IR_C_SCALAR_NONE, &variadic_abi);
+        variadic_type, COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_EXTERNAL, 0, &variadic_abi);
     CogIrTypeId caller_type = cog_ir_type_function(
         &bad_vararg, vararg_void, NULL, 0,
         COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
     CogIrFunctionId caller = cog_ir_add_function(
         &bad_vararg, string_view_from_cstr("caller"), source_span_invalid(),
-        caller_type, COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0,
-        COG_IR_C_SCALAR_NONE, NULL);
+        caller_type, COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
     CogIrBlockId caller_entry = cog_ir_add_block(
         &bad_vararg, caller, string_view_from_cstr("entry"), source_span_invalid());
 

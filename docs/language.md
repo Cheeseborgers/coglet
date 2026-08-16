@@ -1594,7 +1594,7 @@ identity::(value: c_int) -> c_int {
     return value;
 }
 
-main::() -> c_int {
+main::() -> i32 {
     return run_callback(identity, 7);
 }
 ```
@@ -1771,13 +1771,13 @@ malloc::(size: c_size) -> opaque*;
 Fixed-width Coglet types remain valid in C declarations when the corresponding
 C interface itself uses a representation-compatible fixed-width type.
 
-The current executable backend is intentionally a small conformance slice. It
-can emit and link direct external C calls using scalar/raw-pointer and `#repr(c)` struct signatures,
-including external symbol-name overrides, and lowers direct C-string literal
-arguments by decoding Coglet escapes and emitting an equivalent C string
-literal. It does not yet lower locals, control flow, runtime checked arithmetic,
-general casts, or general array storage/decay. Host executables currently use
-`main::() -> c_int` as the entry-point contract.
+The host-C backend consumes verified CogIR and adapts Coglet's executable entry
+to the host process ABI. A source executable uses `main::() -> i32`; `c_*` types
+remain explicit C-interoperability types rather than a requirement imposed by
+the bootstrap backend. The generated C translation unit provides an
+`int main(void)` adapter that runs module initialization and returns the Coglet
+entry result through the C process interface. Future LLVM/native backends map the
+same resolved CogIR entry to their own target ABI.
 
 Additional platform-specific conventions beyond the current `cdecl`/`stdcall`/
 `sysv64`/`win64` set, callback lifetime policies beyond raw function pointers,

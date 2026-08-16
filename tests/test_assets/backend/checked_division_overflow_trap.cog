@@ -2,7 +2,7 @@ checked_div::(left: c_longlong, right: c_longlong) -> c_longlong {
     return left / right;
 }
 
-main::() -> c_int {
+main::() -> i32 {
     ignored: c_longlong = checked_div(-9223372036854775808, -1);
     return 98;
 }

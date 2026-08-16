@@ -1,6 +1,6 @@
 #extern(c)
 consume::(bytes: readonly c_char*, slot: opaque**, nested: readonly c_int**) -> void;
 
-main::() -> c_int {
+main::() -> i32 {
     return 0;
 }

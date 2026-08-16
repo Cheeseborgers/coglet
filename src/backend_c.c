@@ -3504,17 +3504,8 @@ static int emit_entrypoint(CBackend *backend)
 {
     const CogIrFunction *main_function =
         cog_ir_get_function(backend->module, backend->module->entry_function);
-    if (!main_function ||
-        main_function->linkage != COG_IR_LINKAGE_INTERNAL ||
-        main_function->abi.abi != COG_IR_ABI_COGLET) {
+    if (!main_function) {
         backend_error(backend, source_span_invalid(), "host executable backend requires a top-level Coglet 'main' function");
-        return 0;
-    }
-    const CogIrType *type = cog_ir_get_type(backend->module, main_function->type);
-    if (!type || type->kind != COG_IR_TYPE_FUNCTION ||
-        type->as.function.parameter_count != 0 ||
-        main_function->source_return_c_scalar_kind != COG_IR_C_SCALAR_INT) {
-        backend_error(backend, main_function->span, "host executable entry point must have signature 'main::() -> c_int'");
         return 0;
     }
 
@@ -3526,7 +3517,8 @@ static int emit_entrypoint(CBackend *backend)
         }
         fprintf(backend->out, "    %s();\n", backend->function_names[backend->module->init_function]);
     }
-    fprintf(backend->out, "    return %s();\n}\n", backend->function_names[main_function->id]);
+    fprintf(backend->out, "    int32_t cg_entry_result = %s();\n", backend->function_names[main_function->id]);
+    fputs("    return (int)cg_entry_result;\n}\n", backend->out);
     return 1;
 }
 

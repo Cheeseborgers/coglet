@@ -90,7 +90,7 @@ represented_aggregate_roundtrip::() -> bool {
     return array_struct_probe(packet) == 45;
 }
 
-main::() -> c_int {
+main::() -> i32 {
     if !ordinary_aggregates() {
         return 1;
     }

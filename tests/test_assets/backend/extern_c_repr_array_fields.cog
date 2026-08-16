@@ -17,7 +17,7 @@ coglet_backend_make_array_packet::() -> ArrayPacket;
 #extern(c)
 coglet_backend_array_struct_probe::(packet: ArrayPacket) -> c_int;
 
-main::() -> c_int {
+main::() -> i32 {
     return coglet_backend_array_struct_probe(
         coglet_backend_make_array_packet()
     );

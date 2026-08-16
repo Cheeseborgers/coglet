@@ -1816,14 +1816,6 @@ static void verify_function_abi_info(
             "normalized variadic flag differs from the resolved contract");
     }
 
-    SemCScalarKind expected_source_return_c_scalar =
-        expected_abi == FUNCTION_ABI_COGLET
-            ? expected_c_scalar_kind(declaration->as.func_decl.return_type)
-            : SEM_C_SCALAR_NONE;
-    if (abi->source_return_c_scalar_kind != expected_source_return_c_scalar) {
-        verifier_error(verifier, declaration,
-            "normalized source return C scalar spelling differs from the declaration");
-    }
 
     if (expected_linkage == SEM_FUNCTION_LINKAGE_EXTERNAL) {
         StringView expected_symbol =

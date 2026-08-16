@@ -9016,6 +9016,31 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
     flow_register_variable(ctx, symbol, 1);
 }
 
+static void validate_source_entry_signature(SemanticContext *ctx, Node *node)
+{
+    if (!node || node->type != NODE_FUNC_DECL ||
+        !names_equal(node->as.func_decl.name.data, node->as.func_decl.name.length, "main", 4) ||
+        !node->as.func_decl.resolved_type) {
+        return;
+    }
+
+    Type *function_type = node->as.func_decl.resolved_type;
+    Type *source_return = node->as.func_decl.return_type;
+    if (function_type->kind != TYPE_FUNCTION ||
+        function_type->function_abi != FUNCTION_ABI_COGLET ||
+        node->as.func_decl.linkage != FUNCTION_LINKAGE_COGLET ||
+        node->as.func_decl.is_repr_c ||
+        node->as.func_decl.is_variadic ||
+        node->as.func_decl.params.count != 0 ||
+        !source_return || source_return->kind != TYPE_I32) {
+        semantic_error(
+            ctx,
+            node,
+            "executable entry point must have signature 'main::() -> i32'"
+        );
+    }
+}
+
 static void check_program(SemanticContext *ctx, Node *node)
 {
     NodeList *stmts = &node->as.program.statements;
@@ -9065,8 +9090,10 @@ static void check_program(SemanticContext *ctx, Node *node)
     for (int i = 0; i < stmts->count; i++) {
         Node *stmt = stmts->items[i];
 
-        if (stmt->type == NODE_FUNC_DECL)
+        if (stmt->type == NODE_FUNC_DECL) {
             declare_function_signature(ctx, stmt);
+            validate_source_entry_signature(ctx, stmt);
+        }
     }
 
     /*
@@ -9546,10 +9573,6 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
     func_info->abi.function.c_call_conv = func_type->function_call_conv;
     func_info->abi.function.is_variadic = func_type->function_is_variadic;
 
-    if (func_type->function_abi == FUNCTION_ABI_COGLET) {
-        func_info->abi.function.source_return_c_scalar_kind =
-            native_c_scalar_kind(node->as.func_decl.return_type);
-    }
 
     if (func_info->abi.function.linkage == SEM_FUNCTION_LINKAGE_EXTERNAL) {
         func_info->abi.function.external_symbol =

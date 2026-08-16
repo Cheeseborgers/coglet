@@ -21,6 +21,6 @@ forward::(small: c_short, single: c_float) -> c_int {
     );
 }
 
-main::() -> c_int {
+main::() -> i32 {
     return forward(-3, 1.25);
 }

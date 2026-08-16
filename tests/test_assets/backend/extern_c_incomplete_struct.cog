@@ -7,6 +7,6 @@ get_handle::() -> ForeignHandle*;
 #extern(c, name="coglet_backend_incomplete_handle_probe")
 probe_handle::(handle: readonly ForeignHandle*) -> c_int;
 
-main::() -> c_int {
+main::() -> i32 {
     return probe_handle(get_handle());
 }

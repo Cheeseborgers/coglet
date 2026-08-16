@@ -992,13 +992,10 @@ CogIrFunctionId cog_ir_add_function(
     CogIrFunctionKind kind,
     CogIrLinkage linkage,
     int is_compiler_generated,
-    CogIrCScalarKind source_return_c_scalar_kind,
     const CogIrFunctionAbi *abi
 ) {
     const CogIrType *type = cog_ir_get_type(module, function_type);
     if (!module_mutable(module) || !type || type->kind != COG_IR_TYPE_FUNCTION ||
-        source_return_c_scalar_kind < COG_IR_C_SCALAR_NONE ||
-        source_return_c_scalar_kind > COG_IR_C_SCALAR_DOUBLE ||
         module->function_count >= COG_IR_ID_INVALID)
         return COG_IR_FUNCTION_INVALID;
 
@@ -1029,7 +1026,6 @@ CogIrFunctionId cog_ir_add_function(
     function->kind = kind;
     function->linkage = linkage;
     function->is_compiler_generated = !!is_compiler_generated;
-    function->source_return_c_scalar_kind = source_return_c_scalar_kind;
     function->entry_block = COG_IR_BLOCK_INVALID;
 
     function->abi.abi = type->as.function.abi;

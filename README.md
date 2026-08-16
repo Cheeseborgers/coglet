@@ -137,9 +137,12 @@ Both joined and split spellings are accepted, both options may be repeated, and
 they are valid only when `-o` requests an executable link step. They are passed
 directly to `cc` without invoking a shell.
 
-Host executables currently require `main::() -> c_int`. Running `coglet` with
-only the input filename still performs frontend parse/semantic checking without
-requesting backend generation.
+Coglet executables require a source-top-level `main::() -> i32`. The `c_*`
+types are C-interoperability types and are not part of the language-level entry
+contract. The host-C backend adapts the resolved CogIR entry to the C process ABI
+by emitting a C `int main(void)` wrapper. Running `coglet` with only the input
+filename still performs frontend parse/semantic checking without requesting
+backend generation.
 
 
 ### Types

@@ -1,4 +1,4 @@
-main::() -> void {
+main::() -> i32 {
     value: i32 = 10;
     pointer: i32* = &value;
 
@@ -13,4 +13,5 @@ main::() -> void {
 
     same_pointer;
     null_pointer;
+    return 0;
 }

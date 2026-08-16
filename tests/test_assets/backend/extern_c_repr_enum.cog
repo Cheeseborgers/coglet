@@ -16,7 +16,7 @@ coglet_backend_make_enum_packet::() -> BackendEnumPacket;
 #extern(c)
 coglet_backend_enum_packet_probe::(mode: BackendMode, packet: BackendEnumPacket) -> c_int;
 
-main::() -> c_int {
+main::() -> i32 {
     return coglet_backend_enum_packet_probe(
         BackendMode.Running,
         coglet_backend_make_enum_packet()

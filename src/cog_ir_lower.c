@@ -545,11 +545,8 @@ static int lower_function_declaration(CogIrLowerContext *ctx, SemDeclInfo *info)
     }
     CogIrLinkage linkage = info->abi_kind == SEM_DECL_ABI_FUNCTION && info->abi.function.linkage == SEM_FUNCTION_LINKAGE_EXTERNAL
         ? COG_IR_LINKAGE_EXTERNAL : COG_IR_LINKAGE_INTERNAL;
-    CogIrCScalarKind source_return_c_scalar_kind = lower_c_scalar_kind(
-        info->abi.function.source_return_c_scalar_kind);
     CogIrFunctionId function = cog_ir_add_function(ctx->module, node->as.func_decl.name, node->span,
-        function_type, COG_IR_FUNCTION_DECLARATION, linkage, 0,
-        source_return_c_scalar_kind, abi_ptr);
+        function_type, COG_IR_FUNCTION_DECLARATION, linkage, 0, abi_ptr);
     free(abi.parameter_abi_types);
     if (function == COG_IR_FUNCTION_INVALID) { lower_error(ctx, node->span, "failed to predeclare CogIR function"); return 0; }
     CogIrLowerDeclBinding *binding = get_decl_binding_mut(ctx, info->id);
@@ -3383,7 +3380,6 @@ static int lower_module_init(CogIrLowerContext *ctx)
         COG_IR_FUNCTION_DEFINITION,
         COG_IR_LINKAGE_INTERNAL,
         1,
-        COG_IR_C_SCALAR_NONE,
         NULL
     );
     if (function == COG_IR_FUNCTION_INVALID || !cog_ir_set_init_function(ctx->module, function)) {

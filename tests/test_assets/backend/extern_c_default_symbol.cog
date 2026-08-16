@@ -1,6 +1,6 @@
 #extern(c)
 abs::(value: c_int) -> c_int;
 
-main::() -> c_int {
+main::() -> i32 {
     return abs(-5);
 }

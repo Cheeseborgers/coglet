@@ -2,7 +2,7 @@ narrow::(value: f64) -> f32 {
     return cast(f32, value);
 }
 
-main::() -> c_int {
+main::() -> i32 {
     result := narrow(1e39);
     if result == 0.0 {
         return 90;

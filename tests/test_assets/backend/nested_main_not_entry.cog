@@ -1,5 +1,5 @@
 outer::() -> i32 {
-    main::() -> c_int {
+    main::() -> i32 {
         return 7;
     }
 

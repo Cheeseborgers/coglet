@@ -72,29 +72,6 @@ static const char *linkage_name(CogIrLinkage linkage)
     return linkage == COG_IR_LINKAGE_EXTERNAL ? "external" : "internal";
 }
 
-static const char *c_scalar_name(CogIrCScalarKind kind)
-{
-    switch (kind) {
-        case COG_IR_C_SCALAR_NONE:      return "none";
-        case COG_IR_C_SCALAR_CHAR:      return "c_char";
-        case COG_IR_C_SCALAR_SCHAR:     return "c_schar";
-        case COG_IR_C_SCALAR_UCHAR:     return "c_uchar";
-        case COG_IR_C_SCALAR_SHORT:     return "c_short";
-        case COG_IR_C_SCALAR_USHORT:    return "c_ushort";
-        case COG_IR_C_SCALAR_INT:       return "c_int";
-        case COG_IR_C_SCALAR_UINT:      return "c_uint";
-        case COG_IR_C_SCALAR_LONG:      return "c_long";
-        case COG_IR_C_SCALAR_ULONG:     return "c_ulong";
-        case COG_IR_C_SCALAR_LONGLONG:  return "c_longlong";
-        case COG_IR_C_SCALAR_ULONGLONG: return "c_ulonglong";
-        case COG_IR_C_SCALAR_SIZE:      return "c_size";
-        case COG_IR_C_SCALAR_BOOL:      return "c_bool";
-        case COG_IR_C_SCALAR_FLOAT:     return "c_float";
-        case COG_IR_C_SCALAR_DOUBLE:    return "c_double";
-    }
-    return "<invalid-c-scalar>";
-}
-
 static void dump_constant(FILE *stream, const CogIrModule *module, CogIrConstId id)
 {
     const CogIrConstant *constant = cog_ir_get_constant(module, id);
@@ -365,10 +342,6 @@ void cog_ir_dump(FILE *stream, const CogIrModule *module)
         fprintf(stream, ") -> ");
         dump_type_ref(stream, module, type->as.function.result_type);
         fprintf(stream, " [abi=%s, linkage=%s", abi_name(function->abi.abi), linkage_name(function->linkage));
-        if (function->source_return_c_scalar_kind != COG_IR_C_SCALAR_NONE) {
-            fprintf(stream, ", source-return=%s",
-                    c_scalar_name(function->source_return_c_scalar_kind));
-        }
         fprintf(stream, "]");
 
         if (function->kind == COG_IR_FUNCTION_DECLARATION) {

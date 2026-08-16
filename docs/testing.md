@@ -55,12 +55,11 @@ ctest \
 
 ## CogIR Lowering Tests
 
-CogIR golden dumps cover executable, structured-CFG, data/address, explicit
-wrapping lowering, native-C variadic default promotions, and preservation of
-ordinary Coglet function return spelling needed by entry-point policy. The
-source-return golden demonstrates that `main::() -> c_int` and a same-width
-`i32` function retain identical runtime types while only the former carries
-`source-return=c_int`. The variadic golden covers both direct external calls and
+CogIR golden dumps cover executable entry identity, structured-CFG, data/address,
+explicit wrapping lowering, and native-C variadic default promotions. The entry
+golden demonstrates that a source `main::() -> i32` lowers to the distinguished
+backend-neutral `module.entry_function` without source C-scalar spelling
+metadata. The variadic golden covers both direct external calls and
 indirect `cfn(..., ...)` calls, including `bool`, narrow signed/unsigned integers,
 `#repr(c)` enums, and `f32`. A verifier regression separately rejects an
 unpromoted Boolean variadic tail. A separate integration test recursively runs `dump_ir` over
@@ -88,10 +87,11 @@ The executable tests run the Coglet compiler with `-o`, invoke the generated
 program, and verify its process exit status. These tests now exercise the full
 frontend -> CogIR -> host-C boundary: the compiler freezes/verifies CogIR and
 destroys the frontend before backend emission, so every passing backend fixture
-also guards against accidental AST/semantic lifetime dependencies. A dedicated
-negative entrypoint regression verifies that a nested function named `main` is not
-accepted as the process entry after CogIR flattens nested functions into the module
-function table. The C-interoperability cases cover
+also guards against accidental AST/semantic lifetime dependencies. Entry-point
+coverage executes `main::() -> i32 { return 42; }`, rejects the obsolete
+`main::() -> c_int` contract, and verifies that a nested function named `main` is
+not accepted as the process entry after CogIR flattens nested functions into the
+module function table. The C-interoperability cases cover
 default external symbols, `#extern(c, name="...")` overrides, explicit C calling
 conventions (including an x86-64 `win64` callback round trip), and explicit
 `-L`/`-l` resolution against a test-only static library using both split and

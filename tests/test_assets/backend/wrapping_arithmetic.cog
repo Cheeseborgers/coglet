@@ -39,7 +39,7 @@ run_wrapping::(
     );
 }
 
-main::() -> c_int {
+main::() -> i32 {
     return run_wrapping(
         127,
         -128,

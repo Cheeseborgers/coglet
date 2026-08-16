@@ -16,7 +16,7 @@ pointer_check::(p: i32*) -> bool {
     return p != null && p == p;
 }
 
-main::() -> c_int {
+main::() -> i32 {
     value: i32 = 9;
 
     if bit_mix(0x0f0f0f0f, 0x33333333) != 0x3c3c3c3c {

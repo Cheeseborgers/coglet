@@ -1,4 +1,4 @@
-main::() -> c_int {
+main::() -> i32 {
     #repr(c)
     Local::struct {
         value: c_int;

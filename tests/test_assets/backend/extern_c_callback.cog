@@ -10,6 +10,6 @@ identity::(value: c_int) -> c_int {
     return value;
 }
 
-main::() -> c_int {
+main::() -> i32 {
     return coglet_backend_callback_probe(identity, null, 53);
 }

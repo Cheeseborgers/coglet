@@ -2,7 +2,7 @@ narrow::(value: i64) -> u8 {
     return cast(u8, value);
 }
 
-main::() -> c_int {
+main::() -> i32 {
     result := narrow(-1);
     if result == 0 {
         return 90;

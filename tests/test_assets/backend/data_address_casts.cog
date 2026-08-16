@@ -116,7 +116,7 @@ cast_checks::(
     return true;
 }
 
-main::() -> c_int {
+main::() -> i32 {
     if !field_and_array_addressing(make_pair(17, 2.5), make_array_packet()) {
         return 1;
     }

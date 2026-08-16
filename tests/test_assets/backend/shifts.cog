@@ -18,7 +18,7 @@ shift_right_i64::(value: i64, count: u64) -> i64 {
     return value >> count;
 }
 
-main::() -> c_int {
+main::() -> i32 {
     if shift_left_u8(128, 1) != 0 {
         return 1;
     }

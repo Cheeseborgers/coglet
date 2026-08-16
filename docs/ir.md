@@ -119,11 +119,13 @@ module.entry_function : function
 ```
 
 For the current language this is set only by lowering a source-top-level declaration
-named `main`. It is an IR-owned declaration identity, not a backend name lookup.
-Nested non-capturing functions are still flattened into the module function table, but
-a nested function named `main` is therefore never mistaken for the process entry
-after frontend destruction. Signature/ABI policy such as `main::() -> c_int` remains
-a backend executable contract rather than an IR type-system rule.
+named `main`. Source semantics require that declaration to be an ordinary Coglet
+`main::() -> i32`; the source spelling is validated before C aliases are
+canonicalized. The IR stores declaration identity, not a backend name lookup or a
+C-specific spelling marker. Nested non-capturing functions are still flattened
+into the module function table, but a nested function named `main` is therefore
+never mistaken for the process entry after frontend destruction. The verifier
+requires the resolved entry to be an internal Coglet `() -> i32` definition.
 
 A module also has an optional distinguished internal initializer function:
 
@@ -733,7 +735,7 @@ check at least:
 - all source spans refer to copied source files or are explicitly synthetic;
 - external declarations have no body and definitions have the required body;
 - ABI metadata matches the associated runtime function/aggregate shape;
-- `module.entry_function`, when present, references a non-compiler-generated function and is distinct from module init;
+- `module.entry_function`, when present, references an internal non-compiler-generated Coglet `() -> i32` definition and is distinct from module init;
 - `module.init_function`, when present, is an internal `() -> void` definition.
 
 ### Constants/globals
@@ -1032,22 +1034,19 @@ left-to-right evaluation and spills an earlier operand when a later wrapping
 argument can introduce CFG. Compile-time wrapping calls still use semantic
 constant metadata and therefore materialize as typed CogIR constants.
 
-All 99 `semantic/valid` fixture programs now lower successfully through `dump_ir`.
+All 100 `semantic/valid` fixture programs now lower successfully through `dump_ir`.
 A registered integration test recursively runs the entire fixture directory so
 future frontend-valid additions must also cross the CogIR boundary. Native-C
 variadic tails are now legalized in CogIR with explicit `c.vararg.promote`
 instructions, and the verifier rejects unpromoted tails.
 
-The host-C parity audit's final source-level policy fact is now retained by
-CogIR. Ordinary Coglet functions carry `source_return_c_scalar_kind` when their
-return type was spelled with a native-C scalar alias. This is descriptive source
-ABI metadata, not a second runtime type: `main::() -> c_int` and
-`main::() -> i32` still both execute with the same canonical integer type, while
-the former dumps with `source-return=c_int`. Native-C ABI functions do not
-duplicate this marker because their complete C-facing return spelling is already
-stored in `CogIrFunctionAbi.return_abi_type`. The marker survives frontend
-destruction and is sufficient to preserve the current host executable entry
-contract in the CogIR-only host-C backend.
+Executable entry policy is now separated from C ABI spelling. Semantic analysis
+validates the source-top-level `main::() -> i32` contract before native-C aliases
+are canonicalized. CogIR records only the resolved `module.entry_function` and
+its canonical Coglet function type; the verifier enforces the `() -> i32` entry
+invariant. Exact C scalar spelling remains in `CogIrFunctionAbi` and recursive ABI
+type metadata only where an actual C boundary requires it. No ordinary Coglet
+function carries source-return C-scalar metadata.
 
 All data presently consumed from normalized C ABI declarations, represented
 aggregates/enums, function/callback types, calling conventions, external symbols,
@@ -1112,10 +1111,11 @@ volatile access contract.
 11. ~~Audit and legalize ABI-specific calls, including C variadic default promotions.~~
     C variadic tails now carry explicit non-trapping promotion operations and
     verifier enforcement.
-12. ~~Resolve the `main::() -> c_int` entry-point parity decision.~~ Ordinary
-    Coglet functions now retain native-C scalar return spelling in IR-owned
-    metadata, preserving the existing entry contract without retaining frontend
-    type objects.
+12. ~~Resolve executable entry semantics without leaking the host C ABI.~~ A
+    source-top-level entry is `main::() -> i32`; semantic analysis validates the
+    source spelling before alias canonicalization, CogIR records the resolved
+    entry identity, and the verifier enforces a backend-neutral `() -> i32`
+    invariant without retaining source C-scalar spelling.
 13. ~~Port the host-C backend to `const CogIrModule *` and restore all backend tests
     through AST -> semantic -> CogIR -> C.~~ The public backend API is IR-only,
     frontend lifetime ends before backend invocation, and the existing
@@ -1145,6 +1145,8 @@ volatile access contract.
     explicit emitter path, the public backend remains IR-only after frontend
     destruction, and executable entry selection is now an explicit
     `module.entry_function` identity rather than a debug-name scan. A nested
-    function named `main` cannot become the process entry accidentally. The
-    CogIR-only host-C bootstrap path is complete for the current executable/interop
+    function named `main` cannot become the process entry accidentally, and the
+    verifier enforces the backend-neutral `() -> i32` entry invariant. The host-C
+    wrapper alone adapts that result to C `int`. The CogIR-only host-C bootstrap
+    path is complete for the current executable/interop
     contract; LLVM lowering can start from the same frozen verified module.

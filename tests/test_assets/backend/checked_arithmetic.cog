@@ -42,7 +42,7 @@ run_checked::(
     );
 }
 
-main::() -> c_int {
+main::() -> i32 {
     return run_checked(
         40,
         2,

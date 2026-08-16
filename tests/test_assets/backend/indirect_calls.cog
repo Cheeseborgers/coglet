@@ -56,7 +56,7 @@ forward_varargs::(
     );
 }
 
-main::() -> c_int {
+main::() -> i32 {
     if invoke(plus_one, 40) != 41 {
         return 1;
     }

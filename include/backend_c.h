@@ -19,7 +19,7 @@ typedef struct CBackendLinkOptions {
 } CBackendLinkOptions;
 
 /*
- * Emits a frozen CogIR module as a standalone native C translation unit.
+ * Emits a verified, frozen CogIR module as a standalone native C translation unit.
  *
  * The host-C backend owns no frontend state: AST nodes, semantic symbols, and
  * frontend Type objects may all be destroyed before this function is called.
@@ -30,7 +30,7 @@ CBackendStatus c_backend_emit_file(
 );
 
 /*
- * Emits a temporary C translation unit from a frozen CogIR module and invokes
+ * Emits a temporary C translation unit from a verified, frozen CogIR module and invokes
  * the native `cc` driver to produce an executable. The native compiler driver
  * also resolves the C runtime/libc and explicitly requested -L/-l options.
  */

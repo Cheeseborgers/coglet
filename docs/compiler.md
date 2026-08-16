@@ -241,10 +241,13 @@ through parameters, locals, loads, CFG spills, and C-call results, so indirect
 calls use the same verifier-owned ABI contract as direct extern calls, including
 variadic callbacks. String escapes are decoded using Coglet's literal rules and
 lowered through IR-owned backing data at supported C ABI boundaries. Host
-executables continue to require `main::() -> c_int` using the source-return
-spelling retained in CogIR. Lowering also records the source-top-level `main` as
-`module.entry_function`, so the backend selects entry by IR identity rather than
-scanning debug names after nested functions have been flattened. Aggregate values
+executables require a source-top-level `main::() -> i32`. Semantic analysis
+validates that source contract before C aliases are canonicalized, and lowering
+records only the resolved function identity as `module.entry_function`. The
+backend therefore selects entry by IR identity rather than scanning debug names
+after nested functions have been flattened. The host-C backend adapts the Coglet
+`i32` result to the C process ABI in its generated `int main(void)` wrapper.
+Aggregate values
 now execute through assignable C
 wrapper structs for Coglet arrays while addressable array storage remains native C
 arrays, preserving represented aggregate layout and by-value Coglet semantics.
@@ -872,8 +875,6 @@ Function declarations record:
 - internal definition versus external linker declaration;
 - the normalized C calling convention;
 - C variadic status;
-- for ordinary Coglet functions only, any native-C scalar alias used to spell
-  the source return type;
 - the effective external linker symbol, with omitted `name=` normalized to the
   Coglet declaration name;
 - a normalized C-facing return type for native-C ABI functions.
@@ -915,15 +916,16 @@ only those IR-owned copies; it does not inspect `SemDeclInfo`, semantic `Type *`
 or AST syntax. C-variadic default promotions are likewise explicit in CogIR before
 the backend sees a call.
 
-The final parity gap from the pre-port audit is normalized as metadata rather
-than relaxed: ordinary Coglet functions retain a `source_return_c_scalar_kind`
-when their source return spelling is a native-C scalar alias. CogIR copies that
-fact into each function record and the deterministic dump exposes it as, for
-example, `source-return=c_int`. Therefore `main::() -> c_int` remains
-distinguishable from `main::() -> i32` after semantic types are canonicalized and
-after the frontend is destroyed. The driver now destroys `CompileResult` before
-calling the host-C backend, enforcing this boundary in every `--emit-c` and `-o`
-compilation.
+Executable entry spelling is handled before canonical semantic type resolution
+erases the distinction between native `i32` and C aliases such as `c_int`. A
+source-top-level `main` is required to be an ordinary Coglet `() -> i32`
+function. CogIR then retains only the resolved `module.entry_function` identity
+and verifies its backend-neutral `() -> i32` runtime signature. Ordinary Coglet
+functions do not carry source C-scalar spelling metadata. Exact C spelling
+continues to live only in normalized ABI metadata for genuine C boundaries such
+as extern declarations, callbacks, represented fields, and C variadics. The
+driver destroys `CompileResult` before calling the host-C backend, enforcing this
+boundary in every `--emit-c` and `-o` compilation.
 
 ## Semantic-Information Verification
 
@@ -994,7 +996,7 @@ type so frontend-only types never escape into IR. Runtime `wrapping_add`,
 `wrapping_sub`, `wrapping_mul`, and `wrapping_neg` calls
 now lower directly to `iadd.wrap`, `isub.wrap`, `imul.wrap`, and `ineg.wrap`;
 compile-time wrapping calls continue to materialize through checked constant
-metadata. All 99 programs under `tests/test_assets/semantic/valid/` now lower and
+metadata. All 100 programs under `tests/test_assets/semantic/valid/` now lower and
 verify through `dump_ir`. Native-C variadic calls are legalized before the call:
 CogIR inserts `c.vararg.promote` for target-required integer/Boolean/enum and
 `f32` promotions, and the verifier rejects unpromoted C-variadic tails. The

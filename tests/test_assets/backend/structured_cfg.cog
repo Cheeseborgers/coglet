@@ -28,6 +28,6 @@ run_cfg::(a, b: bool) -> c_int {
     }
 }
 
-main::() -> c_int {
+main::() -> i32 {
     return run_cfg(true, true);
 }

@@ -479,17 +479,20 @@ semantic-valid integration fixture lowers and verifies through CogIR after its
 uninitialized-array cases are made semantically valid.
 
 Explicit wrapping builtins now lower to dedicated CogIR wrapping operations, and
-all 99 semantic-valid fixture programs lower and verify through `dump_ir`. Native-C
+all 100 semantic-valid fixture programs lower and verify through `dump_ir`. Native-C
 variadic tails are legalized with explicit `c.vararg.promote` operations, and the
 verifier rejects unpromoted or otherwise ABI-illegal tail values.
 
-The host-C boundary move is now complete without relaxing behavior. Ordinary
-Coglet functions retain native-C scalar source return spelling in IR-owned
-metadata, so the existing `main::() -> c_int` entry contract remains
-distinguishable from representation-equal `i32` after frontend destruction.
-`backend_c.h` accepts only `const CogIrModule *`; the driver lowers, verifies and
-freezes CogIR, destroys the frontend, then emits/builds C. The existing executable
-and C-interop suite therefore runs through frontend -> CogIR -> C.
+The host-C boundary move is now complete without leaking the host process ABI
+into Coglet entry semantics. A source-top-level executable entry is
+`main::() -> i32`; semantic analysis validates that spelling before C aliases are
+canonicalized, and CogIR carries only the resolved entry identity plus its
+backend-neutral runtime type. `backend_c.h` accepts only `const CogIrModule *`;
+the driver lowers, verifies and freezes CogIR, destroys the frontend, then
+emits/builds C. The host-C emitter supplies the C `int main(void)` adapter, while
+future LLVM/native backends can map the same CogIR entry to their target ABI. The
+existing executable and C-interop suite therefore runs through frontend -> CogIR
+-> C.
 
 The host-C emitter has expanded beyond the old backend's deliberately narrow
 execution subset. Dedicated wrapping integer operations execute with explicit
@@ -518,8 +521,9 @@ array-storage path. The final host-C parity/cleanup audit is complete: every
 current CogIR operation has an explicit emitter path, backend entry points accept
 only frozen CogIR, frontend lifetime ends before emission, and source executable
 entry selection is carried by `module.entry_function` rather than a debug-name
-heuristic. This also preserves the old top-level-`main` rule after nested functions
-are flattened. The CogIR-only host-C bootstrap path is therefore complete for the
+heuristic. This preserves the source-top-level `main` rule after nested functions
+are flattened, while the verifier enforces the native Coglet `() -> i32` entry
+signature. The CogIR-only host-C bootstrap path is therefore complete for the
 current executable/interop contract; the next backend milestone is LLVM lowering
 on the same verified module contract.
 

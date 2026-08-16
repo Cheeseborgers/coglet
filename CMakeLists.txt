@@ -191,18 +191,18 @@ set_tests_properties(
 )
 
 add_test(
-        NAME cog_ir_source_return_spelling_dump
+        NAME cog_ir_entry_lowering_dump
         COMMAND "${CMAKE_COMMAND}"
         -DEXE=$<TARGET_FILE:dump_ir>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/source_return_spelling.cog
-        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/source_return_spelling.expected
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/entry_lowering.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/entry_lowering.expected
         -DEXPECT_EXIT=0
         -DOUTPUT_STREAM=stdout
         -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
 )
 set_tests_properties(
-        cog_ir_source_return_spelling_dump
-        PROPERTIES LABELS "ir;ir.lowering;ir.dump;metadata;entry;abi-spelling"
+        cog_ir_entry_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;metadata;entry"
 )
 
 add_test(
@@ -976,6 +976,35 @@ set_tests_properties(
         PROPERTIES LABELS "backend;backend.c;interop;abi;calling-convention;callback"
 )
 endif()
+
+add_test(
+        NAME backend_native_i32_entry
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_native_i32_entry
+        -DEXPECT_EXIT=42
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(
+        backend_native_i32_entry
+        PROPERTIES LABELS "backend;backend.c;ir;entrypoint"
+)
+
+add_test(
+        NAME backend_rejects_obsolete_c_int_entry
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/obsolete_c_int_entry.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_obsolete_c_int_entry
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=executable entry point must have signature 'main::() -> i32'"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_failure_test.cmake"
+)
+set_tests_properties(
+        backend_rejects_obsolete_c_int_entry
+        PROPERTIES LABELS "backend;backend.c;backend.invalid;ir;entrypoint"
+)
 
 add_test(
         NAME backend_rejects_nested_main_as_entry

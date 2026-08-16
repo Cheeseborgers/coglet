@@ -729,16 +729,17 @@ The host-C backend is the bootstrap executable path for the current CogIR
 contract. It consumes only frozen CogIR, covers every current `CogIrOp`, and is
 built as a separate backend library beneath the frontend/semantic/CogIR core.
 This keeps C implementation details out of the language boundary. An optional
-LLVM Stage 1 backend now consumes the same frozen module through its own backend
-library and can emit verifier-checked LLVM IR for the initial scalar/CFG subset.
+LLVM Stage 2 backend now consumes the same frozen module through its own backend
+library and emits verifier-checked LLVM IR for the scalar/CFG foundation plus
+Coglet integer arithmetic, traps, shifts, bitwise operations, and integer conversions.
 
 ## Roadmap
 
 Near-term compiler work is backend-focused:
 
-1. Expand the LLVM backend beyond its Stage 1 scalar/CFG/entry vertical slice.
-2. Add Coglet integer trap/wrapping semantics, shifts, and casts without inheriting LLVM poison/undefined behavior.
-3. Add memory, pointer, aggregate, and global coverage, then explicit target ABI lowering for C interoperability.
+1. Expand the LLVM backend beyond its Stage 2 integer-semantics slice into memory, pointers, aggregates, and broader globals.
+2. Add direct/indirect call coverage needed before the dedicated C ABI classification layer.
+3. Add explicit target ABI lowering for C interoperability rather than relying on LLVM aggregate types to imply a C ABI.
 4. Delegate general optimization to LLVM initially, retaining CogIR transforms only where Coglet semantics require them.
 5. Reassess imports, modules, multi-file compilation, and runtime/standard-library facilities as self-hosting needs become concrete.
 6. Continue improving diagnostics, tests, and documentation.

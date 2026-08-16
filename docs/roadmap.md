@@ -524,9 +524,11 @@ entry selection is carried by `module.entry_function` rather than a debug-name
 heuristic. This preserves the source-top-level `main` rule after nested functions
 are flattened, while the verifier enforces the native Coglet `() -> i32` entry
 signature. The CogIR-only host-C bootstrap path is therefore complete for the
-current executable/interop contract. LLVM Stage 1 now consumes the same frozen
-verified module for its initial scalar/CFG/entry subset; the next backend
-milestones expand semantic coverage without changing that boundary.
+current executable/interop contract. LLVM Stage 2 now consumes the same frozen verified module and adds Coglet's
+checked/wrapping integer arithmetic, division/remainder traps, checked-count
+shifts, bitwise operations, integer-backed enums, and checked/truncating integer
+conversions on top of the scalar/CFG/entry slice. The next backend milestones
+expand memory/pointer/aggregate coverage without changing that boundary.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

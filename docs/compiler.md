@@ -298,19 +298,21 @@ details also remain deferred.
 ## Target Description
 
 
-### LLVM backend Stage 1
+### LLVM backend Stage 2
 
-The first LLVM backend vertical slice lives under `src/backends/llvm/` with its
-public API under `include/backends/llvm/`. It accepts only frozen `CogIrModule`
-input, constructs LLVM IR through the LLVM C API, runs `LLVMVerifyModule`, and
-then writes textual IR. The current subset covers native `void`/`bool`/integer
-types, functions, scalar locals/globals, constants, loads/stores, integer
-comparisons, direct Coglet calls, branches, block parameters, returns, ordered
-module initialization, and the resolved `main::() -> i32` process-entry adapter.
+The LLVM backend lives under `src/backends/llvm/` with its public API under
+`include/backends/llvm/`. It accepts only frozen `CogIrModule` input, constructs
+LLVM IR through the LLVM C API, runs `LLVMVerifyModule`, and then writes textual
+IR. Stage 2 retains the Stage 1 scalar/CFG/function/module-init/entry foundation
+and adds integer-backed enums, checked signed/unsigned add/subtract/multiply,
+checked division/remainder and negation, wrapping arithmetic, bitwise operations,
+checked-count shifts, and checked/truncating integer conversions. Runtime failure
+paths branch to `llvm.trap`; overflow arithmetic uses LLVM's `*.with.overflow`
+intrinsics rather than relying on poison-producing flags or host-language behavior.
 
-Checked/wrapping arithmetic, shifts, aggregate lowering, general pointer
-operations, floating point, C ABI lowering, optimization pipelines, and target
-object emission are intentionally rejected or deferred rather than approximated.
+Aggregate lowering, general pointer operations/comparisons, floating point, C ABI
+lowering, optimization pipelines, and target object emission remain intentionally
+rejected or deferred rather than approximated.
 `COGLET_LLVM=AUTO` enables the backend when `LLVMConfig.cmake` is available;
 `ON` requires it and `OFF` disables it.
 

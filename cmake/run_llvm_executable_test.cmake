@@ -1,5 +1,5 @@
 if(NOT DEFINED COMPILER OR NOT DEFINED INPUT OR NOT DEFINED OUTPUT_IR OR NOT DEFINED EXPECT_EXIT)
-    message(FATAL_ERROR "run_llvm_stage1_test.cmake requires COMPILER, INPUT, OUTPUT_IR, and EXPECT_EXIT")
+    message(FATAL_ERROR "run_llvm_executable_test.cmake requires COMPILER, INPUT, OUTPUT_IR, and EXPECT_EXIT")
 endif()
 
 execute_process(
@@ -27,7 +27,7 @@ if(DEFINED EXPECT_IR_SUBSTRING)
     endif()
 endif()
 
-if(DEFINED CLANG AND NOT CLANG STREQUAL "")
+if(DEFINED CLANG AND NOT CLANG STREQUAL "" AND NOT CLANG MATCHES "-NOTFOUND$")
     set(output_exe "${OUTPUT_IR}.exe")
     execute_process(
         COMMAND "${CLANG}" -Wno-override-module "${OUTPUT_IR}" -o "${output_exe}"

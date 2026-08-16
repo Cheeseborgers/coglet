@@ -97,6 +97,7 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
 
         add_library(coglet_backend_llvm STATIC
                 src/backends/llvm/backend_llvm.c
+                src/backends/llvm/lower_integer.c
         )
         target_include_directories(coglet_backend_llvm
                 PUBLIC include
@@ -861,7 +862,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DEXPECT_EXIT=11
         "-DEXPECT_IR_SUBSTRING=br i1"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_stage1_test.cmake"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
     set_tests_properties(backend_llvm_stage1_scalar_cfg_entry
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;cfg;entrypoint")
@@ -875,20 +876,102 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DEXPECT_EXIT=7
         "-DEXPECT_IR_SUBSTRING=call void @cog.fn.1()"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_stage1_test.cmake"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
     set_tests_properties(backend_llvm_stage1_module_init
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;module-init;entrypoint")
 
     add_test(
-        NAME backend_llvm_stage1_rejects_checked_add
+        NAME backend_llvm_stage2_checked_add
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage1_unsupported_checked_add.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage1_unsupported.ll
-        "-DEXPECT_SUBSTRING=unsupported CogIR operation 'iadd.checked' in Stage 1"
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_checked_add.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_checked_add.ll
+        -DEXPECT_EXIT=3
+        "-DEXPECT_IR_SUBSTRING=llvm.sadd.with.overflow.i32"
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage2_checked_add
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;checked-arithmetic")
+
+    add_test(
+        NAME backend_llvm_stage2_integer_semantics
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_integer_semantics.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_integer_semantics.ll
+        -DEXPECT_EXIT=0
+        "-DEXPECT_IR_SUBSTRING=llvm.smul.with.overflow.i32"
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage2_integer_semantics
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;integer;checked-arithmetic;wrapping;shift;cast")
+
+    add_test(
+        NAME backend_llvm_stage2_enum_integer
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_enum_integer.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_enum_integer.ll
+        -DEXPECT_EXIT=0
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage2_enum_integer
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;integer;enum;cast")
+
+    add_test(
+        NAME backend_llvm_stage2_fibonacci
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_fibonacci.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_fibonacci.ll
+        -DEXPECT_EXIT=55
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage2_fibonacci
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;integer;cfg;loop;entrypoint")
+
+    foreach(trap_case IN ITEMS
+        "checked_overflow_trap.cog|96|checked-overflow"
+        "checked_division_by_zero_trap.cog|97|division-by-zero"
+        "checked_division_overflow_trap.cog|98|division-overflow"
+        "shift_negative_count_trap.cog|91|shift"
+        "shift_wide_count_trap.cog|91|shift"
+        "checked_cast_integer_trap.cog|91|cast"
+        "llvm/unsigned_overflow_trap.cog|94|checked-overflow"
+    )
+        string(REPLACE "|" ";" trap_fields "${trap_case}")
+        list(GET trap_fields 0 trap_input)
+        list(GET trap_fields 1 trap_no_exit)
+        list(GET trap_fields 2 trap_label)
+        get_filename_component(trap_stem "${trap_input}" NAME_WE)
+        add_test(
+            NAME backend_llvm_stage2_${trap_stem}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${trap_input}
+            -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_${trap_stem}.ll
+            -DNO_TRAP_EXIT=${trap_no_exit}
+            -DCLANG=${COGLET_CLANG_EXECUTABLE}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_trap_test.cmake"
+        )
+        set_tests_properties(backend_llvm_stage2_${trap_stem}
+            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;trap;${trap_label}")
+    endforeach()
+
+    add_test(
+        NAME backend_llvm_stage2_rejects_pointer_compare
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_unsupported_pointer_compare.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_unsupported.ll
+        "-DEXPECT_SUBSTRING=unsupported CogIR operation 'ptr.eq' in Stage 2"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage1_rejects_checked_add
-        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;checked-arithmetic")
+    set_tests_properties(backend_llvm_stage2_rejects_pointer_compare
+        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;pointer")
 endif()

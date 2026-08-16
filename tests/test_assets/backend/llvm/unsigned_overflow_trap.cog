@@ -1,0 +1,8 @@
+checked_add::(left: u8, right: u8) -> u8 {
+    return left + right;
+}
+
+main::() -> i32 {
+    ignored := checked_add(255, 1);
+    return 94;
+}

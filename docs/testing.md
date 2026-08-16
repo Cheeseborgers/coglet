@@ -166,12 +166,14 @@ enables it when CMake can find `LLVMConfig.cmake`; use `COGLET_LLVM=ON` to make
 missing LLVM 17+ development files a configuration error or `COGLET_LLVM=OFF` to
 disable the backend deliberately.
 
-The Stage 1 tests emit LLVM IR through the compiler, which means every success
-case has already passed LLVM's module verifier inside the backend. When `clang`
-is available, the harness also compiles the emitted IR and checks the executable
-status. Coverage currently includes scalar conditional CFG/direct calls, the
-resolved Coglet entry adapter, ordered module initialization, and explicit
-rejection of checked arithmetic that is not yet part of the LLVM subset.
+The LLVM tests emit IR through the compiler, which means every success case has
+already passed LLVM's module verifier inside the backend. When `clang` is
+available, the harness also compiles the emitted IR and checks executable status.
+Stage 1 coverage remains for scalar conditional CFG/direct calls, the resolved
+Coglet entry adapter, and ordered module initialization. Stage 2 adds checked and
+wrapping integer arithmetic, division/remainder traps, bitwise operations, checked
+shift counts, integer-backed enums, integer conversions, Fibonacci loop execution,
+and explicit rejection of operations still outside the subset.
 
 Run only these tests with:
 

@@ -1,0 +1,16 @@
+Mode::enum(i8) {
+    Negative = -1,
+    Active = 3,
+}
+
+check_mode::(mode: Mode) -> i32 {
+    if mode != Mode.Active
+        return 1;
+    if cast(i16, mode) != 3
+        return 2;
+    return 0;
+}
+
+main::() -> i32 {
+    return check_mode(Mode.Active);
+}

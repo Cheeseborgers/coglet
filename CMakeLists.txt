@@ -91,13 +91,14 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
             endif()
             set(COGLET_LLVM_LIBS "${COGLET_LLVM_DYLIB_LIBRARY}")
         else()
-            llvm_map_components_to_libnames(COGLET_LLVM_LIBS core analysis support target native nativecodegen)
+            llvm_map_components_to_libnames(COGLET_LLVM_LIBS core analysis support target passes native nativecodegen)
         endif()
         separate_arguments(COGLET_LLVM_DEFINITIONS NATIVE_COMMAND "${LLVM_DEFINITIONS}")
 
         add_library(coglet_backend_llvm STATIC
                 src/backends/llvm/backend_llvm.c
                 src/backends/llvm/linker.c
+                src/backends/llvm/optimize.c
                 src/backends/llvm/lower_types.c
                 src/backends/llvm/lower_integer.c
                 src/backends/llvm/lower_float.c
@@ -1243,6 +1244,105 @@ if(COGLET_HAS_LLVM_BACKEND)
     add_llvm_stage7_native_library_test(
         backend_llvm_stage7_c_aggregate_link extern_c_repr_struct.cog 37 split
     )
+
+    function(add_llvm_stage8_native_test test_name fixture expected_exit opt_level)
+        add_test(
+            NAME ${test_name}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
+            -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+            -DEXPECT_EXIT=${expected_exit}
+            -DOPT_LEVEL=${opt_level}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
+        )
+        set_tests_properties(${test_name}
+            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;optimization;codegen;stage8;O${opt_level}")
+    endfunction()
+
+    function(add_llvm_stage8_native_library_test test_name fixture expected_exit opt_level)
+        add_test(
+            NAME ${test_name}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
+            -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+            -DEXPECT_EXIT=${expected_exit}
+            -DOPT_LEVEL=${opt_level}
+            -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
+            -DLIB_NAME=coglet_backend_link_support
+            -DSTYLE=joined
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
+        )
+        set_tests_properties(${test_name}
+            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;optimization;codegen;interop;abi;stage8;O${opt_level}")
+    endfunction()
+
+    add_llvm_stage8_native_test(
+        backend_llvm_stage8_O0_explicit native_i32_entry.cog 42 0
+    )
+    add_llvm_stage8_native_test(
+        backend_llvm_stage8_O1_checked_integer llvm/stage2_checked_add.cog 3 1
+    )
+    add_llvm_stage8_native_library_test(
+        backend_llvm_stage8_O2_c_aggregate extern_c_repr_struct.cog 37 2
+    )
+    add_llvm_stage8_native_library_test(
+        backend_llvm_stage8_O3_volatile_pointer extern_c_volatile_pointers.cog 89 3
+    )
+
+    add_test(
+        NAME backend_llvm_stage8_O2_ir_pipeline
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_stage8_O2_ir_pipeline.ll
+        -DOPT_LEVEL=2
+        "-DEXPECT_SUBSTRING=ret i32 42"
+        "-DABSENT_SUBSTRING=@cog.fn.0"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_optimization_ir_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage8_O2_ir_pipeline
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;optimization;stage8;O2")
+
+    add_test(
+        NAME backend_llvm_stage8_O3_checked_overflow_trap
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/checked_overflow_trap.cog
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_stage8_O3_checked_overflow_trap
+        -DOPT_LEVEL=3
+        -DNO_TRAP_EXIT=96
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_trap_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage8_O3_checked_overflow_trap
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;optimization;trap;checked-overflow;stage8;O3")
+
+    add_test(
+        NAME backend_llvm_stage8_rejects_host_c_optimization
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DEXPECT_EXIT=3
+        "-DEXPECT_SUBSTRING=optimization currently requires --backend llvm"
+        "-DARGS=-o;${CMAKE_BINARY_DIR}/backend_llvm_stage8_rejects_host_c_optimization.out;-O2"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage8_rejects_host_c_optimization
+        PROPERTIES LABELS "driver;backend;backend.llvm;optimization;invalid;stage8")
+
+    add_test(
+        NAME backend_llvm_stage8_rejects_unknown_optimization_level
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DEXPECT_EXIT=3
+        "-DEXPECT_SUBSTRING=unsupported optimization level '-O4'"
+        "-DARGS=--emit-llvm;${CMAKE_BINARY_DIR}/backend_llvm_stage8_invalid_O4.ll;-O4"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage8_rejects_unknown_optimization_level
+        PROPERTIES LABELS "driver;backend;backend.llvm;optimization;invalid;stage8")
 
     add_test(
         NAME backend_llvm_stage6_rejects_native_bool_as_c_bool_pointer

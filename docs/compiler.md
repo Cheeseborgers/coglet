@@ -298,7 +298,7 @@ details also remain deferred.
 ## Target Description
 
 
-### LLVM backend Stage 7
+### LLVM backend Stage 8
 
 The LLVM backend lives under `src/backends/llvm/` with its public API under
 `include/backends/llvm/`. It accepts only frozen `CogIrModule` input, constructs
@@ -359,8 +359,25 @@ SysV objects fall back to MEMORY, and explicit aggregate alignment is reflected
 in LLVM storage plus `sret`/`byval` alignment attributes. This is a backend ABI
 plan, not an ordinary LLVM-struct shortcut: the same plan drives declarations,
 call sites, C callback definitions, parameter reconstruction, and returns.
-Volatile whole-aggregate accesses, optimization pipelines, and non-x86-64
-represented aggregate classification remain explicitly deferred.
+Stage 8 adds compiler-wide optimization intent without adding optimization state
+to CogIR. The driver accepts `-O0` through `-O3` and passes the selected
+`CogOptimizationLevel` to the LLVM backend. `-O0` is the default and skips the
+LLVM middle-end optimization pipeline, preserving the Stage 1-7 textual IR path.
+`-O1`, `-O2`, and `-O3` run `default<O1>`, `default<O2>`, or `default<O3>` through
+LLVM's new-pass-manager C API with the backend-owned `TargetMachine`. The target
+machine itself maps those levels to LLVM code-generation levels
+`None`/`Less`/`Default`/`Aggressive`. The module is verified before optimization
+and again after an optimization pipeline succeeds. General-purpose optimization
+is therefore delegated to LLVM rather than duplicated in CogIR; CogIR v1 remains
+focused on semantics and backend-neutral lowering invariants.
+
+Nonzero optimization levels currently apply only to LLVM outputs. A host-C
+executable request combined with `-O1`, `-O2`, or `-O3` is rejected explicitly
+rather than silently producing an unoptimized host-C binary. Textual `--emit-c`
+remains a backend/debugging output and is not transformed by LLVM optimization.
+
+Volatile whole-aggregate accesses and non-x86-64 represented aggregate
+classification remain explicitly deferred.
 
 For executable output, `coglet input.cog -o program --backend llvm` performs
 CogIR -> verified LLVM IR -> native object -> platform link. Object generation

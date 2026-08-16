@@ -2,6 +2,17 @@
 
 #include <stdio.h>
 
+static LLVMCodeGenOptLevel codegen_optimization_level(CogOptimizationLevel level)
+{
+    switch (level) {
+        case COG_OPTIMIZATION_LEVEL_0: return LLVMCodeGenLevelNone;
+        case COG_OPTIMIZATION_LEVEL_1: return LLVMCodeGenLevelLess;
+        case COG_OPTIMIZATION_LEVEL_2: return LLVMCodeGenLevelDefault;
+        case COG_OPTIMIZATION_LEVEL_3: return LLVMCodeGenLevelAggressive;
+    }
+    return LLVMCodeGenLevelNone;
+}
+
 static int fail_target_message(LlvmBackend *backend, const char *prefix, char *message)
 {
     if (message) {
@@ -49,7 +60,7 @@ int llvm_backend_init_native_target(LlvmBackend *backend)
         triple,
         "",
         "",
-        LLVMCodeGenLevelDefault,
+        codegen_optimization_level(backend->optimization_level),
         LLVMRelocDefault,
         LLVMCodeModelDefault
     );

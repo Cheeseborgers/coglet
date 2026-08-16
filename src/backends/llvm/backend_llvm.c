@@ -439,8 +439,34 @@ static void dispose_backend(LlvmBackend *backend)
     memset(backend, 0, sizeof(*backend));
 }
 
+static int optimization_level_valid(CogOptimizationLevel level)
+{
+    return level >= COG_OPTIMIZATION_LEVEL_0 && level <= COG_OPTIMIZATION_LEVEL_3;
+}
+
+static LlvmBackendStatus verify_llvm_module(LlvmBackend *backend, const char *phase)
+{
+    char *verify_message = NULL;
+    if (LLVMVerifyModule(backend->module, LLVMReturnStatusAction, &verify_message)) {
+        fprintf(
+            stderr,
+            "LLVM backend verifier error%s%s: %s",
+            phase ? " " : "",
+            phase ? phase : "",
+            verify_message ? verify_message : "invalid LLVM module\n"
+        );
+        if (verify_message)
+            LLVMDisposeMessage(verify_message);
+        return LLVM_BACKEND_STATUS_INVALID_IR;
+    }
+    if (verify_message)
+        LLVMDisposeMessage(verify_message);
+    return LLVM_BACKEND_STATUS_OK;
+}
+
 static LlvmBackendStatus lower_verified_module(
     const CogIrModule *module,
+    const LlvmBackendOptions *options,
     LlvmBackend *backend
 ) {
     if (!module) {
@@ -454,6 +480,13 @@ static LlvmBackendStatus lower_verified_module(
 
     memset(backend, 0, sizeof(*backend));
     backend->ir = module;
+    backend->optimization_level = options
+        ? options->optimization_level
+        : COG_OPTIMIZATION_LEVEL_0;
+    if (!optimization_level_valid(backend->optimization_level)) {
+        fprintf(stderr, "LLVM backend error: invalid optimization level\n");
+        return LLVM_BACKEND_STATUS_UNSUPPORTED;
+    }
     backend->context = LLVMContextCreate();
     if (!backend->context) {
         fprintf(stderr, "LLVM backend error: could not create LLVM context\n");
@@ -481,24 +514,26 @@ static LlvmBackendStatus lower_verified_module(
         return LLVM_BACKEND_STATUS_UNSUPPORTED;
     }
 
-    char *verify_message = NULL;
-    if (LLVMVerifyModule(backend->module, LLVMReturnStatusAction, &verify_message)) {
-        fprintf(
-            stderr,
-            "LLVM backend verifier error: %s",
-            verify_message ? verify_message : "invalid LLVM module\n"
-        );
-        if (verify_message)
-            LLVMDisposeMessage(verify_message);
-        return LLVM_BACKEND_STATUS_INVALID_IR;
+    LlvmBackendStatus status = verify_llvm_module(backend, "before optimization");
+    if (status != LLVM_BACKEND_STATUS_OK)
+        return status;
+
+    if (backend->optimization_level != COG_OPTIMIZATION_LEVEL_0) {
+        if (!llvm_backend_optimize_module(backend))
+            return LLVM_BACKEND_STATUS_OPTIMIZATION_ERROR;
+        status = verify_llvm_module(backend, "after optimization");
+        if (status != LLVM_BACKEND_STATUS_OK)
+            return status;
     }
-    if (verify_message)
-        LLVMDisposeMessage(verify_message);
 
     return LLVM_BACKEND_STATUS_OK;
 }
 
-LlvmBackendStatus llvm_backend_emit_ir_file(const char *output_path, const CogIrModule *module)
+LlvmBackendStatus llvm_backend_emit_ir_file(
+    const char *output_path,
+    const CogIrModule *module,
+    const LlvmBackendOptions *options
+)
 {
     if (!output_path) {
         fprintf(stderr, "LLVM backend error: missing LLVM IR output path\n");
@@ -507,7 +542,7 @@ LlvmBackendStatus llvm_backend_emit_ir_file(const char *output_path, const CogIr
 
     LlvmBackend backend;
     memset(&backend, 0, sizeof(backend));
-    LlvmBackendStatus status = lower_verified_module(module, &backend);
+    LlvmBackendStatus status = lower_verified_module(module, options, &backend);
     if (status != LLVM_BACKEND_STATUS_OK)
         goto cleanup;
 
@@ -533,7 +568,11 @@ cleanup:
     return status;
 }
 
-LlvmBackendStatus llvm_backend_emit_object_file(const char *output_path, const CogIrModule *module)
+LlvmBackendStatus llvm_backend_emit_object_file(
+    const char *output_path,
+    const CogIrModule *module,
+    const LlvmBackendOptions *options
+)
 {
     if (!output_path) {
         fprintf(stderr, "LLVM backend error: missing object output path\n");
@@ -542,7 +581,7 @@ LlvmBackendStatus llvm_backend_emit_object_file(const char *output_path, const C
 
     LlvmBackend backend;
     memset(&backend, 0, sizeof(backend));
-    LlvmBackendStatus status = lower_verified_module(module, &backend);
+    LlvmBackendStatus status = lower_verified_module(module, options, &backend);
     if (status != LLVM_BACKEND_STATUS_OK)
         goto cleanup;
     if (!llvm_backend_init_native_asm_printer(&backend)) {

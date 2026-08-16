@@ -103,7 +103,14 @@ int main(int argc, char **argv)
     }
 
     cog_ir_module_freeze(&module);
-    LlvmBackendStatus status = llvm_backend_emit_ir_file(argv[1], &module);
+    LlvmBackendOptions backend_options = {
+        .optimization_level = COG_OPTIMIZATION_LEVEL_0,
+    };
+    LlvmBackendStatus status = llvm_backend_emit_ir_file(
+        argv[1],
+        &module,
+        &backend_options
+    );
     int ok = status == LLVM_BACKEND_STATUS_OK &&
              file_contains(argv[1], "call void @llvm.trap()") &&
              file_contains(argv[1], "unreachable");

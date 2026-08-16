@@ -902,7 +902,7 @@ Do not block the first IR implementation on:
 - register allocation;
 - object-file emission;
 - target register classes;
-- optimization passes;
+- general-purpose CogIR optimization passes;
 - full SSA promotion;
 - persistent binary IR serialization;
 - module/import dependency ordering;
@@ -912,7 +912,10 @@ Do not block the first IR implementation on:
 CogIR v1 is successful when the complete currently-supported frontend can lower
 to a verified module and execution backends consume that module without consulting
 AST or semantic objects. The host-C bootstrap backend now satisfies that boundary;
-LLVM/native lowering can build on the same contract.
+LLVM/native lowering builds on the same contract. LLVM Stage 8 performs
+general-purpose optimization only after CogIR has been fully lowered, frozen, and
+translated to verifier-checked LLVM IR; optimization level is compiler/backend
+policy and is not stored in CogIR.
 
 ## Implementation status
 

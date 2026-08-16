@@ -198,7 +198,11 @@ regression keeps ordinary Coglet `bool*` distinct from `c_bool*`, and volatile
 whole-aggregate access remains explicitly unsupported. Stage 7 direct-link
 coverage includes native Coglet `main::() -> i32`, exact C scalar ABI linkage,
 and a represented aggregate C ABI call/return through the independently compiled
-support library. The float suite includes
+support library. Stage 8 adds explicit `-O0`, checked integer execution at
+`-O1`, represented aggregate C interop at `-O2`, volatile C pointer behavior at
+`-O3`, an optimized textual-IR transformation check, and a direct-link `-O3`
+checked-overflow trap. Driver regressions also reject nonzero optimization on the
+host-C executable path and unsupported optimization levels. The float suite includes
 NaN/infinity, signed/unsigned range boundaries, and narrowing behavior so LLVM
 conversion instructions are not used before Coglet's checked-cast guards.
 

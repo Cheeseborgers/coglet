@@ -128,10 +128,12 @@ For the current executable slice:
 ```sh
 coglet program.cog -o program
 coglet program.cog -o program --backend llvm
+coglet program.cog -o program --backend llvm -O2
 coglet program.cog -o program -L/path/to/lib -lfoo
 coglet program.cog -o program -L /path/to/lib -l foo
 coglet program.cog --emit-c program.c
 coglet program.cog --emit-llvm program.ll
+coglet program.cog --emit-llvm optimized.ll -O2
 ```
 
 `-L` adds a native library search directory and `-l` requests a native library.
@@ -142,7 +144,12 @@ a shell. Executable output defaults to the host-C bootstrap backend. When LLVM
 support is enabled, `--backend llvm` lowers and verifies LLVM IR, emits a native
 object through LLVM's `TargetMachine`, then invokes the host `cc` driver only for
 the final platform link/CRT step. Textual LLVM IR remains available through
-`--emit-llvm`.
+`--emit-llvm`. LLVM output accepts `-O0`, `-O1`, `-O2`, and `-O3`; `-O0` is the
+default and preserves the unoptimized LLVM-IR path, while `-O1` through `-O3`
+run LLVM's corresponding default new-pass-manager pipeline before IR/object
+emission and select the matching target code-generation optimization level.
+Nonzero optimization levels are currently rejected for host-C executable output
+rather than being silently ignored.
 
 Coglet executables require a source-top-level `main::() -> i32`. The `c_*`
 types are C-interoperability types and are not part of the language-level entry
@@ -736,10 +743,12 @@ The host-C backend is the bootstrap executable path for the current CogIR
 contract. It consumes only frozen CogIR, covers every current `CogIrOp`, and is
 built as a separate backend library beneath the frontend/semantic/CogIR core.
 This keeps C implementation details out of the language boundary. An optional
-LLVM Stage 7 backend now consumes the same frozen module through its own backend
+LLVM Stage 8 backend now consumes the same frozen module through its own backend
 library. It emits verifier-checked LLVM IR with an explicit native target triple
 and data layout, can emit a native object with LLVM target APIs, and can link that
-object into an executable through a separate host linker-driver boundary. Its
+object into an executable through a separate host linker-driver boundary. It can
+also run LLVM's target-aware default `O1`/`O2`/`O3` optimization pipelines after
+initial verification and verifies the transformed module again before output. Its
 implemented lowering covers native scalar/CFG and integer semantics, ordinary Coglet
 memory and aggregates, floating-point operations and conversions, switch/trap
 terminators, indirect native Coglet function values/calls, and the C scalar,
@@ -754,10 +763,9 @@ object storage. Ordinary Coglet `bool*` is intentionally not interchangeable wit
 
 Near-term compiler work is backend-focused:
 
-1. Add the LLVM optimization pipeline and user-visible optimization levels, delegating general optimization to LLVM initially.
-2. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
-3. Reassess imports, modules, multi-file compilation, and runtime/standard-library facilities as self-hosting needs become concrete.
-4. Continue improving diagnostics, tests, and documentation.
+1. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
+2. Reassess imports, modules, multi-file compilation, and runtime/standard-library facilities as self-hosting needs become concrete.
+3. Continue improving diagnostics, tests, and documentation.
 
 ## License
 

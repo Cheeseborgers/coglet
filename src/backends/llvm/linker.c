@@ -76,6 +76,7 @@ static LlvmBackendStatus link_native_object(
 LlvmBackendStatus llvm_backend_build_executable(
     const char *output_path,
     const CogIrModule *module,
+    const LlvmBackendOptions *backend_options,
     const LlvmBackendLinkOptions *link_options
 ) {
 #if defined(__unix__) || defined(__APPLE__)
@@ -96,7 +97,11 @@ LlvmBackendStatus llvm_backend_build_executable(
         return LLVM_BACKEND_STATUS_IO_ERROR;
     }
 
-    LlvmBackendStatus status = llvm_backend_emit_object_file(object_path, module);
+    LlvmBackendStatus status = llvm_backend_emit_object_file(
+        object_path,
+        module,
+        backend_options
+    );
     if (status == LLVM_BACKEND_STATUS_OK)
         status = link_native_object(object_path, output_path, link_options);
 
@@ -105,6 +110,7 @@ LlvmBackendStatus llvm_backend_build_executable(
 #else
     (void)output_path;
     (void)module;
+    (void)backend_options;
     (void)link_options;
     fprintf(stderr, "LLVM backend error: native executable linking is not implemented on this host platform\n");
     return LLVM_BACKEND_STATUS_TOOLCHAIN_ERROR;

@@ -2,6 +2,7 @@
 #define COGLET_BACKEND_LLVM_INTERNAL_H
 
 #include "cog_ir.h"
+#include "optimization.h"
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Target.h>
@@ -24,6 +25,7 @@ typedef struct LlvmBackend {
     LLVMBuilderRef builder;
     LLVMTargetMachineRef target_machine;
     LLVMTargetDataRef target_data;
+    CogOptimizationLevel optimization_level;
     LLVMTypeRef *types;
     LLVMTypeRef *c_aggregate_inner_types;
     unsigned char *c_aggregate_is_wrapped;
@@ -39,6 +41,7 @@ void llvm_backend_error(LlvmBackend *backend, const char *message);
 int llvm_backend_init_native_target(LlvmBackend *backend);
 int llvm_backend_init_native_asm_printer(LlvmBackend *backend);
 void llvm_backend_dispose_target(LlvmBackend *backend);
+int llvm_backend_optimize_module(LlvmBackend *backend);
 
 LLVMTypeRef llvm_lower_type(LlvmBackend *backend, CogIrTypeId id);
 LLVMTypeRef llvm_lower_function_signature(LlvmBackend *backend, CogIrTypeId id);

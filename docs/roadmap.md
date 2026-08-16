@@ -2,7 +2,7 @@
 
 Coglet is focused on building a small, correct systems-language core with explicit semantics and a compiler architecture that remains understandable.
 
-The project remains frontend-led, with a CogIR-only host-C bootstrap backend providing the executable feedback loop. The current host-C/CogIR contract is complete for the exercised language and interop surface. LLVM Stage 7 now provides a second native executable path: after verifier-checked lowering for the Stage 1-6 scalar/CFG, memory/aggregate, floating-point, function-value, C ABI, and x86-64 SysV/Win64 represented-object surface, the backend emits a native object through its LLVM `TargetMachine` and hands that object to a separate host linker-driver boundary. Optimization is the next LLVM backend milestone; non-x86-64 aggregate classifiers remain part of future cross-target work.
+The project remains frontend-led, with a CogIR-only host-C bootstrap backend providing the executable feedback loop. The current host-C/CogIR contract is complete for the exercised language and interop surface. LLVM Stage 8 now provides a second optimized native executable path: after verifier-checked lowering for the Stage 1-6 scalar/CFG, memory/aggregate, floating-point, function-value, C ABI, and x86-64 SysV/Win64 represented-object surface, Stage 7 emits a native object and links it through a separate host linker-driver boundary, while Stage 8 adds target-aware LLVM `-O0` through `-O3` policy using LLVM's default optimization pipelines. Non-x86-64 aggregate classifiers remain part of future cross-target work.
 
 ## Current State
 
@@ -533,11 +533,14 @@ an explicit classifier that can split values into registers or select indirect
 `byval`/hidden-`sret` passing. Declarations, calls, and Coglet-defined C callbacks
 all consume the same backend ABI plan. LLVM-specific target layout and callable
 signatures remain backend-owned derivations of frozen CogIR; no frontend object is
-consulted after lowering. LLVM Stage 7 now reuses that same verified module and
+consulted after lowering. LLVM Stage 7 reuses that same verified module and
 backend-owned target machine to emit native objects and links them through a
 separate host toolchain boundary;
-textual LLVM IR emission remains available. The next LLVM milestone is the
-optimization pipeline and user-visible optimization levels, while aggregate
+textual LLVM IR emission remains available. LLVM Stage 8 adds user-visible
+`-O0`/`-O1`/`-O2`/`-O3` policy without changing CogIR: O1-O3 run LLVM's default
+new-pass-manager pipelines with the backend target machine, optimized modules are
+verified again before output, and target code-generation intensity follows the
+same level. General-purpose optimization remains LLVM-owned; aggregate
 classification for additional targets waits for explicit cross-target support.
 
 Longer-term additions remain possible, including a custom native backend or an

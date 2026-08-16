@@ -2,6 +2,7 @@
 #define COGLET_BACKENDS_LLVM_BACKEND_LLVM_H
 
 #include "cog_ir.h"
+#include "optimization.h"
 
 typedef enum LlvmBackendStatus {
     LLVM_BACKEND_STATUS_OK = 0,
@@ -9,8 +10,13 @@ typedef enum LlvmBackendStatus {
     LLVM_BACKEND_STATUS_INVALID_IR,
     LLVM_BACKEND_STATUS_IO_ERROR,
     LLVM_BACKEND_STATUS_CODEGEN_ERROR,
+    LLVM_BACKEND_STATUS_OPTIMIZATION_ERROR,
     LLVM_BACKEND_STATUS_TOOLCHAIN_ERROR,
 } LlvmBackendStatus;
+
+typedef struct LlvmBackendOptions {
+    CogOptimizationLevel optimization_level;
+} LlvmBackendOptions;
 
 typedef struct LlvmBackendLinkOptions {
     const char *const *library_dirs;
@@ -29,7 +35,8 @@ typedef struct LlvmBackendLinkOptions {
  */
 LlvmBackendStatus llvm_backend_emit_ir_file(
     const char *output_path,
-    const CogIrModule *module
+    const CogIrModule *module,
+    const LlvmBackendOptions *options
 );
 
 /*
@@ -39,7 +46,8 @@ LlvmBackendStatus llvm_backend_emit_ir_file(
  */
 LlvmBackendStatus llvm_backend_emit_object_file(
     const char *output_path,
-    const CogIrModule *module
+    const CogIrModule *module,
+    const LlvmBackendOptions *options
 );
 
 /*
@@ -51,6 +59,7 @@ LlvmBackendStatus llvm_backend_emit_object_file(
 LlvmBackendStatus llvm_backend_build_executable(
     const char *output_path,
     const CogIrModule *module,
+    const LlvmBackendOptions *backend_options,
     const LlvmBackendLinkOptions *link_options
 );
 

@@ -180,9 +180,15 @@ negative coverage that keeps `#repr(c)` and volatile whole-aggregate behavior ou
 of the subset until their ABI/access semantics are implemented explicitly. Stage
 4 adds floating arithmetic/comparisons and checked float/integer conversions,
 integer/boolean/enum switches, indirect native Coglet function values/calls, and
-direct CogIR coverage for the explicit trap terminator. The float suite includes
-NaN/infinity, signed/unsigned range boundaries, and narrowing behavior so LLVM
-conversion instructions are not used before Coglet's checked-cast guards.
+direct CogIR coverage for the explicit trap terminator. Stage 5 links emitted
+LLVM IR against an independently compiled C support library to exercise exact C
+scalar aliases, SysV extension attributes, callbacks and returned function
+pointers, direct and indirect C variadics/default promotions, explicit Win64
+calling convention lowering, incomplete/volatile pointers, and external symbol
+overrides. Negative regressions keep by-value represented C aggregate ABI
+classification and typed C `_Bool` object storage outside this slice. The float suite includes NaN/infinity,
+signed/unsigned range boundaries, and narrowing behavior so LLVM conversion
+instructions are not used before Coglet's checked-cast guards.
 
 Run only these tests with:
 

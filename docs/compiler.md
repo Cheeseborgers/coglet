@@ -298,15 +298,19 @@ details also remain deferred.
 ## Target Description
 
 
-### LLVM backend Stage 4
+### LLVM backend Stage 5
 
 The LLVM backend lives under `src/backends/llvm/` with its public API under
 `include/backends/llvm/`. It accepts only frozen `CogIrModule` input, constructs
 LLVM IR through the LLVM C API, runs `LLVMVerifyModule`, and then writes textual
-IR. Stage 4 retains the scalar/CFG/function/module-init/entry foundation, Stage 2
-integer semantics, and Stage 3 target-aware memory/aggregate lowering, then adds
-remaining native Coglet execution semantics for floating point, switch/trap
-terminators, and indirect native Coglet function values/calls.
+IR. Stage 5 retains the native execution foundation from Stages 1-4 and adds
+the first explicit target-C ABI lowering slice: native C scalar aliases, raw
+pointers, incomplete C handles, C function values/callbacks, C variadics/default
+promotions, external symbol names, and the supported explicit C calling
+conventions. Scalar `_Bool` values are lowered at function boundaries, but typed
+pointers to C `_Bool` storage remain explicitly rejected because Coglet's runtime
+`bool` value representation (`i1` in LLVM) is not itself a complete C object
+storage contract.
 
 Before lowering types, the backend initializes LLVM's native target, creates a
 target machine, and stamps the module with the resulting target triple and
@@ -327,20 +331,24 @@ Native Coglet function *values* lower as ordinary LLVM opaque pointer values.
 Their callable signature is derived separately from the frozen CogIR function
 type when a function is declared or called. This distinction permits native
 function values to pass through locals, parameters, results, and CFG storage
-without treating an LLVM function type itself as a first-class data value. It
-also keeps the later C ABI problem separate: C function-pointer calls still need
-explicit calling-convention and target ABI lowering from CogIR ABI metadata.
+without treating an LLVM function type itself as a first-class data value. C function values use the same opaque pointer value representation, but their
+callable signatures and call-site attributes are derived from CogIR's exact C ABI
+type metadata rather than from the ordinary runtime type alone.
 
 CogIR `switch` terminators lower to LLVM switch control flow. Per-edge trampoline
 blocks preserve edge-specific CogIR block arguments even when more than one case
 targets the same destination block. CogIR `trap` terminators lower explicitly to
 `llvm.trap` followed by `unreachable`.
 
-`#repr(c)` aggregate layout, unions, C ABI calls/function pointers/variadics,
-volatile whole-aggregate accesses, optimization pipelines, object emission, and
-linker integration remain intentionally rejected or deferred rather than
-approximated. In particular, ordinary Coglet struct layout and native function
-signatures in LLVM must not be mistaken for target C ABI classification.
+`#repr(c)` aggregate layout/classification, unions, typed C `_Bool` object
+storage through pointers, volatile whole-aggregate accesses, optimization
+pipelines, object emission, and linker integration remain
+intentionally rejected or deferred rather than approximated. Stage 5 applies the
+required x86-64 SysV small-integer extension attributes and LLVM calling
+conventions for the scalar/pointer/function ABI surface. By-value represented C
+aggregates remain separate because target ABIs may coerce, split, extend, or pass
+those values indirectly; an ordinary LLVM struct signature is not a C ABI
+classifier.
 
 `COGLET_LLVM=AUTO` enables the backend when `LLVMConfig.cmake` is available;
 `ON` requires LLVM 17 or newer and `OFF` disables it. The CMake integration

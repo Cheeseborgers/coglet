@@ -1,0 +1,21 @@
+#extern(c, name="coglet_backend_return_schar")
+return_schar::() -> c_schar;
+
+#extern(c, name="coglet_backend_return_bool")
+return_bool::() -> c_bool;
+
+#extern(c, name="coglet_backend_small_callback_probe")
+probe_small_callback::(callback: cfn(c_schar) -> c_schar) -> c_int;
+
+#repr(c)
+identity_small::(value: c_schar) -> c_schar {
+    return value;
+}
+
+main::() -> i32 {
+    if return_schar() != -7
+        return 1;
+    if !return_bool()
+        return 2;
+    return probe_small_callback(identity_small);
+}

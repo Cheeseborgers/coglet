@@ -29,8 +29,13 @@ endif()
 
 if(DEFINED CLANG AND NOT CLANG STREQUAL "" AND NOT CLANG MATCHES "-NOTFOUND$")
     set(output_exe "${OUTPUT_IR}.exe")
+    set(clang_command "${CLANG}" -Wno-override-module "${OUTPUT_IR}")
+    if(DEFINED LINK_INPUT AND NOT LINK_INPUT STREQUAL "")
+        list(APPEND clang_command "${LINK_INPUT}")
+    endif()
+    list(APPEND clang_command -o "${output_exe}")
     execute_process(
-        COMMAND "${CLANG}" -Wno-override-module "${OUTPUT_IR}" -o "${output_exe}"
+        COMMAND ${clang_command}
         RESULT_VARIABLE clang_result
         OUTPUT_VARIABLE clang_stdout
         ERROR_VARIABLE clang_stderr

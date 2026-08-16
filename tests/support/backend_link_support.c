@@ -451,3 +451,23 @@ int coglet_backend_checked_arithmetic_probe(
 
     return 95;
 }
+
+
+typedef signed char (*CogletBackendSmallCallback)(signed char);
+
+signed char coglet_backend_return_schar(void)
+{
+    return -7;
+}
+
+_Bool coglet_backend_return_bool(void)
+{
+    return 1;
+}
+
+int coglet_backend_small_callback_probe(CogletBackendSmallCallback callback)
+{
+    if (!callback || callback(-9) != -9)
+        return 84;
+    return 83;
+}

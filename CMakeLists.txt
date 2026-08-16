@@ -102,6 +102,7 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
                 src/backends/llvm/lower_float.c
                 src/backends/llvm/lower_memory.c
                 src/backends/llvm/lower_control.c
+                src/backends/llvm/lower_c_abi.c
                 src/backends/llvm/target.c
         )
         target_include_directories(coglet_backend_llvm
@@ -1111,4 +1112,73 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_stage4_explicit_trap_terminator
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;cfg;trap")
+
+    function(add_llvm_c_abi_executable_test test_name fixture expected_exit ir_substring)
+        add_test(
+            NAME ${test_name}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
+            -DOUTPUT_IR=${CMAKE_BINARY_DIR}/${test_name}.ll
+            -DEXPECT_EXIT=${expected_exit}
+            "-DEXPECT_IR_SUBSTRING=${ir_substring}"
+            -DCLANG=${COGLET_CLANG_EXECUTABLE}
+            -DLINK_INPUT=$<TARGET_FILE:coglet_backend_link_support>
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+        )
+        set_tests_properties(${test_name}
+            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;interop;abi;stage5")
+    endfunction()
+
+    add_llvm_c_abi_executable_test(
+        backend_llvm_stage5_integer_aliases extern_c_integer_aliases.cog 29 "i8 signext"
+    )
+    add_llvm_c_abi_executable_test(
+        backend_llvm_stage5_scalar_aliases extern_c_scalar_aliases.cog 31 "i1 zeroext"
+    )
+    add_llvm_c_abi_executable_test(
+        backend_llvm_stage5_small_scalar_boundary llvm/stage5_small_scalar_boundary.cog 83 "signext i8"
+    )
+    add_llvm_c_abi_executable_test(
+        backend_llvm_stage5_callbacks_indirect indirect_calls.cog 0 "call i32 (i32, ...) %"
+    )
+    add_llvm_c_abi_executable_test(
+        backend_llvm_stage5_variadic extern_c_variadic.cog 57 "call i32 (i32, ...) @coglet_backend_varargs_probe"
+    )
+    add_llvm_c_abi_executable_test(
+        backend_llvm_stage5_win64_calling_convention extern_c_calling_convention.cog 79 "call win64cc i32"
+    )
+    add_llvm_c_abi_executable_test(
+        backend_llvm_stage5_incomplete_pointer extern_c_incomplete_struct.cog 67 "@coglet_backend_get_incomplete_handle"
+    )
+    add_llvm_c_abi_executable_test(
+        backend_llvm_stage5_volatile_pointer extern_c_volatile_pointers.cog 89 "@coglet_backend_volatile_probe"
+    )
+    add_llvm_c_abi_executable_test(
+        backend_llvm_stage5_symbol_override extern_c_symbol_override.cog 7 "@abs"
+    )
+
+    add_test(
+        NAME backend_llvm_stage5_rejects_repr_c_aggregate_abi
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_repr_struct.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage5_repr_c_aggregate_abi_unsupported.ll
+        "-DEXPECT_SUBSTRING=#repr(c) aggregate argument/return classification is outside the LLVM Stage 5 scalar ABI subset"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage5_rejects_repr_c_aggregate_abi
+        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;interop;abi;aggregate;stage5")
+
+    add_test(
+        NAME backend_llvm_stage5_rejects_c_bool_pointer_storage
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage5_rejects_c_bool_pointer.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage5_c_bool_pointer_unsupported.ll
+        "-DEXPECT_SUBSTRING=C _Bool object storage through typed pointers is outside the LLVM Stage 5 scalar ABI subset"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage5_rejects_c_bool_pointer_storage
+        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;interop;abi;pointer;bool;stage5")
 endif()

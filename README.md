@@ -729,20 +729,23 @@ The host-C backend is the bootstrap executable path for the current CogIR
 contract. It consumes only frozen CogIR, covers every current `CogIrOp`, and is
 built as a separate backend library beneath the frontend/semantic/CogIR core.
 This keeps C implementation details out of the language boundary. An optional
-LLVM Stage 4 backend now consumes the same frozen module through its own backend
+LLVM Stage 5 backend now consumes the same frozen module through its own backend
 library. It emits verifier-checked LLVM IR with an explicit native target triple
 and data layout for native scalar/CFG and integer semantics, ordinary Coglet
 memory and aggregates, floating-point operations and conversions, switch/trap
-terminators, and indirect native Coglet function values/calls. C-represented
-aggregate layout and C calling ABI lowering remain deliberately deferred to the
-dedicated C ABI milestone.
+terminators, indirect native Coglet function values/calls, and the scalar,
+pointer, callback/function-pointer, variadic, and explicit-calling-convention C
+ABI surface. Typed pointers whose reachable C object representation includes
+`_Bool` remain explicitly rejected until ABI-aware C object storage lowering is
+implemented. By-value C-represented aggregate layout/classification likewise
+remains deferred to the dedicated aggregate ABI milestone.
 
 ## Roadmap
 
 Near-term compiler work is backend-focused:
 
-1. Add explicit target ABI lowering for C interoperability rather than relying on LLVM aggregate types or raw LLVM function signatures to imply a C ABI.
-2. Add target object generation and linker integration once C ABI lowering is explicit.
+1. Add target-specific by-value `#repr(c)` aggregate/union ABI classification; do not rely on ordinary LLVM aggregate types to imply a C ABI.
+2. Add target object generation and linker integration once represented aggregate ABI lowering is explicit.
 3. Delegate general optimization to LLVM initially, retaining CogIR transforms only where Coglet semantics require them.
 4. Reassess imports, modules, multi-file compilation, and runtime/standard-library facilities as self-hosting needs become concrete.
 5. Continue improving diagnostics, tests, and documentation.

@@ -14,12 +14,6 @@ void llvm_backend_error(LlvmBackend *backend, const char *message)
     backend->had_error = 1;
 }
 
-static void backend_unsupported_op(LlvmBackend *backend, CogIrOp op)
-{
-    fprintf(stderr, "LLVM backend error: unsupported CogIR operation '%s' in Stage 4\n", cog_ir_op_name(op));
-    backend->had_error = 1;
-}
-
 static int allocate_backend_tables(LlvmBackend *backend)
 {
     backend->types = calloc(backend->ir->type_count, sizeof(*backend->types));
@@ -75,17 +69,53 @@ static int declare_functions(LlvmBackend *backend)
             llvm_backend_error(backend, "function references a non-function CogIR type");
             return 0;
         }
-        if (function->abi.abi != COG_IR_ABI_COGLET || function->abi.is_variadic || function->kind != COG_IR_FUNCTION_DEFINITION) {
-            llvm_backend_error(backend, "Stage 4 supports only defined non-variadic Coglet ABI functions");
+        LLVMTypeRef llvm_type = NULL;
+        if (function->abi.abi == COG_IR_ABI_COGLET) {
+            if (function->abi.is_variadic || function->kind != COG_IR_FUNCTION_DEFINITION) {
+                llvm_backend_error(backend, "ordinary Coglet functions must be defined and non-variadic in the LLVM backend");
+                return 0;
+            }
+            llvm_type = llvm_lower_function_signature(backend, function->type);
+        } else if (function->abi.abi == COG_IR_ABI_C) {
+            llvm_type = llvm_lower_c_function_signature(backend, function);
+        } else {
+            llvm_backend_error(backend, "unknown CogIR function ABI");
             return 0;
         }
-        LLVMTypeRef llvm_type = llvm_lower_function_signature(backend, function->type);
         if (!llvm_type)
             return 0;
-        char name[64];
-        snprintf(name, sizeof(name), "cog.fn.%zu", i);
+
+        char generated_name[64];
+        const char *name = generated_name;
+        char *external_name = NULL;
+        if (function->abi.abi == COG_IR_ABI_C &&
+            function->linkage == COG_IR_LINKAGE_EXTERNAL &&
+            function->abi.external_symbol.length) {
+            external_name = malloc(function->abi.external_symbol.length + 1);
+            if (!external_name) {
+                llvm_backend_error(backend, "out of memory copying external C symbol name");
+                return 0;
+            }
+            memcpy(external_name, function->abi.external_symbol.data, function->abi.external_symbol.length);
+            external_name[function->abi.external_symbol.length] = '\0';
+            name = external_name;
+        } else {
+            snprintf(generated_name, sizeof(generated_name), "cog.fn.%zu", i);
+        }
+
         LLVMValueRef value = LLVMAddFunction(backend->module, name, llvm_type);
+        free(external_name);
         LLVMSetLinkage(value, function->linkage == COG_IR_LINKAGE_INTERNAL ? LLVMInternalLinkage : LLVMExternalLinkage);
+        if (function->abi.abi == COG_IR_ABI_C &&
+            !llvm_apply_c_function_abi(
+                backend,
+                value,
+                function->abi.calling_convention,
+                function->abi.return_abi_type,
+                function->abi.parameter_abi_types,
+                function->abi.parameter_count)) {
+            return 0;
+        }
         backend->functions[i] = value;
         backend->function_types[i] = llvm_type;
     }
@@ -187,13 +217,29 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
                 llvm_backend_error(backend, "call references unavailable or non-function CogIR value");
                 return 0;
             }
-            if (callee_type->as.function.abi != COG_IR_ABI_COGLET || callee_type->as.function.is_variadic) {
-                llvm_backend_error(backend, "C ABI calls are outside the LLVM Stage 4 subset");
+
+            LLVMTypeRef callable = NULL;
+            const CogIrAbiType *callee_abi = NULL;
+            if (callee_type->as.function.abi == COG_IR_ABI_COGLET) {
+                if (callee_type->as.function.is_variadic) {
+                    llvm_backend_error(backend, "ordinary Coglet variadic calls are unsupported");
+                    return 0;
+                }
+                callable = llvm_lower_function_signature(backend, callee_value->type);
+            } else if (callee_type->as.function.abi == COG_IR_ABI_C) {
+                if (callee_value->abi_type == COG_IR_ABI_TYPE_INVALID) {
+                    llvm_backend_error(backend, "C ABI call is missing exact function-pointer ABI metadata");
+                    return 0;
+                }
+                callee_abi = cog_ir_get_abi_type(backend->ir, callee_value->abi_type);
+                callable = llvm_lower_c_function_pointer_signature(backend, callee_value->abi_type);
+            } else {
+                llvm_backend_error(backend, "call uses an unknown CogIR function ABI");
                 return 0;
             }
-            LLVMTypeRef callable = llvm_lower_function_signature(backend, callee_value->type);
             if (!callable)
                 return 0;
+
             LLVMValueRef *args = NULL;
             if (insn->as.call.argument_count) {
                 args = calloc(insn->as.call.argument_count, sizeof(*args));
@@ -216,6 +262,14 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
                 ""
             );
             free(args);
+            if (callee_type->as.function.abi == COG_IR_ABI_C &&
+                !llvm_apply_c_call_abi(
+                    backend,
+                    result,
+                    callee_type->as.function.calling_convention,
+                    callee_abi)) {
+                return 0;
+            }
             break;
         }
         case COG_IR_OP_IADD_CHECKED: case COG_IR_OP_ISUB_CHECKED: case COG_IR_OP_IMUL_CHECKED:
@@ -250,8 +304,9 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
                 return 0;
             break;
         case COG_IR_OP_C_VARARG_PROMOTE:
-            backend_unsupported_op(backend, insn->op);
-            return 0;
+            if (!llvm_lower_c_vararg_promotion(backend, function, state, insn, &result))
+                return 0;
+            break;
     }
 
     if (backend->had_error)
@@ -313,8 +368,13 @@ fail:
 
 static int lower_functions(LlvmBackend *backend)
 {
-    for (size_t i = 0; i < backend->ir->function_count; ++i)
-        if (!lower_function_body(backend, &backend->ir->functions[i])) return 0;
+    for (size_t i = 0; i < backend->ir->function_count; ++i) {
+        const CogIrFunction *function = &backend->ir->functions[i];
+        if (function->kind == COG_IR_FUNCTION_DECLARATION)
+            continue;
+        if (!lower_function_body(backend, function))
+            return 0;
+    }
     return 1;
 }
 

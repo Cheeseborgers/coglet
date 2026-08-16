@@ -1173,5 +1173,13 @@ volatile access contract.
     directly; and ordinary Coglet function values are first-class opaque pointer
     values whose callable signatures are derived separately from frozen CogIR at
     declarations and calls. Per-switch-edge trampoline blocks retain CogIR block
-    arguments. C ABI calls/function pointers/variadics and represented C layout
-    remain a separate target-ABI milestone.
+    arguments. represented C aggregate layout/classification
+    remains a separate target-ABI milestone.
+23. ~~Lower the scalar/pointer/function C ABI through LLVM.~~ Exact CogIR C ABI
+    spelling now drives external declarations, callbacks and returned function
+    pointers, explicit calling conventions, x86-64 SysV small-integer extension
+    attributes, C variadic function types, and `c.vararg.promote`. The backend
+    links and executes against independently compiled C probes without consulting
+    frontend objects. Typed pointers that would expose C `_Bool` object storage
+    and by-value `#repr(c)` aggregates remain explicitly rejected until their
+    target storage/classification rules are implemented.

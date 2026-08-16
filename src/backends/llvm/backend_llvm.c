@@ -16,7 +16,7 @@ void llvm_backend_error(LlvmBackend *backend, const char *message)
 
 static void backend_unsupported_op(LlvmBackend *backend, CogIrOp op)
 {
-    fprintf(stderr, "LLVM backend error: unsupported CogIR operation '%s' in Stage 3\n", cog_ir_op_name(op));
+    fprintf(stderr, "LLVM backend error: unsupported CogIR operation '%s' in Stage 4\n", cog_ir_op_name(op));
     backend->had_error = 1;
 }
 
@@ -76,10 +76,10 @@ static int declare_functions(LlvmBackend *backend)
             return 0;
         }
         if (function->abi.abi != COG_IR_ABI_COGLET || function->abi.is_variadic || function->kind != COG_IR_FUNCTION_DEFINITION) {
-            llvm_backend_error(backend, "Stage 3 supports only defined non-variadic Coglet ABI functions");
+            llvm_backend_error(backend, "Stage 4 supports only defined non-variadic Coglet ABI functions");
             return 0;
         }
-        LLVMTypeRef llvm_type = llvm_lower_type(backend, function->type);
+        LLVMTypeRef llvm_type = llvm_lower_function_signature(backend, function->type);
         if (!llvm_type)
             return 0;
         char name[64];
@@ -96,10 +96,9 @@ static int init_function_state(LlvmBackend *backend, const CogIrFunction *functi
 {
     memset(state, 0, sizeof(*state));
     state->values = calloc(function->value_count, sizeof(*state->values));
-    state->callable_types = calloc(function->value_count, sizeof(*state->callable_types));
     state->slots = calloc(function->slot_count, sizeof(*state->slots));
     state->blocks = calloc(function->block_count, sizeof(*state->blocks));
-    if ((function->value_count && (!state->values || !state->callable_types)) ||
+    if ((function->value_count && !state->values) ||
         (function->slot_count && !state->slots) ||
         (function->block_count && !state->blocks)) {
         llvm_backend_error(backend, "out of memory lowering LLVM function");
@@ -111,29 +110,8 @@ static int init_function_state(LlvmBackend *backend, const CogIrFunction *functi
 static void destroy_function_state(LlvmFunctionState *state)
 {
     free(state->values);
-    free(state->callable_types);
     free(state->slots);
     free(state->blocks);
-}
-
-static int add_edge_incoming(LlvmBackend *backend, const CogIrFunction *function, LlvmFunctionState *state, const CogIrBranchEdge *edge)
-{
-    const CogIrBlock *target = cog_ir_get_block(function, edge->target);
-    if (!target || edge->argument_count != target->parameter_count) {
-        llvm_backend_error(backend, "invalid branch edge while lowering LLVM CFG");
-        return 0;
-    }
-    for (size_t i = 0; i < edge->argument_count; ++i) {
-        LLVMValueRef incoming = state->values[edge->arguments[i]];
-        LLVMValueRef phi = state->values[target->parameters[i].value];
-        LLVMBasicBlockRef incoming_block = LLVMGetInsertBlock(backend->builder);
-        if (!incoming || !phi) {
-            llvm_backend_error(backend, "branch edge references unavailable LLVM value");
-            return 0;
-        }
-        LLVMAddIncoming(phi, &incoming, &incoming_block, 1);
-    }
-    return 1;
 }
 
 static LLVMIntPredicate predicate_for_op(CogIrOp op)
@@ -167,8 +145,6 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
                 return 0;
             }
             result = backend->functions[id];
-            if (insn->result != COG_IR_VALUE_INVALID)
-                state->callable_types[insn->result] = backend->function_types[id];
             break;
         }
         case COG_IR_OP_LOCAL_ADDR:
@@ -203,19 +179,42 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
         }
         case COG_IR_OP_CALL: {
             LLVMValueRef callee = state->values[insn->as.call.callee];
-            LLVMTypeRef callable = state->callable_types[insn->as.call.callee];
-            if (!callee || !callable) {
-                llvm_backend_error(backend, "Stage 3 supports direct calls from function_ref values only");
+            const CogIrValue *callee_value = cog_ir_get_value(function, insn->as.call.callee);
+            const CogIrType *callee_type = callee_value
+                ? cog_ir_get_type(backend->ir, callee_value->type)
+                : NULL;
+            if (!callee || !callee_type || callee_type->kind != COG_IR_TYPE_FUNCTION) {
+                llvm_backend_error(backend, "call references unavailable or non-function CogIR value");
                 return 0;
             }
+            if (callee_type->as.function.abi != COG_IR_ABI_COGLET || callee_type->as.function.is_variadic) {
+                llvm_backend_error(backend, "C ABI calls are outside the LLVM Stage 4 subset");
+                return 0;
+            }
+            LLVMTypeRef callable = llvm_lower_function_signature(backend, callee_value->type);
+            if (!callable)
+                return 0;
             LLVMValueRef *args = NULL;
             if (insn->as.call.argument_count) {
                 args = calloc(insn->as.call.argument_count, sizeof(*args));
                 if (!args) { llvm_backend_error(backend, "out of memory lowering call"); return 0; }
-                for (size_t i = 0; i < insn->as.call.argument_count; ++i)
+                for (size_t i = 0; i < insn->as.call.argument_count; ++i) {
                     args[i] = state->values[insn->as.call.arguments[i]];
+                    if (!args[i]) {
+                        free(args);
+                        llvm_backend_error(backend, "call argument references unavailable LLVM value");
+                        return 0;
+                    }
+                }
             }
-            result = LLVMBuildCall2(backend->builder, callable, callee, args, (unsigned)insn->as.call.argument_count, "");
+            result = LLVMBuildCall2(
+                backend->builder,
+                callable,
+                callee,
+                args,
+                (unsigned)insn->as.call.argument_count,
+                ""
+            );
             free(args);
             break;
         }
@@ -224,14 +223,33 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
         case COG_IR_OP_IADD_WRAP: case COG_IR_OP_ISUB_WRAP: case COG_IR_OP_IMUL_WRAP: case COG_IR_OP_INEG_WRAP:
         case COG_IR_OP_BIT_AND: case COG_IR_OP_BIT_OR: case COG_IR_OP_BIT_XOR: case COG_IR_OP_BIT_NOT:
         case COG_IR_OP_SHL_CHECKED_COUNT: case COG_IR_OP_SHR_SIGNED_CHECKED_COUNT: case COG_IR_OP_SHR_UNSIGNED_CHECKED_COUNT:
-        case COG_IR_OP_CAST_CHECKED: case COG_IR_OP_INT_TRUNCATE:
+        case COG_IR_OP_INT_TRUNCATE:
             if (!llvm_lower_integer_instruction(backend, function, state, insn, &result))
                 return 0;
             break;
-
+        case COG_IR_OP_CAST_CHECKED: {
+            const CogIrValue *operand = cog_ir_get_value(function, insn->as.conversion.operand);
+            const CogIrType *source = operand ? cog_ir_get_type(backend->ir, operand->type) : NULL;
+            const CogIrType *target = cog_ir_get_type(backend->ir, insn->result_type);
+            if (!source || !target) {
+                llvm_backend_error(backend, "cast.checked references unavailable CogIR type");
+                return 0;
+            }
+            if (source->kind == COG_IR_TYPE_FLOAT || target->kind == COG_IR_TYPE_FLOAT) {
+                if (!llvm_lower_float_instruction(backend, function, state, insn, &result))
+                    return 0;
+            } else if (!llvm_lower_integer_instruction(backend, function, state, insn, &result)) {
+                return 0;
+            }
+            break;
+        }
         case COG_IR_OP_FADD: case COG_IR_OP_FSUB: case COG_IR_OP_FMUL: case COG_IR_OP_FDIV: case COG_IR_OP_FNEG:
         case COG_IR_OP_FCMP_EQ: case COG_IR_OP_FCMP_NE: case COG_IR_OP_FCMP_LT: case COG_IR_OP_FCMP_LE:
-        case COG_IR_OP_FCMP_GT: case COG_IR_OP_FCMP_GE: case COG_IR_OP_C_VARARG_PROMOTE:
+        case COG_IR_OP_FCMP_GT: case COG_IR_OP_FCMP_GE:
+            if (!llvm_lower_float_instruction(backend, function, state, insn, &result))
+                return 0;
+            break;
+        case COG_IR_OP_C_VARARG_PROMOTE:
             backend_unsupported_op(backend, insn->op);
             return 0;
     }
@@ -241,40 +259,6 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
     if (insn->result != COG_IR_VALUE_INVALID)
         state->values[insn->result] = result;
     return 1;
-}
-
-static int lower_terminator(LlvmBackend *backend, const CogIrFunction *function, LlvmFunctionState *state, const CogIrBlock *block)
-{
-    const CogIrTerminator *term = &block->terminator;
-    switch (term->kind) {
-        case COG_IR_TERMINATOR_BR:
-            if (!add_edge_incoming(backend, function, state, &term->as.branch.edge)) return 0;
-            LLVMBuildBr(backend->builder, state->blocks[term->as.branch.edge.target]);
-            return 1;
-        case COG_IR_TERMINATOR_COND_BR:
-            if (!add_edge_incoming(backend, function, state, &term->as.cond_branch.if_true) ||
-                !add_edge_incoming(backend, function, state, &term->as.cond_branch.if_false)) return 0;
-            LLVMBuildCondBr(backend->builder, state->values[term->as.cond_branch.condition],
-                            state->blocks[term->as.cond_branch.if_true.target], state->blocks[term->as.cond_branch.if_false.target]);
-            return 1;
-        case COG_IR_TERMINATOR_RET:
-            if (term->as.ret.has_value) LLVMBuildRet(backend->builder, state->values[term->as.ret.value]);
-            else LLVMBuildRetVoid(backend->builder);
-            return 1;
-        case COG_IR_TERMINATOR_UNREACHABLE:
-            LLVMBuildUnreachable(backend->builder);
-            return 1;
-        case COG_IR_TERMINATOR_SWITCH:
-            llvm_backend_error(backend, "switch terminators are outside the LLVM Stage 3 subset");
-            return 0;
-        case COG_IR_TERMINATOR_TRAP:
-            llvm_backend_error(backend, "trap terminators are outside the LLVM Stage 3 subset");
-            return 0;
-        case COG_IR_TERMINATOR_NONE:
-            llvm_backend_error(backend, "CogIR block has no terminator");
-            return 0;
-    }
-    return 0;
 }
 
 static int lower_function_body(LlvmBackend *backend, const CogIrFunction *function)
@@ -317,7 +301,7 @@ static int lower_function_body(LlvmBackend *backend, const CogIrFunction *functi
         LLVMPositionBuilderAtEnd(backend->builder, state.blocks[i]);
         for (size_t j = 0; j < block->instruction_count; ++j)
             if (!lower_instruction(backend, function, &state, &block->instructions[j])) goto fail;
-        if (!lower_terminator(backend, function, &state, block)) goto fail;
+        if (!llvm_lower_terminator(backend, function, &state, block)) goto fail;
     }
 
     destroy_function_state(&state);

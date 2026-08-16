@@ -298,35 +298,49 @@ details also remain deferred.
 ## Target Description
 
 
-### LLVM backend Stage 3
+### LLVM backend Stage 4
 
 The LLVM backend lives under `src/backends/llvm/` with its public API under
 `include/backends/llvm/`. It accepts only frozen `CogIrModule` input, constructs
 LLVM IR through the LLVM C API, runs `LLVMVerifyModule`, and then writes textual
-IR. Stage 3 retains the scalar/CFG/function/module-init/entry foundation and the
-Stage 2 integer semantics, then adds ordinary Coglet storage and aggregate
-lowering: local/global addresses, loads/stores, field and array addressing,
-typed-pointer indexing, pointer equality, pointer qualification/reinterpretation,
-first-class arrays, ordinary nominal structs, aggregate construction/extraction,
-and aggregate arguments/returns/copies.
+IR. Stage 4 retains the scalar/CFG/function/module-init/entry foundation, Stage 2
+integer semantics, and Stage 3 target-aware memory/aggregate lowering, then adds
+remaining native Coglet execution semantics for floating point, switch/trap
+terminators, and indirect native Coglet function values/calls.
 
 Before lowering types, the backend initializes LLVM's native target, creates a
 target machine, and stamps the module with the resulting target triple and
 `DataLayout`. These LLVM-specific objects remain backend-owned; they are not
-added to CogIR or frontend `TargetInfo`. Stage 3 remains host-target-only until
-Coglet has explicit target selection and cross-toolchain policy.
+added to CogIR or frontend `TargetInfo`. The LLVM backend remains host-target-only
+until Coglet has explicit target selection and cross-toolchain policy.
 
-Runtime integer failure paths still branch to `llvm.trap`; checked overflow uses
-LLVM's `*.with.overflow` intrinsics rather than relying on poison-producing flags
-or host-language behavior. Backend-created trap/continuation blocks preserve
-CogIR block-parameter semantics by recording the actual current LLVM predecessor
-when adding PHI inputs.
+Runtime integer failure paths branch to `llvm.trap`; checked overflow uses LLVM's
+`*.with.overflow` intrinsics rather than relying on poison-producing flags or
+host-language behavior. Floating operations are emitted without fast-math flags.
+Comparisons use predicates that preserve Coglet's specified NaN behavior, and
+checked floating/integer conversions guard non-finite and range failures before
+the LLVM conversion instruction executes. Backend-created trap/continuation
+blocks preserve CogIR block-parameter semantics by recording the actual current
+LLVM predecessor when adding PHI inputs.
 
-`#repr(c)` aggregate layout, unions, volatile whole-aggregate accesses, floating
-point, indirect function calls, C ABI lowering, optimization pipelines, and
-object emission remain intentionally rejected or deferred rather than
-approximated. In particular, ordinary Coglet struct layout in LLVM must not be
-mistaken for target C ABI classification.
+Native Coglet function *values* lower as ordinary LLVM opaque pointer values.
+Their callable signature is derived separately from the frozen CogIR function
+type when a function is declared or called. This distinction permits native
+function values to pass through locals, parameters, results, and CFG storage
+without treating an LLVM function type itself as a first-class data value. It
+also keeps the later C ABI problem separate: C function-pointer calls still need
+explicit calling-convention and target ABI lowering from CogIR ABI metadata.
+
+CogIR `switch` terminators lower to LLVM switch control flow. Per-edge trampoline
+blocks preserve edge-specific CogIR block arguments even when more than one case
+targets the same destination block. CogIR `trap` terminators lower explicitly to
+`llvm.trap` followed by `unreachable`.
+
+`#repr(c)` aggregate layout, unions, C ABI calls/function pointers/variadics,
+volatile whole-aggregate accesses, optimization pipelines, object emission, and
+linker integration remain intentionally rejected or deferred rather than
+approximated. In particular, ordinary Coglet struct layout and native function
+signatures in LLVM must not be mistaken for target C ABI classification.
 
 `COGLET_LLVM=AUTO` enables the backend when `LLVMConfig.cmake` is available;
 `ON` requires LLVM 17 or newer and `OFF` disables it. The CMake integration
@@ -345,7 +359,7 @@ The host target constructor is isolated in `src/target_info.c`; this is the only
 frontend-support code that queries the C implementation used to build Coglet.
 `semantic_anal.c` consumes only the copied `TargetInfo`. LLVM data layout,
 register information, object format, relocation model, and calling-convention
-lowering are intentionally not part of this structure. The LLVM backend now
+lowering are intentionally not part of this structure. The LLVM backend
 constructs its own target machine and `DataLayout` from the selected native LLVM
 target without extending frontend object lifetimes or writing those backend facts
 back into CogIR.

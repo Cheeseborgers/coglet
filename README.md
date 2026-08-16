@@ -729,22 +729,23 @@ The host-C backend is the bootstrap executable path for the current CogIR
 contract. It consumes only frozen CogIR, covers every current `CogIrOp`, and is
 built as a separate backend library beneath the frontend/semantic/CogIR core.
 This keeps C implementation details out of the language boundary. An optional
-LLVM Stage 3 backend now consumes the same frozen module through its own backend
+LLVM Stage 4 backend now consumes the same frozen module through its own backend
 library. It emits verifier-checked LLVM IR with an explicit native target triple
-and data layout for the scalar/CFG and integer-semantics foundation plus ordinary
-Coglet memory, raw pointers, arrays, structs, and aggregate values. C-represented
-aggregate layout remains deliberately deferred to the dedicated C ABI milestone.
+and data layout for native scalar/CFG and integer semantics, ordinary Coglet
+memory and aggregates, floating-point operations and conversions, switch/trap
+terminators, and indirect native Coglet function values/calls. C-represented
+aggregate layout and C calling ABI lowering remain deliberately deferred to the
+dedicated C ABI milestone.
 
 ## Roadmap
 
 Near-term compiler work is backend-focused:
 
-1. Expand the LLVM backend through the remaining native Coglet operations, including floating point, switch/trap terminators, and indirect function values/calls.
-2. Add explicit target ABI lowering for C interoperability rather than relying on LLVM aggregate types to imply a C ABI.
-3. Add target object generation and linker integration once semantic lowering coverage is sufficiently broad.
-4. Delegate general optimization to LLVM initially, retaining CogIR transforms only where Coglet semantics require them.
-5. Reassess imports, modules, multi-file compilation, and runtime/standard-library facilities as self-hosting needs become concrete.
-6. Continue improving diagnostics, tests, and documentation.
+1. Add explicit target ABI lowering for C interoperability rather than relying on LLVM aggregate types or raw LLVM function signatures to imply a C ABI.
+2. Add target object generation and linker integration once C ABI lowering is explicit.
+3. Delegate general optimization to LLVM initially, retaining CogIR transforms only where Coglet semantics require them.
+4. Reassess imports, modules, multi-file compilation, and runtime/standard-library facilities as self-hosting needs become concrete.
+5. Continue improving diagnostics, tests, and documentation.
 
 ## License
 

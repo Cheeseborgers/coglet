@@ -99,7 +99,9 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
                 src/backends/llvm/backend_llvm.c
                 src/backends/llvm/lower_types.c
                 src/backends/llvm/lower_integer.c
+                src/backends/llvm/lower_float.c
                 src/backends/llvm/lower_memory.c
+                src/backends/llvm/lower_control.c
                 src/backends/llvm/target.c
         )
         target_include_directories(coglet_backend_llvm
@@ -108,6 +110,10 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
         )
         target_compile_options(coglet_backend_llvm PRIVATE ${COGLET_LLVM_DEFINITIONS})
         target_link_libraries(coglet_backend_llvm PRIVATE compiler_core ${COGLET_LLVM_LIBS})
+
+        add_executable(check_llvm_stage4_trap tools/tests/check_llvm_stage4_trap.c)
+        target_link_libraries(check_llvm_stage4_trap PRIVATE compiler_core coglet_backend_llvm)
+
         set(COGLET_HAS_LLVM_BACKEND ON)
     elseif(COGLET_LLVM_MODE STREQUAL "ON")
         message(FATAL_ERROR
@@ -1031,4 +1037,78 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_stage3_rejects_repr_c_aggregate
         PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;aggregate;interop;abi")
+
+    add_test(
+        NAME backend_llvm_stage4_float_semantics
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage4_float_semantics.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage4_float_semantics.ll
+        -DEXPECT_EXIT=0
+        "-DEXPECT_IR_SUBSTRING=fcmp une"
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage4_float_semantics
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;float;cast;comparison")
+
+    add_test(
+        NAME backend_llvm_stage4_switch
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage4_switch.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage4_switch.ll
+        -DEXPECT_EXIT=29
+        "-DEXPECT_IR_SUBSTRING=switch i32"
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage4_switch
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;cfg;switch;enum;bool")
+
+    add_test(
+        NAME backend_llvm_stage4_indirect_native_call
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage4_indirect_native_call.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage4_indirect_native_call.ll
+        -DEXPECT_EXIT=42
+        "-DEXPECT_IR_SUBSTRING=call i32 %"
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage4_indirect_native_call
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;function-value;indirect-call")
+
+    foreach(float_trap_case IN ITEMS
+        "checked_cast_float_integer_trap.cog|91|float-to-int"
+        "checked_cast_float_narrow_trap.cog|91|float-narrow"
+        "llvm/nan_to_integer_trap.cog|91|float-to-int"
+    )
+        string(REPLACE "|" ";" float_trap_fields "${float_trap_case}")
+        list(GET float_trap_fields 0 float_trap_input)
+        list(GET float_trap_fields 1 float_trap_no_exit)
+        list(GET float_trap_fields 2 float_trap_label)
+        get_filename_component(float_trap_stem "${float_trap_input}" NAME_WE)
+        add_test(
+            NAME backend_llvm_stage4_${float_trap_stem}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${float_trap_input}
+            -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage4_${float_trap_stem}.ll
+            -DNO_TRAP_EXIT=${float_trap_no_exit}
+            -DCLANG=${COGLET_CLANG_EXECUTABLE}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_trap_test.cmake"
+        )
+        set_tests_properties(backend_llvm_stage4_${float_trap_stem}
+            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;float;cast;trap;${float_trap_label}")
+    endforeach()
+
+    add_test(
+        NAME backend_llvm_stage4_explicit_trap_terminator
+        COMMAND $<TARGET_FILE:check_llvm_stage4_trap>
+                ${CMAKE_BINARY_DIR}/llvm_stage4_explicit_trap.ll
+    )
+    set_tests_properties(backend_llvm_stage4_explicit_trap_terminator
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;cfg;trap")
 endif()

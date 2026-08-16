@@ -3,12 +3,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static LLVMTypeRef lower_function_type(LlvmBackend *backend, const CogIrType *type)
+LLVMTypeRef llvm_lower_function_signature(LlvmBackend *backend, CogIrTypeId id)
 {
-    if (!type || type->kind != COG_IR_TYPE_FUNCTION)
+    const CogIrType *type = cog_ir_get_type(backend->ir, id);
+    if (!type || type->kind != COG_IR_TYPE_FUNCTION) {
+        llvm_backend_error(backend, "function signature references a non-function CogIR type");
         return NULL;
+    }
     if (type->as.function.abi != COG_IR_ABI_COGLET || type->as.function.is_variadic) {
-        llvm_backend_error(backend, "Stage 3 supports only non-variadic Coglet ABI functions");
+        llvm_backend_error(backend, "Stage 4 supports callable signatures only for non-variadic Coglet ABI functions");
         return NULL;
     }
 
@@ -20,7 +23,7 @@ static LLVMTypeRef lower_function_type(LlvmBackend *backend, const CogIrType *ty
     if (type->as.function.parameter_count) {
         params = calloc(type->as.function.parameter_count, sizeof(*params));
         if (!params) {
-            llvm_backend_error(backend, "out of memory lowering function type");
+            llvm_backend_error(backend, "out of memory lowering function signature");
             return NULL;
         }
         for (size_t i = 0; i < type->as.function.parameter_count; ++i) {
@@ -118,7 +121,9 @@ LLVMTypeRef llvm_lower_type(LlvmBackend *backend, CogIrTypeId id)
         case COG_IR_TYPE_STRUCT:
             return lower_struct_type(backend, type);
         case COG_IR_TYPE_FUNCTION:
-            result = lower_function_type(backend, type);
+            /* Function values are first-class opaque pointers in LLVM. Their
+             * callable signature is lowered separately for declarations/calls. */
+            result = LLVMPointerTypeInContext(backend->context, 0);
             break;
         case COG_IR_TYPE_ENUM:
             result = llvm_lower_type(backend, type->as.enumeration.backing_type);
@@ -126,8 +131,15 @@ LLVMTypeRef llvm_lower_type(LlvmBackend *backend, CogIrTypeId id)
                 return NULL;
             break;
         case COG_IR_TYPE_FLOAT:
-            llvm_backend_error(backend, "floating types are outside the LLVM Stage 3 subset");
-            return NULL;
+            if (type->as.floating.bits == 32)
+                result = LLVMFloatTypeInContext(backend->context);
+            else if (type->as.floating.bits == 64)
+                result = LLVMDoubleTypeInContext(backend->context);
+            else {
+                llvm_backend_error(backend, "unsupported CogIR floating-point width");
+                return NULL;
+            }
+            break;
         case COG_IR_TYPE_UNION:
             llvm_backend_error(backend, "union layout is outside the LLVM Stage 3 subset");
             return NULL;
@@ -211,10 +223,16 @@ LLVMValueRef llvm_lower_constant(LlvmBackend *backend, CogIrConstId id)
             free(values);
             return result;
         }
-        case COG_IR_CONST_FLOAT32:
-        case COG_IR_CONST_FLOAT64:
-            llvm_backend_error(backend, "floating constants are outside the LLVM Stage 3 subset");
-            return NULL;
+        case COG_IR_CONST_FLOAT32: {
+            LLVMTypeRef bits_type = LLVMIntTypeInContext(backend->context, 32);
+            LLVMValueRef bits = LLVMConstInt(bits_type, constant->as.float32_bits, 0);
+            return LLVMConstBitCast(bits, type);
+        }
+        case COG_IR_CONST_FLOAT64: {
+            LLVMTypeRef bits_type = LLVMIntTypeInContext(backend->context, 64);
+            LLVMValueRef bits = LLVMConstInt(bits_type, constant->as.float64_bits, 0);
+            return LLVMConstBitCast(bits, type);
+        }
     }
     return NULL;
 }

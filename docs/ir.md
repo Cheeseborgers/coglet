@@ -1167,3 +1167,11 @@ volatile access contract.
     target objects remain backend-owned. `#repr(c)` aggregates and unions remain
     deferred to explicit C ABI/layout lowering rather than leaking backend layout
     facts into CogIR.
+22. ~~Complete the remaining native LLVM execution semantics.~~ Floating-point
+    arithmetic/comparisons and checked float/integer conversions now preserve
+    Coglet's NaN/range rules; `switch` and explicit `trap` terminators lower
+    directly; and ordinary Coglet function values are first-class opaque pointer
+    values whose callable signatures are derived separately from frozen CogIR at
+    declarations and calls. Per-switch-edge trampoline blocks retain CogIR block
+    arguments. C ABI calls/function pointers/variadics and represented C layout
+    remain a separate target-ABI milestone.

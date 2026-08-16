@@ -2,7 +2,7 @@
 
 Coglet is focused on building a small, correct systems-language core with explicit semantics and a compiler architecture that remains understandable.
 
-The project remains frontend-led, with a CogIR-only host-C bootstrap backend providing the executable feedback loop. The current host-C/CogIR contract is complete for the exercised language and interop surface. LLVM Stage 3 now provides a second IR-only backend for native scalar CFG, integer semantics, target-aware memory/pointer lowering, ordinary arrays/structs, module initialization, entry adaptation, and LLVM verification; C ABI lowering and the remaining native operations remain the next backend work.
+The project remains frontend-led, with a CogIR-only host-C bootstrap backend providing the executable feedback loop. The current host-C/CogIR contract is complete for the exercised language and interop surface. LLVM Stage 4 now provides a second IR-only backend for native scalar/CFG and integer semantics, target-aware memory/pointer and ordinary aggregate lowering, floating-point semantics, switch/trap terminators, native function values/calls, module initialization, entry adaptation, and LLVM verification. Explicit target C ABI lowering is the next backend boundary.
 
 ## Current State
 
@@ -524,15 +524,16 @@ entry selection is carried by `module.entry_function` rather than a debug-name
 heuristic. This preserves the source-top-level `main` rule after nested functions
 are flattened, while the verifier enforces the native Coglet `() -> i32` entry
 signature. The CogIR-only host-C bootstrap path is therefore complete for the
-current executable/interop contract. LLVM Stage 3 now consumes the same frozen
-verified module, preserves the Stage 2 integer semantics, initializes a native
-LLVM target triple/data layout, and lowers ordinary Coglet storage, raw pointers,
-arrays, structs, aggregate construction/extraction, copies, arguments, returns,
-and globals. LLVM-specific target layout remains backend-owned rather than being
-written back into CogIR. Represented C aggregates and unions stay outside this
-slice so their eventual lowering can use an explicit target C ABI classifier
-instead of treating ordinary LLVM aggregate layout as an ABI contract. The next
-backend milestones cover the remaining native operations before C ABI lowering.
+current executable/interop contract. LLVM Stage 4 now consumes the same frozen
+verified module, preserves the Stage 2 integer semantics and Stage 3 native
+target/memory/aggregate lowering, and additionally lowers floating-point
+arithmetic/comparisons/conversions, switch and trap terminators, and indirect
+native Coglet function values/calls. LLVM-specific target layout and callable
+signatures remain backend-owned derivations of frozen CogIR. Represented C
+aggregates, unions, C function-pointer ABI, C variadics, and other interop calls
+stay outside this slice so their eventual lowering can use an explicit target C
+ABI classifier instead of treating ordinary LLVM aggregate/function types as an
+ABI contract. Explicit C ABI lowering is the next backend milestone.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

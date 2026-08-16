@@ -1,0 +1,8 @@
+convert::(zero: f64) -> i32 {
+    value := zero / zero;
+    return cast(i32, value);
+}
+
+main::() -> i32 {
+    return convert(0.0);
+}

@@ -1,0 +1,99 @@
+float_semantics::(
+    left: f64,
+    right: f64,
+    zero: f64,
+    signed_value: i64,
+    unsigned_value: u64,
+    narrow_value: f32,
+    minimum_f32: f32,
+    negative_fraction: f32
+) -> i32 {
+    sum := left + right;
+    difference := sum - 1.0;
+    product := difference * 2.0;
+    quotient := product / 4.0;
+    negative := -quotient;
+
+    if quotient != 2.75 {
+        return 1;
+    }
+    if negative != -2.75 {
+        return 2;
+    }
+
+    nan := zero / zero;
+    if nan == nan {
+        return 3;
+    }
+    if !(nan != nan) {
+        return 4;
+    }
+    if nan < left || nan <= left || nan > left || nan >= left {
+        return 5;
+    }
+
+    truncated_signed := cast(i32, left);
+    if truncated_signed != 2 {
+        return 6;
+    }
+    truncated_unsigned := cast(u8, right);
+    if truncated_unsigned != 3 {
+        return 7;
+    }
+
+    signed_float := cast(f64, signed_value);
+    if signed_float != -258.0 {
+        return 8;
+    }
+    unsigned_float := cast(f64, unsigned_value);
+    if unsigned_float != 255.0 {
+        return 9;
+    }
+
+    widened := cast(f64, narrow_value);
+    if widened != 1.5 {
+        return 10;
+    }
+    narrowed := cast(f32, right);
+    if cast(f64, narrowed) != 3.75 {
+        return 11;
+    }
+
+    positive_infinity := left / zero;
+    narrowed_infinity := cast(f32, positive_infinity);
+    if !(cast(f64, narrowed_infinity) > 1e300) {
+        return 12;
+    }
+
+    narrowed_nan := cast(f32, nan);
+    if narrowed_nan == narrowed_nan {
+        return 13;
+    }
+
+    f32_sum := narrow_value + cast(f32, 0.5);
+    if cast(f64, f32_sum) != 2.0 {
+        return 14;
+    }
+
+    if cast(i32, minimum_f32) != -2147483648 {
+        return 15;
+    }
+    if cast(u8, negative_fraction) != 0 {
+        return 16;
+    }
+
+    return 0;
+}
+
+main::() -> i32 {
+    return float_semantics(
+        2.75,
+        3.75,
+        0.0,
+        -258,
+        255,
+        cast(f32, 1.5),
+        cast(f32, -2147483648.0),
+        cast(f32, -0.75)
+    );
+}

@@ -177,7 +177,12 @@ execution. Stage 3 adds native target triple/data-layout emission, pointer
 comparison and reinterpretation, field/array/pointer addressing, ordinary struct
 and array values, aggregate copies/arguments/returns, aggregate globals, and
 negative coverage that keeps `#repr(c)` and volatile whole-aggregate behavior out
-of the subset until their ABI/access semantics are implemented explicitly.
+of the subset until their ABI/access semantics are implemented explicitly. Stage
+4 adds floating arithmetic/comparisons and checked float/integer conversions,
+integer/boolean/enum switches, indirect native Coglet function values/calls, and
+direct CogIR coverage for the explicit trap terminator. The float suite includes
+NaN/infinity, signed/unsigned range boundaries, and narrowing behavior so LLVM
+conversion instructions are not used before Coglet's checked-cast guards.
 
 Run only these tests with:
 

@@ -1,0 +1,40 @@
+Mode::enum(u8) {
+    Zero,
+    One,
+    Two,
+}
+
+integer_switch::(value: i32) -> i32 {
+    switch value {
+        case 1:
+            return 11;
+        case 2:
+            return 22;
+        default:
+            return 33;
+    }
+}
+
+boolean_switch::(value: bool) -> i32 {
+    switch value {
+        case false:
+            return 4;
+        case true:
+            return 5;
+    }
+}
+
+enum_switch::(value: Mode) -> i32 {
+    switch value {
+        case Mode.Zero:
+            return 1;
+        case Mode.One:
+            return 2;
+        case Mode.Two:
+            return 3;
+    }
+}
+
+main::() -> i32 {
+    return integer_switch(2) + boolean_switch(true) + enum_switch(Mode.One);
+}

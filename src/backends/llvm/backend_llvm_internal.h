@@ -10,7 +10,6 @@
 typedef struct LlvmFunctionState {
     LLVMValueRef function;
     LLVMValueRef *values;
-    LLVMTypeRef *callable_types;
     LLVMValueRef *slots;
     LLVMBasicBlockRef *blocks;
 } LlvmFunctionState;
@@ -35,9 +34,39 @@ int llvm_backend_init_native_target(LlvmBackend *backend);
 void llvm_backend_dispose_target(LlvmBackend *backend);
 
 LLVMTypeRef llvm_lower_type(LlvmBackend *backend, CogIrTypeId id);
+LLVMTypeRef llvm_lower_function_signature(LlvmBackend *backend, CogIrTypeId id);
 LLVMValueRef llvm_lower_constant(LlvmBackend *backend, CogIrConstId id);
 
+int llvm_get_intrinsic(
+    LlvmBackend *backend,
+    const char *name,
+    LLVMTypeRef *overload_types,
+    size_t overload_count,
+    LLVMValueRef *out_function,
+    LLVMTypeRef *out_function_type
+);
+int llvm_emit_trap(LlvmBackend *backend);
+int llvm_emit_trap_if(
+    LlvmBackend *backend,
+    LlvmFunctionState *state,
+    LLVMValueRef condition
+);
+int llvm_lower_terminator(
+    LlvmBackend *backend,
+    const CogIrFunction *function,
+    LlvmFunctionState *state,
+    const CogIrBlock *block
+);
+
 int llvm_lower_integer_instruction(
+    LlvmBackend *backend,
+    const CogIrFunction *function,
+    LlvmFunctionState *state,
+    const CogIrInstruction *instruction,
+    LLVMValueRef *out_result
+);
+
+int llvm_lower_float_instruction(
     LlvmBackend *backend,
     const CogIrFunction *function,
     LlvmFunctionState *state,

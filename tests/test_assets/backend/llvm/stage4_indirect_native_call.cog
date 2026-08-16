@@ -1,0 +1,19 @@
+increment::(value: i32) -> i32 {
+    return value + 1;
+}
+
+decrement::(value: i32) -> i32 {
+    return value - 1;
+}
+
+choose_and_call::(use_increment: bool, value: i32) -> i32 {
+    callback := decrement;
+    if use_increment {
+        callback = increment;
+    }
+    return callback(value);
+}
+
+main::() -> i32 {
+    return choose_and_call(true, 41);
+}

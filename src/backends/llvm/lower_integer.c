@@ -1,7 +1,6 @@
 #include "backend_llvm_internal.h"
 
 #include <stdint.h>
-#include <string.h>
 
 static const CogIrType *integer_runtime_type_for_value(
     LlvmBackend *backend,
@@ -26,81 +25,6 @@ static LLVMValueRef build_or_condition(LlvmBackend *backend, LLVMValueRef left, 
     if (!left) return right;
     if (!right) return left;
     return LLVMBuildOr(backend->builder, left, right, "");
-}
-
-static int intrinsic(
-    LlvmBackend *backend,
-    const char *name,
-    LLVMTypeRef *overload_types,
-    size_t overload_count,
-    LLVMValueRef *out_function,
-    LLVMTypeRef *out_function_type
-) {
-    unsigned id = LLVMLookupIntrinsicID(name, strlen(name));
-    if (!id) {
-        llvm_backend_error(backend, "required LLVM intrinsic is unavailable");
-        return 0;
-    }
-
-    LLVMTypeRef type = LLVMIntrinsicGetType(
-        backend->context,
-        id,
-        overload_types,
-        overload_count
-    );
-    LLVMValueRef function = LLVMGetIntrinsicDeclaration(
-        backend->module,
-        id,
-        overload_types,
-        overload_count
-    );
-    if (!type || !function) {
-        llvm_backend_error(backend, "could not declare required LLVM intrinsic");
-        return 0;
-    }
-
-    *out_function = function;
-    *out_function_type = type;
-    return 1;
-}
-
-static int emit_trap_if(
-    LlvmBackend *backend,
-    LlvmFunctionState *state,
-    LLVMValueRef condition
-) {
-    if (!condition) {
-        llvm_backend_error(backend, "missing LLVM trap condition");
-        return 0;
-    }
-
-    LLVMBasicBlockRef trap_block = LLVMAppendBasicBlockInContext(
-        backend->context,
-        state->function,
-        "cog.trap"
-    );
-    LLVMBasicBlockRef continue_block = LLVMAppendBasicBlockInContext(
-        backend->context,
-        state->function,
-        "cog.cont"
-    );
-    if (!trap_block || !continue_block) {
-        llvm_backend_error(backend, "could not create LLVM checked-operation blocks");
-        return 0;
-    }
-
-    LLVMBuildCondBr(backend->builder, condition, trap_block, continue_block);
-
-    LLVMPositionBuilderAtEnd(backend->builder, trap_block);
-    LLVMValueRef trap_function = NULL;
-    LLVMTypeRef trap_type = NULL;
-    if (!intrinsic(backend, "llvm.trap", NULL, 0, &trap_function, &trap_type))
-        return 0;
-    LLVMBuildCall2(backend->builder, trap_type, trap_function, NULL, 0, "");
-    LLVMBuildUnreachable(backend->builder);
-
-    LLVMPositionBuilderAtEnd(backend->builder, continue_block);
-    return 1;
 }
 
 static int lower_overflow_checked_binary(
@@ -136,7 +60,7 @@ static int lower_overflow_checked_binary(
     LLVMTypeRef integer_type = LLVMTypeOf(lhs);
     LLVMValueRef overflow_function = NULL;
     LLVMTypeRef overflow_function_type = NULL;
-    if (!intrinsic(
+    if (!llvm_get_intrinsic(
             backend,
             name,
             &integer_type,
@@ -158,7 +82,7 @@ static int lower_overflow_checked_binary(
     );
     LLVMValueRef result = LLVMBuildExtractValue(backend->builder, pair, 0, "");
     LLVMValueRef overflow = LLVMBuildExtractValue(backend->builder, pair, 1, "");
-    if (!result || !overflow || !emit_trap_if(backend, state, overflow))
+    if (!result || !overflow || !llvm_emit_trap_if(backend, state, overflow))
         return 0;
 
     *out_result = result;
@@ -194,7 +118,7 @@ static int lower_checked_div_rem(
     LLVMTypeRef llvm_type = LLVMTypeOf(lhs);
     LLVMValueRef zero = LLVMConstNull(llvm_type);
     LLVMValueRef divide_by_zero = LLVMBuildICmp(backend->builder, LLVMIntEQ, rhs, zero, "");
-    if (!emit_trap_if(backend, state, divide_by_zero))
+    if (!llvm_emit_trap_if(backend, state, divide_by_zero))
         return 0;
 
     if (type->as.integer.is_signed) {
@@ -203,7 +127,7 @@ static int lower_checked_div_rem(
         LLVMValueRef lhs_is_min = LLVMBuildICmp(backend->builder, LLVMIntEQ, lhs, minimum, "");
         LLVMValueRef rhs_is_negative_one = LLVMBuildICmp(backend->builder, LLVMIntEQ, rhs, negative_one, "");
         LLVMValueRef overflow = LLVMBuildAnd(backend->builder, lhs_is_min, rhs_is_negative_one, "");
-        if (!emit_trap_if(backend, state, overflow))
+        if (!llvm_emit_trap_if(backend, state, overflow))
             return 0;
 
         *out_result = op == COG_IR_OP_IDIV_CHECKED
@@ -234,7 +158,7 @@ static int lower_checked_neg(
     } else {
         invalid = LLVMBuildICmp(backend->builder, LLVMIntNE, operand, zero, "");
     }
-    if (!emit_trap_if(backend, state, invalid))
+    if (!llvm_emit_trap_if(backend, state, invalid))
         return 0;
 
     *out_result = LLVMBuildSub(backend->builder, zero, operand, "");
@@ -290,7 +214,7 @@ static int lower_checked_shift(
     } else {
         invalid = LLVMBuildICmp(backend->builder, LLVMIntUGE, rhs, width, "");
     }
-    if (!emit_trap_if(backend, state, invalid))
+    if (!llvm_emit_trap_if(backend, state, invalid))
         return 0;
 
     LLVMValueRef count = normalize_shift_count(backend, value_type, count_type, rhs);
@@ -331,7 +255,7 @@ static int lower_checked_integer_cast(
     );
     const CogIrType *target = cog_ir_get_type(backend->ir, instruction->result_type);
     if (!source || !target || target->kind != COG_IR_TYPE_INTEGER) {
-        llvm_backend_error(backend, "Stage 3 supports cast.checked only between integer-backed scalar types");
+        llvm_backend_error(backend, "integer cast lowering requires integer-backed source and integer target");
         return 0;
     }
 
@@ -378,7 +302,7 @@ static int lower_checked_integer_cast(
         invalid = LLVMBuildICmp(backend->builder, LLVMIntUGT, operand, maximum, "");
     }
 
-    if (invalid && !emit_trap_if(backend, state, invalid))
+    if (invalid && !llvm_emit_trap_if(backend, state, invalid))
         return 0;
 
     LLVMTypeRef target_type = LLVMIntTypeInContext(backend->context, target_bits);

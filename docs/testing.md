@@ -94,10 +94,13 @@ default external symbols, `#extern(c, name="...")` overrides, explicit C calling
 conventions (including an x86-64 `win64` callback round trip), and explicit
 `-L`/`-l` resolution against a test-only static library using both split and
 joined flag forms. A separate driver-negative test verifies that linker flags
-are rejected without `-o`. Backend-negative tests verify that runtime checked
-arithmetic is rejected until its CogIR operation receives host-C trapping
-lowering and that an unsupported explicit calling convention fails rather than
-being ignored. The incomplete-aggregate interop case also exercises runtime
+are rejected without `-o`. Checked-arithmetic backend tests now execute successful
+signed/unsigned `+ - * / %` and signed negation through CogIR, with separate trap
+regressions for overflow, division by zero, and signed-minimum/`-1`. The trap
+harness verifies that the generated executable does not reach its normal fallback
+exit. Backend-negative coverage still verifies that an unsupported explicit
+calling convention fails rather than being ignored. The incomplete-aggregate
+interop case also exercises runtime
 pointer-qualification lowering across a C call result before C emission. The
 wrapping-arithmetic executable regression checks runtime signed/unsigned narrow
 wraparound and the signed 64-bit minimum edge through dedicated CogIR wrapping

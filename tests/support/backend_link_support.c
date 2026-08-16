@@ -410,3 +410,34 @@ int coglet_backend_wrapping_probe(
 
     return 93;
 }
+
+int coglet_backend_checked_arithmetic_probe(
+    int signed_add,
+    int signed_sub,
+    int signed_mul,
+    int signed_div,
+    int signed_rem,
+    int signed_neg,
+    unsigned int unsigned_add,
+    unsigned int unsigned_sub,
+    unsigned int unsigned_mul,
+    unsigned int unsigned_div,
+    unsigned int unsigned_rem
+)
+{
+    if (signed_add != 42 ||
+        signed_sub != -42 ||
+        signed_mul != -42 ||
+        signed_div != -42 ||
+        signed_rem != -1 ||
+        signed_neg != -42 ||
+        unsigned_add != 42U ||
+        unsigned_sub != 38U ||
+        unsigned_mul != 42U ||
+        unsigned_div != 42U ||
+        unsigned_rem != 1U) {
+        return 100;
+    }
+
+    return 95;
+}

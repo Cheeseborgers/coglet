@@ -494,9 +494,11 @@ and C-interop suite therefore runs through frontend -> CogIR -> C.
 The host-C emitter has started expanding beyond the old backend's deliberately
 narrow execution subset. Dedicated wrapping integer operations now execute with
 explicit modulo-width bit-pattern lowering, including signed edge cases without
-using host signed overflow. Next add trapping checked arithmetic and multi-block
-CFG operations already present in CogIR, then begin LLVM lowering on the same
-verified module contract rather than creating a second frontend path.
+using host signed overflow. Checked integer add/subtract/multiply,
+division/remainder, and signed negation now execute with explicit precondition
+guards and abort on the CogIR arithmetic-trap path. Next add multi-block CFG
+operations already present in CogIR, then begin LLVM lowering on the same verified
+module contract rather than creating a second frontend path.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

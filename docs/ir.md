@@ -1033,8 +1033,10 @@ and the CLI freezes/verifies the module, destroys `CompileResult`, verifies the
 frozen module again, and only then invokes C emission. The current C execution
 emitter supports the straight-line operations exercised by the executable/interop
 suite and now lowers `iadd.wrap`, `isub.wrap`, `imul.wrap`, and `ineg.wrap` with
-explicit fixed-width bit-pattern semantics. It still rejects checked arithmetic
-or multi-block CFGs until those operations receive dedicated C lowering.
+explicit fixed-width bit-pattern semantics. Checked integer add/subtract/multiply,
+division/remainder, and signed negation now emit explicit guards before the C
+operation and call `abort()` on the CogIR trap path. Multi-block CFGs remain the
+next major host-C execution gap.
 
 ## Implementation sequence
 
@@ -1071,6 +1073,6 @@ or multi-block CFGs until those operations receive dedicated C lowering.
     frontend lifetime ends before backend invocation, and the existing
     executable/interop suite runs through CogIR.
 14. Expand host-C instruction/CFG coverage from the current compatibility subset,
-    then begin LLVM lowering on the same verified CogIR contract. Wrapping integer
-    arithmetic is now executable through host-C; checked arithmetic and structured
-    CFG remain the next backend slices.
+    then begin LLVM lowering on the same verified CogIR contract. Wrapping and
+    checked integer arithmetic are now executable through host-C; structured CFG
+    remains the next backend slice.

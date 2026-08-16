@@ -1,0 +1,8 @@
+checked_add::(left: c_int, right: c_int) -> c_int {
+    return left + right;
+}
+
+main::() -> c_int {
+    ignored: c_int = checked_add(2147483647, 1);
+    return 96;
+}

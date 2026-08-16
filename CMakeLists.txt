@@ -588,19 +588,45 @@ set_tests_properties(
 )
 
 add_test(
-        NAME backend_rejects_unlowered_checked_binary
+        NAME backend_checked_arithmetic
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/unsupported_checked_binary.cog
-        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_unsupported_checked_binary
-        -DEXPECT_EXIT=3
-        "-DEXPECT_SUBSTRING=checked arithmetic CogIR operations are not lowered by the host-C backend yet"
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_failure_test.cmake"
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/checked_arithmetic.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_checked_arithmetic
+        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
+        -DLIB_NAME=coglet_backend_link_support
+        -DSTYLE=joined
+        -DEXPECT_EXIT=95
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
 )
 set_tests_properties(
-        backend_rejects_unlowered_checked_binary
-        PROPERTIES LABELS "backend;backend.c;backend.invalid"
+        backend_checked_arithmetic
+        PROPERTIES LABELS "backend;backend.c;ir;checked-arithmetic"
 )
+
+foreach(trap_case IN ITEMS overflow division_by_zero division_overflow)
+    if(trap_case STREQUAL "overflow")
+        set(trap_exit 96)
+    elseif(trap_case STREQUAL "division_by_zero")
+        set(trap_exit 97)
+    else()
+        set(trap_exit 98)
+    endif()
+
+    add_test(
+            NAME backend_checked_${trap_case}_trap
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/checked_${trap_case}_trap.cog
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_checked_${trap_case}_trap
+            -DNO_TRAP_EXIT=${trap_exit}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_trap_test.cmake"
+    )
+    set_tests_properties(
+            backend_checked_${trap_case}_trap
+            PROPERTIES LABELS "backend;backend.c;ir;checked-arithmetic;trap"
+    )
+endforeach()
 
 add_test(
         NAME backend_extern_c_pointer_types

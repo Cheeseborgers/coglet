@@ -1,0 +1,8 @@
+checked_div::(left: c_int, right: c_int) -> c_int {
+    return left / right;
+}
+
+main::() -> c_int {
+    ignored: c_int = checked_div(1, 0);
+    return 97;
+}

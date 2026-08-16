@@ -1,6 +1,0 @@
-#extern(c)
-abs::(value: c_int) -> c_int;
-
-main::() -> c_int {
-    return abs(-7) + 1;
-}

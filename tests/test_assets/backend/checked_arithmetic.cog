@@ -1,0 +1,60 @@
+#extern(c)
+coglet_backend_checked_arithmetic_probe::(
+    signed_add: c_int,
+    signed_sub: c_int,
+    signed_mul: c_int,
+    signed_div: c_int,
+    signed_rem: c_int,
+    signed_neg: c_int,
+    unsigned_add: c_uint,
+    unsigned_sub: c_uint,
+    unsigned_mul: c_uint,
+    unsigned_div: c_uint,
+    unsigned_rem: c_uint
+) -> c_int;
+
+run_checked::(
+    signed_positive: c_int,
+    signed_two: c_int,
+    signed_negative: c_int,
+    signed_six: c_int,
+    signed_seven: c_int,
+    signed_eighty_five: c_int,
+    signed_forty_two: c_int,
+    unsigned_positive: c_uint,
+    unsigned_two: c_uint,
+    unsigned_six: c_uint,
+    unsigned_seven: c_uint,
+    unsigned_eighty_five: c_uint
+) -> c_int {
+    return coglet_backend_checked_arithmetic_probe(
+        signed_positive + signed_two,
+        signed_negative - signed_two,
+        signed_six * signed_seven,
+        signed_eighty_five / signed_two,
+        signed_eighty_five % signed_two,
+        -signed_forty_two,
+        unsigned_positive + unsigned_two,
+        unsigned_positive - unsigned_two,
+        unsigned_six * unsigned_seven,
+        unsigned_eighty_five / unsigned_two,
+        unsigned_eighty_five % unsigned_two
+    );
+}
+
+main::() -> c_int {
+    return run_checked(
+        40,
+        2,
+        -40,
+        -6,
+        7,
+        -85,
+        42,
+        40,
+        2,
+        6,
+        7,
+        85
+    );
+}

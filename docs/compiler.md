@@ -990,9 +990,11 @@ verify through `dump_ir`. Native-C variadic calls are legalized before the call:
 CogIR inserts `c.vararg.promote` for target-required integer/Boolean/enum and
 `f32` promotions, and the verifier rejects unpromoted C-variadic tails. The
 host-C backend now consumes only a frozen `CogIrModule`. Its execution subset
-includes the pre-port straight-line surface plus dedicated CogIR wrapping integer
-operations. Wrapping C emission performs the operation in unsigned `uint64_t`
-bit-pattern space, masks narrower widths explicitly, and reconstructs signed
-results without host signed overflow or implementation-defined narrowing. Checked
-arithmetic and structured CFG emission remain separate backend-expansion
-milestones.
+includes the pre-port straight-line surface plus dedicated CogIR wrapping and
+checked integer operations. Wrapping C emission performs the operation in unsigned
+`uint64_t` bit-pattern space, masks narrower widths explicitly, and reconstructs
+signed results without host signed overflow or implementation-defined narrowing.
+Checked `+ - * / %` and signed negation test representability/divisor preconditions
+before evaluating the host operation; failures realize the CogIR arithmetic trap
+with standard C `abort()`. Structured CFG emission remains a separate backend-
+expansion milestone.

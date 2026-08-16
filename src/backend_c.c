@@ -1233,6 +1233,262 @@ static int emit_wrapping_integer_instruction(
     return 1;
 }
 
+static const char *signed_integer_min_name(unsigned bits)
+{
+    switch (bits) {
+        case 8: return "INT8_MIN";
+        case 16: return "INT16_MIN";
+        case 32: return "INT32_MIN";
+        case 64: return "INT64_MIN";
+        default: return NULL;
+    }
+}
+
+static const char *signed_integer_max_name(unsigned bits)
+{
+    switch (bits) {
+        case 8: return "INT8_MAX";
+        case 16: return "INT16_MAX";
+        case 32: return "INT32_MAX";
+        case 64: return "INT64_MAX";
+        default: return NULL;
+    }
+}
+
+static int emit_checked_integer_instruction(
+    CBackend *backend,
+    const CogIrFunction *function,
+    const CogIrInstruction *instruction,
+    char **exprs
+) {
+    const CogIrType *type = cog_ir_get_type(backend->module, instruction->result_type);
+    if (!type || type->kind != COG_IR_TYPE_INTEGER) {
+        backend_error(backend, instruction->span, "checked arithmetic requires an integer result type");
+        return 0;
+    }
+
+    unsigned bits = type->as.integer.bits;
+    if (bits != 8 && bits != 16 && bits != 32 && bits != 64) {
+        backend_error(backend, instruction->span, "checked arithmetic integer width is not supported by the host-C backend");
+        return 0;
+    }
+
+    const char *result_type = runtime_type_name(backend, instruction->result_type, instruction->span);
+    if (!result_type)
+        return 0;
+
+    CogIrValueId result = instruction->result;
+    const char *lhs = NULL;
+    const char *rhs = NULL;
+    int is_unary = instruction->op == COG_IR_OP_INEG_CHECKED;
+    if (is_unary) {
+        lhs = value_expr(exprs, function->value_count, instruction->as.unary.operand);
+        if (!lhs)
+            return 0;
+    } else {
+        lhs = value_expr(exprs, function->value_count, instruction->as.binary.lhs);
+        rhs = value_expr(exprs, function->value_count, instruction->as.binary.rhs);
+        if (!lhs || !rhs)
+            return 0;
+    }
+
+    if (type->as.integer.is_signed) {
+        const char *min_name = signed_integer_min_name(bits);
+        const char *max_name = signed_integer_max_name(bits);
+        if (!min_name || !max_name)
+            return 0;
+
+        fprintf(
+            backend->out,
+            "    int64_t cg_checked_lhs_%u = (int64_t)(%s);\n",
+            result,
+            lhs
+        );
+        if (!is_unary) {
+            fprintf(
+                backend->out,
+                "    int64_t cg_checked_rhs_%u = (int64_t)(%s);\n",
+                result,
+                rhs
+            );
+        }
+
+        switch (instruction->op) {
+            case COG_IR_OP_IADD_CHECKED:
+                fprintf(
+                    backend->out,
+                    "    if ((cg_checked_rhs_%u > 0 && cg_checked_lhs_%u > (int64_t)%s - cg_checked_rhs_%u) || "
+                    "(cg_checked_rhs_%u < 0 && cg_checked_lhs_%u < (int64_t)%s - cg_checked_rhs_%u)) abort();\n"
+                    "    int64_t cg_checked_result_%u = cg_checked_lhs_%u + cg_checked_rhs_%u;\n",
+                    result, result, max_name, result,
+                    result, result, min_name, result,
+                    result, result, result
+                );
+                break;
+            case COG_IR_OP_ISUB_CHECKED:
+                fprintf(
+                    backend->out,
+                    "    if ((cg_checked_rhs_%u < 0 && cg_checked_lhs_%u > (int64_t)%s + cg_checked_rhs_%u) || "
+                    "(cg_checked_rhs_%u > 0 && cg_checked_lhs_%u < (int64_t)%s + cg_checked_rhs_%u)) abort();\n"
+                    "    int64_t cg_checked_result_%u = cg_checked_lhs_%u - cg_checked_rhs_%u;\n",
+                    result, result, max_name, result,
+                    result, result, min_name, result,
+                    result, result, result
+                );
+                break;
+            case COG_IR_OP_IMUL_CHECKED:
+                fprintf(
+                    backend->out,
+                    "    if (cg_checked_lhs_%u != 0 && cg_checked_rhs_%u != 0) {\n"
+                    "        if ((cg_checked_lhs_%u == -1 && cg_checked_rhs_%u == (int64_t)%s) || "
+                    "(cg_checked_rhs_%u == -1 && cg_checked_lhs_%u == (int64_t)%s)) abort();\n"
+                    "        if (cg_checked_lhs_%u > 0) {\n"
+                    "            if (cg_checked_rhs_%u > 0) { if (cg_checked_lhs_%u > (int64_t)%s / cg_checked_rhs_%u) abort(); }\n"
+                    "            else { if (cg_checked_rhs_%u < (int64_t)%s / cg_checked_lhs_%u) abort(); }\n"
+                    "        } else {\n"
+                    "            if (cg_checked_rhs_%u > 0) { if (cg_checked_lhs_%u < (int64_t)%s / cg_checked_rhs_%u) abort(); }\n"
+                    "            else { if (cg_checked_lhs_%u < (int64_t)%s / cg_checked_rhs_%u) abort(); }\n"
+                    "        }\n"
+                    "    }\n"
+                    "    int64_t cg_checked_result_%u = cg_checked_lhs_%u * cg_checked_rhs_%u;\n",
+                    result, result,
+                    result, result, min_name, result, result, min_name,
+                    result,
+                    result, result, max_name, result,
+                    result, min_name, result,
+                    result, result, min_name, result,
+                    result, max_name, result,
+                    result, result, result
+                );
+                break;
+            case COG_IR_OP_IDIV_CHECKED:
+            case COG_IR_OP_IREM_CHECKED: {
+                const char *operator_text = instruction->op == COG_IR_OP_IDIV_CHECKED ? "/" : "%";
+                fprintf(
+                    backend->out,
+                    "    if (cg_checked_rhs_%u == 0 || "
+                    "(cg_checked_lhs_%u == (int64_t)%s && cg_checked_rhs_%u == -1)) abort();\n"
+                    "    int64_t cg_checked_result_%u = cg_checked_lhs_%u %s cg_checked_rhs_%u;\n",
+                    result,
+                    result, min_name, result,
+                    result, result, operator_text, result
+                );
+                break;
+            }
+            case COG_IR_OP_INEG_CHECKED:
+                fprintf(
+                    backend->out,
+                    "    if (cg_checked_lhs_%u == (int64_t)%s) abort();\n"
+                    "    int64_t cg_checked_result_%u = -cg_checked_lhs_%u;\n",
+                    result, min_name,
+                    result, result
+                );
+                break;
+            default:
+                backend_error(backend, instruction->span, "invalid checked arithmetic operation during C lowering");
+                return 0;
+        }
+
+        fprintf(
+            backend->out,
+            "    %s cg_v_%u = (%s)cg_checked_result_%u;\n",
+            result_type,
+            result,
+            result_type,
+            result
+        );
+    } else {
+        uint64_t max_value = integer_width_mask(bits);
+        fprintf(
+            backend->out,
+            "    uint64_t cg_checked_lhs_%u = (uint64_t)(%s);\n",
+            result,
+            lhs
+        );
+        if (!is_unary) {
+            fprintf(
+                backend->out,
+                "    uint64_t cg_checked_rhs_%u = (uint64_t)(%s);\n",
+                result,
+                rhs
+            );
+        }
+
+        switch (instruction->op) {
+            case COG_IR_OP_IADD_CHECKED:
+                fprintf(
+                    backend->out,
+                    "    if (cg_checked_lhs_%u > UINT64_C(0x%" PRIx64 ") - cg_checked_rhs_%u) abort();\n"
+                    "    uint64_t cg_checked_result_%u = cg_checked_lhs_%u + cg_checked_rhs_%u;\n",
+                    result, max_value, result,
+                    result, result, result
+                );
+                break;
+            case COG_IR_OP_ISUB_CHECKED:
+                fprintf(
+                    backend->out,
+                    "    if (cg_checked_lhs_%u < cg_checked_rhs_%u) abort();\n"
+                    "    uint64_t cg_checked_result_%u = cg_checked_lhs_%u - cg_checked_rhs_%u;\n",
+                    result, result,
+                    result, result, result
+                );
+                break;
+            case COG_IR_OP_IMUL_CHECKED:
+                fprintf(
+                    backend->out,
+                    "    if (cg_checked_rhs_%u != 0 && cg_checked_lhs_%u > UINT64_C(0x%" PRIx64 ") / cg_checked_rhs_%u) abort();\n"
+                    "    uint64_t cg_checked_result_%u = cg_checked_lhs_%u * cg_checked_rhs_%u;\n",
+                    result, result, max_value, result,
+                    result, result, result
+                );
+                break;
+            case COG_IR_OP_IDIV_CHECKED:
+            case COG_IR_OP_IREM_CHECKED: {
+                const char *operator_text = instruction->op == COG_IR_OP_IDIV_CHECKED ? "/" : "%";
+                fprintf(
+                    backend->out,
+                    "    if (cg_checked_rhs_%u == 0) abort();\n"
+                    "    uint64_t cg_checked_result_%u = cg_checked_lhs_%u %s cg_checked_rhs_%u;\n",
+                    result,
+                    result, result, operator_text, result
+                );
+                break;
+            }
+            case COG_IR_OP_INEG_CHECKED:
+                fprintf(
+                    backend->out,
+                    "    if (cg_checked_lhs_%u != 0) abort();\n"
+                    "    uint64_t cg_checked_result_%u = UINT64_C(0);\n",
+                    result,
+                    result
+                );
+                break;
+            default:
+                backend_error(backend, instruction->span, "invalid checked arithmetic operation during C lowering");
+                return 0;
+        }
+
+        fprintf(
+            backend->out,
+            "    %s cg_v_%u = (%s)cg_checked_result_%u;\n",
+            result_type,
+            result,
+            result_type,
+            result
+        );
+    }
+
+    if (!set_value_expr(
+            exprs,
+            function->value_count,
+            result,
+            copy_printf("cg_v_%u", result))) {
+        backend_error(backend, instruction->span, "invalid checked arithmetic result during C lowering");
+        return 0;
+    }
+    return 1;
+}
+
 static int emit_instruction(
     CBackend *backend,
     const CogIrFunction *function,
@@ -1382,8 +1638,12 @@ static int emit_instruction(
         case COG_IR_OP_IDIV_CHECKED:
         case COG_IR_OP_IREM_CHECKED:
         case COG_IR_OP_INEG_CHECKED:
-            backend_error(backend, instruction->span, "checked arithmetic CogIR operations are not lowered by the host-C backend yet");
-            return 0;
+            if (!emit_checked_integer_instruction(backend, function, instruction, exprs)) {
+                if (!backend->had_error)
+                    goto missing_operand;
+                return 0;
+            }
+            return 1;
 
         default:
             backend_error(backend, instruction->span, "CogIR operation is outside the current host-C backend execution subset");
@@ -1573,7 +1833,7 @@ static CBackendStatus c_backend_emit_stream(FILE *out, const CogIrModule *module
     }
 
     fputs("/* Generated from CogIR by Coglet's host-C backend. */\n", out);
-    fputs("#include <stddef.h>\n#include <stdint.h>\n\n", out);
+    fputs("#include <stddef.h>\n#include <stdint.h>\n#include <stdlib.h>\n\n", out);
     emit_repr_c_layout_support(&backend);
     emit_c_calling_convention_support(&backend);
     emit_aggregate_forward_declarations(&backend);

@@ -7,11 +7,14 @@
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
 
+typedef struct LlvmCAbiSignature LlvmCAbiSignature;
+
 typedef struct LlvmFunctionState {
     LLVMValueRef function;
     LLVMValueRef *values;
     LLVMValueRef *slots;
     LLVMBasicBlockRef *blocks;
+    const LlvmCAbiSignature *c_abi;
 } LlvmFunctionState;
 
 typedef struct LlvmBackend {
@@ -22,9 +25,12 @@ typedef struct LlvmBackend {
     LLVMTargetMachineRef target_machine;
     LLVMTargetDataRef target_data;
     LLVMTypeRef *types;
+    LLVMTypeRef *c_aggregate_inner_types;
+    unsigned char *c_aggregate_is_wrapped;
     LLVMValueRef *globals;
     LLVMValueRef *functions;
     LLVMTypeRef *function_types;
+    LlvmCAbiSignature **c_function_abis;
     int had_error;
 } LlvmBackend;
 
@@ -37,27 +43,68 @@ LLVMTypeRef llvm_lower_type(LlvmBackend *backend, CogIrTypeId id);
 LLVMTypeRef llvm_lower_function_signature(LlvmBackend *backend, CogIrTypeId id);
 LLVMValueRef llvm_lower_constant(LlvmBackend *backend, CogIrConstId id);
 
-LLVMTypeRef llvm_lower_c_function_signature(
+LLVMTypeRef llvm_lower_c_object_type(LlvmBackend *backend, CogIrAbiTypeId id);
+LLVMTypeRef llvm_lower_repr_c_aggregate_type(LlvmBackend *backend, const CogIrType *type);
+LLVMTypeRef llvm_repr_c_inner_type(LlvmBackend *backend, CogIrTypeId id);
+int llvm_repr_c_is_wrapped(LlvmBackend *backend, CogIrTypeId id);
+uint64_t llvm_repr_c_field_offset(
+    LlvmBackend *backend,
+    const CogIrType *type,
+    size_t field_index
+);
+LLVMValueRef llvm_build_repr_c_field_gep(
+    LlvmBackend *backend,
+    const CogIrType *type,
+    LLVMValueRef base,
+    size_t field_index
+);
+LLVMValueRef llvm_c_runtime_to_object(
+    LlvmBackend *backend, CogIrAbiTypeId abi_type, LLVMValueRef runtime_value
+);
+LLVMValueRef llvm_c_object_to_runtime(
+    LlvmBackend *backend, CogIrAbiTypeId abi_type, LLVMValueRef storage_value
+);
+
+LlvmCAbiSignature *llvm_build_c_function_abi(
     LlvmBackend *backend,
     const CogIrFunction *function
 );
-LLVMTypeRef llvm_lower_c_function_pointer_signature(
+LlvmCAbiSignature *llvm_build_c_function_pointer_abi(
     LlvmBackend *backend,
     CogIrAbiTypeId abi_type
 );
+void llvm_dispose_c_function_abi(LlvmCAbiSignature *signature);
+LLVMTypeRef llvm_c_function_abi_type(const LlvmCAbiSignature *signature);
 int llvm_apply_c_function_abi(
     LlvmBackend *backend,
-    LLVMValueRef llvm_function,
-    CogIrCallingConvention calling_convention,
-    CogIrAbiTypeId return_abi_type,
-    const CogIrAbiTypeId *parameter_abi_types,
-    size_t parameter_count
+    LLVMValueRef function,
+    const LlvmCAbiSignature *signature
 );
 int llvm_apply_c_call_abi(
     LlvmBackend *backend,
     LLVMValueRef call,
-    CogIrCallingConvention calling_convention,
-    const CogIrAbiType *function_abi
+    const LlvmCAbiSignature *signature
+);
+int llvm_map_c_function_parameters(
+    LlvmBackend *backend,
+    const CogIrFunction *function,
+    LlvmFunctionState *state,
+    const LlvmCAbiSignature *signature
+);
+int llvm_lower_c_call(
+    LlvmBackend *backend,
+    const CogIrFunction *function,
+    LlvmFunctionState *state,
+    const CogIrInstruction *instruction,
+    LLVMValueRef callee,
+    const LlvmCAbiSignature *signature,
+    LLVMValueRef *out_result
+);
+int llvm_lower_c_return(
+    LlvmBackend *backend,
+    LlvmFunctionState *state,
+    int has_value,
+    LLVMValueRef value
 );
 int llvm_lower_c_vararg_promotion(
     LlvmBackend *backend,

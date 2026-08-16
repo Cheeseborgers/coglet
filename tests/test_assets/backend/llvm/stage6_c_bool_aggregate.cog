@@ -1,0 +1,21 @@
+#repr(c)
+BoolPacket::struct {
+    flag: c_bool;
+    flags: c_bool[3];
+    value: c_int;
+}
+
+#extern(c, name="coglet_backend_make_bool_packet")
+make_bool_packet::() -> BoolPacket;
+
+#extern(c, name="coglet_backend_bool_packet_probe")
+probe_bool_packet::(packet: BoolPacket) -> c_int;
+
+main::() -> i32 {
+    packet := make_bool_packet();
+    if !packet.flag || !packet.flags[0] || packet.flags[1] || !packet.flags[2]
+        return 1;
+    packet.flag = false;
+    packet.flags[1] = true;
+    return probe_bool_packet(packet);
+}

@@ -1,0 +1,17 @@
+#extern(c, name="coglet_backend_bool_pointer_probe")
+bool_pointer_probe::(value: c_bool*) -> c_int;
+
+global_flag: c_bool = true;
+
+main::() -> i32 {
+    local_flag: c_bool = true;
+    if (bool_pointer_probe(&local_flag) != 79)
+        return 1;
+    if local_flag
+        return 2;
+    if (bool_pointer_probe(&global_flag) != 79)
+        return 3;
+    if global_flag
+        return 4;
+    return 79;
+}

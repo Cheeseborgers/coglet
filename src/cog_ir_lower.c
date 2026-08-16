@@ -591,8 +591,13 @@ static int lower_remaining_declarations(CogIrLowerContext *ctx)
                 CogIrTypeId type = cog_ir_lower_type(ctx, info->type); if (type == COG_IR_TYPE_INVALID) return 0; binding->type = type;
                 if (info->symbol && info->symbol->variable_storage == VARIABLE_STORAGE_GLOBAL) {
                     CogIrConstId zero = cog_ir_const_zero(ctx->module, type);
+                    CogIrAbiTypeId abi_type = info->abi_type
+                        ? cog_ir_lower_abi_type(ctx, info->abi_type)
+                        : COG_IR_ABI_TYPE_INVALID;
+                    if (info->abi_type && abi_type == COG_IR_ABI_TYPE_INVALID)
+                        return 0;
                     CogIrGlobalId global = cog_ir_add_global(ctx->module, info->node->as.var_decl.name, info->node->span,
-                        type, COG_IR_LINKAGE_INTERNAL, 0, 0, zero);
+                        type, abi_type, COG_IR_LINKAGE_INTERNAL, 0, 0, zero);
                     if (zero == COG_IR_CONST_INVALID || global == COG_IR_GLOBAL_INVALID) { lower_error(ctx, info->node->span, "failed to lower global storage metadata to CogIR"); return 0; }
                     binding->kind = COG_IR_LOWER_DECL_GLOBAL; binding->as.global = global;
                 } else binding->kind = COG_IR_LOWER_DECL_LOCAL_PENDING;
@@ -799,6 +804,30 @@ static int annotate_value_abi(
     return 1;
 }
 
+
+static int annotate_address_abi(
+    ExecLowerState *state,
+    CogIrValueId address,
+    CogIrAbiTypeId element_abi,
+    SourceSpan span
+) {
+    if (element_abi == COG_IR_ABI_TYPE_INVALID)
+        return 1;
+    const CogIrFunction *function = cog_ir_get_function(state->lower->module, state->function);
+    const CogIrValue *value = function ? cog_ir_get_value(function, address) : NULL;
+    if (!value) {
+        lower_error(state->lower, span, "cannot annotate invalid CogIR address ABI metadata");
+        return 0;
+    }
+    CogIrAbiTypeId pointer_abi = cog_ir_abi_type_pointer(
+        state->lower->module, value->type, element_abi);
+    if (pointer_abi == COG_IR_ABI_TYPE_INVALID) {
+        lower_error(state->lower, span, "failed to construct CogIR address ABI metadata");
+        return 0;
+    }
+    return annotate_value_abi(state, address, pointer_abi, span);
+}
+
 static int annotate_slot_abi(
     ExecLowerState *state,
     CogIrSlotId slot,
@@ -877,7 +906,13 @@ static CogIrValueId emit_local_address(
         .span = span,
         .as.local_addr = { .slot = slot },
     };
-    return emit_instruction_value(state, instruction);
+    CogIrValueId value = emit_instruction_value(state, instruction);
+    const CogIrFunction *function = cog_ir_get_function(state->lower->module, state->function);
+    const CogIrSlot *ir_slot = function ? cog_ir_get_slot(function, slot) : NULL;
+    if (value != COG_IR_VALUE_INVALID && ir_slot &&
+        !annotate_address_abi(state, value, ir_slot->abi_type, span))
+        return COG_IR_VALUE_INVALID;
+    return value;
 }
 
 static CogIrValueId emit_global_address(
@@ -898,7 +933,12 @@ static CogIrValueId emit_global_address(
         .span = span,
         .as.global_addr = { .global = global },
     };
-    return emit_instruction_value(state, instruction);
+    CogIrValueId value = emit_instruction_value(state, instruction);
+    const CogIrGlobal *ir_global = cog_ir_get_global(state->lower->module, global);
+    if (value != COG_IR_VALUE_INVALID && ir_global &&
+        !annotate_address_abi(state, value, ir_global->abi_type, span))
+        return COG_IR_VALUE_INVALID;
+    return value;
 }
 
 static CogIrValueId emit_load(
@@ -1045,7 +1085,21 @@ static CogIrValueId emit_field_address(
         .span = span,
         .as.field_addr = { .base = base, .field_index = field_index },
     };
-    return emit_instruction_value(state, instruction);
+    CogIrValueId value = emit_instruction_value(state, instruction);
+    if (value == COG_IR_VALUE_INVALID)
+        return value;
+    const CogIrFunction *function = cog_ir_get_function(state->lower->module, state->function);
+    const CogIrValue *base_value = function ? cog_ir_get_value(function, base) : NULL;
+    const CogIrType *base_pointer = base_value
+        ? cog_ir_get_type(state->lower->module, base_value->type) : NULL;
+    const CogIrType *aggregate = base_pointer && base_pointer->kind == COG_IR_TYPE_POINTER
+        ? cog_ir_get_type(state->lower->module, base_pointer->as.pointer.pointee) : NULL;
+    if (aggregate && (aggregate->kind == COG_IR_TYPE_STRUCT || aggregate->kind == COG_IR_TYPE_UNION) &&
+        field_index < aggregate->as.aggregate.field_count &&
+        !annotate_address_abi(
+            state, value, aggregate->as.aggregate.fields[field_index].abi_type, span))
+        return COG_IR_VALUE_INVALID;
+    return value;
 }
 
 static CogIrValueId emit_index_address(
@@ -1074,7 +1128,24 @@ static CogIrValueId emit_index_address(
         .span = span,
         .as.index_addr = { .base = base, .index = index },
     };
-    return emit_instruction_value(state, instruction);
+    CogIrValueId value = emit_instruction_value(state, instruction);
+    if (value == COG_IR_VALUE_INVALID)
+        return value;
+    const CogIrFunction *function = cog_ir_get_function(state->lower->module, state->function);
+    const CogIrValue *base_value = function ? cog_ir_get_value(function, base) : NULL;
+    const CogIrAbiType *base_abi = base_value && base_value->abi_type != COG_IR_ABI_TYPE_INVALID
+        ? cog_ir_get_abi_type(state->lower->module, base_value->abi_type) : NULL;
+    CogIrAbiTypeId element_abi = COG_IR_ABI_TYPE_INVALID;
+    if (base_abi && base_abi->kind == COG_IR_ABI_TYPE_POINTER) {
+        const CogIrAbiType *pointee = cog_ir_get_abi_type(state->lower->module, base_abi->element_type);
+        if (op == COG_IR_OP_ARRAY_ELEM_ADDR && pointee && pointee->kind == COG_IR_ABI_TYPE_ARRAY)
+            element_abi = pointee->element_type;
+        else if (op == COG_IR_OP_PTR_INDEX_ADDR)
+            element_abi = base_abi->element_type;
+    }
+    if (!annotate_address_abi(state, value, element_abi, span))
+        return COG_IR_VALUE_INVALID;
+    return value;
 }
 
 static CogIrValueId emit_aggregate_value(
@@ -1956,6 +2027,7 @@ static CogIrValueId lower_string_literal(ExecLowerState *state, Node *node)
             string_view_from_cstr(".str"),
             node->span,
             array_type,
+            COG_IR_ABI_TYPE_INVALID,
             COG_IR_LINKAGE_INTERNAL,
             1,
             1,

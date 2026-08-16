@@ -17,12 +17,15 @@ void llvm_backend_error(LlvmBackend *backend, const char *message)
 static int allocate_backend_tables(LlvmBackend *backend)
 {
     backend->types = calloc(backend->ir->type_count, sizeof(*backend->types));
+    backend->c_aggregate_inner_types = calloc(backend->ir->type_count, sizeof(*backend->c_aggregate_inner_types));
+    backend->c_aggregate_is_wrapped = calloc(backend->ir->type_count, sizeof(*backend->c_aggregate_is_wrapped));
     backend->globals = calloc(backend->ir->global_count, sizeof(*backend->globals));
     backend->functions = calloc(backend->ir->function_count, sizeof(*backend->functions));
     backend->function_types = calloc(backend->ir->function_count, sizeof(*backend->function_types));
-    if ((backend->ir->type_count && !backend->types) ||
+    backend->c_function_abis = calloc(backend->ir->function_count, sizeof(*backend->c_function_abis));
+    if ((backend->ir->type_count && (!backend->types || !backend->c_aggregate_inner_types || !backend->c_aggregate_is_wrapped)) ||
         (backend->ir->global_count && !backend->globals) ||
-        (backend->ir->function_count && (!backend->functions || !backend->function_types))) {
+        (backend->ir->function_count && (!backend->functions || !backend->function_types || !backend->c_function_abis))) {
         llvm_backend_error(backend, "out of memory initializing LLVM backend");
         return 0;
     }
@@ -32,8 +35,15 @@ static int allocate_backend_tables(LlvmBackend *backend)
 static void free_backend_tables(LlvmBackend *backend)
 {
     free(backend->types);
+    free(backend->c_aggregate_inner_types);
+    free(backend->c_aggregate_is_wrapped);
     free(backend->globals);
     free(backend->functions);
+    if (backend->c_function_abis) {
+        for (size_t i = 0; i < backend->ir->function_count; ++i)
+            llvm_dispose_c_function_abi(backend->c_function_abis[i]);
+    }
+    free(backend->c_function_abis);
     free(backend->function_types);
 }
 
@@ -41,7 +51,9 @@ static int declare_globals(LlvmBackend *backend)
 {
     for (size_t i = 0; i < backend->ir->global_count; ++i) {
         const CogIrGlobal *global = &backend->ir->globals[i];
-        LLVMTypeRef type = llvm_lower_type(backend, global->type);
+        LLVMTypeRef type = global->abi_type != COG_IR_ABI_TYPE_INVALID
+            ? llvm_lower_c_object_type(backend, global->abi_type)
+            : llvm_lower_type(backend, global->type);
         if (!type)
             return 0;
         char name[64];
@@ -50,7 +62,11 @@ static int declare_globals(LlvmBackend *backend)
         LLVMSetLinkage(value, global->linkage == COG_IR_LINKAGE_INTERNAL ? LLVMInternalLinkage : LLVMExternalLinkage);
         LLVMSetGlobalConstant(value, global->is_readonly ? 1 : 0);
         if (global->static_initializer != COG_IR_CONST_INVALID) {
-            LLVMValueRef init = llvm_lower_constant(backend, global->static_initializer);
+            const CogIrConstant *ir_init = cog_ir_get_constant(backend->ir, global->static_initializer);
+            LLVMValueRef init = global->abi_type != COG_IR_ABI_TYPE_INVALID && ir_init &&
+                ir_init->kind == COG_IR_CONST_ZERO
+                ? LLVMConstNull(type)
+                : llvm_lower_constant(backend, global->static_initializer);
             if (!init)
                 return 0;
             LLVMSetInitializer(value, init);
@@ -77,7 +93,11 @@ static int declare_functions(LlvmBackend *backend)
             }
             llvm_type = llvm_lower_function_signature(backend, function->type);
         } else if (function->abi.abi == COG_IR_ABI_C) {
-            llvm_type = llvm_lower_c_function_signature(backend, function);
+            LlvmCAbiSignature *signature = llvm_build_c_function_abi(backend, function);
+            if (!signature)
+                return 0;
+            backend->c_function_abis[i] = signature;
+            llvm_type = llvm_c_function_abi_type(signature);
         } else {
             llvm_backend_error(backend, "unknown CogIR function ABI");
             return 0;
@@ -107,13 +127,7 @@ static int declare_functions(LlvmBackend *backend)
         free(external_name);
         LLVMSetLinkage(value, function->linkage == COG_IR_LINKAGE_INTERNAL ? LLVMInternalLinkage : LLVMExternalLinkage);
         if (function->abi.abi == COG_IR_ABI_C &&
-            !llvm_apply_c_function_abi(
-                backend,
-                value,
-                function->abi.calling_convention,
-                function->abi.return_abi_type,
-                function->abi.parameter_abi_types,
-                function->abi.parameter_count)) {
+            !llvm_apply_c_function_abi(backend, value, backend->c_function_abis[i])) {
             return 0;
         }
         backend->functions[i] = value;
@@ -218,56 +232,50 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
                 return 0;
             }
 
-            LLVMTypeRef callable = NULL;
-            const CogIrAbiType *callee_abi = NULL;
             if (callee_type->as.function.abi == COG_IR_ABI_COGLET) {
                 if (callee_type->as.function.is_variadic) {
                     llvm_backend_error(backend, "ordinary Coglet variadic calls are unsupported");
                     return 0;
                 }
-                callable = llvm_lower_function_signature(backend, callee_value->type);
+                LLVMTypeRef callable = llvm_lower_function_signature(backend, callee_value->type);
+                if (!callable)
+                    return 0;
+                LLVMValueRef *args = NULL;
+                if (insn->as.call.argument_count) {
+                    args = calloc(insn->as.call.argument_count, sizeof(*args));
+                    if (!args) {
+                        llvm_backend_error(backend, "out of memory lowering call");
+                        return 0;
+                    }
+                    for (size_t i = 0; i < insn->as.call.argument_count; ++i) {
+                        args[i] = state->values[insn->as.call.arguments[i]];
+                        if (!args[i]) {
+                            free(args);
+                            llvm_backend_error(backend, "call argument references unavailable LLVM value");
+                            return 0;
+                        }
+                    }
+                }
+                result = LLVMBuildCall2(
+                    backend->builder, callable, callee, args,
+                    (unsigned)insn->as.call.argument_count, "");
+                free(args);
             } else if (callee_type->as.function.abi == COG_IR_ABI_C) {
                 if (callee_value->abi_type == COG_IR_ABI_TYPE_INVALID) {
                     llvm_backend_error(backend, "C ABI call is missing exact function-pointer ABI metadata");
                     return 0;
                 }
-                callee_abi = cog_ir_get_abi_type(backend->ir, callee_value->abi_type);
-                callable = llvm_lower_c_function_pointer_signature(backend, callee_value->abi_type);
+                LlvmCAbiSignature *signature =
+                    llvm_build_c_function_pointer_abi(backend, callee_value->abi_type);
+                if (!signature)
+                    return 0;
+                int ok = llvm_lower_c_call(
+                    backend, function, state, insn, callee, signature, &result);
+                llvm_dispose_c_function_abi(signature);
+                if (!ok)
+                    return 0;
             } else {
                 llvm_backend_error(backend, "call uses an unknown CogIR function ABI");
-                return 0;
-            }
-            if (!callable)
-                return 0;
-
-            LLVMValueRef *args = NULL;
-            if (insn->as.call.argument_count) {
-                args = calloc(insn->as.call.argument_count, sizeof(*args));
-                if (!args) { llvm_backend_error(backend, "out of memory lowering call"); return 0; }
-                for (size_t i = 0; i < insn->as.call.argument_count; ++i) {
-                    args[i] = state->values[insn->as.call.arguments[i]];
-                    if (!args[i]) {
-                        free(args);
-                        llvm_backend_error(backend, "call argument references unavailable LLVM value");
-                        return 0;
-                    }
-                }
-            }
-            result = LLVMBuildCall2(
-                backend->builder,
-                callable,
-                callee,
-                args,
-                (unsigned)insn->as.call.argument_count,
-                ""
-            );
-            free(args);
-            if (callee_type->as.function.abi == COG_IR_ABI_C &&
-                !llvm_apply_c_call_abi(
-                    backend,
-                    result,
-                    callee_type->as.function.calling_convention,
-                    callee_abi)) {
                 return 0;
             }
             break;
@@ -326,8 +334,9 @@ static int lower_function_body(LlvmBackend *backend, const CogIrFunction *functi
 
     LLVMValueRef llvm_function = backend->functions[function->id];
     state.function = llvm_function;
-    for (size_t i = 0; i < function->parameter_count; ++i)
-        state.values[function->parameters[i]] = LLVMGetParam(llvm_function, (unsigned)i);
+    state.c_abi = function->abi.abi == COG_IR_ABI_C
+        ? backend->c_function_abis[function->id]
+        : NULL;
 
     for (size_t i = 0; i < function->block_count; ++i) {
         char name[64]; snprintf(name, sizeof(name), "bb.%zu", i);
@@ -345,8 +354,18 @@ static int lower_function_body(LlvmBackend *backend, const CogIrFunction *functi
     }
 
     LLVMPositionBuilderAtEnd(backend->builder, state.blocks[function->entry_block]);
+    if (function->abi.abi == COG_IR_ABI_C) {
+        if (!llvm_map_c_function_parameters(backend, function, &state, state.c_abi))
+            goto fail;
+    } else {
+        for (size_t i = 0; i < function->parameter_count; ++i)
+            state.values[function->parameters[i]] = LLVMGetParam(llvm_function, (unsigned)i);
+    }
+
     for (size_t i = 0; i < function->slot_count; ++i) {
-        LLVMTypeRef type = llvm_lower_type(backend, function->slots[i].type);
+        LLVMTypeRef type = function->slots[i].abi_type != COG_IR_ABI_TYPE_INVALID
+            ? llvm_lower_c_object_type(backend, function->slots[i].abi_type)
+            : llvm_lower_type(backend, function->slots[i].type);
         if (!type) goto fail;
         state.slots[i] = LLVMBuildAlloca(backend->builder, type, "");
     }

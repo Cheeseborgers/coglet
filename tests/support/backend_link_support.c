@@ -471,3 +471,92 @@ int coglet_backend_small_callback_probe(CogletBackendSmallCallback callback)
         return 84;
     return 83;
 }
+
+int coglet_backend_bool_pointer_probe(_Bool *value)
+{
+    if (!value || !*value)
+        return 80;
+    *value = 0;
+    return 79;
+}
+
+typedef struct CogletBackendAggregateCallbackPair {
+    int left;
+    double weight;
+} CogletBackendAggregateCallbackPair;
+
+typedef CogletBackendAggregateCallbackPair (*CogletBackendAggregateCallback)(
+    CogletBackendAggregateCallbackPair
+);
+
+int coglet_backend_aggregate_callback_probe(CogletBackendAggregateCallback callback)
+{
+    if (!callback)
+        return 88;
+    CogletBackendAggregateCallbackPair input = { 29, 1.25 };
+    CogletBackendAggregateCallbackPair output = callback(input);
+    if (output.left != 30 || output.weight != 2.5)
+        return 88;
+    return 87;
+}
+
+#if (defined(__GNUC__) || defined(__clang__)) && \
+    (defined(__x86_64__) || defined(__amd64__))
+typedef struct CogletBackendWin64SmallAggregate {
+    int left;
+    int right;
+} CogletBackendWin64SmallAggregate;
+
+typedef struct CogletBackendWin64LargeAggregate {
+    int first;
+    int second;
+    int third;
+} CogletBackendWin64LargeAggregate;
+
+CogletBackendWin64SmallAggregate __attribute__((ms_abi))
+coglet_backend_win64_make_small_aggregate(int left, int right)
+{
+    CogletBackendWin64SmallAggregate value = {left, right};
+    return value;
+}
+
+int __attribute__((ms_abi)) coglet_backend_win64_small_aggregate_probe(
+    CogletBackendWin64SmallAggregate value
+)
+{
+    return value.left == 41 && value.right == 42 ? 85 : 86;
+}
+
+CogletBackendWin64LargeAggregate __attribute__((ms_abi))
+coglet_backend_win64_make_large_aggregate(int first, int second, int third)
+{
+    CogletBackendWin64LargeAggregate value = {first, second, third};
+    return value;
+}
+
+int __attribute__((ms_abi)) coglet_backend_win64_large_aggregate_probe(
+    CogletBackendWin64LargeAggregate value
+)
+{
+    return value.first == 43 && value.second == 44 && value.third == 45 ? 86 : 88;
+}
+#endif
+
+typedef struct CogletBackendBoolPacket {
+    _Bool flag;
+    _Bool flags[3];
+    int value;
+} CogletBackendBoolPacket;
+
+CogletBackendBoolPacket coglet_backend_make_bool_packet(void)
+{
+    CogletBackendBoolPacket packet = {1, {1, 0, 1}, 81};
+    return packet;
+}
+
+int coglet_backend_bool_packet_probe(CogletBackendBoolPacket packet)
+{
+    if (packet.flag || !packet.flags[0] || !packet.flags[1] || !packet.flags[2] || packet.value != 81)
+        return 84;
+    return 82;
+}

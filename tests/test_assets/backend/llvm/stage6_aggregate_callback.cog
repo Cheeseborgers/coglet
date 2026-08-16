@@ -1,0 +1,22 @@
+#repr(c)
+CallbackPair::struct {
+    left: c_int;
+    weight: c_double;
+}
+
+#extern(c, name="coglet_backend_aggregate_callback_probe")
+aggregate_callback_probe::(
+    callback: cfn(CallbackPair) -> CallbackPair
+) -> c_int;
+
+#repr(c)
+adjust_pair::(pair: CallbackPair) -> CallbackPair {
+    return CallbackPair {
+        left = pair.left + 1,
+        weight = pair.weight * 2.0,
+    };
+}
+
+main::() -> i32 {
+    return aggregate_callback_probe(adjust_pair);
+}

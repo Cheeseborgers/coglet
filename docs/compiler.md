@@ -298,19 +298,19 @@ details also remain deferred.
 ## Target Description
 
 
-### LLVM backend Stage 5
+### LLVM backend Stage 6
 
 The LLVM backend lives under `src/backends/llvm/` with its public API under
 `include/backends/llvm/`. It accepts only frozen `CogIrModule` input, constructs
 LLVM IR through the LLVM C API, runs `LLVMVerifyModule`, and then writes textual
-IR. Stage 5 retains the native execution foundation from Stages 1-4 and adds
-the first explicit target-C ABI lowering slice: native C scalar aliases, raw
-pointers, incomplete C handles, C function values/callbacks, C variadics/default
-promotions, external symbol names, and the supported explicit C calling
-conventions. Scalar `_Bool` values are lowered at function boundaries, but typed
-pointers to C `_Bool` storage remain explicitly rejected because Coglet's runtime
-`bool` value representation (`i1` in LLVM) is not itself a complete C object
-storage contract.
+IR. Stage 6 retains the native execution foundation from Stages 1-4 and the
+Stage 5 scalar/pointer/function C ABI surface, then adds target-aware C object
+storage and represented aggregate classification. Native C scalar aliases, raw
+pointers, incomplete handles, callbacks, variadics/default promotions, external
+symbols, and explicit calling conventions continue to derive only from frozen
+CogIR metadata. Complete `#repr(c)` structs/unions now use backend-owned physical
+storage types and, on x86-64, are classified for SysV or Win64 calls as direct
+register components or indirect `byval`/hidden-`sret` values as required.
 
 Before lowering types, the backend initializes LLVM's native target, creates a
 target machine, and stamps the module with the resulting target triple and
@@ -340,15 +340,25 @@ blocks preserve edge-specific CogIR block arguments even when more than one case
 targets the same destination block. CogIR `trap` terminators lower explicitly to
 `llvm.trap` followed by `unreachable`.
 
-`#repr(c)` aggregate layout/classification, unions, typed C `_Bool` object
-storage through pointers, volatile whole-aggregate accesses, optimization
-pipelines, object emission, and linker integration remain
-intentionally rejected or deferred rather than approximated. Stage 5 applies the
-required x86-64 SysV small-integer extension attributes and LLVM calling
-conventions for the scalar/pointer/function ABI surface. By-value represented C
-aggregates remain separate because target ABIs may coerce, split, extend, or pass
-those values indirectly; an ordinary LLVM struct signature is not a C ABI
-classifier.
+Stage 6 distinguishes LLVM runtime values from C object storage. In particular,
+scalar C `_Bool` call values remain logical `i1`, while addressable `c_bool`
+objects use the target C `_Bool` storage width and are converted on load/store.
+The same conversion is recursive through represented C array/struct fields.
+Exact object spelling is frozen on CogIR slots/globals/addresses where canonical
+semantic identity would otherwise lose this distinction. Passing an ordinary
+Coglet `bool*` as `c_bool*` is rejected rather than silently reinterpreting an
+`i1` object as C storage.
+
+Represented aggregate classification is currently implemented for x86-64 SysV
+and Win64. SysV values are classified into INTEGER/SSE eightbytes or MEMORY;
+Win64 uses its size-based direct/indirect aggregate rules. Packed or misaligned
+SysV objects fall back to MEMORY, and explicit aggregate alignment is reflected
+in LLVM storage plus `sret`/`byval` alignment attributes. This is a backend ABI
+plan, not an ordinary LLVM-struct shortcut: the same plan drives declarations,
+call sites, C callback definitions, parameter reconstruction, and returns.
+Volatile whole-aggregate accesses, optimization pipelines, object emission,
+linker integration, and non-x86-64 represented aggregate classification remain
+explicitly deferred.
 
 `COGLET_LLVM=AUTO` enables the backend when `LLVMConfig.cmake` is available;
 `ON` requires LLVM 17 or newer and `OFF` disables it. The CMake integration

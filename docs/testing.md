@@ -185,10 +185,15 @@ LLVM IR against an independently compiled C support library to exercise exact C
 scalar aliases, SysV extension attributes, callbacks and returned function
 pointers, direct and indirect C variadics/default promotions, explicit Win64
 calling convention lowering, incomplete/volatile pointers, and external symbol
-overrides. Negative regressions keep by-value represented C aggregate ABI
-classification and typed C `_Bool` object storage outside this slice. The float suite includes NaN/infinity,
-signed/unsigned range boundaries, and narrowing behavior so LLVM conversion
-instructions are not used before Coglet's checked-cast guards.
+overrides. Stage 6 reuses the independently compiled C support library for
+represented structs, nested structs, arrays, enums, unions, packed/explicitly
+aligned objects, aggregate callbacks, represented globals, and addressable C
+`_Bool` objects. The x86-64 suite exercises both SysV direct/register and
+`byval`/`sret` paths plus Win64 small and indirect aggregate rules. A negative
+regression keeps ordinary Coglet `bool*` distinct from `c_bool*`, and volatile
+whole-aggregate access remains explicitly unsupported. The float suite includes
+NaN/infinity, signed/unsigned range boundaries, and narrowing behavior so LLVM
+conversion instructions are not used before Coglet's checked-cast guards.
 
 Run only these tests with:
 

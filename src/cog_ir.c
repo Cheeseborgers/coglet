@@ -909,12 +909,14 @@ CogIrGlobalId cog_ir_add_global(
     StringView debug_name,
     SourceSpan span,
     CogIrTypeId type,
+    CogIrAbiTypeId abi_type,
     CogIrLinkage linkage,
     int is_compiler_generated,
     int is_readonly,
     CogIrConstId static_initializer
 ) {
     if (!module_mutable(module) || !cog_ir_get_type(module, type) ||
+        (abi_type != COG_IR_ABI_TYPE_INVALID && !cog_ir_get_abi_type(module, abi_type)) ||
         !cog_ir_get_constant(module, static_initializer) ||
         module->global_count >= COG_IR_ID_INVALID)
         return COG_IR_GLOBAL_INVALID;
@@ -934,6 +936,7 @@ CogIrGlobalId cog_ir_add_global(
     global->debug_name = copy_string_view(module, debug_name);
     global->span = span;
     global->type = type;
+    global->abi_type = abi_type;
     global->linkage = linkage;
     global->is_compiler_generated = !!is_compiler_generated;
     global->is_readonly = !!is_readonly;

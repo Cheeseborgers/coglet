@@ -1190,7 +1190,8 @@ int cog_ir_verify(const CogIrModule *module, DiagnosticList *diagnostics)
         const CogIrGlobal *global = &module->globals[i];
         const CogIrConstant *initializer = cog_ir_get_constant(module, global->static_initializer);
         if (global->id != i || !cog_ir_get_type(module, global->type) || !initializer ||
-            initializer->type != global->type || !valid_span(module, global->span)) {
+            initializer->type != global->type || !valid_span(module, global->span) ||
+            !optional_abi_matches_runtime(module, global->abi_type, global->type)) {
             ir_error(diagnostics, global->span, "global @g%zu has invalid type/initializer/span", i);
             ok = 0;
         }

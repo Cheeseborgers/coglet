@@ -310,6 +310,8 @@ void cog_ir_dump(FILE *stream, const CogIrModule *module)
             fprintf(stream, " \""); dump_sv(stream, global->debug_name); fprintf(stream, "\"");
         }
         fprintf(stream, " : "); dump_type_ref(stream, module, global->type);
+        if (global->abi_type != COG_IR_ABI_TYPE_INVALID)
+            fprintf(stream, " abi=@a%u", global->abi_type);
         fprintf(stream, " = @c%u(", global->static_initializer);
         dump_constant(stream, module, global->static_initializer);
         fprintf(stream, ")\n");

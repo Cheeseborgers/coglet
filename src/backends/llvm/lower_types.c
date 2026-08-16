@@ -42,10 +42,8 @@ LLVMTypeRef llvm_lower_function_signature(LlvmBackend *backend, CogIrTypeId id)
 
 static LLVMTypeRef lower_struct_type(LlvmBackend *backend, const CogIrType *type)
 {
-    if (type->as.aggregate.is_repr_c) {
-        llvm_backend_error(backend, "#repr(c) aggregate layout is outside the LLVM Stage 3 subset");
-        return NULL;
-    }
+    if (type->as.aggregate.is_repr_c)
+        return llvm_lower_repr_c_aggregate_type(backend, type);
     if (!type->as.aggregate.is_complete || type->as.aggregate.is_incomplete) {
         llvm_backend_error(backend, "incomplete aggregate has no LLVM value layout");
         return NULL;
@@ -141,7 +139,9 @@ LLVMTypeRef llvm_lower_type(LlvmBackend *backend, CogIrTypeId id)
             }
             break;
         case COG_IR_TYPE_UNION:
-            llvm_backend_error(backend, "union layout is outside the LLVM Stage 3 subset");
+            if (type->as.aggregate.is_repr_c)
+                return llvm_lower_repr_c_aggregate_type(backend, type);
+            llvm_backend_error(backend, "ordinary Coglet union layout is unsupported");
             return NULL;
     }
     backend->types[id] = result;
@@ -209,7 +209,7 @@ LLVMValueRef llvm_lower_constant(LlvmBackend *backend, CogIrConstId id)
         case COG_IR_CONST_STRUCT: {
             const CogIrType *structure = cog_ir_get_type(backend->ir, constant->type);
             if (!structure || structure->kind != COG_IR_TYPE_STRUCT || structure->as.aggregate.is_repr_c) {
-                llvm_backend_error(backend, "struct constant is outside the LLVM Stage 3 subset");
+                llvm_backend_error(backend, "#repr(c) struct constants require field-wise C object conversion and are not static constants yet");
                 return NULL;
             }
             LLVMValueRef *values = lower_constant_elements(backend, constant);

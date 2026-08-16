@@ -732,8 +732,17 @@ static const char *value_type_name(
         backend_error(backend, span, "invalid CogIR value type during C lowering");
         return NULL;
     }
-    if (value->abi_type != COG_IR_ABI_TYPE_INVALID)
-        return abi_type_name(backend, value->abi_type, span);
+    if (value->abi_type != COG_IR_ABI_TYPE_INVALID) {
+        const CogIrAbiType *abi = cog_ir_get_abi_type(backend->module, value->abi_type);
+        /*
+         * Address values may carry object-storage ABI metadata for native
+         * backends. The host-C backend already gets pointer/array object layout
+         * from the C type system, so retaining its historical runtime pointer
+         * spelling avoids manufacturing premature pointer-to-array aliases.
+         */
+        if (abi && abi->kind != COG_IR_ABI_TYPE_POINTER && abi->kind != COG_IR_ABI_TYPE_ARRAY)
+            return abi_type_name(backend, value->abi_type, span);
+    }
     return runtime_type_name(backend, value->type, span);
 }
 
@@ -1013,9 +1022,22 @@ static int prepare_type_aliases(CBackend *backend)
         }
         for (size_t v = 0; v < function->value_count; ++v) {
             const CogIrValue *value = &function->values[v];
-            if (value->abi_type != COG_IR_ABI_TYPE_INVALID &&
-                !abi_type_name(backend, value->abi_type, value->span))
-                return 0;
+            if (value->abi_type != COG_IR_ABI_TYPE_INVALID) {
+                const CogIrAbiType *abi = cog_ir_get_abi_type(backend->module, value->abi_type);
+                /*
+                 * Address values may carry pointer/array object-storage ABI
+                 * metadata for native backends.  Host-C intentionally uses the
+                 * runtime pointer spelling for these values, but preparing that
+                 * alias here can require a pointer-to-array typedef before the
+                 * aggregate element type is complete.  Defer only those runtime
+                 * aliases until after aggregate definitions have been emitted.
+                 */
+                if (abi &&
+                    (abi->kind == COG_IR_ABI_TYPE_POINTER || abi->kind == COG_IR_ABI_TYPE_ARRAY))
+                    continue;
+                if (!abi_type_name(backend, value->abi_type, value->span))
+                    return 0;
+            }
         }
         for (size_t s = 0; s < function->slot_count; ++s) {
             const CogIrSlot *slot = &function->slots[s];
@@ -1161,6 +1183,25 @@ static int emit_runtime_definition(CBackend *backend, CogIrTypeId type_id)
         fprintf(backend->out, " CG_REPR_C_ALIGNED(%u)", type->as.aggregate.explicit_alignment);
     fputs(";\n\n", backend->out);
     *state = 2;
+    return 1;
+}
+
+static int prepare_late_value_aliases(CBackend *backend)
+{
+    for (size_t i = 0; i < backend->module->function_count; ++i) {
+        const CogIrFunction *function = &backend->module->functions[i];
+        for (size_t v = 0; v < function->value_count; ++v) {
+            const CogIrValue *value = &function->values[v];
+            if (value->abi_type == COG_IR_ABI_TYPE_INVALID)
+                continue;
+            const CogIrAbiType *abi = cog_ir_get_abi_type(backend->module, value->abi_type);
+            if (!abi ||
+                (abi->kind != COG_IR_ABI_TYPE_POINTER && abi->kind != COG_IR_ABI_TYPE_ARRAY))
+                continue;
+            if (!runtime_type_name(backend, value->type, value->span))
+                return 0;
+        }
+    }
     return 1;
 }
 
@@ -3566,13 +3607,22 @@ static CBackendStatus c_backend_emit_stream(FILE *out, const CogIrModule *module
     if (!emit_enum_definitions(&backend) || !prepare_type_aliases(&backend))
         goto unsupported;
 
-    for (size_t i = 0; i < backend.type_definition_count; ++i)
+    size_t printed_type_definition_count = backend.type_definition_count;
+    for (size_t i = 0; i < printed_type_definition_count; ++i)
         fprintf(out, "%s\n", backend.type_definitions[i]);
-    if (backend.type_definition_count)
+    if (printed_type_definition_count)
         fputc('\n', out);
 
     if (!emit_runtime_definitions(&backend) ||
-        !emit_globals(&backend) ||
+        !prepare_late_value_aliases(&backend))
+        goto unsupported;
+
+    for (size_t i = printed_type_definition_count; i < backend.type_definition_count; ++i)
+        fprintf(out, "%s\n", backend.type_definitions[i]);
+    if (backend.type_definition_count > printed_type_definition_count)
+        fputc('\n', out);
+
+    if (!emit_globals(&backend) ||
         !emit_function_declarations(&backend) ||
         !emit_function_bodies(&backend) ||
         !emit_entrypoint(&backend))

@@ -126,6 +126,14 @@ int main(int argc, char **argv)
     if (!counter_init || counter_init->kind != COG_IR_CONST_ZERO)
         return fail("source global was not zero-initialized in static data");
 
+    const CogIrLowerDeclBinding *c_flag = find_binding(&lower, "c_flag");
+    const CogIrGlobal *c_flag_g = c_flag ? cog_ir_get_global(&module, c_flag->as.global) : NULL;
+    const CogIrAbiType *c_flag_abi = c_flag_g && c_flag_g->abi_type != COG_IR_ABI_TYPE_INVALID
+        ? cog_ir_get_abi_type(&module, c_flag_g->abi_type) : NULL;
+    if (!c_flag_abi || c_flag_abi->kind != COG_IR_ABI_TYPE_C_SCALAR ||
+        c_flag_abi->c_scalar_kind != COG_IR_C_SCALAR_BOOL)
+        return fail("exact c_bool global object spelling was not frozen into CogIR");
+
     const CogIrLowerDeclBinding *callback = find_binding(&lower, "callback");
     const CogIrType *callback_type = callback ? cog_ir_get_type(&module, callback->type) : NULL;
     if (!callback_type || callback_type->kind != COG_IR_TYPE_FUNCTION || callback_type->as.function.abi != COG_IR_ABI_C)

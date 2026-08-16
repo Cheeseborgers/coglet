@@ -1,0 +1,30 @@
+#repr(c)
+Win64Small::struct {
+    left: c_int;
+    right: c_int;
+}
+
+#repr(c)
+Win64Large::struct {
+    first: c_int;
+    second: c_int;
+    third: c_int;
+}
+
+#extern(c, name="coglet_backend_win64_make_small_aggregate", call=win64)
+make_small::(left: c_int, right: c_int) -> Win64Small;
+
+#extern(c, name="coglet_backend_win64_small_aggregate_probe", call=win64)
+probe_small::(value: Win64Small) -> c_int;
+
+#extern(c, name="coglet_backend_win64_make_large_aggregate", call=win64)
+make_large::(first: c_int, second: c_int, third: c_int) -> Win64Large;
+
+#extern(c, name="coglet_backend_win64_large_aggregate_probe", call=win64)
+probe_large::(value: Win64Large) -> c_int;
+
+main::() -> i32 {
+    if probe_small(make_small(41, 42)) != 85
+        return 1;
+    return probe_large(make_large(43, 44, 45));
+}

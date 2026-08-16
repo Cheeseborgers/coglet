@@ -147,6 +147,7 @@ int main(void)
         string_view_from_cstr("counter"),
         global_span,
         i32_type,
+        COG_IR_ABI_TYPE_INVALID,
         COG_IR_LINKAGE_INTERNAL,
         0,
         0,

@@ -1,0 +1,17 @@
+#repr(c)
+GlobalPair::struct {
+    left: c_int;
+    weight: c_double;
+}
+
+#extern(c, name="coglet_backend_struct_probe")
+struct_probe::(pair: GlobalPair) -> c_int;
+
+global_pair: GlobalPair = GlobalPair {
+    left = 17,
+    weight = 2.5,
+};
+
+main::() -> i32 {
+    return struct_probe(global_pair);
+}

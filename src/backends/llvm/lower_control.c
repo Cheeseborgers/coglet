@@ -245,6 +245,12 @@ int llvm_lower_terminator(
         case COG_IR_TERMINATOR_SWITCH:
             return lower_switch_terminator(backend, function, state, term);
         case COG_IR_TERMINATOR_RET:
+            if (state->c_abi) {
+                LLVMValueRef value = term->as.ret.has_value
+                    ? state->values[term->as.ret.value]
+                    : NULL;
+                return llvm_lower_c_return(backend, state, term->as.ret.has_value, value);
+            }
             if (term->as.ret.has_value) LLVMBuildRet(backend->builder, state->values[term->as.ret.value]);
             else LLVMBuildRetVoid(backend->builder);
             return 1;

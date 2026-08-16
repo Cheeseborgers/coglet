@@ -22,6 +22,20 @@ static const CogIrType *typed_pointer_pointee(
     return cog_ir_get_type(backend->ir, pointer->as.pointer.pointee);
 }
 
+static const CogIrAbiType *address_element_abi(
+    LlvmBackend *backend,
+    const CogIrFunction *function,
+    CogIrValueId address
+) {
+    const CogIrValue *value = cog_ir_get_value(function, address);
+    if (!value || value->abi_type == COG_IR_ABI_TYPE_INVALID)
+        return NULL;
+    const CogIrAbiType *pointer = cog_ir_get_abi_type(backend->ir, value->abi_type);
+    if (!pointer || pointer->kind != COG_IR_ABI_TYPE_POINTER)
+        return NULL;
+    return cog_ir_get_abi_type(backend->ir, pointer->element_type);
+}
+
 static int lower_field_addr(
     LlvmBackend *backend,
     const CogIrFunction *function,
@@ -36,22 +50,26 @@ static int lower_field_addr(
         instruction->as.field_addr.base
     );
     if (!base || !aggregate || aggregate->kind != COG_IR_TYPE_STRUCT ||
-        aggregate->as.aggregate.is_repr_c ||
         instruction->as.field_addr.field_index >= aggregate->as.aggregate.field_count) {
-        llvm_backend_error(backend, "field_addr requires a supported ordinary Coglet struct base");
+        llvm_backend_error(backend, "field_addr requires a supported Coglet struct base");
         return 0;
     }
 
-    LLVMTypeRef llvm_aggregate = llvm_lower_type(backend, aggregate->id);
-    if (!llvm_aggregate)
-        return 0;
-    *out_result = LLVMBuildStructGEP2(
-        backend->builder,
-        llvm_aggregate,
-        base,
-        instruction->as.field_addr.field_index,
-        ""
-    );
+    if (aggregate->as.aggregate.is_repr_c) {
+        *out_result = llvm_build_repr_c_field_gep(
+            backend, aggregate, base, instruction->as.field_addr.field_index);
+    } else {
+        LLVMTypeRef llvm_aggregate = llvm_lower_type(backend, aggregate->id);
+        if (!llvm_aggregate)
+            return 0;
+        *out_result = LLVMBuildStructGEP2(
+            backend->builder,
+            llvm_aggregate,
+            base,
+            instruction->as.field_addr.field_index,
+            ""
+        );
+    }
     return *out_result != NULL;
 }
 
@@ -74,7 +92,13 @@ static int lower_array_elem_addr(
         return 0;
     }
 
-    LLVMTypeRef llvm_array = llvm_lower_type(backend, array->id);
+    LLVMTypeRef llvm_array = NULL;
+    const CogIrAbiType *element_abi = address_element_abi(
+        backend, function, instruction->as.index_addr.base);
+    if (element_abi && element_abi->kind == COG_IR_ABI_TYPE_ARRAY)
+        llvm_array = llvm_lower_c_object_type(backend, element_abi->id);
+    else
+        llvm_array = llvm_lower_type(backend, array->id);
     if (!llvm_array)
         return 0;
     LLVMValueRef indices[2] = {
@@ -104,7 +128,13 @@ static int lower_ptr_index_addr(
         return 0;
     }
 
-    LLVMTypeRef llvm_pointee = llvm_lower_type(backend, pointee->id);
+    LLVMTypeRef llvm_pointee = NULL;
+    const CogIrAbiType *element_abi = address_element_abi(
+        backend, function, instruction->as.index_addr.base);
+    if (element_abi)
+        llvm_pointee = llvm_lower_c_object_type(backend, element_abi->id);
+    else
+        llvm_pointee = llvm_lower_type(backend, pointee->id);
     if (!llvm_pointee)
         return 0;
     *out_result = LLVMBuildGEP2(backend->builder, llvm_pointee, base, &index, 1, "");
@@ -113,28 +143,37 @@ static int lower_ptr_index_addr(
 
 static int lower_load(
     LlvmBackend *backend,
+    const CogIrFunction *function,
     const CogIrInstruction *instruction,
     LlvmFunctionState *state,
     LLVMValueRef *out_result
 ) {
     const CogIrType *ir_type = cog_ir_get_type(backend->ir, instruction->result_type);
     if (instruction->as.load.is_volatile && ir_type &&
-        (ir_type->kind == COG_IR_TYPE_ARRAY || ir_type->kind == COG_IR_TYPE_STRUCT)) {
-        llvm_backend_error(backend, "volatile aggregate loads are outside the LLVM Stage 3 subset");
+        (ir_type->kind == COG_IR_TYPE_ARRAY || ir_type->kind == COG_IR_TYPE_STRUCT ||
+         ir_type->kind == COG_IR_TYPE_UNION)) {
+        llvm_backend_error(backend, "volatile aggregate loads remain unsupported in the LLVM backend");
         return 0;
     }
     LLVMValueRef address = state->values[instruction->as.load.address];
-    LLVMTypeRef type = llvm_lower_type(backend, instruction->result_type);
+    const CogIrAbiType *object_abi = address_element_abi(
+        backend, function, instruction->as.load.address);
+    LLVMTypeRef type = object_abi
+        ? llvm_lower_c_object_type(backend, object_abi->id)
+        : llvm_lower_type(backend, instruction->result_type);
     if (!address || !type) {
         llvm_backend_error(backend, "load references unavailable LLVM address or type");
         return 0;
     }
-    *out_result = LLVMBuildLoad2(backend->builder, type, address, "");
-    if (!*out_result)
+    LLVMValueRef loaded = LLVMBuildLoad2(backend->builder, type, address, "");
+    if (!loaded)
         return 0;
     if (instruction->as.load.is_volatile)
-        LLVMSetVolatile(*out_result, 1);
-    return 1;
+        LLVMSetVolatile(loaded, 1);
+    *out_result = object_abi
+        ? llvm_c_object_to_runtime(backend, object_abi->id, loaded)
+        : loaded;
+    return *out_result != NULL;
 }
 
 static int lower_store(
@@ -146,15 +185,23 @@ static int lower_store(
 ) {
     const CogIrType *ir_type = value_type(backend, function, instruction->as.store.value);
     if (instruction->as.store.is_volatile && ir_type &&
-        (ir_type->kind == COG_IR_TYPE_ARRAY || ir_type->kind == COG_IR_TYPE_STRUCT)) {
-        llvm_backend_error(backend, "volatile aggregate stores are outside the LLVM Stage 3 subset");
+        (ir_type->kind == COG_IR_TYPE_ARRAY || ir_type->kind == COG_IR_TYPE_STRUCT ||
+         ir_type->kind == COG_IR_TYPE_UNION)) {
+        llvm_backend_error(backend, "volatile aggregate stores remain unsupported in the LLVM backend");
         return 0;
     }
     LLVMValueRef address = state->values[instruction->as.store.address];
     LLVMValueRef value = state->values[instruction->as.store.value];
+    const CogIrAbiType *object_abi = address_element_abi(
+        backend, function, instruction->as.store.address);
     if (!address || !value) {
         llvm_backend_error(backend, "store references unavailable LLVM value");
         return 0;
+    }
+    if (object_abi) {
+        value = llvm_c_runtime_to_object(backend, object_abi->id, value);
+        if (!value)
+            return 0;
     }
     *out_result = LLVMBuildStore(backend->builder, value, address);
     if (!*out_result)
@@ -213,6 +260,66 @@ static int lower_extract_aggregate(
     return *out_result != NULL;
 }
 
+static int lower_make_repr_c_struct(
+    LlvmBackend *backend,
+    LlvmFunctionState *state,
+    const CogIrInstruction *instruction,
+    const CogIrType *type,
+    LLVMValueRef *out_result
+) {
+    LLVMTypeRef inner_type = llvm_repr_c_inner_type(backend, type->id);
+    LLVMTypeRef outer_type = llvm_lower_type(backend, type->id);
+    if (!inner_type || !outer_type)
+        return 0;
+    LLVMValueRef inner = LLVMGetUndef(inner_type);
+    for (size_t i = 0; i < instruction->as.aggregate.value_count; ++i) {
+        LLVMValueRef value = state->values[instruction->as.aggregate.values[i]];
+        CogIrAbiTypeId field_abi = type->as.aggregate.fields[i].abi_type;
+        if (!value || field_abi == COG_IR_ABI_TYPE_INVALID) {
+            llvm_backend_error(backend, "#repr(c) struct construction is missing field ABI metadata");
+            return 0;
+        }
+        value = llvm_c_runtime_to_object(backend, field_abi, value);
+        if (!value)
+            return 0;
+        inner = LLVMBuildInsertValue(backend->builder, inner, value, (unsigned)i, "");
+        if (!inner)
+            return 0;
+    }
+    if (!llvm_repr_c_is_wrapped(backend, type->id)) {
+        *out_result = inner;
+        return 1;
+    }
+    LLVMValueRef outer = LLVMGetUndef(outer_type);
+    outer = LLVMBuildInsertValue(backend->builder, outer, inner, 0, "");
+    *out_result = outer;
+    return outer != NULL;
+}
+
+static int lower_extract_repr_c_field(
+    LlvmBackend *backend,
+    LlvmFunctionState *state,
+    const CogIrInstruction *instruction,
+    const CogIrType *type,
+    LLVMValueRef *out_result
+) {
+    LLVMValueRef aggregate = state->values[instruction->as.extract.aggregate];
+    if (!aggregate || instruction->as.extract.index >= type->as.aggregate.field_count)
+        return 0;
+    LLVMValueRef inner = aggregate;
+    if (llvm_repr_c_is_wrapped(backend, type->id))
+        inner = LLVMBuildExtractValue(backend->builder, aggregate, 0, "");
+    LLVMValueRef storage = LLVMBuildExtractValue(
+        backend->builder, inner, instruction->as.extract.index, "");
+    CogIrAbiTypeId field_abi = type->as.aggregate.fields[instruction->as.extract.index].abi_type;
+    if (!storage || field_abi == COG_IR_ABI_TYPE_INVALID) {
+        llvm_backend_error(backend, "#repr(c) field extraction is missing field ABI metadata");
+        return 0;
+    }
+    *out_result = llvm_c_object_to_runtime(backend, field_abi, storage);
+    return *out_result != NULL;
+}
+
 int llvm_lower_memory_instruction(
     LlvmBackend *backend,
     const CogIrFunction *function,
@@ -246,16 +353,18 @@ int llvm_lower_memory_instruction(
         case COG_IR_OP_PTR_INDEX_ADDR:
             return lower_ptr_index_addr(backend, function, state, instruction, out_result);
         case COG_IR_OP_LOAD:
-            return lower_load(backend, instruction, state, out_result);
+            return lower_load(backend, function, instruction, state, out_result);
         case COG_IR_OP_STORE:
             return lower_store(backend, function, instruction, state, out_result);
 
         case COG_IR_OP_MAKE_STRUCT: {
             const CogIrType *type = cog_ir_get_type(backend->ir, instruction->result_type);
-            if (!type || type->kind != COG_IR_TYPE_STRUCT || type->as.aggregate.is_repr_c) {
-                llvm_backend_error(backend, "make_struct requires an ordinary Coglet struct in Stage 3");
+            if (!type || type->kind != COG_IR_TYPE_STRUCT) {
+                llvm_backend_error(backend, "make_struct requires a Coglet struct");
                 return 0;
             }
+            if (type->as.aggregate.is_repr_c)
+                return lower_make_repr_c_struct(backend, state, instruction, type, out_result);
             return lower_make_aggregate(backend, state, instruction, out_result);
         }
         case COG_IR_OP_MAKE_ARRAY:
@@ -263,10 +372,12 @@ int llvm_lower_memory_instruction(
         case COG_IR_OP_EXTRACT_FIELD: {
             const CogIrValue *source = cog_ir_get_value(function, instruction->as.extract.aggregate);
             const CogIrType *type = source ? cog_ir_get_type(backend->ir, source->type) : NULL;
-            if (!type || type->kind != COG_IR_TYPE_STRUCT || type->as.aggregate.is_repr_c) {
-                llvm_backend_error(backend, "extract_field requires an ordinary Coglet struct in Stage 3");
+            if (!type || type->kind != COG_IR_TYPE_STRUCT) {
+                llvm_backend_error(backend, "extract_field requires a Coglet struct");
                 return 0;
             }
+            if (type->as.aggregate.is_repr_c)
+                return lower_extract_repr_c_field(backend, state, instruction, type, out_result);
             return lower_extract_aggregate(backend, state, instruction, out_result);
         }
         case COG_IR_OP_EXTRACT_ELEMENT:

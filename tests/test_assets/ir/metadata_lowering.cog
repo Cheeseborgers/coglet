@@ -21,6 +21,7 @@ RATIO: f32 : 1.25;
 ENABLED: bool : true;
 NONE: i32* : null;
 counter: i32 = 3;
+c_flag: c_bool = true;
 callback: cfn(c_int) -> c_int = null;
 values: i32[3] = [1, 2, 3];
 

@@ -215,6 +215,8 @@ typedef struct CogIrGlobal {
     StringView debug_name;
     SourceSpan span;
     CogIrTypeId type;
+    /* Optional exact native-C object spelling for addressable global storage. */
+    CogIrAbiTypeId abi_type;
     CogIrLinkage linkage;
     int is_compiler_generated;
     int is_readonly;
@@ -572,6 +574,7 @@ CogIrGlobalId cog_ir_add_global(
     StringView debug_name,
     SourceSpan span,
     CogIrTypeId type,
+    CogIrAbiTypeId abi_type,
     CogIrLinkage linkage,
     int is_compiler_generated,
     int is_readonly,

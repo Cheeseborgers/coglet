@@ -320,6 +320,14 @@ propagates this annotation through function references, callback parameters and
 locals, CFG spills/reloads, and callback-valued C call results. The verifier
 requires a C-call callee to have matching function ABI metadata.
 
+Addressable C objects use the same optional ABI-type mechanism where physical
+storage differs from canonical Coglet values. Globals may carry an ABI type,
+slots preserve explicitly required object spelling, and address-producing values
+propagate recursive pointer/field/array ABI metadata. This is currently essential
+for `c_bool`: its logical runtime value is `bool`, while C `_Bool` object storage
+uses the target C storage width. Backends therefore never need a frontend `Type *`
+to recover C field or object layout after lowering.
+
 Represented aggregate metadata retains struct-vs-union, incomplete, packed, and
 explicit-alignment information. Represented enum metadata retains its exact C
 backing spelling.
@@ -1183,3 +1191,10 @@ volatile access contract.
     frontend objects. Typed pointers that would expose C `_Bool` object storage
     and by-value `#repr(c)` aggregates remain explicitly rejected until their
     target storage/classification rules are implemented.
+24. ~~Lower represented C object layout and aggregate ABIs through LLVM.~~
+    CogIR-owned field/object ABI metadata now drives C `_Bool` storage, nested
+    represented structs/unions/arrays, packed/explicit alignment, and x86-64
+    SysV/Win64 aggregate argument/return classification. One ABI plan drives
+    declarations, calls, callbacks, hidden `sret`, `byval`, and register coercions.
+    Ordinary Coglet `bool*` remains distinct from addressable `c_bool*` storage.
+    Non-x86-64 aggregate classification remains deferred until cross-target work.

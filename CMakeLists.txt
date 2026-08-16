@@ -103,6 +103,7 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
                 src/backends/llvm/lower_memory.c
                 src/backends/llvm/lower_control.c
                 src/backends/llvm/lower_c_abi.c
+                src/backends/llvm/lower_c_layout.c
                 src/backends/llvm/target.c
         )
         target_include_directories(coglet_backend_llvm
@@ -1021,23 +1022,11 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_rejects_volatile_aggregate.cog
         -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_volatile_aggregate_unsupported.ll
-        "-DEXPECT_SUBSTRING=volatile aggregate loads are outside the LLVM Stage 3 subset"
+        "-DEXPECT_SUBSTRING=volatile aggregate loads remain unsupported in the LLVM backend"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
     )
     set_tests_properties(backend_llvm_stage3_rejects_volatile_aggregate
         PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;aggregate;volatile")
-
-    add_test(
-        NAME backend_llvm_stage3_rejects_repr_c_aggregate
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_rejects_repr_c_aggregate.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_repr_c_unsupported.ll
-        "-DEXPECT_SUBSTRING=#repr(c) aggregate layout is outside the LLVM Stage 3 subset"
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
-    )
-    set_tests_properties(backend_llvm_stage3_rejects_repr_c_aggregate
-        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;aggregate;interop;abi")
 
     add_test(
         NAME backend_llvm_stage4_float_semantics
@@ -1158,27 +1147,70 @@ if(COGLET_HAS_LLVM_BACKEND)
         backend_llvm_stage5_symbol_override extern_c_symbol_override.cog 7 "@abs"
     )
 
-    add_test(
-        NAME backend_llvm_stage5_rejects_repr_c_aggregate_abi
-        COMMAND "${CMAKE_COMMAND}"
-        -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/extern_c_repr_struct.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage5_repr_c_aggregate_abi_unsupported.ll
-        "-DEXPECT_SUBSTRING=#repr(c) aggregate argument/return classification is outside the LLVM Stage 5 scalar ABI subset"
-        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
+    function(add_llvm_stage6_abi_test test_name fixture expected_exit ir_substring)
+        add_test(
+            NAME ${test_name}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
+            -DOUTPUT_IR=${CMAKE_BINARY_DIR}/${test_name}.ll
+            -DEXPECT_EXIT=${expected_exit}
+            "-DEXPECT_IR_SUBSTRING=${ir_substring}"
+            -DCLANG=${COGLET_CLANG_EXECUTABLE}
+            -DLINK_INPUT=$<TARGET_FILE:coglet_backend_link_support>
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
+        )
+        set_tests_properties(${test_name}
+            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;interop;abi;aggregate;stage6")
+    endfunction()
+
+    add_llvm_stage6_abi_test(
+        backend_llvm_stage6_repr_c_struct extern_c_repr_struct.cog 37 "declare { i32, double } @coglet_backend_make_pair"
     )
-    set_tests_properties(backend_llvm_stage5_rejects_repr_c_aggregate_abi
-        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;interop;abi;aggregate;stage5")
+    add_llvm_stage6_abi_test(
+        backend_llvm_stage6_repr_c_nested_struct extern_c_repr_nested_struct.cog 41 "@coglet_backend_nested_struct_probe"
+    )
+    add_llvm_stage6_abi_test(
+        backend_llvm_stage6_repr_c_array_fields extern_c_repr_array_fields.cog 45 "byval(%cog.c.struct"
+    )
+    add_llvm_stage6_abi_test(
+        backend_llvm_stage6_repr_c_enum extern_c_repr_enum.cog 49 "@coglet_backend_enum_packet_probe"
+    )
+    add_llvm_stage6_abi_test(
+        backend_llvm_stage6_repr_c_union extern_c_repr_union.cog 71 "@coglet_backend_union_packet_probe"
+    )
+    add_llvm_stage6_abi_test(
+        backend_llvm_stage6_repr_c_layout extern_c_repr_layout.cog 73 "sret(%cog.c.struct"
+    )
+    add_llvm_stage6_abi_test(
+        backend_llvm_stage6_c_bool_object_storage llvm/stage6_c_bool_object_storage.cog 79 "alloca i8"
+    )
+    add_llvm_stage6_abi_test(
+        backend_llvm_stage6_aggregate_callback llvm/stage6_aggregate_callback.cog 87 "define internal { i32, double }"
+    )
+    add_llvm_stage6_abi_test(
+        backend_llvm_stage6_c_bool_aggregate llvm/stage6_c_bool_aggregate.cog 82 "%cog.c.struct"
+    )
+    add_llvm_stage6_abi_test(
+        backend_llvm_stage6_repr_c_global llvm/stage6_repr_c_global.cog 37 "@cog.global.0"
+    )
+
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
+       CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+        add_llvm_stage6_abi_test(
+            backend_llvm_stage6_win64_aggregates llvm/stage6_win64_aggregates.cog 86 "win64cc void @coglet_backend_win64_make_large_aggregate"
+        )
+    endif()
 
     add_test(
-        NAME backend_llvm_stage5_rejects_c_bool_pointer_storage
+        NAME backend_llvm_stage6_rejects_native_bool_as_c_bool_pointer
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage5_rejects_c_bool_pointer.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage5_c_bool_pointer_unsupported.ll
-        "-DEXPECT_SUBSTRING=C _Bool object storage through typed pointers is outside the LLVM Stage 5 scalar ABI subset"
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage6_rejects_native_bool_as_c_bool_pointer.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage6_native_bool_c_bool_pointer_unsupported.ll
+        "-DEXPECT_SUBSTRING=C pointer argument requires exact addressable C _Bool object storage"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage5_rejects_c_bool_pointer_storage
-        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;interop;abi;pointer;bool;stage5")
+    set_tests_properties(backend_llvm_stage6_rejects_native_bool_as_c_bool_pointer
+        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;interop;abi;pointer;bool;stage6")
 endif()

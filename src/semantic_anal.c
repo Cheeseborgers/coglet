@@ -1428,6 +1428,31 @@ static SemAbiType *make_sem_abi_type(
     return abi_type;
 }
 
+/*
+ * Returns whether a declaration must retain exact C-facing spelling for its
+ * addressable object representation. Ordinary semantic types deliberately do
+ * not carry redundant ABI metadata; C scalar spellings and recursive objects
+ * containing them do. C function values retain their full callable ABI.
+ */
+static int sem_abi_type_requires_storage_spelling(const SemAbiType *abi_type)
+{
+    if (!abi_type)
+        return 0;
+    switch (abi_type->kind) {
+        case SEM_ABI_TYPE_C_SCALAR:
+            return abi_type->c_scalar_kind == SEM_C_SCALAR_BOOL;
+        case SEM_ABI_TYPE_FUNCTION:
+            return 1;
+        case SEM_ABI_TYPE_POINTER:
+        case SEM_ABI_TYPE_ARRAY:
+            return sem_abi_type_requires_storage_spelling(abi_type->element);
+        case SEM_ABI_TYPE_SEMANTIC:
+        case SEM_ABI_TYPE_OPAQUE_POINTER:
+            return 0;
+    }
+    return 0;
+}
+
 // ============================================================
 // forward declarations
 // ============================================================
@@ -8904,16 +8929,18 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
     classify_variable_symbol(ctx, symbol, storage);
 
     /*
-     * cfn values need their exact C-facing spelling after semantic type
-     * canonicalization. Explicitly typed variables preserve that spelling in
-     * declaration metadata; inferred cfn locals can inherit it from their
-     * initializer during CogIR lowering.
+     * Preserve exact C-facing object spelling only where canonical semantic
+     * identity is insufficient for storage/call lowering. This includes cfn
+     * values and explicitly typed c_* scalar objects (recursively through
+     * pointers/arrays), while ordinary Coglet values remain metadata-free.
      */
-    if (source_type && type->kind == TYPE_FUNCTION &&
-        type->function_abi == FUNCTION_ABI_C) {
-        SemDeclInfo *decl_info = sem_find_decl_info(ctx, node);
-        assert(decl_info);
-        decl_info->abi_type = make_sem_abi_type(ctx, source_type, type);
+    if (source_type) {
+        SemAbiType *declared_abi = make_sem_abi_type(ctx, source_type, type);
+        if (sem_abi_type_requires_storage_spelling(declared_abi)) {
+            SemDeclInfo *decl_info = sem_find_decl_info(ctx, node);
+            assert(decl_info);
+            decl_info->abi_type = declared_abi;
+        }
     }
 
     if (storage == VARIABLE_STORAGE_LOCAL) {

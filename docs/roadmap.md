@@ -19,7 +19,7 @@ Implemented areas include:
 - assignment, arithmetic/bitwise/shift compound assignment, and increment/decrement as statement-only
   mutations
 - lvalue/rvalue/no-value tracking with writable/readonly storage access
-- `if`, `while`, `for`, `switch`, `break`, `continue`, and `return`
+- `if`, `while`, `for`, `switch`, `break`, `continue`, and `return`, including single-statement control bodies and loop-scoped three-clause `for` initialization
 - definite-assignment analysis for locals and parameters
 - unified reachability for branches, switches, loops, returns, unreachable statements, and non-void
   fallthrough

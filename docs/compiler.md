@@ -721,7 +721,13 @@ The source-language legality of `break` and `continue` is determined by `loop_de
 
 Recording either statement adds the current path to the appropriate accumulator and then marks the active path unreachable.
 
-For a `for` loop, flow is checked in runtime order:
+The parser normalizes an unbraced `if`/`else`/`while`/`for` body into a lexical
+`NODE_BLOCK`, so later semantic and lowering phases see one scope model regardless
+of source spelling. A parenthesized three-clause `for` initializer is normalized
+into a surrounding lexical block containing the initializer followed by the
+existing `NODE_FOR`; no initializer field or backend loop operation is required.
+
+After that optional initializer has executed, a `for` loop is checked in runtime order:
 
 1. condition;
 2. body;

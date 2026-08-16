@@ -48,6 +48,7 @@ static Node *parse_switch_case(Parser *p);
 static Node *parse_return_statement(Parser *p);
 static Node *parse_while_statement(Parser *p);
 static Node *parse_for_statement(Parser *p);
+static Node *parse_scoped_control_body(Parser *p);
 
 static Node *parse_conversion_expression(Parser *p);
 static Node *parse_array_literal(Parser *p);
@@ -2273,6 +2274,23 @@ static Node *parse_return_statement(Parser *p) {
     return ast_new_return(p->arena, value, span);
 }
 
+static Node *parse_scoped_control_body(Parser *p)
+{
+    Node *statement = parse_statement(p);
+
+    /*
+     * An unbraced control-flow body is still a lexical scope. Normalizing it
+     * into a block keeps scope/flow/lowering semantics identical to the braced
+     * spelling instead of teaching later phases about two body forms.
+     */
+    if (statement->type == NODE_BLOCK)
+        return statement;
+
+    Node *block = ast_new_block(p->arena, statement->span);
+    nodelist_push(p->arena, &block->as.block.statements, statement);
+    return block;
+}
+
 static Node *parse_while_statement(Parser *p) {
 
     SourceSpan span = p->previous.span;
@@ -2282,8 +2300,110 @@ static Node *parse_while_statement(Parser *p) {
     Node *cond = parse_expression(p);
     p->suppress_struct_init = saved;
 
-    Node *body = parse_block(p);
+    Node *body = parse_scoped_control_body(p);
     return ast_new_while(p->arena, cond, body, source_span_join(span, body->span));
+}
+
+static int parenthesized_for_has_top_level_semicolon(Parser *p)
+{
+    Lexer lexer = p->lexer;
+    Token token = p->current;
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    int brace_depth = 0;
+
+    for (;;) {
+        switch (token.type) {
+            case TOK_EOF:
+                return 0;
+            case TOK_LPAREN:
+                paren_depth++;
+                break;
+            case TOK_RPAREN:
+                if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0)
+                    return 0;
+                if (paren_depth > 0)
+                    paren_depth--;
+                break;
+            case TOK_LBRACKET:
+                bracket_depth++;
+                break;
+            case TOK_RBRACKET:
+                if (bracket_depth > 0)
+                    bracket_depth--;
+                break;
+            case TOK_LBRACE:
+                brace_depth++;
+                break;
+            case TOK_RBRACE:
+                if (brace_depth > 0)
+                    brace_depth--;
+                break;
+            case TOK_SEMICOLON:
+                if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0)
+                    return 1;
+                break;
+            default:
+                break;
+        }
+
+        token = lexer_next(&lexer);
+    }
+}
+
+static int for_initializer_is_allowed(Node *node)
+{
+    return node &&
+        (node->type == NODE_VAR_DECL ||
+         node->type == NODE_CONST_DECL ||
+         node->type == NODE_EXPR_STMT);
+}
+
+static Node *parse_c_style_for_statement(Parser *p, SourceSpan span)
+{
+    Node *init = NULL;
+    Node *cond = NULL;
+    Node *post = NULL;
+
+    if (match(p, TOK_SEMICOLON)) {
+        /* Empty initializer. */
+    } else {
+        Token init_start = p->current;
+        init = parse_decl_or_expr_statement(p);
+        if (init->type != NODE_ERROR && !for_initializer_is_allowed(init)) {
+            error_at(p, &init_start,
+                "for initializer must be a local value declaration or expression statement");
+        }
+    }
+
+    if (!check(p, TOK_SEMICOLON))
+        cond = parse_expression(p);
+
+    if (!consume(p, TOK_SEMICOLON))
+        return ast_new_error(p->arena, p->current);
+
+    if (!check(p, TOK_RPAREN))
+        post = parse_expression(p);
+
+    if (!consume(p, TOK_RPAREN))
+        return ast_new_error(p->arena, p->current);
+
+    Node *body = parse_scoped_control_body(p);
+    SourceSpan loop_span = source_span_join(span, body->span);
+    Node *loop = ast_new_for(p->arena, cond, post, body, loop_span);
+
+    if (!init)
+        return loop;
+
+    /*
+     * The initializer's lifetime covers the condition, body, and post clause
+     * but ends with the loop. A synthetic block expresses that using Coglet's
+     * existing lexical-scope invariant and requires no special CogIR loop form.
+     */
+    Node *scope = ast_new_block(p->arena, loop_span);
+    nodelist_push(p->arena, &scope->as.block.statements, init);
+    nodelist_push(p->arena, &scope->as.block.statements, loop);
+    return scope;
 }
 
 static Node *parse_for_statement(Parser *p) {
@@ -2292,8 +2412,26 @@ static Node *parse_for_statement(Parser *p) {
     Node *cond = NULL;
     Node *post = NULL;
 
-    if (!check(p, TOK_LBRACE)) {
+    if (match(p, TOK_LPAREN)) {
+        int c_style = parenthesized_for_has_top_level_semicolon(p);
 
+        if (c_style)
+            return parse_c_style_for_statement(p, span);
+
+        int saved = p->suppress_struct_init;
+        p->suppress_struct_init = 1;
+
+        if (!check(p, TOK_RPAREN)) {
+            cond = parse_expression(p);
+            if (match(p, TOK_COLON))
+                post = parse_expression(p);
+        }
+
+        p->suppress_struct_init = saved;
+
+        if (!consume(p, TOK_RPAREN))
+            return ast_new_error(p->arena, p->current);
+    } else if (!check(p, TOK_LBRACE)) {
         int saved = p->suppress_struct_init;
         p->suppress_struct_init = 1;
 
@@ -2305,7 +2443,7 @@ static Node *parse_for_statement(Parser *p) {
         p->suppress_struct_init = saved;
     }
 
-    Node *body = parse_statement(p);
+    Node *body = parse_scoped_control_body(p);
 
     return ast_new_for(p->arena, cond, post, body, source_span_join(span, body->span));
 }
@@ -2645,7 +2783,6 @@ static Node *parse_expr_statement(Parser *p) {
     return ast_new_expr_stmt(p->arena, expr, source_span_join(span, expr->span));
 }
 
-// TODO: if currently forces braces:
 static Node *parse_if_statement(Parser *p) {
 
     SourceSpan span = p->previous.span;
@@ -2655,12 +2792,14 @@ static Node *parse_if_statement(Parser *p) {
     Node *cond              = parse_expression(p);
     p->suppress_struct_init = saved;
 
-    Node *then_branch = parse_block(p);
+    Node *then_branch = parse_scoped_control_body(p);
     Node *else_branch = NULL;
 
     if (match(p, TOK_ELSE)) {
-        if (match(p, TOK_IF)) else_branch = parse_if_statement(p);
-        else                  else_branch = parse_statement(p);
+        if (match(p, TOK_IF))
+            else_branch = parse_if_statement(p);
+        else
+            else_branch = parse_scoped_control_body(p);
     }
 
     return ast_new_if(p->arena, cond, then_branch, else_branch, source_span_join(span, else_branch ? else_branch->span : then_branch->span));

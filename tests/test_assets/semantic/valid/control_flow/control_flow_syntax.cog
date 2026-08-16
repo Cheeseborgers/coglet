@@ -1,0 +1,25 @@
+control_flow_syntax::(limit: u32, flag: bool) -> u32 {
+    value: u32 = 0;
+
+    if flag
+        value += 1;
+    else
+        value += 2;
+
+    while value < 3
+        value++;
+
+    for (value < 4 : value++)
+        continue;
+
+    for (i: u32 = 0; i < limit; i++) {
+        if i == 2
+            continue;
+        value += i;
+    }
+
+    for (; value < 12; value++)
+        continue;
+
+    return value;
+}

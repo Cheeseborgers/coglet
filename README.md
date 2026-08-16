@@ -580,6 +580,36 @@ Supported control flow includes:
 * `return`
 * lexical block scopes
 
+`if`, `else`, `while`, and `for` accept either a braced block or one unbraced
+statement. Unbraced bodies still introduce a lexical scope:
+
+```c
+if n == 0
+    return 0;
+
+while i < limit
+    i++;
+```
+
+`for` supports the compact Coglet header with optional parentheses and a
+parenthesized three-clause form with a loop-scoped initializer:
+
+```c
+for i < limit : i++ {
+    work(i);
+}
+
+for (i < limit : i++)
+    work(i);
+
+for (i: u32 = 0; i < limit; i++) {
+    work(i);
+}
+```
+
+The three-clause form permits omitted clauses, including `for (;;)`, and its
+initializer is visible through the condition/body/post but not after the loop.
+
 Semantic analysis uses a unified reachability model for:
 
 * definite assignment;

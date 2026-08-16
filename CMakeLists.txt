@@ -589,6 +589,10 @@ add_host_c_executable_test(
         "backend;backend.c;ir;cfg;module-init"
 )
 add_host_c_executable_test(
+        backend_control_flow_syntax control_flow_syntax.cog 55
+        "backend;backend.c;ir;cfg;parser"
+)
+add_host_c_executable_test(
         backend_scalar_ops scalar_ops.cog 0
         "backend;backend.c;ir;scalar;bitwise;float;pointer"
 )

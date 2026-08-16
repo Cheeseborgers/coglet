@@ -712,6 +712,60 @@ interprets them using the target signedness.
 typed raw pointer and a top-level opaque raw pointer. It preserves address bits,
 never removes readonly or volatile access, and is not a general `T*`-to-`U*` cast.
 
+## Control-Flow Statement Bodies and `for` Headers
+
+`if`, `else`, `while`, and `for` control one statement. A lexical block is one
+statement, so braces are optional for a single statement and required when a
+controlled body contains multiple statements:
+
+```c
+if n == 0
+    return 0;
+
+if (n == 1) {
+    return 1;
+}
+
+while i < limit
+    i++;
+```
+
+An unbraced body still introduces the same lexical scope as a braced body. For
+example, a variable declared as the sole body of an `if` is not visible after
+the `if`. `else` associates with the nearest unmatched `if`.
+
+The compact Coglet `for` header remains supported, with or without parentheses:
+
+```c
+for i < limit : i++ {
+    work(i);
+}
+
+for (i < limit : i++)
+    work(i);
+```
+
+A parenthesized three-clause form is also supported:
+
+```c
+for (i: u32 = 0; i < limit; i++) {
+    work(i);
+}
+```
+
+Its clauses are `initializer; condition; post`. The initializer may be a local
+value declaration or expression statement. Each clause may be omitted where
+its separators remain, so `for (;;) { ... }` is an infinite loop. An omitted
+condition is treated as always true. The initializer executes once and its
+lexical scope contains the condition, body, and post clause but ends after the
+loop. The three-clause form requires parentheses; the unparenthesized compact
+form continues to use `condition : post`.
+
+The parser normalizes unbraced control bodies into lexical blocks and lowers a
+three-clause initializer as a surrounding lexical block followed by the existing
+`for` node. These surface variants therefore do not add backend-specific loop
+semantics.
+
 ## Switch
 
 A simplified switch form is:

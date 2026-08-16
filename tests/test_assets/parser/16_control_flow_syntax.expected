@@ -1,0 +1,162 @@
+program
+  func control_flow_syntax -> u32
+    params:
+      param_decl limit: u32
+      param_decl flag: bool
+    body:
+      block
+        var_decl value: u32
+          init:
+            0
+        if
+          condition:
+            flag
+          then:
+            block
+              compound_assign +=
+                target:
+                  value
+                value:
+                  1
+          else:
+            if
+              condition:
+                (==)
+                  limit
+                  0
+              then:
+                block
+                  compound_assign +=
+                    target:
+                      value
+                    value:
+                      2
+              else:
+                block
+                  compound_assign +=
+                    target:
+                      value
+                    value:
+                      3
+        if
+          condition:
+            flag
+          then:
+            block
+              if
+                condition:
+                  (==)
+                    limit
+                    0
+                then:
+                  block
+                    compound_assign +=
+                      target:
+                        value
+                      value:
+                        4
+                else:
+                  block
+                    compound_assign +=
+                      target:
+                        value
+                      value:
+                        5
+        while
+          condition:
+            (<)
+              value
+              2
+          body:
+            block
+              ++ postfix
+                value
+        for
+          condition:
+            (<)
+              value
+              3
+          post:
+            ++ postfix
+              value
+          body:
+            block
+              continue
+        for
+          condition:
+            (<)
+              value
+              4
+          post:
+            ++ postfix
+              value
+          body:
+            block
+              continue
+        block
+          var_decl i: u32
+            init:
+              0
+          for
+            condition:
+              (<)
+                i
+                limit
+            post:
+              ++ postfix
+                i
+            body:
+              block
+                compound_assign +=
+                  target:
+                    value
+                  value:
+                    i
+        for
+          condition:
+            (<)
+              value
+              10
+          post:
+            ++ postfix
+              value
+          body:
+            block
+              continue
+        block
+          (=)
+            value
+            0
+          for
+            condition:
+              (<)
+                value
+                1
+            body:
+              block
+                ++ postfix
+                  value
+        block
+          (=)
+            value
+            0
+          for
+            post:
+              ++ postfix
+                value
+            body:
+              block
+                if
+                  condition:
+                    (==)
+                      value
+                      2
+                  then:
+                    block
+                      break
+        for
+          body:
+            block
+              break
+        return
+          value

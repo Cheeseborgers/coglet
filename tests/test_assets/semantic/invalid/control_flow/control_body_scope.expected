@@ -1,0 +1,13 @@
+tests/test_assets/semantic/invalid/control_flow/control_body_scope.cog:5:12: error: undefined identifier 'i'
+    return i;
+           ^
+tests/test_assets/semantic/invalid/control_flow/control_body_scope.cog:12:12: error: undefined identifier 'value'
+    return value;
+           ^~~~~
+tests/test_assets/semantic/invalid/control_flow/control_body_scope.cog:19:12: error: undefined identifier 'value'
+    return value;
+           ^~~~~
+tests/test_assets/semantic/invalid/control_flow/control_body_scope.cog:26:12: error: undefined identifier 'value'
+    return value;
+           ^~~~~
+4 semantic errors generated.

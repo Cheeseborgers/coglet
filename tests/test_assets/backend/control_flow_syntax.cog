@@ -1,0 +1,22 @@
+fibonacci::(n: u32) -> u64 {
+    if n == 0
+        return 0;
+
+    if (n == 1)
+        return 1;
+
+    a: u64 = 0;
+    b: u64 = 1;
+
+    for (i: u32 = 2; i <= n; i++) {
+        next: u64 = a + b;
+        a = b;
+        b = next;
+    }
+
+    return b;
+}
+
+main::() -> i32 {
+    return cast(i32, fibonacci(10));
+}

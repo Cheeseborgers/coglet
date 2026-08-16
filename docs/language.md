@@ -263,7 +263,36 @@ An integer switch is exhaustive only when it contains `default`.
 
 A non-exhaustive switch has an implicit path on which no case matches. That path preserves the incoming initialization state.
 
+### Control-flow bodies
+
+`if`, `else`, `while`, and `for` accept either one statement or a braced block.
+A one-statement body still creates a lexical scope, so declaration visibility is
+independent of whether braces were written. `else` binds to the nearest unmatched
+`if`.
+
+```c
+if n == 0
+    return 0;
+
+while i < limit
+    i++;
+```
+
 ### Loops
+
+The compact `for condition : post` syntax remains available and may optionally
+parenthesize its header. Coglet also accepts a parenthesized three-clause form:
+
+```c
+for (i: u32 = 0; i < limit; i++) {
+    work(i);
+}
+```
+
+The initializer executes once in a lexical scope containing the condition, body,
+and post expression; that scope ends after the loop. The initializer, condition,
+and post clauses may be omitted as appropriate, including `for (;;)`. The
+three-clause form requires parentheses.
 
 Loop analysis is intentionally conservative. Initialization performed only during an iteration is not generally available after the loop:
 
@@ -279,7 +308,7 @@ return value; // invalid
 
 The same rule applies to `for` loops.
 
-For a `for` loop, flow is checked in runtime order:
+After any three-clause initializer has executed, `for` flow is checked in runtime order:
 
 1. condition;
 2. body;

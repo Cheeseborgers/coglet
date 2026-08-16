@@ -98,7 +98,8 @@ static int constant_matches_type(
 
     switch (constant->kind) {
         case COG_IR_CONST_ZERO:
-            if (type->kind == COG_IR_TYPE_VOID || type->kind == COG_IR_TYPE_FUNCTION) {
+            /* cfn(...) values are first-class storable function pointers. */
+            if (type->kind == COG_IR_TYPE_VOID) {
                 ir_error(diagnostics, type->span, "zero constant @c%u has non-storable type", constant->id);
                 return 0;
             }

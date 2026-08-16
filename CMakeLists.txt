@@ -33,6 +33,7 @@ add_library(compiler_core STATIC
         src/cog_ir.c
         src/cog_ir_verify.c
         src/cog_ir_dump.c
+        src/cog_ir_lower.c
 )
 target_include_directories(compiler_core PUBLIC include)
 
@@ -89,6 +90,15 @@ set_tests_properties(
         cog_ir_core_builder_verifier
         PROPERTIES LABELS "ir;ir.core;verifier"
 )
+
+# --- Frontend semantic metadata -> CogIR mapping regression. ---
+add_executable(check_cog_ir_lower_metadata tools/tests/check_cog_ir_lower_metadata.c)
+target_link_libraries(check_cog_ir_lower_metadata PRIVATE compiler_core)
+add_test(NAME cog_ir_frontend_metadata_lowering
+        COMMAND "$<TARGET_FILE:check_cog_ir_lower_metadata>"
+                "${CMAKE_SOURCE_DIR}/tests/test_assets/ir/metadata_lowering.cog")
+set_tests_properties(cog_ir_frontend_metadata_lowering
+        PROPERTIES LABELS "ir;ir.lowering;semantic;metadata")
 
 # --- Standalone lexer test tool (Stage 1 harness). ---
 add_executable(dump_tokens tools/dump_tokens.c ${COMMON_SOURCES})

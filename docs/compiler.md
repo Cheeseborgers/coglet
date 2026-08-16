@@ -944,3 +944,10 @@ A program that fails parsing or semantic analysis is not required to have a
 complete semantic side table. With `--dump-semantic-info`, a partial table may
 be printed for diagnosis; it is not passed through successful-program
 completeness verification.
+
+The first CogIR lowering slice is implemented as metadata preparation. It copies
+source provenance into IR ownership, maps resolved semantic/ABI types and
+compile-time values, predeclares nominal types/functions, creates zero-initialized
+global storage, and records `SemDeclId` -> CogIR declaration bindings. Executable
+AST/CFG lowering remains separate; the host-C backend still consumes the frontend
+directly until that path is complete.

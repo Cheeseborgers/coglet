@@ -889,13 +889,32 @@ AST/semantic lowering is deliberately not part of this milestone. A command-line
 dumper is exercised directly by the IR-core regression rather than exposing a
 CLI that can only print synthetic data.
 
+### Frontend metadata lowering
+
+`cog_ir_lower_prepare_metadata()` establishes the first frontend -> CogIR
+boundary without translating executable statements. It copies all registered
+source files into IR-owned storage, predeclares recursive nominal types, lowers
+resolved runtime/ABI types, maps `SemDeclId` values to CogIR module identities,
+materializes checked constants and enum members, creates source globals with zero
+static initialization, and predeclares functions with stable `CogIrFunctionId`
+values. Function-local declarations remain explicitly pending until CFG lowering.
+
+All functions are initially added as declarations so mutually-recursive calls can
+resolve stable IDs before bodies are translated. Internal declarations can make
+the one-way `cog_ir_begin_function_definition()` transition before slots/blocks
+are added. The metadata-only module is verifier-valid, and regression coverage
+destroys `CompileResult` and verifies the module again to prove there is no
+frontend-lifetime dependency.
+
 ## Implementation sequence
 
 1. ~~Add `include/cog_ir.h` with IDs, module/type/constant/function/CFG structures.~~
 2. ~~Add an arena-backed builder in `src/cog_ir.c`.~~
 3. ~~Add deterministic `cog_ir_dump()`.~~ Add the `dump_ir` source-program tool with frontend lowering.
 4. ~~Add `cog_ir_verify()` and verifier unit tests.~~
-5. Add `cog_ir_lower()` with semantic-to-IR type/declaration maps.
+5. ~~Add semantic-to-IR type/declaration/source/constant maps.~~
+   Metadata preparation now owns source provenance, nominal/function
+   predeclaration, ABI/type mapping, constants, and zeroed global storage.
 6. Lower constants, globals/module init, slots, returns, arithmetic, comparisons,
    and simple calls first.
 7. Add branches/loops/switches and short-circuit Boolean CFG lowering.

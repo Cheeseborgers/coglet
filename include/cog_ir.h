@@ -578,6 +578,9 @@ CogIrFunctionId cog_ir_add_function(
     int is_compiler_generated,
     const CogIrFunctionAbi *abi
 );
+/* Upgrade a predeclared internal function to a definition before adding CFG. */
+int cog_ir_begin_function_definition(CogIrModule *module, CogIrFunctionId function);
+
 int cog_ir_set_init_function(CogIrModule *module, CogIrFunctionId function);
 CogIrSlotId cog_ir_add_slot(CogIrModule *module, CogIrFunctionId function, StringView debug_name, SourceSpan span, CogIrTypeId type);
 CogIrBlockId cog_ir_add_block(CogIrModule *module, CogIrFunctionId function, StringView debug_name, SourceSpan span);

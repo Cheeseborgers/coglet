@@ -257,6 +257,19 @@ int main(void)
         !cog_ir_set_init_function(&module, init))
         return fail("module initializer builder failed");
 
+    CogIrFunctionId late_defined = cog_ir_add_function(
+        &module, string_view_from_cstr("late_defined"), function_span, init_type,
+        COG_IR_FUNCTION_DECLARATION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
+    if (late_defined == COG_IR_FUNCTION_INVALID ||
+        !cog_ir_begin_function_definition(&module, late_defined))
+        return fail("function predeclaration upgrade failed");
+    CogIrBlockId late_entry = cog_ir_add_block(
+        &module, late_defined, string_view_from_cstr("entry"), function_span);
+    term = ret_void(function_span);
+    if (late_entry == COG_IR_BLOCK_INVALID ||
+        !cog_ir_set_terminator(&module, late_defined, late_entry, &term))
+        return fail("upgraded function body construction failed");
+
     Arena *diag_arena = arena_create(4096);
     DiagnosticList diagnostics;
     diagnostic_list_init(&diagnostics, diag_arena);

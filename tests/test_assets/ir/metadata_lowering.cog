@@ -1,0 +1,37 @@
+#repr(c)
+ForeignHandle::struct;
+
+#repr(c)
+CNode::struct {
+    value: c_int;
+    next: readonly CNode*;
+    handle: ForeignHandle*;
+}
+
+#repr(c)
+Mode::enum(c_int) {
+    Zero,
+    Seven = 7,
+    Eight,
+}
+
+COUNT: i64 : 42;
+NEG: i16 : -2;
+RATIO: f32 : 1.25;
+ENABLED: bool : true;
+NONE: i32* : null;
+counter: i32 = 3;
+callback: cfn(c_int) -> c_int = null;
+values: i32[3] = [1, 2, 3];
+
+#extern(c, name="native_probe")
+native_probe_decl::(
+    node: readonly CNode*,
+    mode: Mode,
+    amount: c_long
+) -> c_int;
+
+helper::(x: i32) -> i32 {
+    local: i32 = x;
+    return local;
+}

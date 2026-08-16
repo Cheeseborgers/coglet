@@ -1066,6 +1066,22 @@ CogIrFunctionId cog_ir_add_function(
     return id;
 }
 
+int cog_ir_begin_function_definition(CogIrModule *module, CogIrFunctionId function_id)
+{
+    if (!module_mutable(module))
+        return 0;
+
+    CogIrFunction *function = get_function_mut(module, function_id);
+    if (!function || function->kind != COG_IR_FUNCTION_DECLARATION ||
+        function->linkage != COG_IR_LINKAGE_INTERNAL ||
+        function->block_count != 0 || function->slot_count != 0 ||
+        function->entry_block != COG_IR_BLOCK_INVALID)
+        return 0;
+
+    function->kind = COG_IR_FUNCTION_DEFINITION;
+    return 1;
+}
+
 int cog_ir_set_init_function(CogIrModule *module, CogIrFunctionId function)
 {
     if (!module_mutable(module) || !cog_ir_get_function(module, function))

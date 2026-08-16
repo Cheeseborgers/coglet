@@ -30,6 +30,9 @@ add_library(compiler_core STATIC
         src/string_decode.c
         src/compiler_driver.c
         src/backend_c.c
+        src/cog_ir.c
+        src/cog_ir_verify.c
+        src/cog_ir_dump.c
 )
 target_include_directories(compiler_core PUBLIC include)
 
@@ -72,6 +75,19 @@ add_test(
 set_tests_properties(
         source_provenance_multi_file
         PROPERTIES LABELS "source;diagnostic;multi-file"
+)
+
+# --- CogIR core builder/verifier/dump regression. ---
+add_executable(check_cog_ir_core tools/tests/check_cog_ir_core.c)
+target_link_libraries(check_cog_ir_core PRIVATE compiler_core)
+
+add_test(
+        NAME cog_ir_core_builder_verifier
+        COMMAND "$<TARGET_FILE:check_cog_ir_core>"
+)
+set_tests_properties(
+        cog_ir_core_builder_verifier
+        PROPERTIES LABELS "ir;ir.core;verifier"
 )
 
 # --- Standalone lexer test tool (Stage 1 harness). ---

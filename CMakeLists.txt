@@ -633,6 +633,39 @@ set_tests_properties(
 )
 
 add_test(
+        NAME backend_data_address_casts
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/data_address_casts.cog
+        -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_data_address_casts
+        -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
+        -DLIB_NAME=coglet_backend_link_support
+        -DSTYLE=joined
+        -DEXPECT_EXIT=0
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_library_test.cmake"
+)
+set_tests_properties(
+        backend_data_address_casts
+        PROPERTIES LABELS "backend;backend.c;ir;data;address;cast;volatile"
+)
+
+foreach(cast_trap_case IN ITEMS integer float_integer float_narrow)
+    add_test(
+            NAME backend_checked_cast_${cast_trap_case}_trap
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/checked_cast_${cast_trap_case}_trap.cog
+            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/backend_checked_cast_${cast_trap_case}_trap
+            -DNO_TRAP_EXIT=91
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_trap_test.cmake"
+    )
+    set_tests_properties(
+            backend_checked_cast_${cast_trap_case}_trap
+            PROPERTIES LABELS "backend;backend.c;ir;cast;trap"
+    )
+endforeach()
+
+add_test(
         NAME backend_shifts
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>

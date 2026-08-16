@@ -501,10 +501,15 @@ parallel block-parameter edge transfer, conditional/unconditional branches,
 switches, traps, and unreachable terminators. Integer predicates, scalar globals,
 non-trapping bitwise operations, checked-count shifts, floating arithmetic/
 comparisons/negation, and pointer equality complete the exercised scalar
-module-initializer/control-flow path. Begin LLVM lowering on the same verified
-module contract while filling remaining host-C data/cast, indirect-call, and
-aggregate-global coverage as
-isolated compatibility milestones rather than creating a second frontend path.
+module-initializer/control-flow path. The next compatibility slice is also complete:
+represented field/array-field places, typed-pointer indexing, volatile scalar
+loads/stores, checked numeric casts, truncating integer conversion, and typed/
+opaque pointer reinterpretation now execute from CogIR. Checked casts guard
+range/non-finite failures before host conversions, and truncation reconstructs
+signed destination values from explicit low-bit patterns. Begin LLVM lowering on
+the same verified module contract while filling the remaining indirect-call and
+aggregate value/global coverage as isolated compatibility milestones rather than
+creating a second frontend path.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

@@ -721,6 +721,33 @@ static int prepare_abi_field_type(CBackend *backend, CogIrAbiTypeId abi_id, Sour
     return abi_type_name(backend, abi_id, span) != NULL;
 }
 
+static int prepare_instruction_runtime_aliases(
+    CBackend *backend,
+    const CogIrFunction *function
+) {
+    for (size_t b = 0; b < function->block_count; ++b) {
+        const CogIrBlock *block = &function->blocks[b];
+        for (size_t i = 0; i < block->instruction_count; ++i) {
+            const CogIrInstruction *instruction = &block->instructions[i];
+            CogIrTypeId type = COG_IR_TYPE_INVALID;
+            if (instruction->op == COG_IR_OP_PTR_REINTERPRET) {
+                type = instruction->result_type;
+            } else if (instruction->op == COG_IR_OP_LOAD && instruction->as.load.is_volatile) {
+                const CogIrValue *address = cog_ir_get_value(function, instruction->as.load.address);
+                type = address ? address->type : COG_IR_TYPE_INVALID;
+            } else if (instruction->op == COG_IR_OP_STORE && instruction->as.store.is_volatile) {
+                const CogIrValue *address = cog_ir_get_value(function, instruction->as.store.address);
+                type = address ? address->type : COG_IR_TYPE_INVALID;
+            }
+
+            if (type != COG_IR_TYPE_INVALID &&
+                !runtime_type_name(backend, type, instruction->span))
+                return 0;
+        }
+    }
+    return 1;
+}
+
 static int prepare_type_aliases(CBackend *backend)
 {
     for (size_t i = 0; i < backend->module->type_count; ++i) {
@@ -758,6 +785,8 @@ static int prepare_type_aliases(CBackend *backend)
         for (size_t s = 0; s < function->slot_count; ++s)
             if (!runtime_type_name(backend, function->slots[s].type, function->slots[s].span))
                 return 0;
+        if (!prepare_instruction_runtime_aliases(backend, function))
+            return 0;
     }
     return !backend->had_error;
 }
@@ -1630,6 +1659,374 @@ static int emit_checked_integer_instruction(
     return 1;
 }
 
+static const CogIrType *integer_representation_type(
+    const CBackend *backend,
+    const CogIrType *type
+) {
+    if (!type)
+        return NULL;
+    if (type->kind == COG_IR_TYPE_INTEGER)
+        return type;
+    if (type->kind == COG_IR_TYPE_ENUM)
+        return cog_ir_get_type(backend->module, type->as.enumeration.backing_type);
+    return NULL;
+}
+
+static int emit_checked_cast_instruction(
+    CBackend *backend,
+    const CogIrFunction *function,
+    const CogIrInstruction *instruction,
+    char **exprs
+) {
+    const CogIrValue *source_value = cog_ir_get_value(
+        function,
+        instruction->as.conversion.operand
+    );
+    const CogIrType *source = source_value
+        ? cog_ir_get_type(backend->module, source_value->type)
+        : NULL;
+    const CogIrType *target = cog_ir_get_type(backend->module, instruction->result_type);
+    const char *operand = value_expr(
+        exprs,
+        function->value_count,
+        instruction->as.conversion.operand
+    );
+    const char *result_type = runtime_type_name(
+        backend,
+        instruction->result_type,
+        instruction->span
+    );
+    if (!source_value || !source || !target || !operand || !result_type)
+        return 0;
+
+    CogIrValueId result = instruction->result;
+    if (source_value->type == instruction->result_type) {
+        if (!set_value_expr(exprs, function->value_count, result, copy_printf("%s", operand))) {
+            backend_error(backend, instruction->span, "invalid identity checked-cast result during C lowering");
+            return 0;
+        }
+        return 1;
+    }
+
+    const CogIrType *source_integer = integer_representation_type(backend, source);
+    const CogIrType *target_integer = integer_representation_type(backend, target);
+
+    if (target_integer && target->kind == COG_IR_TYPE_INTEGER) {
+        unsigned target_bits = target_integer->as.integer.bits;
+        if (target_bits != 8 && target_bits != 16 && target_bits != 32 && target_bits != 64) {
+            backend_error(backend, instruction->span, "checked cast integer width is not supported by the host-C backend");
+            return 0;
+        }
+
+        if (source_integer) {
+            if (source_integer->as.integer.is_signed) {
+                fprintf(
+                    backend->out,
+                    "    int64_t cg_cast_signed_%u = (int64_t)(%s);\n",
+                    result,
+                    operand
+                );
+                if (target_integer->as.integer.is_signed) {
+                    if (target_bits < 64) {
+                        const char *min_name = signed_integer_min_name(target_bits);
+                        const char *max_name = signed_integer_max_name(target_bits);
+                        if (!min_name || !max_name)
+                            return 0;
+                        fprintf(
+                            backend->out,
+                            "    if (cg_cast_signed_%u < %s || cg_cast_signed_%u > %s) abort();\n",
+                            result,
+                            min_name,
+                            result,
+                            max_name
+                        );
+                    }
+                    fprintf(
+                        backend->out,
+                        "    %s cg_v_%u = (%s)cg_cast_signed_%u;\n",
+                        result_type,
+                        result,
+                        result_type,
+                        result
+                    );
+                } else {
+                    uint64_t max_value = integer_width_mask(target_bits);
+                    fprintf(
+                        backend->out,
+                        "    if (cg_cast_signed_%u < 0",
+                        result
+                    );
+                    if (target_bits < 64) {
+                        fprintf(
+                            backend->out,
+                            " || (uint64_t)cg_cast_signed_%u > UINT64_C(0x%" PRIx64 ")",
+                            result,
+                            max_value
+                        );
+                    }
+                    fputs(") abort();\n", backend->out);
+                    fprintf(
+                        backend->out,
+                        "    %s cg_v_%u = (%s)(uint64_t)cg_cast_signed_%u;\n",
+                        result_type,
+                        result,
+                        result_type,
+                        result
+                    );
+                }
+            } else {
+                fprintf(
+                    backend->out,
+                    "    uint64_t cg_cast_unsigned_%u = (uint64_t)(%s);\n",
+                    result,
+                    operand
+                );
+                if (target_integer->as.integer.is_signed) {
+                    uint64_t max_value = (UINT64_C(1) << (target_bits - 1)) - UINT64_C(1);
+                    fprintf(
+                        backend->out,
+                        "    if (cg_cast_unsigned_%u > UINT64_C(0x%" PRIx64 ")) abort();\n",
+                        result,
+                        max_value
+                    );
+                } else if (target_bits < 64) {
+                    uint64_t max_value = integer_width_mask(target_bits);
+                    fprintf(
+                        backend->out,
+                        "    if (cg_cast_unsigned_%u > UINT64_C(0x%" PRIx64 ")) abort();\n",
+                        result,
+                        max_value
+                    );
+                }
+                fprintf(
+                    backend->out,
+                    "    %s cg_v_%u = (%s)cg_cast_unsigned_%u;\n",
+                    result_type,
+                    result,
+                    result_type,
+                    result
+                );
+            }
+        } else if (source->kind == COG_IR_TYPE_FLOAT) {
+            fprintf(
+                backend->out,
+                "    double cg_cast_float_%u = (double)(%s);\n",
+                result,
+                operand
+            );
+            fputs("    if (!isfinite(cg_cast_float_", backend->out);
+            fprintf(backend->out, "%u)", result);
+            if (target_integer->as.integer.is_signed) {
+                if (target_bits == 64) {
+                    fprintf(
+                        backend->out,
+                        " || cg_cast_float_%u < -0x1p63 || cg_cast_float_%u >= 0x1p63",
+                        result,
+                        result
+                    );
+                } else {
+                    uint64_t sign_bit = UINT64_C(1) << (target_bits - 1);
+                    fprintf(
+                        backend->out,
+                        " || cg_cast_float_%u <= -%" PRIu64 ".0 || cg_cast_float_%u >= %" PRIu64 ".0",
+                        result,
+                        sign_bit + UINT64_C(1),
+                        result,
+                        sign_bit
+                    );
+                }
+            } else {
+                fprintf(backend->out, " || cg_cast_float_%u <= -1.0", result);
+                if (target_bits == 64) {
+                    fprintf(backend->out, " || cg_cast_float_%u >= 0x1p64", result);
+                } else {
+                    uint64_t upper = UINT64_C(1) << target_bits;
+                    fprintf(
+                        backend->out,
+                        " || cg_cast_float_%u >= %" PRIu64 ".0",
+                        result,
+                        upper
+                    );
+                }
+            }
+            fputs(") abort();\n", backend->out);
+            fprintf(
+                backend->out,
+                "    %s cg_v_%u = (%s)cg_cast_float_%u;\n",
+                result_type,
+                result,
+                result_type,
+                result
+            );
+        } else {
+            backend_error(backend, instruction->span, "checked cast has unsupported numeric source during C lowering");
+            return 0;
+        }
+    } else if (target->kind == COG_IR_TYPE_FLOAT) {
+        if (!source_integer && source->kind != COG_IR_TYPE_FLOAT) {
+            backend_error(backend, instruction->span, "checked floating cast has unsupported source during C lowering");
+            return 0;
+        }
+        if (source->kind == COG_IR_TYPE_FLOAT &&
+            source->as.floating.bits == 64 && target->as.floating.bits == 32) {
+            fprintf(
+                backend->out,
+                "    double cg_cast_float_%u = (double)(%s);\n"
+                "    if (isfinite(cg_cast_float_%u) && "
+                "(cg_cast_float_%u > (double)FLT_MAX || cg_cast_float_%u < -(double)FLT_MAX)) abort();\n",
+                result,
+                operand,
+                result,
+                result,
+                result
+            );
+            fprintf(
+                backend->out,
+                "    %s cg_v_%u = (%s)cg_cast_float_%u;\n",
+                result_type,
+                result,
+                result_type,
+                result
+            );
+        } else {
+            fprintf(
+                backend->out,
+                "    %s cg_v_%u = (%s)(%s);\n",
+                result_type,
+                result,
+                result_type,
+                operand
+            );
+        }
+    } else {
+        backend_error(backend, instruction->span, "checked cast target is outside the current host-C numeric subset");
+        return 0;
+    }
+
+    if (!set_value_expr(exprs, function->value_count, result, copy_printf("cg_v_%u", result))) {
+        backend_error(backend, instruction->span, "invalid checked-cast result during C lowering");
+        return 0;
+    }
+    return 1;
+}
+
+static int emit_truncating_integer_instruction(
+    CBackend *backend,
+    const CogIrFunction *function,
+    const CogIrInstruction *instruction,
+    char **exprs
+) {
+    const CogIrType *target = cog_ir_get_type(backend->module, instruction->result_type);
+    const CogIrValue *source_value = cog_ir_get_value(function, instruction->as.conversion.operand);
+    const CogIrType *source = source_value
+        ? cog_ir_get_type(backend->module, source_value->type)
+        : NULL;
+    const char *operand = value_expr(exprs, function->value_count, instruction->as.conversion.operand);
+    const char *result_type = runtime_type_name(backend, instruction->result_type, instruction->span);
+    if (!source || source->kind != COG_IR_TYPE_INTEGER ||
+        !target || target->kind != COG_IR_TYPE_INTEGER || !operand || !result_type) {
+        backend_error(backend, instruction->span, "integer truncation has invalid source or target during C lowering");
+        return 0;
+    }
+
+    unsigned bits = target->as.integer.bits;
+    if (bits != 8 && bits != 16 && bits != 32 && bits != 64) {
+        backend_error(backend, instruction->span, "integer truncation width is not supported by the host-C backend");
+        return 0;
+    }
+
+    CogIrValueId result = instruction->result;
+    uint64_t mask = integer_width_mask(bits);
+    fprintf(
+        backend->out,
+        "    uint64_t cg_trunc_bits_%u = (uint64_t)(%s)",
+        result,
+        operand
+    );
+    if (bits < 64)
+        fprintf(backend->out, " & UINT64_C(0x%" PRIx64 ")", mask);
+    fputs(";\n", backend->out);
+
+    if (!target->as.integer.is_signed) {
+        fprintf(
+            backend->out,
+            "    %s cg_v_%u = (%s)cg_trunc_bits_%u;\n",
+            result_type,
+            result,
+            result_type,
+            result
+        );
+    } else {
+        uint64_t sign_bit = UINT64_C(1) << (bits - 1);
+        uint64_t low_mask = sign_bit - UINT64_C(1);
+        if (bits == 64) {
+            fprintf(
+                backend->out,
+                "    %s cg_v_%u = (cg_trunc_bits_%u & UINT64_C(0x%" PRIx64 ")) "
+                "? (INT64_MIN + (int64_t)(cg_trunc_bits_%u & UINT64_C(0x%" PRIx64 "))) "
+                ": (int64_t)cg_trunc_bits_%u;\n",
+                result_type,
+                result,
+                result,
+                sign_bit,
+                result,
+                low_mask,
+                result
+            );
+        } else {
+            fprintf(
+                backend->out,
+                "    %s cg_v_%u = (cg_trunc_bits_%u & UINT64_C(0x%" PRIx64 ")) "
+                "? (%s)(-INT64_C(%" PRIu64 ") + (int64_t)(cg_trunc_bits_%u & UINT64_C(0x%" PRIx64 "))) "
+                ": (%s)cg_trunc_bits_%u;\n",
+                result_type,
+                result,
+                result,
+                sign_bit,
+                result_type,
+                sign_bit,
+                result,
+                low_mask,
+                result_type,
+                result
+            );
+        }
+    }
+
+    if (!set_value_expr(exprs, function->value_count, result, copy_printf("cg_v_%u", result))) {
+        backend_error(backend, instruction->span, "invalid integer truncation result during C lowering");
+        return 0;
+    }
+    return 1;
+}
+
+static int emit_pointer_reinterpret_instruction(
+    CBackend *backend,
+    const CogIrFunction *function,
+    const CogIrInstruction *instruction,
+    char **exprs
+) {
+    const char *operand = value_expr(exprs, function->value_count, instruction->as.conversion.operand);
+    const char *result_type = runtime_type_name(backend, instruction->result_type, instruction->span);
+    if (!operand || !result_type)
+        return 0;
+
+    CogIrValueId result = instruction->result;
+    fprintf(
+        backend->out,
+        "    %s cg_v_%u = (%s)(%s);\n",
+        result_type,
+        result,
+        result_type,
+        operand
+    );
+    if (!set_value_expr(exprs, function->value_count, result, copy_printf("cg_v_%u", result))) {
+        backend_error(backend, instruction->span, "invalid pointer reinterpret result during C lowering");
+        return 0;
+    }
+    return 1;
+}
+
 static int emit_instruction(
     CBackend *backend,
     const CogIrFunction *function,
@@ -1674,6 +2071,30 @@ static int emit_instruction(
                 goto invalid_result;
             return 1;
         }
+        case COG_IR_OP_FIELD_ADDR: {
+            const char *base = value_expr(exprs, value_count, instruction->as.field_addr.base);
+            const CogIrValue *base_value = cog_ir_get_value(function, instruction->as.field_addr.base);
+            const CogIrType *base_type = base_value
+                ? cog_ir_get_type(backend->module, base_value->type)
+                : NULL;
+            const CogIrType *aggregate = NULL;
+            if (base_type && base_type->kind == COG_IR_TYPE_POINTER)
+                aggregate = cog_ir_get_type(backend->module, base_type->as.pointer.pointee);
+            if (!base || !aggregate ||
+                (aggregate->kind != COG_IR_TYPE_STRUCT && aggregate->kind != COG_IR_TYPE_UNION) ||
+                instruction->as.field_addr.field_index >= aggregate->as.aggregate.field_count)
+                goto missing_operand;
+            if (!set_value_expr(
+                    exprs,
+                    value_count,
+                    result,
+                    copy_printf(
+                        "&((%s)->cg_f_%u)",
+                        base,
+                        instruction->as.field_addr.field_index)))
+                goto invalid_result;
+            return 1;
+        }
         case COG_IR_OP_ARRAY_ELEM_ADDR: {
             const char *base = value_expr(exprs, value_count, instruction->as.index_addr.base);
             const char *index = value_expr(exprs, value_count, instruction->as.index_addr.index);
@@ -1684,12 +2105,39 @@ static int emit_instruction(
                 goto invalid_result;
             return 1;
         }
+        case COG_IR_OP_PTR_INDEX_ADDR: {
+            const char *base = value_expr(exprs, value_count, instruction->as.index_addr.base);
+            const char *index = value_expr(exprs, value_count, instruction->as.index_addr.index);
+            if (!base || !index)
+                goto missing_operand;
+            if (!set_value_expr(exprs, value_count, result,
+                                copy_printf("&((%s)[%s])", base, index)))
+                goto invalid_result;
+            return 1;
+        }
         case COG_IR_OP_LOAD: {
             const char *address = value_expr(exprs, value_count, instruction->as.load.address);
             const char *type = runtime_type_name(backend, instruction->result_type, instruction->span);
             if (!address || !type)
                 goto missing_operand;
-            fprintf(backend->out, "    %s cg_v_%u = *%s;\n", type, result, address);
+            if (instruction->as.load.is_volatile) {
+                const CogIrValue *address_value = cog_ir_get_value(function, instruction->as.load.address);
+                const char *address_type = address_value
+                    ? runtime_type_name(backend, address_value->type, instruction->span)
+                    : NULL;
+                if (!address_type)
+                    goto missing_operand;
+                fprintf(
+                    backend->out,
+                    "    %s cg_v_%u = *((%s)(%s));\n",
+                    type,
+                    result,
+                    address_type,
+                    address
+                );
+            } else {
+                fprintf(backend->out, "    %s cg_v_%u = *%s;\n", type, result, address);
+            }
             if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
                 goto invalid_result;
             return 1;
@@ -1699,7 +2147,23 @@ static int emit_instruction(
             const char *value = value_expr(exprs, value_count, instruction->as.store.value);
             if (!address || !value)
                 goto missing_operand;
-            fprintf(backend->out, "    *%s = %s;\n", address, value);
+            if (instruction->as.store.is_volatile) {
+                const CogIrValue *address_value = cog_ir_get_value(function, instruction->as.store.address);
+                const char *address_type = address_value
+                    ? runtime_type_name(backend, address_value->type, instruction->span)
+                    : NULL;
+                if (!address_type)
+                    goto missing_operand;
+                fprintf(
+                    backend->out,
+                    "    *((%s)(%s)) = %s;\n",
+                    address_type,
+                    address,
+                    value
+                );
+            } else {
+                fprintf(backend->out, "    *%s = %s;\n", address, value);
+            }
             return 1;
         }
         case COG_IR_OP_PTR_QUALIFY: {
@@ -1724,6 +2188,27 @@ static int emit_instruction(
                 goto invalid_result;
             return 1;
         }
+        case COG_IR_OP_CAST_CHECKED:
+            if (!emit_checked_cast_instruction(backend, function, instruction, exprs)) {
+                if (!backend->had_error)
+                    goto missing_operand;
+                return 0;
+            }
+            return 1;
+        case COG_IR_OP_INT_TRUNCATE:
+            if (!emit_truncating_integer_instruction(backend, function, instruction, exprs)) {
+                if (!backend->had_error)
+                    goto missing_operand;
+                return 0;
+            }
+            return 1;
+        case COG_IR_OP_PTR_REINTERPRET:
+            if (!emit_pointer_reinterpret_instruction(backend, function, instruction, exprs)) {
+                if (!backend->had_error)
+                    goto missing_operand;
+                return 0;
+            }
+            return 1;
         case COG_IR_OP_ICMP_EQ:
         case COG_IR_OP_ICMP_NE:
         case COG_IR_OP_ICMP_SLT:
@@ -2439,7 +2924,14 @@ static CBackendStatus c_backend_emit_stream(FILE *out, const CogIrModule *module
     }
 
     fputs("/* Generated from CogIR by Coglet's host-C backend. */\n", out);
-    fputs("#include <stddef.h>\n#include <stdint.h>\n#include <stdlib.h>\n\n", out);
+    fputs(
+        "#include <float.h>\n"
+        "#include <math.h>\n"
+        "#include <stddef.h>\n"
+        "#include <stdint.h>\n"
+        "#include <stdlib.h>\n\n",
+        out
+    );
     emit_repr_c_layout_support(&backend);
     emit_c_calling_convention_support(&backend);
     emit_aggregate_forward_declarations(&backend);

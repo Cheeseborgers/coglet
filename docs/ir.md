@@ -1045,9 +1045,14 @@ pointer equality/inequality. Shift emission validates the runtime count before
 shifting and implements fixed-width left shift/explicit signed sign-fill without
 relying on host-C signed-shift behavior. Scalar globals are emitted
 with their CogIR static initializer, so ordered runtime global/top-level execution
-through the synthetic module initializer works through host-C as well. Aggregate
-globals and the remaining non-CFG instruction families are still separate backend
-coverage work.
+through the synthetic module initializer works through host-C as well. Represented
+aggregate field places, array-field element places, typed-pointer indexing, and
+volatile scalar loads/stores now execute from their address operations. Checked
+numeric casts guard representability/non-finite cases before invoking a C
+conversion, truncating integer casts use explicit low-bit semantics, and
+typed/opaque pointer reinterpretation is emitted as the corresponding object-
+pointer conversion. Aggregate construction/extraction, standalone array values,
+aggregate globals, and indirect calls are still separate backend coverage work.
 
 ## Implementation sequence
 
@@ -1089,7 +1094,11 @@ coverage work.
     with parallel block-parameter transfer, branches, switches, traps, and
     unreachable terminators. Non-trapping bitwise operations, checked-count shifts,
     floating arithmetic/comparisons/negation, and pointer equality/inequality now
-    execute through the same emitter. Remaining data/cast, indirect-call, and
-    aggregate-global families can be filled in independently while LLVM lowering
-    begins on the same
-    verified CogIR contract.
+    execute through the same emitter.
+15. ~~Expand the host-C backend through the core data/address and cast execution
+    slice.~~ Represented field and array-field places, typed-pointer indexing,
+    volatile scalar memory operations, checked numeric conversions, integer
+    truncation, and typed/opaque raw-pointer reinterpretation now execute directly
+    from CogIR. Remaining indirect-call and aggregate value/global families can be
+    filled in independently while LLVM lowering begins on the same verified CogIR
+    contract.

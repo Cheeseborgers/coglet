@@ -114,7 +114,15 @@ comparisons, floating negation, and pointer equality/inequality through runtime
 function parameters so those paths cannot disappear through constant folding.
 The shift backend regression covers fixed-width left shift, zero-filling unsigned
 right shift, arithmetic signed right shift (including count zero), and separate
-runtime traps for negative and width-sized counts.
+runtime traps for negative and width-sized counts. The data/address/cast backend
+regression executes represented-aggregate field access, nested array-field
+indexing, typed-pointer indexing, volatile access through an explicitly qualified
+pointer value, typed/opaque pointer reinterpretation, checked integer/float casts,
+and signed/unsigned integer truncation. Separate trap regressions cover a negative
+signed-to-unsigned checked cast, an out-of-range float-to-integer cast, and a finite
+`f64` value outside the `f32` range. The success case includes fractional values at
+integer boundaries to verify that float-to-integer checking applies truncation
+toward zero before representability testing.
 
 Run the backend suite with:
 

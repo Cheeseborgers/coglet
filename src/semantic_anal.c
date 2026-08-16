@@ -1656,18 +1656,47 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
 
         case TYPE_ARRAY: {
             char element[128];
-            format_type_name(type->element, element, sizeof(element));
+
+            format_type_name(
+                type->element,
+                element,
+                sizeof(element)
+            );
 
             if (type->array_size >= 0) {
+                int suffix_size = snprintf(
+                    NULL,
+                    0,
+                    "[%d]",
+                    type->array_size
+                );
+
+                size_t max_element = 0;
+
+                if (buffer_size > (size_t)suffix_size + 1) {
+                    max_element = buffer_size - (size_t)suffix_size - 1;
+                }
+
                 snprintf(
                     buffer,
                     buffer_size,
-                    "%s[%d]",
+                    "%.*s[%d]",
+                    (int)max_element,
                     element,
                     type->array_size
                 );
             } else {
-                snprintf(buffer, buffer_size, "%s[]", element);
+                size_t max_element = buffer_size > 3
+                    ? buffer_size - 3
+                    : 0;
+
+                snprintf(
+                    buffer,
+                    buffer_size,
+                    "%.*s[]",
+                    (int)max_element,
+                    element
+                );
             }
 
             return;

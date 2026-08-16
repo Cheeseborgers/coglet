@@ -229,22 +229,20 @@ runtime/libc symbols. External declarations are emitted under generated C
 identifiers with `__asm__("symbol")` labels, so `name="..."` overrides affect
 the actual linker symbol without requiring that symbol to be a safe C identifier.
 
-The backend is intentionally smaller than the frontend. It currently lowers
-direct named function calls, direct calls through function-pointer parameters,
-integer/floating/Boolean/null literals, parameter and function-symbol references,
-literal numeric negation, expression statements, returns, C-variadic calls,
-and string literals admitted at supported C ABI boundaries. For C variadic
-arguments the generated C expression types intentionally let the native C
-compiler perform its standard default argument promotions (for example
-`float -> double` and narrow integer/Boolean promotion). String escapes are
-decoded using Coglet's literal rules and
-re-escaped into the generated C translation unit, where the C literal supplies
-the trailing NUL byte. It requires `main::() -> c_int` for a host executable.
-Runtime arithmetic, locals, control flow, aggregate values, general array decay,
-and casts are rejected until their Coglet semantics can be preserved correctly.
-In particular, checked signed arithmetic is not lowered to raw C signed operators
-because C overflow would introduce undefined behavior instead of Coglet's
-required trap.
+The backend is intentionally smaller than the frontend, but it now consumes
+CogIR only and covers the core scalar/CFG execution path. Direct named calls,
+locals, scalar globals/module initialization, checked and wrapping integer
+arithmetic, checked-count shifts, floating arithmetic/comparisons, structured
+control flow, field/array-field/pointer addressing, volatile scalar loads/stores,
+and checked/truncating/raw-pointer casts execute from verifier-checked IR. Native-C
+variadic promotions are explicit CogIR operations rather than an implicit host-C
+side effect. String escapes are decoded using Coglet's literal rules and lowered
+through IR-owned backing data at supported C ABI boundaries. Host executables
+continue to require `main::() -> c_int` using the source-return spelling retained
+in CogIR. Indirect calls, general aggregate value construction/extraction and
+aggregate globals remain separate compatibility work; checked operations are not
+lowered through C behavior that would introduce undefined or implementation-defined
+semantics where Coglet requires a trap or fixed-width result.
 
 `coglet input.cog --emit-c generated.c` exposes the generated translation unit
 for inspection. Running `coglet input.cog` without `-o` or `--emit-c` preserves
@@ -1007,4 +1005,15 @@ unsigned bit patterns and signed right shift synthesizes sign fill explicitly, s
 the backend does not depend on implementation-defined right shift of negative C
 integers. Scalar source globals
 plus the ordered module-init function make top-level runtime control flow executable
-through the same IR-only path.
+through the same IR-only path. The data/address execution slice now also emits
+`field_addr` for represented structs/unions, `array_elem_addr` through represented
+array fields, and `ptr_index_addr` for typed raw pointers. Volatile load/store flags
+are realized with an explicitly volatile-qualified dereference even when the
+qualifier was introduced by a CogIR `ptr.qualify` value whose underlying C
+expression had a less-qualified static type. `cast.checked` emits range/finite
+guards before any host conversion that could otherwise be undefined; float-to-
+integer conversion follows Coglet's truncate-toward-zero-then-fit rule, including
+valid fractional values just outside an integer endpoint. `int.truncate` extracts
+the destination-width low bits explicitly and reconstructs signed results without
+implementation-defined narrowing, while `ptr.reinterpret` emits the typed/opaque
+object-pointer representation conversion recorded by CogIR.

@@ -1,0 +1,11 @@
+narrow::(value: i64) -> u8 {
+    return cast(u8, value);
+}
+
+main::() -> c_int {
+    result := narrow(-1);
+    if result == 0 {
+        return 90;
+    }
+    return 91;
+}

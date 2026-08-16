@@ -1148,5 +1148,10 @@ volatile access contract.
     function named `main` cannot become the process entry accidentally, and the
     verifier enforces the backend-neutral `() -> i32` entry invariant. The host-C
     wrapper alone adapts that result to C `int`. The CogIR-only host-C bootstrap
-    path is complete for the current executable/interop
-    contract; LLVM lowering can start from the same frozen verified module.
+    path is complete for the current executable/interop contract.
+19. ~~Establish the first LLVM backend vertical slice.~~ The optional LLVM backend
+    consumes only frozen CogIR, constructs verifier-checked LLVM IR for the
+    initial native scalar/CFG/storage subset, honors ordered module initialization,
+    and adapts the resolved Coglet `() -> i32` entry through an LLVM `main` wrapper.
+    Unsupported CogIR operations fail explicitly so later milestones can add their
+    semantics without approximation.

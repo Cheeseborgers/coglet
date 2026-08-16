@@ -4,6 +4,9 @@
 #include <string.h>
 
 #include "backend_c.h"
+#ifdef COGLET_HAS_LLVM_BACKEND
+#include "backends/llvm/backend_llvm.h"
+#endif
 #include "compiler_driver.h"
 #include "cog_ir_lower.h"
 
@@ -11,7 +14,7 @@ static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [-o <executable>] [--emit-c <file>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n",
+        "usage: %s <file> [-o <executable>] [--emit-c <file>] [--emit-llvm <file>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n",
         program
     );
 }
@@ -26,6 +29,7 @@ int main(int argc, char **argv)
     const char *input_path = argv[1];
     const char *output_path = NULL;
     const char *emit_c_path = NULL;
+    const char *emit_llvm_path = NULL;
 
     /* argc is an upper bound for each repeated option category. */
     const char *library_dirs[argc];
@@ -49,6 +53,15 @@ int main(int argc, char **argv)
                 return COMPILE_STATUS_DRIVER_ERROR;
             }
             emit_c_path = argv[++i];
+            continue;
+        }
+
+        if (strcmp(argv[i], "--emit-llvm") == 0) {
+            if (i + 1 >= argc || emit_llvm_path) {
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+            }
+            emit_llvm_path = argv[++i];
             continue;
         }
 
@@ -103,7 +116,7 @@ int main(int argc, char **argv)
 
     int exit_code = 0;
 
-    if (!emit_c_path && !output_path) {
+    if (!emit_c_path && !emit_llvm_path && !output_path) {
         compile_result_destroy(&result);
         return 0;
     }
@@ -162,6 +175,23 @@ int main(int argc, char **argv)
 
         if (backend_status != C_BACKEND_STATUS_OK)
             exit_code = 3;
+    }
+
+    if (exit_code == 0 && emit_llvm_path) {
+#ifdef COGLET_HAS_LLVM_BACKEND
+        LlvmBackendStatus backend_status = llvm_backend_emit_ir_file(
+            emit_llvm_path,
+            &ir
+        );
+        if (backend_status != LLVM_BACKEND_STATUS_OK)
+            exit_code = 3;
+#else
+        fprintf(
+            stderr,
+            "error: LLVM backend is not available in this build; configure with COGLET_LLVM=ON and LLVM_DIR\n"
+        );
+        exit_code = 3;
+#endif
     }
 
     if (exit_code == 0 && output_path) {

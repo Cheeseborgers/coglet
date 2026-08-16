@@ -1,0 +1,5 @@
+value: i32 = 7;
+
+main :: () -> i32 {
+    return value;
+}

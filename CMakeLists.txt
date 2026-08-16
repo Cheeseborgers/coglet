@@ -42,9 +42,49 @@ add_library(coglet_backend_c STATIC
 target_include_directories(coglet_backend_c PUBLIC include)
 target_link_libraries(coglet_backend_c PRIVATE compiler_core)
 
+# --- Optional LLVM backend. ---
+set(COGLET_LLVM "AUTO" CACHE STRING "LLVM backend mode: AUTO, ON, or OFF")
+set_property(CACHE COGLET_LLVM PROPERTY STRINGS AUTO ON OFF)
+string(TOUPPER "${COGLET_LLVM}" COGLET_LLVM_MODE)
+if(NOT COGLET_LLVM_MODE MATCHES "^(AUTO|ON|OFF)$")
+    message(FATAL_ERROR "COGLET_LLVM must be AUTO, ON, or OFF")
+endif()
+
+set(COGLET_HAS_LLVM_BACKEND OFF)
+if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
+    find_package(LLVM 17 CONFIG QUIET)
+    if(LLVM_FOUND)
+        message(STATUS "Coglet LLVM backend: LLVM ${LLVM_PACKAGE_VERSION}")
+        llvm_map_components_to_libnames(COGLET_LLVM_LIBS core analysis support)
+        separate_arguments(COGLET_LLVM_DEFINITIONS NATIVE_COMMAND "${LLVM_DEFINITIONS}")
+
+        add_library(coglet_backend_llvm STATIC
+                src/backends/llvm/backend_llvm.c
+        )
+        target_include_directories(coglet_backend_llvm
+                PUBLIC include
+                PRIVATE ${LLVM_INCLUDE_DIRS}
+        )
+        target_compile_options(coglet_backend_llvm PRIVATE ${COGLET_LLVM_DEFINITIONS})
+        target_link_libraries(coglet_backend_llvm PRIVATE compiler_core ${COGLET_LLVM_LIBS})
+        set(COGLET_HAS_LLVM_BACKEND ON)
+    elseif(COGLET_LLVM_MODE STREQUAL "ON")
+        message(FATAL_ERROR
+            "COGLET_LLVM=ON but LLVMConfig.cmake was not found. "
+            "Install an LLVM 17+ development package or set LLVM_DIR."
+        )
+    else()
+        message(STATUS "Coglet LLVM backend: disabled (LLVM development package not found)")
+    endif()
+endif()
+
 # --- The real compiler binary. ---
 add_executable(coglet src/coglet.c ${COMMON_SOURCES})
 target_link_libraries(coglet PRIVATE compiler_core coglet_backend_c)
+if(COGLET_HAS_LLVM_BACKEND)
+    target_link_libraries(coglet PRIVATE coglet_backend_llvm)
+    target_compile_definitions(coglet PRIVATE COGLET_HAS_LLVM_BACKEND=1)
+endif()
 
 # --- Standalone Semantic info checker -------------
 add_executable(check_semantic_info
@@ -770,3 +810,48 @@ add_host_c_library_test(
         backend_extern_c_volatile_pointers extern_c_volatile_pointers.cog 89 joined
         "backend;backend.c;interop;abi;volatile"
 )
+
+# --- LLVM Stage 1 backend tests. ---
+if(COGLET_HAS_LLVM_BACKEND)
+    find_program(COGLET_CLANG_EXECUTABLE NAMES clang)
+
+    add_test(
+        NAME backend_llvm_stage1_scalar_cfg_entry
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage1_entry.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage1_entry.ll
+        -DEXPECT_EXIT=11
+        "-DEXPECT_IR_SUBSTRING=br i1"
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_stage1_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage1_scalar_cfg_entry
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;cfg;entrypoint")
+
+    add_test(
+        NAME backend_llvm_stage1_module_init
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage1_module_init.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage1_module_init.ll
+        -DEXPECT_EXIT=7
+        "-DEXPECT_IR_SUBSTRING=call void @cog.fn.1()"
+        -DCLANG=${COGLET_CLANG_EXECUTABLE}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_stage1_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage1_module_init
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;module-init;entrypoint")
+
+    add_test(
+        NAME backend_llvm_stage1_rejects_checked_add
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage1_unsupported_checked_add.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage1_unsupported.ll
+        "-DEXPECT_SUBSTRING=unsupported CogIR operation 'iadd.checked' in Stage 1"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage1_rejects_checked_add
+        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;checked-arithmetic")
+endif()

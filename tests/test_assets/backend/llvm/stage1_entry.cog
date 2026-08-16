@@ -1,0 +1,9 @@
+choose :: (flag: bool) -> i32 {
+    if flag
+        return 11;
+    return 22;
+}
+
+main :: () -> i32 {
+    return choose(true);
+}

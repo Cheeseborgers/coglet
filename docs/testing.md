@@ -1,6 +1,6 @@
 # Testing
 
-Coglet uses CTest to run lexer, parser, semantic, constant-evaluation, semantic-information, and host-C backend integration tests.
+Coglet uses CTest to run lexer, parser, semantic, constant-evaluation, semantic-information, host-C backend integration tests, and LLVM backend tests when LLVM 17+ development files are available.
 
 Configure and build the Debug tree before running tests:
 
@@ -157,6 +157,27 @@ ctest \
 
 Backend-generation failures from the `coglet` executable currently use process
 exit status `3`; parser/driver and semantic statuses remain unchanged.
+
+
+## LLVM Backend Tests
+
+LLVM support is optional at configure time. `COGLET_LLVM=AUTO` (the default)
+enables it when CMake can find `LLVMConfig.cmake`; use `COGLET_LLVM=ON` to make
+missing LLVM 17+ development files a configuration error or `COGLET_LLVM=OFF` to
+disable the backend deliberately.
+
+The Stage 1 tests emit LLVM IR through the compiler, which means every success
+case has already passed LLVM's module verifier inside the backend. When `clang`
+is available, the harness also compiles the emitted IR and checks the executable
+status. Coverage currently includes scalar conditional CFG/direct calls, the
+resolved Coglet entry adapter, ordered module initialization, and explicit
+rejection of checked arithmetic that is not yet part of the LLVM subset.
+
+Run only these tests with:
+
+```bash
+ctest --test-dir cmake-build-debug -L backend.llvm --output-on-failure
+```
 
 ## Parser-Invalid Tests
 

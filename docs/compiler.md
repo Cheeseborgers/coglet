@@ -233,8 +233,10 @@ The backend now consumes CogIR only and has explicit emission for every current
 `CogIrOp`. The build mirrors that dependency direction: `compiler_core` contains
 the frontend, semantic analysis, target description, and CogIR implementation,
 while `coglet_backend_c` is a separate library that depends on the core. This
-keeps backend dependencies out of frontend/IR-only tools and provides the same
-place for a future LLVM backend to attach without making LLVM a core dependency.
+keeps backend dependencies out of frontend/IR-only tools. The optional LLVM
+backend is now attached at exactly that boundary as `coglet_backend_llvm`; LLVM
+headers/libraries are dependencies of that backend target only, not of
+`compiler_core`.
 Direct named calls,
 locals, scalar globals/module initialization, checked and wrapping integer
 arithmetic, checked-count shifts, floating arithmetic/comparisons, structured
@@ -294,6 +296,23 @@ native compiler selection, raw linker flags, and non-C calling-convention
 details also remain deferred.
 
 ## Target Description
+
+
+### LLVM backend Stage 1
+
+The first LLVM backend vertical slice lives under `src/backends/llvm/` with its
+public API under `include/backends/llvm/`. It accepts only frozen `CogIrModule`
+input, constructs LLVM IR through the LLVM C API, runs `LLVMVerifyModule`, and
+then writes textual IR. The current subset covers native `void`/`bool`/integer
+types, functions, scalar locals/globals, constants, loads/stores, integer
+comparisons, direct Coglet calls, branches, block parameters, returns, ordered
+module initialization, and the resolved `main::() -> i32` process-entry adapter.
+
+Checked/wrapping arithmetic, shifts, aggregate lowering, general pointer
+operations, floating point, C ABI lowering, optimization pipelines, and target
+object emission are intentionally rejected or deferred rather than approximated.
+`COGLET_LLVM=AUTO` enables the backend when `LLVMConfig.cmake` is available;
+`ON` requires it and `OFF` disables it.
 
 `TargetInfo` is the backend-neutral target contract needed by the frontend. Its
 fields are expressed in bits and currently cover:

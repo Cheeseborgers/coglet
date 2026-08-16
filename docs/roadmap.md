@@ -2,7 +2,7 @@
 
 Coglet is focused on building a small, correct systems-language core with explicit semantics and a compiler architecture that remains understandable.
 
-The project remains frontend-led, with a CogIR-only host-C bootstrap backend providing the executable feedback loop. The current host-C/CogIR contract is complete for the exercised language and interop surface; the next backend phase is LLVM lowering against the same frozen IR boundary.
+The project remains frontend-led, with a CogIR-only host-C bootstrap backend providing the executable feedback loop. The current host-C/CogIR contract is complete for the exercised language and interop surface. LLVM Stage 1 now provides a second IR-only backend vertical slice for native scalar CFG, module initialization, entry adaptation, and LLVM verification; broader semantic coverage remains the next backend work.
 
 ## Current State
 
@@ -524,8 +524,9 @@ entry selection is carried by `module.entry_function` rather than a debug-name
 heuristic. This preserves the source-top-level `main` rule after nested functions
 are flattened, while the verifier enforces the native Coglet `() -> i32` entry
 signature. The CogIR-only host-C bootstrap path is therefore complete for the
-current executable/interop contract; the next backend milestone is LLVM lowering
-on the same verified module contract.
+current executable/interop contract. LLVM Stage 1 now consumes the same frozen
+verified module for its initial scalar/CFG/entry subset; the next backend
+milestones expand semantic coverage without changing that boundary.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

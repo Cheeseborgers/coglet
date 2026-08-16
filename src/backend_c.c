@@ -30,11 +30,12 @@ typedef struct CBackend {
 
     unsigned char *runtime_alias_state;
     unsigned char *abi_alias_state;
-    unsigned char *aggregate_definition_state;
+    unsigned char *runtime_definition_state;
 
     char **type_definitions;
     size_t type_definition_count;
     size_t type_definition_capacity;
+    size_t temporary_id;
 } CBackend;
 
 static int sv_equals(StringView view, const char *text)
@@ -134,7 +135,7 @@ static void free_backend_storage(CBackend *backend)
     free(backend->global_names);
     free(backend->runtime_alias_state);
     free(backend->abi_alias_state);
-    free(backend->aggregate_definition_state);
+    free(backend->runtime_definition_state);
 }
 
 static int init_backend_storage(CBackend *backend)
@@ -144,9 +145,9 @@ static int init_backend_storage(CBackend *backend)
     if (module->type_count) {
         backend->type_names = calloc(module->type_count, sizeof(*backend->type_names));
         backend->runtime_alias_state = calloc(module->type_count, 1);
-        backend->aggregate_definition_state = calloc(module->type_count, 1);
+        backend->runtime_definition_state = calloc(module->type_count, 1);
         if (!backend->type_names || !backend->runtime_alias_state ||
-            !backend->aggregate_definition_state)
+            !backend->runtime_definition_state)
             return 0;
     }
 
@@ -202,6 +203,7 @@ static const char *c_scalar_name(CogIrCScalarKind scalar)
 static const char *runtime_type_name(CBackend *backend, CogIrTypeId type_id, SourceSpan span);
 static const char *abi_type_name(CBackend *backend, CogIrAbiTypeId abi_id, SourceSpan span);
 static char *constant_expr(CBackend *backend, CogIrConstId constant_id);
+static char *constant_storage_initializer(CBackend *backend, CogIrConstId constant_id, int array_value_wrapper);
 
 static const char *nominal_type_name(CBackend *backend, const CogIrType *type)
 {
@@ -265,6 +267,161 @@ static int append_text(char **buffer, size_t *length, size_t *capacity, const ch
     return 1;
 }
 
+static const char *array_value_type_name(CBackend *backend, const CogIrType *type)
+{
+    assert(type && type->kind == COG_IR_TYPE_ARRAY);
+    assert((size_t)type->id < backend->module->type_count);
+    char *name = backend->type_names[type->id];
+    if (!name[0])
+        snprintf(name, C_BACKEND_NAME_SIZE, "cg_array_%u", type->id);
+    return name;
+}
+
+static int append_array_dimensions_runtime(
+    CBackend *backend,
+    CogIrTypeId array_type_id,
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    CogIrTypeId *out_leaf,
+    SourceSpan span
+) {
+    CogIrTypeId current = array_type_id;
+    for (;;) {
+        const CogIrType *type = cog_ir_get_type(backend->module, current);
+        if (!type) {
+            backend_error(backend, span, "invalid array type while generating C declarator");
+            return 0;
+        }
+        if (type->kind != COG_IR_TYPE_ARRAY) {
+            *out_leaf = current;
+            return 1;
+        }
+        char dimension[48];
+        int written = snprintf(dimension, sizeof(dimension), "[%zu]", type->as.array.length);
+        if (written < 0 || (size_t)written >= sizeof(dimension) ||
+            !append_text(buffer, length, capacity, dimension)) {
+            backend_error(backend, span, "out of memory while generating array declarator");
+            return 0;
+        }
+        current = type->as.array.element_type;
+    }
+}
+
+static char *runtime_array_declarator(
+    CBackend *backend,
+    CogIrTypeId array_type_id,
+    const char *name,
+    int pointer_to_array,
+    int is_readonly,
+    int is_volatile,
+    SourceSpan span
+) {
+    char *dimensions = NULL;
+    size_t dimensions_length = 0, dimensions_capacity = 0;
+    CogIrTypeId leaf_id = COG_IR_TYPE_INVALID;
+    if (!append_array_dimensions_runtime(
+            backend, array_type_id, &dimensions, &dimensions_length,
+            &dimensions_capacity, &leaf_id, span)) {
+        free(dimensions);
+        return NULL;
+    }
+
+    const char *leaf = runtime_type_name(backend, leaf_id, span);
+    if (!leaf) {
+        free(dimensions);
+        return NULL;
+    }
+
+    char *result = NULL;
+    size_t length = 0, capacity = 0;
+    int ok = append_text(&result, &length, &capacity, leaf);
+    if (ok && is_readonly) ok = append_text(&result, &length, &capacity, " const");
+    if (ok && is_volatile) ok = append_text(&result, &length, &capacity, " volatile");
+    if (ok) ok = append_text(&result, &length, &capacity, pointer_to_array ? " (*" : " ");
+    if (ok) ok = append_text(&result, &length, &capacity, name);
+    if (ok && pointer_to_array) ok = append_text(&result, &length, &capacity, ")");
+    if (ok) ok = append_text(&result, &length, &capacity, dimensions ? dimensions : "");
+    free(dimensions);
+    if (!ok) {
+        free(result);
+        backend_error(backend, span, "out of memory while generating array declarator");
+        return NULL;
+    }
+    return result;
+}
+
+static char *abi_array_declarator(
+    CBackend *backend,
+    CogIrAbiTypeId abi_array_id,
+    CogIrTypeId runtime_array_id,
+    const char *name,
+    int pointer_to_array,
+    int is_readonly,
+    int is_volatile,
+    SourceSpan span
+) {
+    char *dimensions = NULL;
+    size_t dimensions_length = 0, dimensions_capacity = 0;
+    CogIrAbiTypeId abi_id = abi_array_id;
+    CogIrTypeId runtime_id = runtime_array_id;
+
+    for (;;) {
+        const CogIrAbiType *abi = cog_ir_get_abi_type(backend->module, abi_id);
+        const CogIrType *runtime = cog_ir_get_type(backend->module, runtime_id);
+        if (!abi || !runtime) {
+            free(dimensions);
+            backend_error(backend, span, "invalid ABI array type while generating C declarator");
+            return NULL;
+        }
+        if (abi->kind != COG_IR_ABI_TYPE_ARRAY) {
+            if (runtime->kind == COG_IR_TYPE_ARRAY || abi->runtime_type != runtime_id) {
+                free(dimensions);
+                backend_error(backend, span, "ABI/runtime array shape mismatch during C lowering");
+                return NULL;
+            }
+            break;
+        }
+        if (runtime->kind != COG_IR_TYPE_ARRAY || abi->runtime_type != runtime_id) {
+            free(dimensions);
+            backend_error(backend, span, "ABI/runtime array shape mismatch during C lowering");
+            return NULL;
+        }
+        char dimension[48];
+        int written = snprintf(dimension, sizeof(dimension), "[%zu]", runtime->as.array.length);
+        if (written < 0 || (size_t)written >= sizeof(dimension) ||
+            !append_text(&dimensions, &dimensions_length, &dimensions_capacity, dimension)) {
+            free(dimensions);
+            backend_error(backend, span, "out of memory while generating ABI array declarator");
+            return NULL;
+        }
+        abi_id = abi->element_type;
+        runtime_id = runtime->as.array.element_type;
+    }
+
+    const char *leaf = abi_type_name(backend, abi_id, span);
+    if (!leaf) {
+        free(dimensions);
+        return NULL;
+    }
+    char *result = NULL;
+    size_t length = 0, capacity = 0;
+    int ok = append_text(&result, &length, &capacity, leaf);
+    if (ok && is_readonly) ok = append_text(&result, &length, &capacity, " const");
+    if (ok && is_volatile) ok = append_text(&result, &length, &capacity, " volatile");
+    if (ok) ok = append_text(&result, &length, &capacity, pointer_to_array ? " (*" : " ");
+    if (ok) ok = append_text(&result, &length, &capacity, name);
+    if (ok && pointer_to_array) ok = append_text(&result, &length, &capacity, ")");
+    if (ok) ok = append_text(&result, &length, &capacity, dimensions ? dimensions : "");
+    free(dimensions);
+    if (!ok) {
+        free(result);
+        backend_error(backend, span, "out of memory while generating ABI array declarator");
+        return NULL;
+    }
+    return result;
+}
+
 static const char *runtime_type_name(CBackend *backend, CogIrTypeId type_id, SourceSpan span)
 {
     const CogIrType *type = cog_ir_get_type(backend->module, type_id);
@@ -289,20 +446,10 @@ static const char *runtime_type_name(CBackend *backend, CogIrTypeId type_id, Sou
             return NULL;
         case COG_IR_TYPE_STRUCT:
         case COG_IR_TYPE_UNION:
-            if (!type->as.aggregate.is_repr_c) {
-                backend_error(backend, span, "ordinary Coglet aggregate types are not lowered by the host-C backend yet");
-                return NULL;
-            }
-            return nominal_type_name(backend, type);
         case COG_IR_TYPE_ENUM:
-            if (!type->as.enumeration.is_repr_c) {
-                backend_error(backend, span, "ordinary Coglet enum types are not lowered by the host-C backend yet");
-                return NULL;
-            }
             return nominal_type_name(backend, type);
         case COG_IR_TYPE_ARRAY:
-            backend_error(backend, span, "standalone CogIR array values are not lowered by the host-C backend yet");
-            return NULL;
+            return array_value_type_name(backend, type);
         case COG_IR_TYPE_POINTER:
         case COG_IR_TYPE_OPAQUE_POINTER:
         case COG_IR_TYPE_FUNCTION:
@@ -322,18 +469,35 @@ static const char *runtime_type_name(CBackend *backend, CogIrTypeId type_id, Sou
     snprintf(name, C_BACKEND_NAME_SIZE, "cg_rt_%u", type_id);
 
     if (type->kind == COG_IR_TYPE_POINTER) {
-        const char *pointee = runtime_type_name(backend, type->as.pointer.pointee, span);
-        if (!pointee)
+        const CogIrType *pointee_type = cog_ir_get_type(backend->module, type->as.pointer.pointee);
+        if (!pointee_type) {
+            backend_error(backend, span, "runtime pointer has invalid pointee type");
             return NULL;
-        if (!append_type_definition(
-                backend,
-                "typedef %s%s%s *%s;",
-                pointee,
-                type->as.pointer.is_readonly ? " const" : "",
-                type->as.pointer.is_volatile ? " volatile" : "",
-                name)) {
-            backend_error(backend, span, "out of memory while generating runtime pointer alias");
-            return NULL;
+        }
+        if (pointee_type->kind == COG_IR_TYPE_ARRAY) {
+            char *declarator = runtime_array_declarator(
+                backend, pointee_type->id, name, 1,
+                type->as.pointer.is_readonly, type->as.pointer.is_volatile, span);
+            if (!declarator || !append_type_definition(backend, "typedef %s;", declarator)) {
+                free(declarator);
+                backend_error(backend, span, "out of memory while generating array-pointer alias");
+                return NULL;
+            }
+            free(declarator);
+        } else {
+            const char *pointee = runtime_type_name(backend, type->as.pointer.pointee, span);
+            if (!pointee)
+                return NULL;
+            if (!append_type_definition(
+                    backend,
+                    "typedef %s%s%s *%s;",
+                    pointee,
+                    type->as.pointer.is_readonly ? " const" : "",
+                    type->as.pointer.is_volatile ? " volatile" : "",
+                    name)) {
+                backend_error(backend, span, "out of memory while generating runtime pointer alias");
+                return NULL;
+            }
         }
     } else if (type->kind == COG_IR_TYPE_OPAQUE_POINTER) {
         if (!append_type_definition(
@@ -479,18 +643,36 @@ static const char *abi_type_name(CBackend *backend, CogIrAbiTypeId abi_id, Sourc
             backend_error(backend, span, "pointer ABI type has non-pointer runtime type");
             return NULL;
         }
-        const char *element = abi_type_name(backend, abi->element_type, span);
-        if (!element)
+        const CogIrAbiType *element_abi = cog_ir_get_abi_type(backend->module, abi->element_type);
+        const CogIrType *pointee = cog_ir_get_type(backend->module, runtime->as.pointer.pointee);
+        if (!element_abi || !pointee) {
+            backend_error(backend, span, "pointer ABI type has invalid element type");
             return NULL;
-        if (!append_type_definition(
-                backend,
-                "typedef %s%s%s *%s;",
-                element,
-                runtime->as.pointer.is_readonly ? " const" : "",
-                runtime->as.pointer.is_volatile ? " volatile" : "",
-                name)) {
-            backend_error(backend, span, "out of memory while generating ABI pointer alias");
-            return NULL;
+        }
+        if (element_abi->kind == COG_IR_ABI_TYPE_ARRAY && pointee->kind == COG_IR_TYPE_ARRAY) {
+            char *declarator = abi_array_declarator(
+                backend, abi->element_type, pointee->id, name, 1,
+                runtime->as.pointer.is_readonly, runtime->as.pointer.is_volatile, span);
+            if (!declarator || !append_type_definition(backend, "typedef %s;", declarator)) {
+                free(declarator);
+                backend_error(backend, span, "out of memory while generating ABI array-pointer alias");
+                return NULL;
+            }
+            free(declarator);
+        } else {
+            const char *element = abi_type_name(backend, abi->element_type, span);
+            if (!element)
+                return NULL;
+            if (!append_type_definition(
+                    backend,
+                    "typedef %s%s%s *%s;",
+                    element,
+                    runtime->as.pointer.is_readonly ? " const" : "",
+                    runtime->as.pointer.is_volatile ? " volatile" : "",
+                    name)) {
+                backend_error(backend, span, "out of memory while generating ABI pointer alias");
+                return NULL;
+            }
         }
     } else if (abi->kind == COG_IR_ABI_TYPE_OPAQUE_POINTER) {
         if (runtime->kind != COG_IR_TYPE_OPAQUE_POINTER) {
@@ -684,23 +866,26 @@ static void emit_repr_c_layout_support(CBackend *backend)
     );
 }
 
-static void emit_aggregate_forward_declarations(CBackend *backend)
+static void emit_runtime_forward_declarations(CBackend *backend)
 {
     int emitted = 0;
     for (size_t i = 0; i < backend->module->type_count; ++i) {
         const CogIrType *type = &backend->module->types[i];
-        if ((type->kind != COG_IR_TYPE_STRUCT && type->kind != COG_IR_TYPE_UNION) ||
-            !type->as.aggregate.is_repr_c)
-            continue;
-        const char *name = nominal_type_name(backend, type);
-        fprintf(
-            backend->out,
-            "typedef %s %s %s;\n",
-            type->kind == COG_IR_TYPE_UNION ? "union" : "struct",
-            name,
-            name
-        );
-        emitted = 1;
+        if (type->kind == COG_IR_TYPE_STRUCT || type->kind == COG_IR_TYPE_UNION) {
+            const char *name = nominal_type_name(backend, type);
+            fprintf(
+                backend->out,
+                "typedef %s %s %s;\n",
+                type->kind == COG_IR_TYPE_UNION ? "union" : "struct",
+                name,
+                name
+            );
+            emitted = 1;
+        } else if (type->kind == COG_IR_TYPE_ARRAY) {
+            const char *name = array_value_type_name(backend, type);
+            fprintf(backend->out, "typedef struct %s %s;\n", name, name);
+            emitted = 1;
+        }
     }
     if (emitted)
         fputc('\n', backend->out);
@@ -711,9 +896,11 @@ static int emit_enum_definitions(CBackend *backend)
     int emitted = 0;
     for (size_t i = 0; i < backend->module->type_count; ++i) {
         const CogIrType *type = &backend->module->types[i];
-        if (type->kind != COG_IR_TYPE_ENUM || !type->as.enumeration.is_repr_c)
+        if (type->kind != COG_IR_TYPE_ENUM)
             continue;
-        const char *backing = abi_type_name(backend, type->as.enumeration.backing_abi_type, type->span);
+        const char *backing = type->as.enumeration.is_repr_c
+            ? abi_type_name(backend, type->as.enumeration.backing_abi_type, type->span)
+            : runtime_type_name(backend, type->as.enumeration.backing_type, type->span);
         const char *name = nominal_type_name(backend, type);
         if (!backing || !name)
             return 0;
@@ -737,6 +924,30 @@ static int prepare_abi_field_type(CBackend *backend, CogIrAbiTypeId abi_id, Sour
     return abi_type_name(backend, abi_id, span) != NULL;
 }
 
+static int prepare_runtime_array_leaf_type(CBackend *backend, CogIrTypeId type_id, SourceSpan span)
+{
+    const CogIrType *type = cog_ir_get_type(backend->module, type_id);
+    while (type && type->kind == COG_IR_TYPE_ARRAY)
+        type = cog_ir_get_type(backend->module, type->as.array.element_type);
+    if (!type) {
+        backend_error(backend, span, "invalid runtime array element type");
+        return 0;
+    }
+    return runtime_type_name(backend, type->id, span) != NULL;
+}
+
+static int prepare_runtime_field_type(CBackend *backend, CogIrTypeId type_id, SourceSpan span)
+{
+    const CogIrType *type = cog_ir_get_type(backend->module, type_id);
+    if (!type) {
+        backend_error(backend, span, "invalid aggregate field runtime type");
+        return 0;
+    }
+    return type->kind == COG_IR_TYPE_ARRAY
+        ? prepare_runtime_array_leaf_type(backend, type_id, span)
+        : runtime_type_name(backend, type_id, span) != NULL;
+}
+
 static int prepare_instruction_runtime_aliases(
     CBackend *backend,
     const CogIrFunction *function
@@ -755,7 +966,6 @@ static int prepare_instruction_runtime_aliases(
                 const CogIrValue *address = cog_ir_get_value(function, instruction->as.store.address);
                 type = address ? address->type : COG_IR_TYPE_INVALID;
             }
-
             if (type != COG_IR_TYPE_INVALID &&
                 !runtime_type_name(backend, type, instruction->span))
                 return 0;
@@ -768,12 +978,21 @@ static int prepare_type_aliases(CBackend *backend)
 {
     for (size_t i = 0; i < backend->module->type_count; ++i) {
         const CogIrType *type = &backend->module->types[i];
+        if (type->kind == COG_IR_TYPE_ARRAY) {
+            if (!prepare_runtime_array_leaf_type(backend, type->id, type->span))
+                return 0;
+            continue;
+        }
         if ((type->kind == COG_IR_TYPE_STRUCT || type->kind == COG_IR_TYPE_UNION) &&
-            type->as.aggregate.is_repr_c && !type->as.aggregate.is_incomplete) {
+            !type->as.aggregate.is_incomplete) {
             for (size_t f = 0; f < type->as.aggregate.field_count; ++f) {
                 const CogIrAggregateField *field = &type->as.aggregate.fields[f];
-                if (!prepare_abi_field_type(backend, field->abi_type, field->span))
+                if (type->as.aggregate.is_repr_c) {
+                    if (!prepare_abi_field_type(backend, field->abi_type, field->span))
+                        return 0;
+                } else if (!prepare_runtime_field_type(backend, field->type, field->span)) {
                     return 0;
+                }
             }
         }
     }
@@ -831,27 +1050,19 @@ static int emit_abi_field_declaration(
         backend_error(backend, span, "invalid aggregate field type during C lowering");
         return 0;
     }
-
     if (abi->kind == COG_IR_ABI_TYPE_ARRAY) {
-        if (runtime->kind != COG_IR_TYPE_ARRAY || runtime->as.array.length == 0) {
+        if (runtime->kind != COG_IR_TYPE_ARRAY) {
             backend_error(backend, span, "array ABI field has invalid runtime array type");
             return 0;
         }
-        char nested[128];
-        int written = snprintf(nested, sizeof(nested), "%s[%zu]", name, runtime->as.array.length);
-        if (written < 0 || (size_t)written >= sizeof(nested)) {
-            backend_error(backend, span, "aggregate field declarator is too long");
+        char *declarator = abi_array_declarator(
+            backend, abi_id, runtime_type_id, name, 0, 0, 0, span);
+        if (!declarator)
             return 0;
-        }
-        return emit_abi_field_declaration(
-            backend,
-            abi->element_type,
-            runtime->as.array.element_type,
-            nested,
-            span
-        );
+        fprintf(backend->out, "    %s;\n", declarator);
+        free(declarator);
+        return 1;
     }
-
     const char *type = abi_type_name(backend, abi_id, span);
     if (!type)
         return 0;
@@ -859,113 +1070,126 @@ static int emit_abi_field_declaration(
     return 1;
 }
 
-static int emit_aggregate_definition(CBackend *backend, CogIrTypeId type_id)
+static int emit_runtime_field_declaration(
+    CBackend *backend,
+    CogIrTypeId type_id,
+    const char *name,
+    SourceSpan span
+) {
+    const CogIrType *type = cog_ir_get_type(backend->module, type_id);
+    if (!type) {
+        backend_error(backend, span, "invalid aggregate field runtime type during C lowering");
+        return 0;
+    }
+    if (type->kind == COG_IR_TYPE_ARRAY) {
+        char *declarator = runtime_array_declarator(backend, type_id, name, 0, 0, 0, span);
+        if (!declarator)
+            return 0;
+        fprintf(backend->out, "    %s;\n", declarator);
+        free(declarator);
+        return 1;
+    }
+    const char *type_name = runtime_type_name(backend, type_id, span);
+    if (!type_name)
+        return 0;
+    fprintf(backend->out, "    %s %s;\n", type_name, name);
+    return 1;
+}
+
+static const CogIrType *runtime_array_leaf(CBackend *backend, CogIrTypeId type_id)
 {
     const CogIrType *type = cog_ir_get_type(backend->module, type_id);
-    if (!type || (type->kind != COG_IR_TYPE_STRUCT && type->kind != COG_IR_TYPE_UNION) ||
-        !type->as.aggregate.is_repr_c)
+    while (type && type->kind == COG_IR_TYPE_ARRAY)
+        type = cog_ir_get_type(backend->module, type->as.array.element_type);
+    return type;
+}
+
+static int emit_runtime_definition(CBackend *backend, CogIrTypeId type_id)
+{
+    const CogIrType *type = cog_ir_get_type(backend->module, type_id);
+    if (!type || (type->kind != COG_IR_TYPE_ARRAY &&
+                  type->kind != COG_IR_TYPE_STRUCT &&
+                  type->kind != COG_IR_TYPE_UNION))
         return 1;
 
-    unsigned char *state = &backend->aggregate_definition_state[type_id];
+    unsigned char *state = &backend->runtime_definition_state[type_id];
     if (*state == 2)
         return 1;
-    if (type->as.aggregate.is_incomplete) {
+    if ((type->kind == COG_IR_TYPE_STRUCT || type->kind == COG_IR_TYPE_UNION) &&
+        type->as.aggregate.is_incomplete) {
         *state = 2;
         return 1;
     }
     if (*state == 1) {
-        backend_error(backend, type->span, "recursive #repr(c) by-value aggregate layout reached C lowering");
+        backend_error(backend, type->span, "recursive by-value aggregate/array layout reached C lowering");
         return 0;
     }
     *state = 1;
 
+    if (type->kind == COG_IR_TYPE_ARRAY) {
+        const CogIrType *leaf = runtime_array_leaf(backend, type_id);
+        if (leaf && (leaf->kind == COG_IR_TYPE_STRUCT || leaf->kind == COG_IR_TYPE_UNION) &&
+            !emit_runtime_definition(backend, leaf->id))
+            return 0;
+        const char *name = array_value_type_name(backend, type);
+        char *member = runtime_array_declarator(backend, type_id, "cg_e", 0, 0, 0, type->span);
+        if (!member)
+            return 0;
+        fprintf(backend->out, "struct %s {\n    %s;\n};\n\n", name, member);
+        free(member);
+        *state = 2;
+        return 1;
+    }
+
     for (size_t f = 0; f < type->as.aggregate.field_count; ++f) {
-        const CogIrType *field = cog_ir_get_type(backend->module, type->as.aggregate.fields[f].type);
-        while (field && field->kind == COG_IR_TYPE_ARRAY)
-            field = cog_ir_get_type(backend->module, field->as.array.element_type);
+        const CogIrType *field = runtime_array_leaf(backend, type->as.aggregate.fields[f].type);
         if (field && (field->kind == COG_IR_TYPE_STRUCT || field->kind == COG_IR_TYPE_UNION) &&
-            field->as.aggregate.is_repr_c) {
-            if (!emit_aggregate_definition(backend, field->id))
-                return 0;
-        }
+            !emit_runtime_definition(backend, field->id))
+            return 0;
     }
 
     const char *name = nominal_type_name(backend, type);
-    fprintf(
-        backend->out,
-        "%s %s {\n",
-        type->kind == COG_IR_TYPE_UNION ? "union" : "struct",
-        name
-    );
+    fprintf(backend->out, "%s %s {\n", type->kind == COG_IR_TYPE_UNION ? "union" : "struct", name);
     for (size_t f = 0; f < type->as.aggregate.field_count; ++f) {
         char field_name[32];
         snprintf(field_name, sizeof(field_name), "cg_f_%zu", f);
         const CogIrAggregateField *field = &type->as.aggregate.fields[f];
-        if (!emit_abi_field_declaration(
-                backend, field->abi_type, field->type, field_name, field->span))
+        int ok = type->as.aggregate.is_repr_c
+            ? emit_abi_field_declaration(backend, field->abi_type, field->type, field_name, field->span)
+            : emit_runtime_field_declaration(backend, field->type, field_name, field->span);
+        if (!ok)
             return 0;
     }
     fputs("}", backend->out);
-    if (type->as.aggregate.is_packed)
+    if (type->as.aggregate.is_repr_c && type->as.aggregate.is_packed)
         fputs(" CG_REPR_C_PACKED", backend->out);
-    if (type->as.aggregate.explicit_alignment > 0)
+    if (type->as.aggregate.is_repr_c && type->as.aggregate.explicit_alignment > 0)
         fprintf(backend->out, " CG_REPR_C_ALIGNED(%u)", type->as.aggregate.explicit_alignment);
     fputs(";\n\n", backend->out);
     *state = 2;
     return 1;
 }
 
-static int emit_aggregate_definitions(CBackend *backend)
+static int emit_runtime_definitions(CBackend *backend)
 {
     for (size_t i = 0; i < backend->module->type_count; ++i)
-        if (!emit_aggregate_definition(backend, (CogIrTypeId)i))
+        if (!emit_runtime_definition(backend, (CogIrTypeId)i))
             return 0;
     return !backend->had_error;
-}
-
-static int is_string_global(CBackend *backend, const CogIrGlobal *global)
-{
-    const CogIrType *type = cog_ir_get_type(backend->module, global->type);
-    const CogIrConstant *init = cog_ir_get_constant(backend->module, global->static_initializer);
-    if (!type || type->kind != COG_IR_TYPE_ARRAY ||
-        !global->is_compiler_generated || !global->is_readonly ||
-        !sv_equals(global->debug_name, ".str") ||
-        !init || init->kind != COG_IR_CONST_ARRAY ||
-        init->as.aggregate.element_count != type->as.array.length)
-        return 0;
-    const CogIrType *element = cog_ir_get_type(backend->module, type->as.array.element_type);
-    return element && element->kind == COG_IR_TYPE_INTEGER && element->as.integer.bits == 8;
 }
 
 static int emit_globals(CBackend *backend)
 {
     for (size_t i = 0; i < backend->module->global_count; ++i) {
         const CogIrGlobal *global = &backend->module->globals[i];
-        if (is_string_global(backend, global)) {
-            const CogIrType *type = cog_ir_get_type(backend->module, global->type);
-            const CogIrConstant *init = cog_ir_get_constant(backend->module, global->static_initializer);
-            fprintf(backend->out, "static const char %s[%zu] = {", backend->global_names[i], type->as.array.length);
-            for (size_t e = 0; e < init->as.aggregate.element_count; ++e) {
-                const CogIrConstant *element = cog_ir_get_constant(backend->module, init->as.aggregate.elements[e]);
-                if (!element || element->kind != COG_IR_CONST_INTEGER) {
-                    backend_error(backend, global->span, "string global has non-integer byte constant");
-                    return 0;
-                }
-                fprintf(backend->out, "%s0x%02" PRIx64, e ? ", " : "", element->as.integer_bits & UINT64_C(0xff));
-            }
-            fputs("};\n", backend->out);
-            continue;
-        }
-
         const CogIrType *type = cog_ir_get_type(backend->module, global->type);
-        if (!type || type->kind == COG_IR_TYPE_ARRAY ||
-            type->kind == COG_IR_TYPE_STRUCT || type->kind == COG_IR_TYPE_UNION) {
-            backend_error(backend, global->span, "aggregate CogIR globals are not lowered by the host-C backend yet");
-            return 0;
-        }
         const char *type_name = runtime_type_name(backend, global->type, global->span);
-        char *initializer = constant_expr(backend, global->static_initializer);
-        if (!type_name || !initializer) {
+        char *initializer = constant_storage_initializer(
+            backend,
+            global->static_initializer,
+            type && type->kind == COG_IR_TYPE_ARRAY
+        );
+        if (!type || !type_name || !initializer) {
             free(initializer);
             backend_error(backend, global->span, "CogIR global has no C type or static initializer");
             return 0;
@@ -1126,22 +1350,27 @@ static char *integer_constant_expr(CBackend *backend, const CogIrConstant *const
     return copy_printf("((%s)%" PRIu64 "ULL)", cast_type, raw);
 }
 
-static char *constant_expr(CBackend *backend, CogIrConstId constant_id)
+static char *scalar_constant_expr(CBackend *backend, const CogIrConstant *constant)
 {
-    const CogIrConstant *constant = cog_ir_get_constant(backend->module, constant_id);
-    if (!constant)
+    const CogIrType *type = cog_ir_get_type(backend->module, constant->type);
+    if (!type)
         return NULL;
 
     switch (constant->kind) {
-        case COG_IR_CONST_ZERO: {
-            const CogIrType *type = cog_ir_get_type(backend->module, constant->type);
-            if (type && (type->kind == COG_IR_TYPE_POINTER ||
-                         type->kind == COG_IR_TYPE_OPAQUE_POINTER ||
-                         type->kind == COG_IR_TYPE_FUNCTION))
+        case COG_IR_CONST_ZERO:
+            if (type->kind == COG_IR_TYPE_POINTER ||
+                type->kind == COG_IR_TYPE_OPAQUE_POINTER ||
+                type->kind == COG_IR_TYPE_FUNCTION)
                 return copy_printf("NULL");
-            const char *name = runtime_type_name(backend, constant->type, source_span_invalid());
-            return name ? copy_printf("((%s)0)", name) : NULL;
-        }
+            if (type->kind == COG_IR_TYPE_ARRAY || type->kind == COG_IR_TYPE_STRUCT ||
+                type->kind == COG_IR_TYPE_UNION) {
+                backend_error(backend, source_span_invalid(), "aggregate zero constant reached scalar C lowering");
+                return NULL;
+            }
+            {
+                const char *name = runtime_type_name(backend, constant->type, source_span_invalid());
+                return name ? copy_printf("((%s)0)", name) : NULL;
+            }
         case COG_IR_CONST_BOOL:
             return copy_printf(constant->as.boolean ? "1" : "0");
         case COG_IR_CONST_INTEGER:
@@ -1162,10 +1391,138 @@ static char *constant_expr(CBackend *backend, CogIrConstId constant_id)
             return copy_printf("NULL");
         case COG_IR_CONST_ARRAY:
         case COG_IR_CONST_STRUCT:
-            backend_error(backend, source_span_invalid(), "aggregate constants are not lowered as executable C values yet");
+            backend_error(backend, source_span_invalid(), "aggregate constant reached scalar C lowering");
             return NULL;
     }
     return NULL;
+}
+
+static int append_owned_text(
+    char **buffer,
+    size_t *length,
+    size_t *capacity,
+    char *owned
+) {
+    if (!owned)
+        return 0;
+    int ok = append_text(buffer, length, capacity, owned);
+    free(owned);
+    return ok;
+}
+
+static char *constant_storage_initializer(
+    CBackend *backend,
+    CogIrConstId constant_id,
+    int array_value_wrapper
+) {
+    const CogIrConstant *constant = cog_ir_get_constant(backend->module, constant_id);
+    const CogIrType *type = constant ? cog_ir_get_type(backend->module, constant->type) : NULL;
+    if (!constant || !type)
+        return NULL;
+
+    if (type->kind != COG_IR_TYPE_ARRAY && type->kind != COG_IR_TYPE_STRUCT &&
+        type->kind != COG_IR_TYPE_UNION) {
+        if (array_value_wrapper) {
+            backend_error(backend, source_span_invalid(), "non-array constant requested as array value initializer");
+            return NULL;
+        }
+        return scalar_constant_expr(backend, constant);
+    }
+
+    if (constant->kind == COG_IR_CONST_ZERO) {
+        if (type->kind == COG_IR_TYPE_ARRAY && array_value_wrapper)
+            return copy_printf("{ .cg_e = {0} }");
+        return copy_printf("{0}");
+    }
+
+    char *buffer = NULL;
+    size_t length = 0, capacity = 0;
+    if (type->kind == COG_IR_TYPE_ARRAY) {
+        if (constant->kind != COG_IR_CONST_ARRAY ||
+            constant->as.aggregate.element_count != type->as.array.length) {
+            backend_error(backend, source_span_invalid(), "array constant has invalid C initializer shape");
+            return NULL;
+        }
+        if (array_value_wrapper && !append_text(&buffer, &length, &capacity, "{ .cg_e = "))
+            goto oom;
+        if (!append_text(&buffer, &length, &capacity, "{"))
+            goto oom;
+        for (size_t i = 0; i < constant->as.aggregate.element_count; ++i) {
+            if (i && !append_text(&buffer, &length, &capacity, ", "))
+                goto oom;
+            char *initializer = constant_storage_initializer(
+                backend, constant->as.aggregate.elements[i], 0);
+            if (!initializer)
+                goto fail;
+            if (!append_owned_text(&buffer, &length, &capacity, initializer))
+                goto oom;
+        }
+        if (!append_text(&buffer, &length, &capacity, "}"))
+            goto oom;
+        if (array_value_wrapper && !append_text(&buffer, &length, &capacity, " }"))
+            goto oom;
+        return buffer;
+    }
+
+    if (type->kind == COG_IR_TYPE_UNION) {
+        backend_error(backend, source_span_invalid(), "nonzero union constants are not part of CogIR v1");
+        return NULL;
+    }
+
+    if (constant->kind != COG_IR_CONST_STRUCT ||
+        constant->as.aggregate.element_count != type->as.aggregate.field_count) {
+        backend_error(backend, source_span_invalid(), "struct constant has invalid C initializer shape");
+        return NULL;
+    }
+    if (!append_text(&buffer, &length, &capacity, "{"))
+        goto oom;
+    for (size_t i = 0; i < constant->as.aggregate.element_count; ++i) {
+        if (i && !append_text(&buffer, &length, &capacity, ", "))
+            goto oom;
+        char field[48];
+        int written = snprintf(field, sizeof(field), ".cg_f_%zu = ", i);
+        if (written < 0 || (size_t)written >= sizeof(field) ||
+            !append_text(&buffer, &length, &capacity, field))
+            goto oom;
+        char *initializer = constant_storage_initializer(
+            backend, constant->as.aggregate.elements[i], 0);
+        if (!initializer)
+            goto fail;
+        if (!append_owned_text(&buffer, &length, &capacity, initializer))
+            goto oom;
+    }
+    if (!append_text(&buffer, &length, &capacity, "}"))
+        goto oom;
+    return buffer;
+
+oom:
+    backend_error(backend, source_span_invalid(), "out of memory while generating aggregate constant initializer");
+fail:
+    free(buffer);
+    return NULL;
+}
+
+static char *constant_expr(CBackend *backend, CogIrConstId constant_id)
+{
+    const CogIrConstant *constant = cog_ir_get_constant(backend->module, constant_id);
+    const CogIrType *type = constant ? cog_ir_get_type(backend->module, constant->type) : NULL;
+    if (!constant || !type)
+        return NULL;
+
+    if (type->kind != COG_IR_TYPE_ARRAY && type->kind != COG_IR_TYPE_STRUCT &&
+        type->kind != COG_IR_TYPE_UNION)
+        return scalar_constant_expr(backend, constant);
+
+    const char *name = runtime_type_name(backend, type->id, source_span_invalid());
+    char *initializer = constant_storage_initializer(
+        backend, constant_id, type->kind == COG_IR_TYPE_ARRAY);
+    if (!name || !initializer) {
+        free(initializer);
+        return NULL;
+    }
+    char *result = copy_printf("((%s)%s)", name, initializer);
+    free(initializer);
+    return result;
 }
 
 static uint64_t integer_width_mask(unsigned bits)
@@ -2059,6 +2416,92 @@ static int emit_pointer_reinterpret_instruction(
     return 1;
 }
 
+static void emit_c_indent(FILE *out, unsigned level)
+{
+    while (level--)
+        fputs("    ", out);
+}
+
+static int emit_array_copy_recursive(
+    CBackend *backend,
+    CogIrTypeId array_type_id,
+    const char *destination,
+    const char *source,
+    unsigned indent
+) {
+    const CogIrType *type = cog_ir_get_type(backend->module, array_type_id);
+    if (!type || type->kind != COG_IR_TYPE_ARRAY) {
+        backend_error(backend, source_span_invalid(), "invalid array type during C array copy");
+        return 0;
+    }
+
+    size_t loop_id = backend->temporary_id++;
+    emit_c_indent(backend->out, indent);
+    fprintf(
+        backend->out,
+        "for (size_t cg_ai_%zu = 0; cg_ai_%zu < %zu; ++cg_ai_%zu) {\n",
+        loop_id, loop_id, type->as.array.length, loop_id
+    );
+
+    char *destination_element = copy_printf("(%s)[cg_ai_%zu]", destination, loop_id);
+    char *source_element = copy_printf("(%s)[cg_ai_%zu]", source, loop_id);
+    if (!destination_element || !source_element) {
+        free(destination_element);
+        free(source_element);
+        backend_error(backend, source_span_invalid(), "out of memory while generating C array copy");
+        return 0;
+    }
+
+    const CogIrType *element = cog_ir_get_type(backend->module, type->as.array.element_type);
+    int ok = 1;
+    if (element && element->kind == COG_IR_TYPE_ARRAY) {
+        ok = emit_array_copy_recursive(
+            backend,
+            element->id,
+            destination_element,
+            source_element,
+            indent + 1
+        );
+    } else if (element) {
+        emit_c_indent(backend->out, indent + 1);
+        fprintf(backend->out, "%s = %s;\n", destination_element, source_element);
+    } else {
+        backend_error(backend, source_span_invalid(), "array copy has invalid element type");
+        ok = 0;
+    }
+
+    free(destination_element);
+    free(source_element);
+    emit_c_indent(backend->out, indent);
+    fputs("}\n", backend->out);
+    return ok;
+}
+
+static int emit_array_storage_copy(
+    CBackend *backend,
+    CogIrTypeId array_type_id,
+    const char *destination,
+    const char *source,
+    int is_volatile
+) {
+    const CogIrType *type = cog_ir_get_type(backend->module, array_type_id);
+    if (!type || type->kind != COG_IR_TYPE_ARRAY) {
+        backend_error(backend, source_span_invalid(), "invalid array storage copy type");
+        return 0;
+    }
+    if (is_volatile)
+        return emit_array_copy_recursive(backend, array_type_id, destination, source, 1);
+
+    fprintf(
+        backend->out,
+        "    memcpy((void *)(%s), (const void *)(%s), sizeof(%s));\n",
+        destination,
+        source,
+        destination
+    );
+    return 1;
+}
+
 static int emit_instruction(
     CBackend *backend,
     const CogIrFunction *function,
@@ -2088,7 +2531,11 @@ static int emit_instruction(
             CogIrSlotId slot = instruction->as.local_addr.slot;
             if ((size_t)slot >= function->slot_count)
                 goto invalid_result;
-            if (!set_value_expr(exprs, value_count, result, copy_printf("&cg_s_%u", slot)))
+            const CogIrType *slot_type = cog_ir_get_type(backend->module, function->slots[slot].type);
+            char *address = slot_type && slot_type->kind == COG_IR_TYPE_ARRAY
+                ? copy_printf("&cg_s_%u.cg_e", slot)
+                : copy_printf("&cg_s_%u", slot);
+            if (!set_value_expr(exprs, value_count, result, address))
                 goto invalid_result;
             return 1;
         }
@@ -2096,8 +2543,11 @@ static int emit_instruction(
             CogIrGlobalId global = instruction->as.global_addr.global;
             if ((size_t)global >= backend->module->global_count)
                 goto invalid_result;
-            if (!set_value_expr(exprs, value_count, result,
-                                copy_printf("&%s", backend->global_names[global])))
+            const CogIrType *global_type = cog_ir_get_type(backend->module, backend->module->globals[global].type);
+            char *address = global_type && global_type->kind == COG_IR_TYPE_ARRAY
+                ? copy_printf("&%s.cg_e", backend->global_names[global])
+                : copy_printf("&%s", backend->global_names[global]);
+            if (!set_value_expr(exprs, value_count, result, address))
                 goto invalid_result;
             return 1;
         }
@@ -2148,12 +2598,31 @@ static int emit_instruction(
         case COG_IR_OP_LOAD: {
             const char *address = value_expr(exprs, value_count, instruction->as.load.address);
             const char *type = value_type_name(backend, function, result, instruction->span);
-            if (!address || !type)
+            const CogIrType *result_ir_type = cog_ir_get_type(backend->module, instruction->result_type);
+            if (!address || !type || !result_ir_type)
                 goto missing_operand;
-            if (instruction->as.load.is_volatile) {
+
+            if (result_ir_type->kind == COG_IR_TYPE_ARRAY) {
+                fprintf(backend->out, "    %s cg_v_%u = {0};\n", type, result);
+                char *destination = copy_printf("cg_v_%u.cg_e", result);
+                char *source = copy_printf("*(%s)", address);
+                if (!destination || !source ||
+                    !emit_array_storage_copy(
+                        backend,
+                        result_ir_type->id,
+                        destination,
+                        source,
+                        instruction->as.load.is_volatile)) {
+                    free(destination);
+                    free(source);
+                    goto missing_operand;
+                }
+                free(destination);
+                free(source);
+            } else if (instruction->as.load.is_volatile) {
                 const CogIrValue *address_value = cog_ir_get_value(function, instruction->as.load.address);
                 const char *address_type = address_value
-                    ? runtime_type_name(backend, address_value->type, instruction->span)
+                    ? value_type_name(backend, function, address_value->id, instruction->span)
                     : NULL;
                 if (!address_type)
                     goto missing_operand;
@@ -2175,12 +2644,33 @@ static int emit_instruction(
         case COG_IR_OP_STORE: {
             const char *address = value_expr(exprs, value_count, instruction->as.store.address);
             const char *value = value_expr(exprs, value_count, instruction->as.store.value);
-            if (!address || !value)
+            const CogIrValue *stored_value = cog_ir_get_value(function, instruction->as.store.value);
+            const CogIrType *stored_type = stored_value
+                ? cog_ir_get_type(backend->module, stored_value->type)
+                : NULL;
+            if (!address || !value || !stored_type)
                 goto missing_operand;
-            if (instruction->as.store.is_volatile) {
+
+            if (stored_type->kind == COG_IR_TYPE_ARRAY) {
+                char *destination = copy_printf("*(%s)", address);
+                char *source = copy_printf("(%s).cg_e", value);
+                if (!destination || !source ||
+                    !emit_array_storage_copy(
+                        backend,
+                        stored_type->id,
+                        destination,
+                        source,
+                        instruction->as.store.is_volatile)) {
+                    free(destination);
+                    free(source);
+                    goto missing_operand;
+                }
+                free(destination);
+                free(source);
+            } else if (instruction->as.store.is_volatile) {
                 const CogIrValue *address_value = cog_ir_get_value(function, instruction->as.store.address);
                 const char *address_type = address_value
-                    ? runtime_type_name(backend, address_value->type, instruction->span)
+                    ? value_type_name(backend, function, address_value->id, instruction->span)
                     : NULL;
                 if (!address_type)
                     goto missing_operand;
@@ -2194,6 +2684,140 @@ static int emit_instruction(
             } else {
                 fprintf(backend->out, "    *%s = %s;\n", address, value);
             }
+            return 1;
+        }
+        case COG_IR_OP_MAKE_STRUCT: {
+            const CogIrType *aggregate = cog_ir_get_type(backend->module, instruction->result_type);
+            const char *type = value_type_name(backend, function, result, instruction->span);
+            if (!aggregate || aggregate->kind != COG_IR_TYPE_STRUCT || !type)
+                goto missing_operand;
+            fprintf(backend->out, "    %s cg_v_%u = {0};\n", type, result);
+            for (size_t i = 0; i < instruction->as.aggregate.value_count; ++i) {
+                const char *value = value_expr(exprs, value_count, instruction->as.aggregate.values[i]);
+                const CogIrType *field_type = i < aggregate->as.aggregate.field_count
+                    ? cog_ir_get_type(backend->module, aggregate->as.aggregate.fields[i].type)
+                    : NULL;
+                if (!value || !field_type)
+                    goto missing_operand;
+                if (field_type->kind == COG_IR_TYPE_ARRAY) {
+                    char *destination = copy_printf("cg_v_%u.cg_f_%zu", result, i);
+                    char *source = copy_printf("(%s).cg_e", value);
+                    if (!destination || !source ||
+                        !emit_array_storage_copy(
+                            backend, field_type->id, destination, source, 0)) {
+                        free(destination);
+                        free(source);
+                        goto missing_operand;
+                    }
+                    free(destination);
+                    free(source);
+                } else {
+                    fprintf(backend->out, "    cg_v_%u.cg_f_%zu = %s;\n", result, i, value);
+                }
+            }
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_MAKE_ARRAY: {
+            const CogIrType *array = cog_ir_get_type(backend->module, instruction->result_type);
+            const char *type = value_type_name(backend, function, result, instruction->span);
+            const CogIrType *element = array && array->kind == COG_IR_TYPE_ARRAY
+                ? cog_ir_get_type(backend->module, array->as.array.element_type)
+                : NULL;
+            if (!array || array->kind != COG_IR_TYPE_ARRAY || !element || !type)
+                goto missing_operand;
+            fprintf(backend->out, "    %s cg_v_%u = {0};\n", type, result);
+            for (size_t i = 0; i < instruction->as.aggregate.value_count; ++i) {
+                const char *value = value_expr(exprs, value_count, instruction->as.aggregate.values[i]);
+                if (!value)
+                    goto missing_operand;
+                if (element->kind == COG_IR_TYPE_ARRAY) {
+                    char *destination = copy_printf("cg_v_%u.cg_e[%zu]", result, i);
+                    char *source = copy_printf("(%s).cg_e", value);
+                    if (!destination || !source ||
+                        !emit_array_storage_copy(backend, element->id, destination, source, 0)) {
+                        free(destination);
+                        free(source);
+                        goto missing_operand;
+                    }
+                    free(destination);
+                    free(source);
+                } else {
+                    fprintf(backend->out, "    cg_v_%u.cg_e[%zu] = %s;\n", result, i, value);
+                }
+            }
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_EXTRACT_FIELD: {
+            const char *aggregate_expr = value_expr(exprs, value_count, instruction->as.extract.aggregate);
+            const CogIrValue *aggregate_value = cog_ir_get_value(function, instruction->as.extract.aggregate);
+            const CogIrType *aggregate = aggregate_value
+                ? cog_ir_get_type(backend->module, aggregate_value->type)
+                : NULL;
+            const CogIrType *result_ir_type = cog_ir_get_type(backend->module, instruction->result_type);
+            const char *type = value_type_name(backend, function, result, instruction->span);
+            uint32_t index = instruction->as.extract.index;
+            if (!aggregate_expr || !aggregate || !result_ir_type || !type ||
+                (aggregate->kind != COG_IR_TYPE_STRUCT && aggregate->kind != COG_IR_TYPE_UNION) ||
+                index >= aggregate->as.aggregate.field_count)
+                goto missing_operand;
+            if (result_ir_type->kind == COG_IR_TYPE_ARRAY) {
+                fprintf(backend->out, "    %s cg_v_%u = {0};\n", type, result);
+                char *destination = copy_printf("cg_v_%u.cg_e", result);
+                char *source = copy_printf("(%s).cg_f_%u", aggregate_expr, index);
+                if (!destination || !source ||
+                    !emit_array_storage_copy(backend, result_ir_type->id, destination, source, 0)) {
+                    free(destination);
+                    free(source);
+                    goto missing_operand;
+                }
+                free(destination);
+                free(source);
+            } else {
+                fprintf(
+                    backend->out,
+                    "    %s cg_v_%u = (%s).cg_f_%u;\n",
+                    type, result, aggregate_expr, index);
+            }
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
+        case COG_IR_OP_EXTRACT_ELEMENT: {
+            const char *aggregate_expr = value_expr(exprs, value_count, instruction->as.extract.aggregate);
+            const CogIrValue *aggregate_value = cog_ir_get_value(function, instruction->as.extract.aggregate);
+            const CogIrType *array = aggregate_value
+                ? cog_ir_get_type(backend->module, aggregate_value->type)
+                : NULL;
+            const CogIrType *result_ir_type = cog_ir_get_type(backend->module, instruction->result_type);
+            const char *type = value_type_name(backend, function, result, instruction->span);
+            uint32_t index = instruction->as.extract.index;
+            if (!aggregate_expr || !array || array->kind != COG_IR_TYPE_ARRAY ||
+                !result_ir_type || !type || index >= array->as.array.length)
+                goto missing_operand;
+            if (result_ir_type->kind == COG_IR_TYPE_ARRAY) {
+                fprintf(backend->out, "    %s cg_v_%u = {0};\n", type, result);
+                char *destination = copy_printf("cg_v_%u.cg_e", result);
+                char *source = copy_printf("(%s).cg_e[%u]", aggregate_expr, index);
+                if (!destination || !source ||
+                    !emit_array_storage_copy(backend, result_ir_type->id, destination, source, 0)) {
+                    free(destination);
+                    free(source);
+                    goto missing_operand;
+                }
+                free(destination);
+                free(source);
+            } else {
+                fprintf(
+                    backend->out,
+                    "    %s cg_v_%u = (%s).cg_e[%u];\n",
+                    type, result, aggregate_expr, index);
+            }
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
             return 1;
         }
         case COG_IR_OP_PTR_QUALIFY: {
@@ -2953,13 +3577,14 @@ static CBackendStatus c_backend_emit_stream(FILE *out, const CogIrModule *module
         "#include <float.h>\n"
         "#include <math.h>\n"
         "#include <stddef.h>\n"
+        "#include <string.h>\n"
         "#include <stdint.h>\n"
         "#include <stdlib.h>\n\n",
         out
     );
     emit_repr_c_layout_support(&backend);
     emit_c_calling_convention_support(&backend);
-    emit_aggregate_forward_declarations(&backend);
+    emit_runtime_forward_declarations(&backend);
 
     if (!emit_enum_definitions(&backend) || !prepare_type_aliases(&backend))
         goto unsupported;
@@ -2969,7 +3594,7 @@ static CBackendStatus c_backend_emit_stream(FILE *out, const CogIrModule *module
     if (backend.type_definition_count)
         fputc('\n', out);
 
-    if (!emit_aggregate_definitions(&backend) ||
+    if (!emit_runtime_definitions(&backend) ||
         !emit_globals(&backend) ||
         !emit_function_declarations(&backend) ||
         !emit_function_bodies(&backend) ||

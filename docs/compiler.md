@@ -242,10 +242,15 @@ calls use the same verifier-owned ABI contract as direct extern calls, including
 variadic callbacks. String escapes are decoded using Coglet's literal rules and
 lowered through IR-owned backing data at supported C ABI boundaries. Host
 executables continue to require `main::() -> c_int` using the source-return
-spelling retained in CogIR. General aggregate value construction/extraction and
-aggregate globals remain separate compatibility work; checked operations are not
-lowered through C behavior that would introduce undefined or implementation-defined
-semantics where Coglet requires a trap or fixed-width result.
+spelling retained in CogIR. Aggregate values now execute through assignable C
+wrapper structs for Coglet arrays while addressable array storage remains native C
+arrays, preserving represented aggregate layout and by-value Coglet semantics.
+Struct/array construction and extraction, aggregate globals, aggregate arguments
+and returns, and represented aggregate C interop all use that same IR-owned
+representation boundary. Compiler-generated strings now share the general array
+storage path rather than requiring a backend-only string special case. Checked
+operations are not lowered through C behavior that would introduce undefined or
+implementation-defined semantics where Coglet requires a trap or fixed-width result.
 
 `coglet input.cog --emit-c generated.c` exposes the generated translation unit
 for inspection. Running `coglet input.cog` without `-o` or `--emit-c` preserves

@@ -509,10 +509,14 @@ range/non-finite failures before host conversions, and truncation reconstructs
 signed destination values from explicit low-bit patterns. First-class native-C
 function values now retain exact C ABI spelling across parameters, locals, CFG
 spills, and callback-valued C calls; the host-C emitter executes fixed and
-variadic indirect `cfn` calls from that metadata. Begin LLVM lowering on the same
-verified module contract while filling the remaining aggregate value/global
-coverage as isolated compatibility milestones rather than creating a second
-frontend path.
+variadic indirect `cfn` calls from that metadata. Aggregate values and globals now
+execute from CogIR too: assignable wrapper structs represent first-class Coglet
+array values, native C arrays remain the storage/layout representation, aggregate
+construction/extraction and by-value calls use the same boundary, represented
+aggregate interop preserves exact C field layout, and strings share the general
+array-storage path. The next milestone is a final host-C parity/cleanup audit,
+followed by declaring the CogIR-only host-C path complete and beginning LLVM
+lowering on the same verified module contract.
 
 Longer-term alternatives remain possible, including LLVM, a custom native backend,
 or an interpreter for tooling and compile-time execution. The host-C path continues

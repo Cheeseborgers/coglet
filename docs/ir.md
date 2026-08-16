@@ -1062,8 +1062,14 @@ conversion, truncating integer casts use explicit low-bit semantics, and
 typed/opaque pointer reinterpretation is emitted as the corresponding object-
 pointer conversion. Native-C indirect calls now execute through exact callback
 ABI aliases, including variadic callbacks and callback values returned from C.
-Aggregate construction/extraction, standalone array values, and aggregate globals
-remain separate backend coverage work.
+Aggregate values now execute through the host-C path as well. Coglet array rvalues
+use assignable generated wrapper structs, while array places and aggregate fields
+retain native C array storage so pointer/index semantics and `#repr(c)` layout are
+unchanged. Construction/extraction, aggregate copies, array arguments/returns,
+aggregate globals initialized through ordered module init, represented aggregate
+interop, and string backing data all use this common representation. Volatile array
+copies are emitted element-by-element instead of using `memcpy`, preserving the
+volatile access contract.
 
 ## Implementation sequence
 
@@ -1115,4 +1121,10 @@ remain separate backend coverage work.
     host-C backend.~~ Exact callback ABI metadata now survives parameters, locals,
     CFG spills/reloads, and callback-valued C call results; fixed and variadic
     `cfn` calls execute from CogIR without recovering frontend type spelling.
-    Aggregate value/global families remain the principal host-C parity work.
+17. ~~Lower aggregate values and globals through the host-C backend.~~ Array values
+    use assignable wrapper structs while array storage remains native C arrays;
+    construction/extraction, copies, aggregate arguments/returns, ordered aggregate
+    global initialization, represented aggregate interop, and string backing data
+    now execute from CogIR. The next step is a final backend-parity audit and
+    removal of any remaining legacy/frontend assumptions before declaring the
+    CogIR-only host-C path complete.

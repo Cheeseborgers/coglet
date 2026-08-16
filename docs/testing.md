@@ -129,6 +129,15 @@ spilling, indirect C variadic calls after CogIR default promotions, and a callba
 value returned by an external C function. This keeps exact callback ABI spelling
 in the tested IR/backend contract rather than relying on representation-compatible
 host-C function pointer types.
+The aggregate-values backend regression covers array arguments/returns and value
+copies, ordinary structs containing arrays, ordered array/struct global
+initialization, represented C structs with nested array fields, whole-array
+extraction/reconstruction, and by-value represented aggregate interop. It also
+keeps array value-vs-storage representation observable: Coglet array rvalues are
+assignable wrapper values while addressable and represented fields remain native C
+array storage. Existing string regressions exercise the same generalized array
+storage path, and volatile array copies use element-wise accesses rather than
+`memcpy`.
 
 Run the backend suite with:
 

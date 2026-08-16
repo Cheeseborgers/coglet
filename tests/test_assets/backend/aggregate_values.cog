@@ -1,0 +1,101 @@
+Box::struct {
+    tag: i32;
+    values: i32[3];
+}
+
+global_values: i32[3] = [4, 5, 6];
+global_box: Box = Box {
+    tag = 7,
+    values = [8, 9, 10],
+};
+
+make_values::(base: i32) -> i32[3] {
+    return [base, base + 1, base + 2];
+}
+
+sum_values::(values: i32[3]) -> i32 {
+    return values[0] + values[1] + values[2];
+}
+
+make_box::(base: i32) -> Box {
+    return Box {
+        tag = base,
+        values = [base + 1, base + 2, base + 3],
+    };
+}
+
+ordinary_aggregates::() -> bool {
+    values := make_values(11);
+    copy := values;
+    copy[1] = 20;
+    if values[1] != 12 || copy[1] != 20 {
+        return false;
+    }
+    if sum_values(make_values(3)) != 12 {
+        return false;
+    }
+
+    box := make_box(30);
+    extracted := box.values;
+    if box.tag != 30 || extracted[0] != 31 || extracted[2] != 33 {
+        return false;
+    }
+
+    copied_box := box;
+    copied_box.values[0] = 99;
+    if box.values[0] != 31 || copied_box.values[0] != 99 {
+        return false;
+    }
+
+    if global_values[0] != 4 || global_values[2] != 6 {
+        return false;
+    }
+    if global_box.tag != 7 || global_box.values[1] != 9 {
+        return false;
+    }
+    return true;
+}
+
+#repr(c)
+ArrayPoint::struct {
+    x: c_int;
+    y: c_double;
+}
+
+#repr(c)
+ArrayPacket::struct {
+    name: c_char[4];
+    points: ArrayPoint[2];
+    values: c_int[3];
+}
+
+#extern(c, name="coglet_backend_make_array_packet")
+make_array_packet::() -> ArrayPacket;
+
+#extern(c, name="coglet_backend_array_struct_probe")
+array_struct_probe::(packet: ArrayPacket) -> c_int;
+
+represented_aggregate_roundtrip::() -> bool {
+    seed := make_array_packet();
+    packet := ArrayPacket {
+        name = seed.name,
+        points = seed.points,
+        values = [17, 19, 23],
+    };
+
+    values := packet.values;
+    if values[0] != 17 || values[1] != 19 || values[2] != 23 {
+        return false;
+    }
+    return array_struct_probe(packet) == 45;
+}
+
+main::() -> c_int {
+    if !ordinary_aggregates() {
+        return 1;
+    }
+    if !represented_aggregate_roundtrip() {
+        return 2;
+    }
+    return 0;
+}

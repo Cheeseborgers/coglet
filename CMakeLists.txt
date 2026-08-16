@@ -52,10 +52,47 @@ endif()
 
 set(COGLET_HAS_LLVM_BACKEND OFF)
 if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
-    find_package(LLVM 17 CONFIG QUIET)
-    if(LLVM_FOUND)
+    # Find the installed LLVM package without a requested package version.
+    # LLVM's ConfigVersion file may intentionally reject cross-major requests,
+    # so `find_package(LLVM 17 ...)` can reject LLVM 18+ even though Coglet's
+    # backend supports LLVM 17 and newer. Enforce our minimum explicitly after
+    # loading LLVMConfig.cmake instead.
+    find_package(LLVM CONFIG QUIET)
+    if(LLVM_FOUND AND LLVM_PACKAGE_VERSION VERSION_LESS 17)
+        if(COGLET_LLVM_MODE STREQUAL "ON")
+            message(FATAL_ERROR
+                "COGLET_LLVM=ON requires LLVM 17 or newer, but LLVM "
+                "${LLVM_PACKAGE_VERSION} was found at ${LLVM_DIR}."
+            )
+        else()
+            message(STATUS
+                "Coglet LLVM backend: disabled (LLVM ${LLVM_PACKAGE_VERSION} is older than 17)"
+            )
+        endif()
+    elseif(LLVM_FOUND)
         message(STATUS "Coglet LLVM backend: LLVM ${LLVM_PACKAGE_VERSION}")
-        llvm_map_components_to_libnames(COGLET_LLVM_LIBS core analysis support)
+        # Prefer LLVM's monolithic shared-library target when the installed
+        # package provides it. Distribution builds commonly enable
+        # LLVM_LINK_LLVM_DYLIB and do not install per-component libraries such
+        # as LLVMCore/LLVMAnalysis. LLVM's own CMake helpers make the same
+        # distinction instead of unconditionally mapping component names.
+        if(TARGET LLVM)
+            set(COGLET_LLVM_LIBS LLVM)
+        elseif(LLVM_LINK_LLVM_DYLIB)
+            find_library(COGLET_LLVM_DYLIB_LIBRARY
+                NAMES LLVM LLVM-${LLVM_VERSION_MAJOR}
+                HINTS ${LLVM_LIBRARY_DIRS}
+            )
+            if(NOT COGLET_LLVM_DYLIB_LIBRARY)
+                message(FATAL_ERROR
+                    "LLVM ${LLVM_PACKAGE_VERSION} requests monolithic linking, "
+                    "but libLLVM could not be found in LLVM_LIBRARY_DIRS."
+                )
+            endif()
+            set(COGLET_LLVM_LIBS "${COGLET_LLVM_DYLIB_LIBRARY}")
+        else()
+            llvm_map_components_to_libnames(COGLET_LLVM_LIBS core analysis support)
+        endif()
         separate_arguments(COGLET_LLVM_DEFINITIONS NATIVE_COMMAND "${LLVM_DEFINITIONS}")
 
         add_library(coglet_backend_llvm STATIC

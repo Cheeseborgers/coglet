@@ -228,10 +228,10 @@ static const Keyword keywords[] = {
     {"cfn", TOK_CFN},
     {"null", TOK_NULL},
 
-    {"i8", TOK_I8},
-    {"i16", TOK_I16},
-    {"i32", TOK_I32},
-    {"i64", TOK_I64},
+    {"s8", TOK_S8},
+    {"s16", TOK_S16},
+    {"s32", TOK_S32},
+    {"s64", TOK_S64},
     {"u8", TOK_U8},
     {"u16", TOK_U16},
     {"u32", TOK_U32},
@@ -1345,16 +1345,16 @@ const char *token_type_name(TokenType type) {
         case TOK_VOLATILE: return "VOLATILE";
         case TOK_OPAQUE: return "OPAQUE";
         case TOK_CFN: return "CFN";
-        case TOK_I8: return "I8";
+        case TOK_S8: return "S8";
 
-        case TOK_I16:
-            return "I16";
+        case TOK_S16:
+            return "S16";
 
-        case TOK_I32:
-            return "I32";
+        case TOK_S32:
+            return "S32";
 
-        case TOK_I64:
-            return "I64";
+        case TOK_S64:
+            return "S64";
 
         case TOK_U8:
             return "U8";

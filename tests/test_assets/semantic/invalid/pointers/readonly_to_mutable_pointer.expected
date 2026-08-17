@@ -2,12 +2,12 @@ tests/test_assets/semantic/invalid/pointers/readonly_to_mutable_pointer.cog:9:12
     return pointer;
            ^~~~~~~
 tests/test_assets/semantic/invalid/pointers/readonly_to_mutable_pointer.cog:15:21: error: initializer type does not match declared type
-    mutable: i32* = view;
+    mutable: s32* = view;
                     ^~~~
 tests/test_assets/semantic/invalid/pointers/readonly_to_mutable_pointer.cog:18:13: error: initializer type does not match declared type
     other = view;
             ^~~~
-tests/test_assets/semantic/invalid/pointers/readonly_to_mutable_pointer.cog:20:22: error: argument type does not match parameter type: expected i32*, got readonly i32*
+tests/test_assets/semantic/invalid/pointers/readonly_to_mutable_pointer.cog:20:22: error: argument type does not match parameter type: expected s32*, got readonly s32*
     requires_mutable(view);
                      ^~~~
 4 semantic errors generated.

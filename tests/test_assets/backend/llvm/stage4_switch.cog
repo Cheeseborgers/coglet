@@ -4,7 +4,7 @@ Mode::enum(u8) {
     Two,
 }
 
-integer_switch::(value: i32) -> i32 {
+integer_switch::(value: s32) -> s32 {
     switch value {
         case 1:
             return 11;
@@ -15,7 +15,7 @@ integer_switch::(value: i32) -> i32 {
     }
 }
 
-boolean_switch::(value: bool) -> i32 {
+boolean_switch::(value: bool) -> s32 {
     switch value {
         case false:
             return 4;
@@ -24,7 +24,7 @@ boolean_switch::(value: bool) -> i32 {
     }
 }
 
-enum_switch::(value: Mode) -> i32 {
+enum_switch::(value: Mode) -> s32 {
     switch value {
         case Mode.Zero:
             return 1;
@@ -35,6 +35,6 @@ enum_switch::(value: Mode) -> i32 {
     }
 }
 
-main::() -> i32 {
+main::() -> s32 {
     return integer_switch(2) + boolean_switch(true) + enum_switch(Mode.One);
 }

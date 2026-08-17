@@ -1,5 +1,5 @@
 import generic_visibility;
 
-main::() -> i32 {
+main::() -> s32 {
     return generic_visibility.identity(42);
 }

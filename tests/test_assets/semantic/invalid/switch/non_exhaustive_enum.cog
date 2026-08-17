@@ -7,7 +7,7 @@ Color :: enum(u16) {
     Blue,
 }
 
-test::(color: Color) -> i32 {
+test::(color: Color) -> s32 {
     switch color {
         case Color.Red:
             return 1;

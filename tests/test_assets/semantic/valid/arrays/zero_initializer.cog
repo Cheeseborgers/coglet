@@ -1,17 +1,17 @@
 Holder::struct {
-    values: i32[3];
+    values: s32[3];
 }
 
-takes_values::(values: i32[3]) -> i32 {
+takes_values::(values: s32[3]) -> s32 {
     return values[0] + values[1] + values[2];
 }
 
-make_values::() -> i32[3] {
+make_values::() -> s32[3] {
     return {0};
 }
 
-exercise::() -> i32 {
-    values: i32[3] = {0};
+exercise::() -> s32 {
+    values: s32[3] = {0};
     values[1] = 7;
     values = {0};
 

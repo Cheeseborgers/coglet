@@ -1,9 +1,9 @@
 // semantic_valid.cog
 
-x: i32 = 1;
+x: s32 = 1;
 
 {
-    x: i32 = 2;
+    x: s32 = 2;
     x = 3;
 }
 
@@ -21,8 +21,8 @@ scope_test::() {
 }
 
 Point::struct {
-    x: i32;
-    y: i32;
+    x: s32;
+    y: s32;
 }
 
 p := Point {
@@ -31,7 +31,7 @@ p := Point {
 };
 
 {
-    lhs: i64 = 10;
+    lhs: s64 = 10;
 
     lhs == 10;
     lhs != 20;
@@ -40,7 +40,7 @@ p := Point {
 }
 
 {
-    lhs: i64 = 10;
+    lhs: s64 = 10;
     lhs % 3;
 }
 
@@ -54,7 +54,7 @@ Color :: enum(u16) {
     Blue,
 }
 
-ErrorCode :: enum(i32) {
+ErrorCode :: enum(s32) {
     None = 0,
     File = 10,
     Parse,
@@ -87,7 +87,7 @@ EXPLICIT_COLOR: Color : Color.Blue;
 
 other: Color = EXPLICIT_COLOR;
 
-classify_color::(c: Color) -> i32 {
+classify_color::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;
@@ -103,7 +103,7 @@ classify_color::(c: Color) -> i32 {
     }
 }
 
-classify_int::(x: i32) -> i32 {
+classify_int::(x: s32) -> s32 {
     switch x {
         case 0:
             return 10;
@@ -116,7 +116,7 @@ classify_int::(x: i32) -> i32 {
     }
 }
 
-classify_bool::(b: bool) -> i32 {
+classify_bool::(b: bool) -> s32 {
     switch b {
         case true:
             return 1;
@@ -126,11 +126,11 @@ classify_bool::(b: bool) -> i32 {
     }
 }
 
-return_good_direct::() -> i32 {
+return_good_direct::() -> s32 {
     return 1;
 }
 
-return_good_if::(b: bool) -> i32 {
+return_good_if::(b: bool) -> s32 {
     if b {
         return 1;
     } else {
@@ -138,7 +138,7 @@ return_good_if::(b: bool) -> i32 {
     }
 }
 
-return_good_switch::(c: Color) -> i32 {
+return_good_switch::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;
@@ -148,21 +148,21 @@ return_good_switch::(c: Color) -> i32 {
     }
 }
 
-cast_source: i32 = 10;
+cast_source: s32 = 10;
 
-cast_i64_test: i64 = cast(i64, cast_source);
+cast_s64_test: s64 = cast(s64, cast_source);
 
 cast_color_test: Color = cast(Color, 0);
 
 cast_enum_raw_test: u16 = cast(u16, Color.Green);
 
-cast_i32_to_i64::() -> i64 {
-    small: i32 = 10;
-    return cast(i64, small);
+cast_s32_to_s64::() -> s64 {
+    small: s32 = 10;
+    return cast(s64, small);
 }
 
-cast_float_to_int::() -> i32 {
-    return cast(i32, 3.14);
+cast_float_to_int::() -> s32 {
+    return cast(s32, 3.14);
 }
 
 cast_enum_to_int::() -> u16 {
@@ -173,12 +173,12 @@ cast_int_to_enum::() -> Color {
     return cast(Color, 0);
 }
 
-CAST_CONST_INT :: cast(i32, 10);
+CAST_CONST_INT :: cast(s32, 10);
 CAST_CONST_COLOR :: cast(Color, 1);
 
 cast_const_use: Color = CAST_CONST_COLOR;
 
-classify_color_exhaustive::(c: Color) -> i32 {
+classify_color_exhaustive::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;
@@ -199,7 +199,7 @@ DefaultColor :: enum {
 
 default_color_value: DefaultColor = DefaultColor.Red;
 
-classify_default_color::(c: DefaultColor) -> i32 {
+classify_default_color::(c: DefaultColor) -> s32 {
     switch c {
         case DefaultColor.Red:
             return 1;
@@ -217,7 +217,7 @@ EnumU8Max :: enum(u8) {
     B,
 }
 
-EnumI8Range :: enum(i8) {
+EnumS8Range :: enum(s8) {
     A = -128,
     B,
     C = 127,
@@ -229,8 +229,8 @@ EnumDefaultLargeEnough :: enum {
 }
 
 GOOD_CAST_U8_MAX :: cast(u8, 255);
-GOOD_CAST_I8_MIN :: cast(i8, -128);
-GOOD_CAST_I8_MAX :: cast(i8, 127);
+GOOD_CAST_S8_MIN :: cast(s8, -128);
+GOOD_CAST_S8_MAX :: cast(s8, 127);
 
 SmallEnum :: enum(u8) {
     A,
@@ -247,13 +247,13 @@ break_continue_valid::(keep_going, done: bool) -> void {
     }
 }
 
-return_good_while_true::() -> i32 {
+return_good_while_true::() -> s32 {
     while true {
         return 1;
     }
 }
 
-return_good_while_true_nested::(b: bool) -> i32 {
+return_good_while_true_nested::(b: bool) -> s32 {
     while true {
         if b {
             return 1;
@@ -263,34 +263,34 @@ return_good_while_true_nested::(b: bool) -> i32 {
     }
 }
 
-array_index_valid::() -> i32 {
-    values: i32[3] = [0, 0, 0];
+array_index_valid::() -> s32 {
+    values: s32[3] = [0, 0, 0];
 
     return values[0];
 }
 
-array_index_valid_last::() -> i32 {
-    values: i32[5] = [0, 0, 0, 0, 0];
+array_index_valid_last::() -> s32 {
+    values: s32[5] = [0, 0, 0, 0, 0];
 
     return values[2];
 }
 
 ARRAY_INDEX_CONST :: 1;
 
-array_index_valid_const::() -> i32 {
-    values: i32[3] = [0, 0, 0];
+array_index_valid_const::() -> s32 {
+    values: s32[3] = [0, 0, 0];
 
     return values[ARRAY_INDEX_CONST];
 }
 
-array_index_runtime_allowed::(i: i32) -> i32 {
-    values: i32[3] = [0, 0, 0];
+array_index_runtime_allowed::(i: s32) -> s32 {
+    values: s32[3] = [0, 0, 0];
 
     return values[i];
 }
 
 compound_assignment_valid::() -> void {
-    x: i32 = 1;
+    x: s32 = 1;
 
     x += 2;
     x -= 1;
@@ -299,21 +299,21 @@ compound_assignment_valid::() -> void {
 }
 
 compound_assignment_untyped_literal::() -> void {
-    x: i64 = 10;
+    x: s64 = 10;
 
     x += 1;
     x -= 2;
 }
 
 compound_assignment_array_index::() -> void {
-    values: i32[3] = [0, 0, 0];
+    values: s32[3] = [0, 0, 0];
 
     values[0] += 1;
 }
 
 // new
 compound_assignment_valid1::() -> void {
-    x: i32 = 1;
+    x: s32 = 1;
 
     x += 2;
     x -= 1;
@@ -322,7 +322,7 @@ compound_assignment_valid1::() -> void {
 }
 
 compound_assignment_untyped_literal1::() -> void {
-    x: i64 = 10;
+    x: s64 = 10;
 
     x += 1;
     x -= 2;
@@ -340,7 +340,7 @@ compound_assignment_float1::() -> void {
 }
 
 compound_assignment_array_index1::() -> void {
-    values: i32[3] = [0, 0, 0];
+    values: s32[3] = [0, 0, 0];
 
     values[0] += 1;
     values[1] -= 1;
@@ -351,10 +351,10 @@ t: u32 = 10;
 t %= 2;
 
 array_initializer_ok::() -> void {
-    values: i32[3] = [1, 2, 3];
+    values: s32[3] = [1, 2, 3];
 }
 
-values_p: i32[3] = [1, 2, 3];
+values_p: s32[3] = [1, 2, 3];
 
 string_initializer_ok::() -> void {
     s: u8[6] = "hello";
@@ -375,15 +375,15 @@ string_argument_ok::() -> void {
     takes_name("hello");
 }
 
-takes_i32_array::(values: i32[3]) -> void {
+takes_s32_array::(values: s32[3]) -> void {
 }
 
 array_argument_ok::() -> void {
-    takes_i32_array([1, 2, 3]);
+    takes_s32_array([1, 2, 3]);
 }
 
 main_3::() -> void {
-    x: i32 = 1;
+    x: s32 = 1;
     x = 2;
 }
 
@@ -393,7 +393,7 @@ string_assignment_ok::() -> void {
 }
 
 array_assignment_ok::() -> void {
-    values: i32[3] = [0, 0, 0];
+    values: s32[3] = [0, 0, 0];
     values = [1, 2, 3];
 }
 
@@ -401,12 +401,12 @@ return_string_ok::() -> u8[6] {
     return "hello";
 }
 
-return_array_ok::() -> i32[3] {
+return_array_ok::() -> s32[3] {
     return [1, 2, 3];
 }
 
 mutation_statements_are_valid :: () {
-    x: i32 = 0;
+    x: s32 = 0;
 
     x = 1;
     x += 1;
@@ -422,7 +422,7 @@ mutation_statements_are_valid :: () {
 }
 
 Point2 :: struct {
-    x: i32;
+    x: s32;
 }
 
 mutation_targets_are_valid :: () {
@@ -430,7 +430,7 @@ mutation_targets_are_valid :: () {
         x = 0,
     };
 
-    values: i32[3] = [0, 0, 0];
+    values: s32[3] = [0, 0, 0];
 
     point.x = 1;
     point.x += 1;
@@ -442,7 +442,7 @@ mutation_targets_are_valid :: () {
 }
 
 mutation_for_post_is_valid :: () {
-    i: i32 = 0;
+    i: s32 = 0;
 
     for i < 10 : i++ {
     }
@@ -454,12 +454,12 @@ mutation_for_post_is_valid :: () {
     }
 }
 
-returns_i32 :: () -> i32 {
+returns_s32 :: () -> s32 {
     return 1;
 }
 
 discarded_values_are_valid :: () {
-    returns_i32();
+    returns_s32();
     1 + 2;
 }
 
@@ -470,22 +470,22 @@ void_call_statement_is_valid :: () {
     does_nothing();
 }
 
-xb := 5;                    // i32
-yb := 2147483648;           // i64
+xb := 5;                    // s32
+yb := 2147483648;           // s64
 zb := 9223372036854775808;  // u64
 fb := 1.5;                  // f64
 
 Ab :: 5;                    // untyped-int
 Bb :: 1.5;                  // untyped-float
 
-i32_min := -2147483648;
-i32_max := 2147483647;
+s32_min := -2147483648;
+s32_max := 2147483647;
 
-i64_low := -2147483649;
-i64_high := 2147483648;
+s64_low := -2147483649;
+s64_high := 2147483648;
 
-i64_min := -9223372036854775808;
-i64_max := 9223372036854775807;
+s64_min := -9223372036854775808;
+s64_max := 9223372036854775807;
 
 u64_value := 9223372036854775808;
 u64_max := 18446744073709551615;
@@ -494,7 +494,7 @@ A :: 255;
 B :: 1.5;
 
 small: u8 = A;
-wide: i64 = A;
+wide: s64 = A;
 floating: f32 = A;
 rounded: f32 = B;
 
@@ -516,10 +516,10 @@ noop::() -> void {
 }
 
 canonical_builtins::(
-    value_i8: i8,
-    value_i16: i16,
-    value_i32: i32,
-    value_i64: i64,
+    value_s8: s8,
+    value_s16: s16,
+    value_s32: s32,
+    value_s64: s64,
 
     value_u8: u8,
     value_u16: u16,
@@ -531,10 +531,10 @@ canonical_builtins::(
 
     value_bool: bool
 ) -> void {
-    copy_i8: i8 = value_i8;
-    copy_i16: i16 = value_i16;
-    copy_i32: i32 = value_i32;
-    copy_i64: i64 = value_i64;
+    copy_s8: s8 = value_s8;
+    copy_s16: s16 = value_s16;
+    copy_s32: s32 = value_s32;
+    copy_s64: s64 = value_s64;
 
     copy_u8: u8 = value_u8;
     copy_u16: u16 = value_u16;
@@ -547,11 +547,11 @@ canonical_builtins::(
     copy_bool: bool = value_bool;
     character: u8 = 'A';
 
-    pointer: i32* = null;
+    pointer: s32* = null;
     is_null: bool = pointer == null;
 
-    default_i32 := 1;
-    default_i64 := 2147483648;
+    default_s32 := 1;
+    default_s64 := 2147483648;
     default_u64 := 9223372036854775808;
     default_f64 := 1.5;
 

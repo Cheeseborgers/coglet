@@ -2,7 +2,7 @@ remainder::<T: numeric>(a: T, b: T) -> T {
     return a % b;
 }
 
-main::() -> i32 {
+main::() -> s32 {
     value := remainder(1.5, 2.0);
     return 0;
 }

@@ -1,4 +1,4 @@
 GOOD_U8_MIN :: cast(u8, 0);
 GOOD_U8_MAX :: cast(u8, 255);
-GOOD_I8_MIN :: cast(i8, -128);
-GOOD_I8_MAX :: cast(i8, 127);
+GOOD_S8_MIN :: cast(s8, -128);
+GOOD_S8_MAX :: cast(s8, 127);

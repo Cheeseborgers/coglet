@@ -1,4 +1,4 @@
-main::() -> i32 {
-    value: i32 = {0};
+main::() -> s32 {
+    value: s32 = {0};
     return 0;
 }

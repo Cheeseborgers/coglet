@@ -8,12 +8,12 @@ export Mode::enum(u8) {
 }
 
 export Pair::struct {
-    x: i32;
-    y: i32;
+    x: s32;
+    y: s32;
 }
 
 export shared: Pair = Pair { x = 18, y = 20 };
 
-export add::(a: i32, b: i32) -> i32 {
+export add::(a: s32, b: s32) -> s32 {
     return a + b;
 }

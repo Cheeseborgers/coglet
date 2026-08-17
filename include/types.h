@@ -11,10 +11,10 @@ typedef enum {
     TYPE_VOID,
     TYPE_BOOL,
 
-    TYPE_I8,
-    TYPE_I16,
-    TYPE_I32,
-    TYPE_I64,
+    TYPE_S8,
+    TYPE_S16,
+    TYPE_S32,
+    TYPE_S64,
 
     TYPE_U8,
     TYPE_U16,

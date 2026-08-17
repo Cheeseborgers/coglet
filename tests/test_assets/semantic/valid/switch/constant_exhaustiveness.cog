@@ -8,7 +8,7 @@ RED: Color : Color.Red;
 GREEN: Color : Color.Green;
 BLUE: Color : Color.Blue;
 
-classify_constant_color::(color: Color) -> i32 {
+classify_constant_color::(color: Color) -> s32 {
     switch color {
         case RED:
             return 1;
@@ -27,7 +27,7 @@ AliasColor :: enum(u8) {
     Green = 1,
 }
 
-classify_alias_color::(color: AliasColor) -> i32 {
+classify_alias_color::(color: AliasColor) -> s32 {
     switch color {
         case AliasColor.Red:
             return 1;

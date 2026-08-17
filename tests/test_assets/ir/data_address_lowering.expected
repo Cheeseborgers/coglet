@@ -1,10 +1,10 @@
 module target(pointer=64)
-type %t0 "Point" = struct {x: i32, y: i32}
-global @g0 ".str" : [6]i8 = @c20([@c15, @c16, @c17, @c17, @c18, @c19])
-declare @f0 "puts"(%0: readonly ptr<i8>) -> i32 [abi=c, linkage=external]
-func @f1 "consume_array"(%0: [3]i32) -> [3]i32 [abi=coglet, linkage=internal] {
+type %t0 "Point" = struct {x: s32, y: s32}
+global @g0 ".str" : [6]s8 = @c20([@c15, @c16, @c17, @c17, @c18, @c19])
+declare @f0 "puts"(%0: readonly ptr<s8>) -> s32 [abi=c, linkage=external]
+func @f1 "consume_array"(%0: [3]s32) -> [3]s32 [abi=coglet, linkage=internal] {
   slots:
-    $s0 : [3]i32 "a"
+    $s0 : [3]s32 "a"
   bb0 "entry"():
     %1 = local_addr $s0
     store %1, %0
@@ -22,9 +22,9 @@ func @f2 "consume_point"(%0: %t0) -> %t0 [abi=coglet, linkage=internal] {
     %3 = load %2
     ret %3
 }
-func @f3 "volatile_io"(%0: volatile ptr<i32>) -> i32 [abi=coglet, linkage=internal] {
+func @f3 "volatile_io"(%0: volatile ptr<s32>) -> s32 [abi=coglet, linkage=internal] {
   slots:
-    $s0 : volatile ptr<i32> "p"
+    $s0 : volatile ptr<s32> "p"
   bb0 "entry"():
     %1 = local_addr $s0
     store %1, %0
@@ -33,7 +33,7 @@ func @f3 "volatile_io"(%0: volatile ptr<i32>) -> i32 [abi=coglet, linkage=intern
     %4 = local_addr $s0
     %5 = load %4
     %6 = load.volatile %5
-    %7 = const i32 @c0(0x1)
+    %7 = const s32 @c0(0x1)
     %8 = iadd.checked %6, %7
     store.volatile %3, %8
     %9 = local_addr $s0
@@ -41,31 +41,31 @@ func @f3 "volatile_io"(%0: volatile ptr<i32>) -> i32 [abi=coglet, linkage=intern
     %11 = load.volatile %10
     ret %11
 }
-func @f4 "data_address"() -> i64 [abi=coglet, linkage=internal] {
+func @f4 "data_address"() -> s64 [abi=coglet, linkage=internal] {
   slots:
     $s0 : %t0 "point"
-    $s1 : [3]i32 "values"
+    $s1 : [3]s32 "values"
     $s2 : [6]u8 "name"
     $s3 : u8 "ch"
-    $s4 : ptr<i32> "px"
-    $s5 : [3]i32 "copy"
+    $s4 : ptr<s32> "px"
+    $s5 : [3]s32 "copy"
     $s6 : %t0 "point2"
     $s7 : opaque_ptr "raw"
-    $s8 : ptr<i32> "px2"
-    $s9 : readonly ptr<i32> "readonly_px"
-    $s10 : i64 "widened"
+    $s8 : ptr<s32> "px2"
+    $s9 : readonly ptr<s32> "readonly_px"
+    $s10 : s64 "widened"
     $s11 : u8 "narrowed"
-    $s12 : i64 "widened2"
+    $s12 : s64 "widened2"
   bb0 "entry"():
     %0 = local_addr $s0
-    %1 = const i32 @c0(0x1)
-    %2 = const i32 @c1(0x2)
+    %1 = const s32 @c0(0x1)
+    %2 = const s32 @c1(0x2)
     %3 = make_struct (%1, %2)
     store %0, %3
     %4 = local_addr $s1
-    %5 = const i32 @c2(0x3)
-    %6 = const i32 @c3(0x4)
-    %7 = const i32 @c4(0x5)
+    %5 = const s32 @c2(0x3)
+    %6 = const s32 @c3(0x4)
+    %7 = const s32 @c4(0x5)
     %8 = make_array (%5, %6, %7)
     store %4, %8
     %9 = local_addr $s2
@@ -83,7 +83,7 @@ func @f4 "data_address"() -> i64 [abi=coglet, linkage=internal] {
     %19 = local_addr $s0
     %20 = field_addr %19, field 0
     %21 = local_addr $s1
-    %22 = const i32 @c11(0x0)
+    %22 = const s32 @c11(0x0)
     %23 = array_elem_addr %21, %22
     %24 = load %23
     store %20, %24
@@ -91,7 +91,7 @@ func @f4 "data_address"() -> i64 [abi=coglet, linkage=internal] {
     %26 = field_addr %25, field 1
     %27 = load %26
     %28 = local_addr $s1
-    %29 = const i32 @c0(0x1)
+    %29 = const s32 @c0(0x1)
     %30 = array_elem_addr %28, %29
     %31 = load %30
     %32 = iadd.checked %27, %31
@@ -99,7 +99,7 @@ func @f4 "data_address"() -> i64 [abi=coglet, linkage=internal] {
     %33 = local_addr $s0
     %34 = field_addr %33, field 0
     %35 = load %34
-    %36 = const i32 @c0(0x1)
+    %36 = const s32 @c0(0x1)
     %37 = iadd.checked %35, %36
     store %34, %37
     %38 = local_addr $s4
@@ -112,23 +112,23 @@ func @f4 "data_address"() -> i64 [abi=coglet, linkage=internal] {
     %44 = load %43
     %45 = load %44
     %46 = local_addr $s1
-    %47 = const i32 @c1(0x2)
+    %47 = const s32 @c1(0x2)
     %48 = array_elem_addr %46, %47
     %49 = load %48
     %50 = iadd.checked %45, %49
     store %42, %50
     %51 = local_addr $s1
-    %52 = const i32 @c0(0x1)
+    %52 = const s32 @c0(0x1)
     %53 = array_elem_addr %51, %52
     %54 = local_addr $s0
     %55 = field_addr %54, field 1
     %56 = load %55
     store %53, %56
     %57 = local_addr $s1
-    %58 = const i32 @c1(0x2)
+    %58 = const s32 @c1(0x2)
     %59 = array_elem_addr %57, %58
     %60 = load %59
-    %61 = const i32 @c0(0x1)
+    %61 = const s32 @c0(0x1)
     %62 = iadd.checked %60, %61
     store %59, %62
     %63 = local_addr $s5
@@ -138,9 +138,9 @@ func @f4 "data_address"() -> i64 [abi=coglet, linkage=internal] {
     %67 = call %64(%66)
     store %63, %67
     %68 = local_addr $s5
-    %69 = const i32 @c12(0x7)
-    %70 = const i32 @c13(0x8)
-    %71 = const i32 @c14(0x9)
+    %69 = const s32 @c12(0x7)
+    %70 = const s32 @c13(0x8)
+    %71 = const s32 @c14(0x9)
     %72 = make_array (%69, %70, %71)
     store %68, %72
     %73 = local_addr $s6
@@ -157,18 +157,18 @@ func @f4 "data_address"() -> i64 [abi=coglet, linkage=internal] {
     %82 = local_addr $s8
     %83 = local_addr $s7
     %84 = load %83
-    %85 = ptr.reinterpret %84 to ptr<i32>
+    %85 = ptr.reinterpret %84 to ptr<s32>
     store %82, %85
     %86 = local_addr $s9
     %87 = local_addr $s8
     %88 = load %87
-    %89 = ptr.qualify %88 to readonly ptr<i32>
+    %89 = ptr.qualify %88 to readonly ptr<s32>
     store %86, %89
     %90 = local_addr $s10
     %91 = local_addr $s9
     %92 = load %91
     %93 = load %92
-    %94 = cast.checked %93 to i64
+    %94 = cast.checked %93 to s64
     store %90, %94
     %95 = local_addr $s11
     %96 = local_addr $s10
@@ -178,7 +178,7 @@ func @f4 "data_address"() -> i64 [abi=coglet, linkage=internal] {
     %99 = local_addr $s12
     %100 = local_addr $s11
     %101 = load %100
-    %102 = cast.checked %101 to i64
+    %102 = cast.checked %101 to s64
     store %99, %102
     %103 = function_ref @f0
     %104 = global_addr @g0
@@ -192,24 +192,24 @@ func @f4 "data_address"() -> i64 [abi=coglet, linkage=internal] {
     %112 = iadd.checked %109, %111
     %113 = local_addr $s3
     %114 = load %113
-    %115 = cast.checked %114 to i64
+    %115 = cast.checked %114 to s64
     %116 = iadd.checked %112, %115
     %117 = local_addr $s5
-    %118 = const i32 @c11(0x0)
+    %118 = const s32 @c11(0x0)
     %119 = array_elem_addr %117, %118
     %120 = load %119
-    %121 = cast.checked %120 to i64
+    %121 = cast.checked %120 to s64
     %122 = iadd.checked %116, %121
     %123 = local_addr $s6
     %124 = field_addr %123, field 0
     %125 = load %124
-    %126 = cast.checked %125 to i64
+    %126 = cast.checked %125 to s64
     %127 = iadd.checked %122, %126
     %128 = local_addr $s2
-    %129 = const i32 @c11(0x0)
+    %129 = const s32 @c11(0x0)
     %130 = array_elem_addr %128, %129
     %131 = load %130
-    %132 = cast.checked %131 to i64
+    %132 = cast.checked %131 to s64
     %133 = iadd.checked %127, %132
     ret %133
 }

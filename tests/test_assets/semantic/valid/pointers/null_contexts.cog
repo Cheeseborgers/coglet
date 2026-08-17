@@ -1,12 +1,12 @@
-identity::(pointer: i32*) -> i32* {
+identity::(pointer: s32*) -> s32* {
     return pointer;
 }
 
-test_null_contexts::() -> i32* {
-    value: i32 = 10;
+test_null_contexts::() -> s32* {
+    value: s32 = 10;
 
     // Typed variable initialisation.
-    pointer: i32* = null;
+    pointer: s32* = null;
 
     // Assignment to an existing pointer.
     pointer = null;

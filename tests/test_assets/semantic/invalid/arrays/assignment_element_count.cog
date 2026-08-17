@@ -2,7 +2,7 @@
 // 1 semantic error generated.
 
 test::() -> void {
-    values: i32[2] = [0, 0];
+    values: s32[2] = [0, 0];
 
     values = [1, 2, 3];
 }

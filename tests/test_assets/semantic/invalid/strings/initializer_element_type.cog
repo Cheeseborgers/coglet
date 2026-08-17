@@ -2,5 +2,5 @@
 // 1 semantic error generated.
 
 test::() -> void {
-    value: i32[6] = "hello";
+    value: s32[6] = "hello";
 }

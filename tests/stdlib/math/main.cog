@@ -1,9 +1,9 @@
 import std.math;
 
-main::() -> i32 {
-    if std.math.abs_i32(-42) != 42
+main::() -> s32 {
+    if std.math.abs_s32(-42) != 42
         return 1;
-    if std.math.abs_i32(17) != 17
+    if std.math.abs_s32(17) != 17
         return 2;
 
     if std.math.min(10, 20) != 10
@@ -12,7 +12,7 @@ main::() -> i32 {
         return 4;
     if std.math.min::<u64>(30, 20) != 20
         return 5;
-    if std.math.max::<i64>(-30, -20) != -20
+    if std.math.max::<s64>(-30, -20) != -20
         return 6;
 
     if std.math.clamp(5, 0, 10) != 5
@@ -53,14 +53,14 @@ main::() -> i32 {
     if std.math.gcd_u64(42, 0) != 42
         return 23;
 
-    pi32: f32 = std.math.pi;
-    pi64: f64 = std.math.pi;
+    ps32: f32 = std.math.pi;
+    ps64: f64 = std.math.pi;
     tau32: f32 = std.math.tau;
     tau64: f64 = std.math.tau;
     e64: f64 = std.math.e;
-    half_pi64: f64 = std.math.half_pi;
-    quarter_pi64: f64 = std.math.quarter_pi;
-    inv_pi64: f64 = std.math.inv_pi;
+    half_ps64: f64 = std.math.half_pi;
+    quarter_ps64: f64 = std.math.quarter_pi;
+    inv_ps64: f64 = std.math.inv_pi;
     inv_tau64: f64 = std.math.inv_tau;
     sqrt_2_64: f64 = std.math.sqrt_2;
     deg_to_rad64: f64 = std.math.deg_to_rad;
@@ -78,24 +78,24 @@ main::() -> i32 {
         return 36;
     if std.math.smoothstep(zero32, one32, half32) != half32
         return 37;
-    if std.math.to_radians(degrees32) != pi32
+    if std.math.to_radians(degrees32) != ps32
         return 38;
 
-    if pi32 < 3.1415 || pi32 > 3.1416
+    if ps32 < 3.1415 || ps32 > 3.1416
         return 24;
-    if pi64 != 0x1.921fb54442d18p+1
+    if ps64 != 0x1.921fb54442d18p+1
         return 25;
-    if tau32 != pi32 * 2.0
+    if tau32 != ps32 * 2.0
         return 26;
     if tau64 != 0x1.921fb54442d18p+2
         return 27;
     if e64 != 0x1.5bf0a8b145769p+1
         return 28;
-    if half_pi64 != 0x1.921fb54442d18p+0
+    if half_ps64 != 0x1.921fb54442d18p+0
         return 29;
-    if quarter_pi64 != 0x1.921fb54442d18p-1
+    if quarter_ps64 != 0x1.921fb54442d18p-1
         return 30;
-    if inv_pi64 != 0x1.45f306dc9c883p-2
+    if inv_ps64 != 0x1.45f306dc9c883p-2
         return 31;
     if inv_tau64 != 0x1.45f306dc9c883p-3
         return 32;

@@ -1,8 +1,8 @@
 tests/test_assets/semantic/invalid/casts/invalid_kind_conversions.cog:12:12: error: invalid explicit cast
-    return cast(i32, Point {
+    return cast(s32, Point {
            ^~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/casts/invalid_kind_conversions.cog:19:12: error: invalid explicit cast
-    return cast(i32, true);
+    return cast(s32, true);
            ^~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/casts/invalid_kind_conversions.cog:23:12: error: invalid explicit cast
     return cast(bool, 1);

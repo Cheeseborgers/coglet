@@ -45,7 +45,7 @@ sqrt_2      : adaptable floating compile-time constant
 deg_to_rad  : adaptable floating compile-time constant
 rad_to_deg  : adaptable floating compile-time constant
 
-abs_i32                       : (i32) -> i32
+abs_s32                       : (s32) -> s32
 min<T: ordered>               : (T, T) -> T
 max<T: ordered>               : (T, T) -> T
 clamp<T: ordered>             : (T, T, T) -> T
@@ -88,8 +88,8 @@ requires `edge0 < edge1`. These functions are currently constrained to
 `floating` because Coglet has not introduced a broader algebraic constraint
 system.
 
-`abs_i32` uses ordinary checked Coglet negation, so applying it to the minimum
-`i32` value follows the language's normal checked-overflow trap semantics.
+`abs_s32` uses ordinary checked Coglet negation, so applying it to the minimum
+`s32` value follows the language's normal checked-overflow trap semantics.
 `gcd_u64` uses the Euclidean algorithm and accepts zero operands; `gcd_u64(0, n)`
 and `gcd_u64(n, 0)` return `n`.
 

@@ -17,6 +17,6 @@ fibonacci::(n: u32) -> u64 {
     return b;
 }
 
-main::() -> i32 {
-    return cast(i32, fibonacci(10));
+main::() -> s32 {
+    return cast(s32, fibonacci(10));
 }

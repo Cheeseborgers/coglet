@@ -5,10 +5,10 @@ tests/test_assets/semantic/invalid/mutation/compound_shift_count_range.cog:8:18:
     value_u8 >>= NEGATIVE_COUNT;
                  ^~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/mutation/compound_shift_count_range.cog:9:19: error: shift count cannot be negative
-    value_i32 <<= cast(i8, -1);
+    value_s32 <<= cast(s8, -1);
                   ^~~~~~~~~~~
 tests/test_assets/semantic/invalid/mutation/compound_shift_count_range.cog:10:20: error: shift count cannot be negative
-    value_i32 >>= (1 - 2);
+    value_s32 >>= (1 - 2);
                    ^~~~~
 tests/test_assets/semantic/invalid/mutation/compound_shift_count_range.cog:12:18: error: shift count must be less than left operand bit width
     value_u8 <<= 8;
@@ -17,9 +17,9 @@ tests/test_assets/semantic/invalid/mutation/compound_shift_count_range.cog:13:18
     value_u8 >>= 9;
                  ^
 tests/test_assets/semantic/invalid/mutation/compound_shift_count_range.cog:14:19: error: shift count must be less than left operand bit width
-    value_i32 <<= 32;
+    value_s32 <<= 32;
                   ^~
 tests/test_assets/semantic/invalid/mutation/compound_shift_count_range.cog:15:20: error: shift count must be less than left operand bit width
-    value_i32 >>= (16 + 16);
+    value_s32 >>= (16 + 16);
                    ^~~~~~~
 8 semantic errors generated.

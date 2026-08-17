@@ -1,8 +1,8 @@
-return_good_direct::() -> i32 {
+return_good_direct::() -> s32 {
     return 1;
 }
 
-return_good_if::(b: bool) -> i32 {
+return_good_if::(b: bool) -> s32 {
     if b {
         return 1;
     } else {

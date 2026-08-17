@@ -1,5 +1,5 @@
-both_branches_initialize::(condition: bool) -> i32 {
-    value: i32;
+both_branches_initialize::(condition: bool) -> s32 {
+    value: s32;
 
     if condition {
         value = 10;
@@ -10,8 +10,8 @@ both_branches_initialize::(condition: bool) -> i32 {
     return value;
 }
 
-else_returns::(condition: bool) -> i32 {
-    value: i32;
+else_returns::(condition: bool) -> s32 {
+    value: s32;
 
     if condition {
         value = 30;
@@ -22,8 +22,8 @@ else_returns::(condition: bool) -> i32 {
     return value;
 }
 
-then_returns::(condition: bool) -> i32 {
-    value: i32;
+then_returns::(condition: bool) -> s32 {
+    value: s32;
 
     if condition {
         return 50;
@@ -34,8 +34,8 @@ then_returns::(condition: bool) -> i32 {
     return value;
 }
 
-nested_if_initializes::(outer, inner: bool) -> i32 {
-    value: i32;
+nested_if_initializes::(outer, inner: bool) -> s32 {
+    value: s32;
 
     if outer {
         if inner {

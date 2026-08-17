@@ -1,6 +1,6 @@
 does_nothing::() -> void {
 }
 
-test::() -> i32 {
+test::() -> s32 {
     return does_nothing();
 }

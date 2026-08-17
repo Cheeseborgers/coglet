@@ -1,6 +1,6 @@
 #extern(c, name="abs", call=stdcall)
 absolute::(value: c_int) -> c_int;
 
-main::() -> i32 {
+main::() -> s32 {
     return absolute(-7);
 }

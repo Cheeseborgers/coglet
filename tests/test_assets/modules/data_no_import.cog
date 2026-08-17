@@ -1,3 +1,3 @@
-main::() -> i32 {
+main::() -> s32 {
     return data.counter;
 }

@@ -1,2 +1,2 @@
 import math;
-main::() -> i32 { return math.answer(); }
+main::() -> s32 { return math.answer(); }

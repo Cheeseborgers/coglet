@@ -1,10 +1,10 @@
-takes_i32::(value: i32) -> void {
+takes_s32::(value: s32) -> void {
 }
 
 test::() -> void {
-    x: i32 = 0;
+    x: s32 = 0;
 
-    takes_i32(x = 1);
-    takes_i32(x += 1);
-    takes_i32(x++);
+    takes_s32(x = 1);
+    takes_s32(x += 1);
+    takes_s32(x++);
 }

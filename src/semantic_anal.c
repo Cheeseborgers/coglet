@@ -62,10 +62,10 @@ static Type *new_type(SemanticContext *ctx, TypeKind kind)
 static Type *builtin_type(SemanticContext *ctx, TypeKind kind) {
 
     switch (kind) {
-        case TYPE_I8:  return ctx->type_i8;
-        case TYPE_I16: return ctx->type_i16;
-        case TYPE_I32: return ctx->type_i32;
-        case TYPE_I64: return ctx->type_i64;
+        case TYPE_S8:  return ctx->type_s8;
+        case TYPE_S16: return ctx->type_s16;
+        case TYPE_S32: return ctx->type_s32;
+        case TYPE_S64: return ctx->type_s64;
 
         case TYPE_U8:  return ctx->type_u8;
         case TYPE_U16: return ctx->type_u16;
@@ -1529,10 +1529,10 @@ static Type *fixed_integer_type_for_c_abi_bits(
     int is_signed
 ) {
     switch (bit_width) {
-        case 8:  return is_signed ? ctx->type_i8  : ctx->type_u8;
-        case 16: return is_signed ? ctx->type_i16 : ctx->type_u16;
-        case 32: return is_signed ? ctx->type_i32 : ctx->type_u32;
-        case 64: return is_signed ? ctx->type_i64 : ctx->type_u64;
+        case 8:  return is_signed ? ctx->type_s8  : ctx->type_u8;
+        case 16: return is_signed ? ctx->type_s16 : ctx->type_u16;
+        case 32: return is_signed ? ctx->type_s32 : ctx->type_u32;
+        case 64: return is_signed ? ctx->type_s64 : ctx->type_u64;
         default: return NULL;
     }
 
@@ -1986,10 +1986,10 @@ static SemAbiType *make_sem_abi_type(
 
         case TYPE_VOID:
         case TYPE_BOOL:
-        case TYPE_I8:
-        case TYPE_I16:
-        case TYPE_I32:
-        case TYPE_I64:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_S64:
         case TYPE_U8:
         case TYPE_U16:
         case TYPE_U32:
@@ -2143,10 +2143,10 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
         case TYPE_BOOL: snprintf(buffer, buffer_size, "bool"); return;
         case TYPE_NULL: snprintf(buffer, buffer_size, "null"); return;
 
-        case TYPE_I8:   snprintf(buffer, buffer_size, "i8");   return;
-        case TYPE_I16:  snprintf(buffer, buffer_size, "i16");  return;
-        case TYPE_I32:  snprintf(buffer, buffer_size, "i32");  return;
-        case TYPE_I64:  snprintf(buffer, buffer_size, "i64");  return;
+        case TYPE_S8:   snprintf(buffer, buffer_size, "s8");   return;
+        case TYPE_S16:  snprintf(buffer, buffer_size, "s16");  return;
+        case TYPE_S32:  snprintf(buffer, buffer_size, "s32");  return;
+        case TYPE_S64:  snprintf(buffer, buffer_size, "s64");  return;
         case TYPE_U8:   snprintf(buffer, buffer_size, "u8");   return;
         case TYPE_U16:  snprintf(buffer, buffer_size, "u16");  return;
         case TYPE_U32:  snprintf(buffer, buffer_size, "u32");  return;
@@ -2346,10 +2346,10 @@ static int type_equal(const Type *a, const Type *b) {
         case TYPE_VOID:
         case TYPE_BOOL:
 
-        case TYPE_I8:
-        case TYPE_I16:
-        case TYPE_I32:
-        case TYPE_I64:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_S64:
 
         case TYPE_U8:
         case TYPE_U16:
@@ -2508,22 +2508,22 @@ static int integer_type_info(TypeKind kind, IntegerTypeInfo *out) {
     };
 
     switch (kind) {
-        case TYPE_I8:
+        case TYPE_S8:
             info.bit_width = 8;
             info.is_signed = 1;
             break;
 
-        case TYPE_I16:
+        case TYPE_S16:
             info.bit_width = 16;
             info.is_signed = 1;
             break;
 
-        case TYPE_I32:
+        case TYPE_S32:
             info.bit_width = 32;
             info.is_signed = 1;
             break;
 
-        case TYPE_I64:
+        case TYPE_S64:
             info.bit_width = 64;
             info.is_signed = 1;
             break;
@@ -2655,7 +2655,7 @@ static int integer_value_fits_type( IntegerValue value, TypeKind kind) {
      * Untyped integers retain an exact uint64_t magnitude.
      *
      * Positive values may use the complete uint64_t magnitude
-     * domain. Negative values are limited to the i64 minimum
+     * domain. Negative values are limited to the s64 minimum
      * magnitude so they can receive an ordinary concrete default
      * type.
      */
@@ -3144,13 +3144,13 @@ static int default_integer_kind_for_value(IntegerValue value, TypeKind *out_kind
 
     if (!out_kind) return 0;
 
-    if (integer_value_fits_type(value, TYPE_I32)) {
-        *out_kind = TYPE_I32;
+    if (integer_value_fits_type(value, TYPE_S32)) {
+        *out_kind = TYPE_S32;
         return 1;
     }
 
-    if (integer_value_fits_type(value, TYPE_I64)) {
-        *out_kind = TYPE_I64;
+    if (integer_value_fits_type(value, TYPE_S64)) {
+        *out_kind = TYPE_S64;
         return 1;
     }
 
@@ -3673,8 +3673,8 @@ static int is_allowed_explicit_cast(Type *to, Type *from) {
     /*
      * A null literal may be given an explicit concrete pointer type:
      *
-     *     cast(i32*, null)
-     *     cast(readonly i32*, null)
+     *     cast(s32*, null)
+     *     cast(readonly s32*, null)
      *
      * The reverse conversion is not allowed, and integers do not
      * become pointers through this rule.
@@ -3692,10 +3692,10 @@ static int is_allowed_explicit_cast(Type *to, Type *from) {
     /*
      * Numeric casts:
      *
-     *     i32 -> i64
-     *     i64 -> u8
-     *     f64 -> i32
-     *     i32 -> f64
+     *     s32 -> s64
+     *     s64 -> u8
+     *     f64 -> s32
+     *     s32 -> f64
      */
     if (is_numeric_cast_pair(to, from))
         return 1;
@@ -3756,19 +3756,19 @@ static int default_numeric_operation_rank(TypeKind kind) {
 
     switch(kind)
     {
-        case TYPE_I8:
+        case TYPE_S8:
         case TYPE_U8:
             return 1;
 
-        case TYPE_I16:
+        case TYPE_S16:
         case TYPE_U16:
             return 2;
 
-        case TYPE_I32:
+        case TYPE_S32:
         case TYPE_U32:
             return 3;
 
-        case TYPE_I64:
+        case TYPE_S64:
         case TYPE_U64:
             return 4;
 
@@ -4452,11 +4452,11 @@ static int eval_const_comparison(
          *
          * For example:
          *
-         *     NONE: i32* : null;
+         *     NONE: s32* : null;
          *     IS_NONE :: NONE == null;
          *
          * Both operands evaluate to CONST_VALUE_NULL even though
-         * their semantic types are i32* and TYPE_NULL.
+         * their semantic types are s32* and TYPE_NULL.
          */
         if (node->as.binary.op != TOK_EQUAL_EQUAL &&
             node->as.binary.op != TOK_BANG_EQUAL) {
@@ -4760,7 +4760,7 @@ static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *ou
                  *     -9223372036854775808
                  *
                  * The positive literal is representable in the exact untyped
-                 * domain, and its negated result receives i64 as its default
+                 * domain, and its negated result receives s64 as its default
                  * concrete type.
                  */
                 IntegerValue mathematical_value =
@@ -5144,7 +5144,7 @@ static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *ou
                     ) {
                         /*
                          * An untyped left operand uses its ordinary default integer
-                         * width. For example, `1 << count` uses i32.
+                         * width. For example, `1 << count` uses s32.
                          */
                     } else {
                         semantic_error(ctx, node,
@@ -8054,7 +8054,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                      *
                      * Valid:
                      *     10 % 3
-                     *     some_i32 % 2
+                     *     some_s32 % 2
                      *
                      * Invalid:
                      *     10.5 % 2
@@ -8453,11 +8453,11 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                      * Require the two numeric operands to be compatible.
                      *
                      * Valid:
-                     *     x: i64;
+                     *     x: s64;
                      *     x < 10;
                      *
                      * Invalid:
-                     *     a: i32;
+                     *     a: s32;
                      *     b: f64;
                      *     a < b;
                      */
@@ -10375,10 +10375,10 @@ static int check_c_variadic_argument(SemanticContext *ctx, Node *argument) {
 
     switch (actual->kind) {
         case TYPE_BOOL:
-        case TYPE_I8:
-        case TYPE_I16:
-        case TYPE_I32:
-        case TYPE_I64:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_S64:
         case TYPE_U8:
         case TYPE_U16:
         case TYPE_U32:
@@ -10582,9 +10582,9 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
      *
      * Important for:
      *
-     *     values: i32[3] = [1, 2, 3];
+     *     values: s32[3] = [1, 2, 3];
      *
-     * The array literal needs the expected type i32[3].
+     * The array literal needs the expected type s32[3].
      */
     if (type) {
         type = resolve_type(ctx, type, node);
@@ -10987,11 +10987,11 @@ static void validate_source_entry_signature(SemanticContext *ctx, Node *node)
         node->as.func_decl.is_repr_c ||
         node->as.func_decl.is_variadic ||
         node->as.func_decl.params.count != 0 ||
-        !source_return || source_return->kind != TYPE_I32) {
+        !source_return || source_return->kind != TYPE_S32) {
         semantic_error(
             ctx,
             node,
-            "executable entry point must have signature 'main::() -> i32'"
+            "executable entry point must have signature 'main::() -> s32'"
         );
         return;
     }
@@ -11036,10 +11036,10 @@ static int semantic_export_type_is_public(
     switch (type->kind) {
         case TYPE_VOID:
         case TYPE_BOOL:
-        case TYPE_I8:
-        case TYPE_I16:
-        case TYPE_I32:
-        case TYPE_I64:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_S64:
         case TYPE_U8:
         case TYPE_U16:
         case TYPE_U32:
@@ -11642,10 +11642,10 @@ static int extern_c_type_supported(const Type *type, int allow_void)
             return allow_void;
 
         case TYPE_BOOL:
-        case TYPE_I8:
-        case TYPE_I16:
-        case TYPE_I32:
-        case TYPE_I64:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_S64:
         case TYPE_U8:
         case TYPE_U16:
         case TYPE_U32:
@@ -12201,10 +12201,10 @@ static int repr_c_struct_field_type_supported(const Type *type)
 
     switch (type->kind) {
         case TYPE_BOOL:
-        case TYPE_I8:
-        case TYPE_I16:
-        case TYPE_I32:
-        case TYPE_I64:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_S64:
         case TYPE_U8:
         case TYPE_U16:
         case TYPE_U32:
@@ -12634,7 +12634,7 @@ static void fill_enum_members(SemanticContext *ctx, Node *node) {
             return;
 
     } else {
-        backing_type = ctx->type_i32;  // Default enum backing type.
+        backing_type = ctx->type_s32;  // Default enum backing type.
     }
 
     if (!is_integer_kind(backing_type->kind)) {
@@ -12865,7 +12865,7 @@ static Type *check_checked_cast_expression(SemanticContext *ctx, Node *node) {
      * Examples checked here:
      *
      *   cast(u8, 256)
-     *   cast(i8, -129)
+     *   cast(s8, -129)
      *   cast(f32, very_large_value)
      *   cast(u16, SomeEnum.Member)
      *
@@ -13155,10 +13155,10 @@ void semantic_check(
 
     ctx->current_return_type = NULL;
 
-    ctx->type_i8  = new_type(ctx, TYPE_I8);
-    ctx->type_i16 = new_type(ctx, TYPE_I16);
-    ctx->type_i32 = new_type(ctx, TYPE_I32);
-    ctx->type_i64 = new_type(ctx, TYPE_I64);
+    ctx->type_s8  = new_type(ctx, TYPE_S8);
+    ctx->type_s16 = new_type(ctx, TYPE_S16);
+    ctx->type_s32 = new_type(ctx, TYPE_S32);
+    ctx->type_s64 = new_type(ctx, TYPE_S64);
 
     ctx->type_u8  = new_type(ctx, TYPE_U8);
     ctx->type_u16 = new_type(ctx, TYPE_U16);

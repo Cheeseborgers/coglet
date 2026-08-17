@@ -1,3 +1,3 @@
-bad::(source: volatile i32*) -> void {
-    plain: i32* = source;
+bad::(source: volatile s32*) -> void {
+    plain: s32* = source;
 }

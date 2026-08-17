@@ -1,7 +1,7 @@
 // semantic error at line 5: array initializer element count does not match array size
 // 1 semantic error generated.
 
-takes_values::(values: i32[3]) -> void {
+takes_values::(values: s32[3]) -> void {
 }
 
 test::() -> void {

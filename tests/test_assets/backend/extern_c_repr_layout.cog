@@ -31,6 +31,6 @@ probe_layout::(
     both: PackedAlignedLayout
 ) -> c_int;
 
-main::() -> i32 {
+main::() -> s32 {
     return probe_layout(make_packed(), make_aligned(), make_packed_aligned());
 }

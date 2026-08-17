@@ -4,7 +4,7 @@ Color :: enum(u16) {
     Blue,
 }
 
-classify_color::(c: Color) -> i32 {
+classify_color::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;

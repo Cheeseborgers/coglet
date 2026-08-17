@@ -4,7 +4,7 @@ program
       param_decl reg: readonly volatile c_uint*
   func probe -> void
     params:
-      param_decl a: volatile i32*
+      param_decl a: volatile s32*
       param_decl b: readonly volatile opaque*
     body:
       block

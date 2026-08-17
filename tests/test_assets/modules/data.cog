@@ -3,12 +3,12 @@ module data;
 export answer :: 40;
 export step :: 2;
 
-export counter: i32 = 1;
-export values: i32[3] = [2, 3, 4];
+export counter: s32 = 1;
+export values: s32[3] = [2, 3, 4];
 
 export Pair::struct {
-    x: i32;
-    y: i32;
+    x: s32;
+    y: s32;
 }
 
 export pair: Pair = Pair {

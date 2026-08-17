@@ -24,7 +24,7 @@ program
       block
         return
           left
-  func main -> i32
+  func main -> s32
     body:
       block
         var_decl a: <inferred>
@@ -35,13 +35,13 @@ program
               20
         var_decl b: <inferred>
           init:
-            call::<i64>
+            call::<s64>
               min
               30
               40
         var_decl c: <inferred>
           init:
-            call::<i32, u64>
+            call::<s32, u64>
               select
               a
               7

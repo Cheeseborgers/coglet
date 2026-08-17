@@ -2,7 +2,7 @@ tests/test_assets/semantic/invalid/pointers/opaque_pointer_restrictions.cog:7:31
     direct_erasure: opaque* = p;
                               ^
 tests/test_assets/semantic/invalid/pointers/opaque_pointer_restrictions.cog:8:29: error: initializer type does not match declared type
-    direct_recovery: i32* = h;
+    direct_recovery: s32* = h;
                             ^
 tests/test_assets/semantic/invalid/pointers/opaque_pointer_restrictions.cog:10:5: error: comparison type mismatch
     p == h;
@@ -17,7 +17,7 @@ tests/test_assets/semantic/invalid/pointers/opaque_pointer_restrictions.cog:15:5
     reinterpret(opaque*, rp);
     ^~~~~~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/pointers/opaque_pointer_restrictions.cog:16:5: error: reinterpret cannot discard readonly pointer access
-    reinterpret(i32*, rh);
+    reinterpret(s32*, rh);
     ^~~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/pointers/opaque_pointer_restrictions.cog:18:5: error: reinterpret must cross between typed and opaque raw pointers
     reinterpret(u8*, p);
@@ -26,6 +26,6 @@ tests/test_assets/semantic/invalid/pointers/opaque_pointer_restrictions.cog:19:5
     reinterpret(readonly opaque*, rh);
     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/pointers/opaque_pointer_restrictions.cog:20:5: error: reinterpret must cross between typed and opaque raw pointers
-    reinterpret(readonly i32*, rp);
+    reinterpret(readonly s32*, rp);
     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 10 semantic errors generated.

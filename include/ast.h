@@ -430,7 +430,7 @@ struct Node {
         } const_decl;
 
         struct {
-            NodeList elements;   // values: i32[3] = [1, 2, 3];
+            NodeList elements;   // values: s32[3] = [1, 2, 3];
             int is_zero_initializer; // contextual `{0}` aggregate-zero spelling
         } array_literal;
 

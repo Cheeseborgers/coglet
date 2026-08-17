@@ -1,6 +1,6 @@
 test::() -> void {
-    small: i32 = 1;
-    large: i64 = 2;
+    small: s32 = 1;
+    large: s64 = 2;
 
     small += large;
 }

@@ -1293,7 +1293,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
 endif()
 
 add_host_c_executable_test(
-        backend_native_i32_entry native_i32_entry.cog 42
+        backend_native_s32_entry native_s32_entry.cog 42
         "backend;backend.c;ir;entrypoint"
 )
 
@@ -1467,7 +1467,7 @@ set_tests_properties(driver_modules_dotted_requires_import
         PROPERTIES LABELS "driver;semantic;module;import;multi-file;dotted;package;invalid")
 add_host_c_failure_test(
         backend_rejects_obsolete_c_int_entry obsolete_c_int_entry.cog 1
-        "executable entry point must have signature 'main::() -> i32'"
+        "executable entry point must have signature 'main::() -> s32'"
         "backend;backend.c;backend.invalid;ir;entrypoint"
 )
 add_host_c_failure_test(
@@ -2169,7 +2169,7 @@ if(COGLET_HAS_LLVM_BACKEND)
     endfunction()
 
     add_llvm_stage7_native_test(
-        backend_llvm_stage7_native_i32_entry native_i32_entry.cog 42
+        backend_llvm_stage7_native_s32_entry native_s32_entry.cog 42
     )
     add_llvm_stage7_native_test(
         backend_llvm_generic_functions generic_functions.cog 42
@@ -2220,7 +2220,7 @@ if(COGLET_HAS_LLVM_BACKEND)
     endfunction()
 
     add_llvm_stage8_native_test(
-        backend_llvm_stage8_O0_explicit native_i32_entry.cog 42 0
+        backend_llvm_stage8_O0_explicit native_s32_entry.cog 42 0
     )
     add_llvm_stage8_native_test(
         backend_llvm_stage8_O1_checked_integer llvm/stage2_checked_add.cog 3 1
@@ -2236,7 +2236,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         NAME backend_llvm_stage8_O2_ir_pipeline
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
         -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_O2_ir_pipeline.ll
         -DOPT_LEVEL=2
         "-DEXPECT_SUBSTRING=ret i32 42"
@@ -2263,7 +2263,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         NAME backend_llvm_stage8_rejects_host_c_optimization
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=optimization currently requires --backend llvm"
         "-DARGS=-o;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_rejects_host_c_optimization.out;-O2"
@@ -2276,7 +2276,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         NAME backend_llvm_stage8_rejects_unknown_optimization_level
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=unsupported optimization level '-O4'"
         "-DARGS=--emit-llvm;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_invalid_O4.ll;-O4"
@@ -2358,7 +2358,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;metadata;interop;abi;aggregate;stage9;O0")
 
     add_llvm_stage9_native_debug_test(
-        backend_llvm_stage9_debug_native_O0 native_i32_entry.cog 42 0 "native_i32_entry[.]cog"
+        backend_llvm_stage9_debug_native_O0 native_s32_entry.cog 42 0 "native_s32_entry[.]cog"
     )
     add_llvm_stage9_native_debug_test(
         backend_llvm_stage9_debug_native_O3 llvm/stage9_debug_info.cog 14 3 "stage9_debug_info[.]cog"
@@ -2368,7 +2368,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         NAME backend_llvm_stage9_rejects_host_c_debug
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=executable debug information currently requires --backend llvm"
         "-DARGS=-o;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage9_rejects_host_c_debug.out;-g"
@@ -2381,7 +2381,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         NAME backend_llvm_stage9_rejects_debug_without_llvm_output
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=-g currently requires LLVM output"
         "-DARGS=-g"
@@ -2468,7 +2468,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         NAME backend_llvm_emit_asm_with_native_executable
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
         -DOUTPUT_ASM=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_with_native_executable.s
         -DEXECUTABLE_OUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_with_native_executable
         -DOPT_LEVEL=2
@@ -2483,7 +2483,7 @@ else()
         NAME backend_llvm_emit_asm_unavailable
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=LLVM backend is not available in this build"
         "-DARGS=--emit-asm;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_unavailable.s"

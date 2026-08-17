@@ -1,5 +1,5 @@
 Point :: struct {
-    x: i32;
+    x: s32;
 }
 
 field_assignment::() -> void {
@@ -8,11 +8,11 @@ field_assignment::() -> void {
 }
 
 element_assignment::() -> void {
-    values: i32[2];
+    values: s32[2];
     values[0] = 1;
 }
 
 address_of_uninitialized::() -> void {
-    value: i32;
-    pointer: i32* = &value;
+    value: s32;
+    pointer: s32* = &value;
 }

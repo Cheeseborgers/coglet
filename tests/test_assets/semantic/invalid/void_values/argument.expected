@@ -1,4 +1,4 @@
 tests/test_assets/semantic/invalid/void_values/argument.cog:8:15: error: expression does not produce a value
-    takes_i32(does_nothing());
+    takes_s32(does_nothing());
               ^~~~~~~~~~~~
 1 semantic error generated.

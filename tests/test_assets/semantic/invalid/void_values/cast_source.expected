@@ -1,4 +1,4 @@
 tests/test_assets/semantic/invalid/void_values/cast_source.cog:5:24: error: expression does not produce a value
-    value := cast(i32, does_nothing());
+    value := cast(s32, does_nothing());
                        ^~~~~~~~~~~~
 1 semantic error generated.

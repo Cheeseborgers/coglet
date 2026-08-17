@@ -6,6 +6,6 @@ export Mode::enum(u8) {
 }
 
 export Pair::struct {
-    x: i32;
-    y: i32;
+    x: s32;
+    y: s32;
 }

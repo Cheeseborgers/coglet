@@ -8,9 +8,9 @@ select::<T, U: integer>(left: T, right: U) -> T {
     return left;
 }
 
-main::() -> i32 {
+main::() -> s32 {
     a := min(10, 20);
-    b := min::<i64>(30, 40);
-    c := select::<i32, u64>(a, 7);
+    b := min::<s64>(30, 40);
+    c := select::<s32, u64>(a, 7);
     return c;
 }

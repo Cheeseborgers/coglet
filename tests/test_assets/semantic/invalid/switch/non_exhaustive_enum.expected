@@ -1,4 +1,4 @@
 tests/test_assets/semantic/invalid/switch/non_exhaustive_enum.cog:10:1: error: non-void function may not return a value
-test::(color: Color) -> i32 {
+test::(color: Color) -> s32 {
 ^~~~
 1 semantic error generated.

@@ -8,7 +8,7 @@ tests/test_assets/semantic/invalid/mutation/compound_assignment_constant_range.c
     y *= 128;
          ^~~
 tests/test_assets/semantic/invalid/mutation/compound_assignment_constant_range.cog:11:5: error: compound assignment operands have incompatible numeric types
-    concrete_i32 += concrete_i64;
+    concrete_s32 += concrete_s64;
     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/mutation/compound_assignment_constant_range.cog:14:5: error: modulo compound assignment operands must be integers
     floating %= 1.0;

@@ -1,3 +1,3 @@
 module local;
 import local;
-value::() -> i32 { return 0; }
+value::() -> s32 { return 0; }

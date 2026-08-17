@@ -6,29 +6,29 @@ program
   export const_decl answer: <inferred>
     value:
       42
-  export var_decl counter: i32
+  export var_decl counter: s32
     init:
       0
   export var_decl_group
-    export var_decl left: i32
+    export var_decl left: s32
       init:
         1
-    export var_decl right: i32
+    export var_decl right: s32
       init:
         1
   export struct Pair
-    struct_field_decl x: i32
-    struct_field_decl y: i32
+    struct_field_decl x: s32
+    struct_field_decl y: s32
   export enum_decl Mode
     Backing type
       u8
     Members
       EnumMember Zero
       EnumMember One
-  export func add -> i32
+  export func add -> s32
     params:
-      param_decl a: i32
-      param_decl b: i32
+      param_decl a: s32
+      param_decl b: s32
     body:
       block
         return

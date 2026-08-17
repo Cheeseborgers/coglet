@@ -1,22 +1,22 @@
 read_value::(
-    pointer: readonly i32*
+    pointer: readonly s32*
 ) -> void {
 }
 
 return_readonly::(
-    pointer: i32*
-) -> readonly i32* {
+    pointer: s32*
+) -> readonly s32* {
     return pointer;
 }
 
 readonly_pointer_conversions::(
-    first: i32*,
-    second: i32*
+    first: s32*,
+    second: s32*
 ) -> void {
     /*
      * Variable initialisation.
      */
-    view: readonly i32* = first;
+    view: readonly s32* = first;
 
     /*
      * Assignment.
@@ -32,7 +32,7 @@ readonly_pointer_conversions::(
     /*
      * Null adapts to either access mode.
      */
-    empty: readonly i32* = null;
+    empty: readonly s32* = null;
 
     read_value(null);
 }

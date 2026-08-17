@@ -82,8 +82,8 @@ int main(void)
     cog_ir_module_init(&module, &target);
 
     const char *source0 =
-        "counter: i32 = 1;\n"
-        "bump::(x: i32) -> i32 { return x + 1; }\n";
+        "counter: s32 = 1;\n"
+        "bump::(x: s32) -> s32 { return x + 1; }\n";
     const char *source1 = "foreign declaration\n";
 
     SourceFileId file0 = SOURCE_FILE_ID_INVALID;
@@ -98,14 +98,14 @@ int main(void)
 
     CogIrTypeId void_type = cog_ir_type_void(&module);
     CogIrTypeId bool_type = cog_ir_type_bool(&module);
-    CogIrTypeId i32_type = cog_ir_type_integer(&module, 32, 1);
-    CogIrTypeId i32_again = cog_ir_type_integer(&module, 32, 1);
+    CogIrTypeId s32_type = cog_ir_type_integer(&module, 32, 1);
+    CogIrTypeId s32_again = cog_ir_type_integer(&module, 32, 1);
     CogIrTypeId u32_type = cog_ir_type_integer(&module, 32, 0);
-    CogIrTypeId ptr_i32 = cog_ir_type_pointer(&module, i32_type, 0, 0);
+    CogIrTypeId ptr_s32 = cog_ir_type_pointer(&module, s32_type, 0, 0);
 
     if (void_type == COG_IR_TYPE_INVALID || bool_type == COG_IR_TYPE_INVALID ||
-        i32_type == COG_IR_TYPE_INVALID || i32_type != i32_again ||
-        u32_type == i32_type || ptr_i32 == COG_IR_TYPE_INVALID)
+        s32_type == COG_IR_TYPE_INVALID || s32_type != s32_again ||
+        u32_type == s32_type || ptr_s32 == COG_IR_TYPE_INVALID)
         return fail("structural type interning failed");
 
     CogIrTypeId node_a = cog_ir_declare_nominal_type(
@@ -119,7 +119,7 @@ int main(void)
     CogIrAggregateField node_fields[2];
     memset(node_fields, 0, sizeof(node_fields));
     node_fields[0].debug_name = string_view_from_cstr("value");
-    node_fields[0].type = i32_type;
+    node_fields[0].type = s32_type;
     node_fields[0].abi_type = COG_IR_ABI_TYPE_INVALID;
     node_fields[0].span = function_span;
     node_fields[1].debug_name = string_view_from_cstr("next");
@@ -132,33 +132,33 @@ int main(void)
     if (!cog_ir_mark_incomplete_aggregate_type(&module, node_b))
         return fail("incomplete repr(c) aggregate state failed");
 
-    CogIrAbiTypeId c_int = cog_ir_abi_type_c_scalar(&module, i32_type, COG_IR_C_SCALAR_INT);
+    CogIrAbiTypeId c_int = cog_ir_abi_type_c_scalar(&module, s32_type, COG_IR_C_SCALAR_INT);
     if (c_int == COG_IR_ABI_TYPE_INVALID ||
-        c_int != cog_ir_abi_type_c_scalar(&module, i32_type, COG_IR_C_SCALAR_INT))
+        c_int != cog_ir_abi_type_c_scalar(&module, s32_type, COG_IR_C_SCALAR_INT))
         return fail("ABI type interning failed");
 
-    CogIrConstId zero_i32 = cog_ir_const_zero(&module, i32_type);
-    CogIrConstId one_i32 = cog_ir_const_integer(&module, i32_type, 1);
-    if (zero_i32 == COG_IR_CONST_INVALID || one_i32 == COG_IR_CONST_INVALID)
+    CogIrConstId zero_s32 = cog_ir_const_zero(&module, s32_type);
+    CogIrConstId one_s32 = cog_ir_const_integer(&module, s32_type, 1);
+    if (zero_s32 == COG_IR_CONST_INVALID || one_s32 == COG_IR_CONST_INVALID)
         return fail("constant builder failed");
 
     CogIrGlobalId counter = cog_ir_add_global(
         &module,
         string_view_from_cstr("counter"),
         global_span,
-        i32_type,
+        s32_type,
         COG_IR_ABI_TYPE_INVALID,
         COG_IR_LINKAGE_INTERNAL,
         0,
         0,
-        zero_i32
+        zero_s32
     );
     if (counter == COG_IR_GLOBAL_INVALID)
         return fail("global builder failed");
 
-    CogIrTypeId bump_params[] = { i32_type };
+    CogIrTypeId bump_params[] = { s32_type };
     CogIrTypeId bump_type = cog_ir_type_function(
-        &module, i32_type, bump_params, 1,
+        &module, s32_type, bump_params, 1,
         COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
     CogIrFunctionId bump = cog_ir_add_function(
         &module,
@@ -180,13 +180,13 @@ int main(void)
 
     CogIrSlotId x_slot = cog_ir_add_slot(
         &module, bump, COG_IR_SLOT_SOURCE_PARAMETER, 0,
-        string_view_from_cstr("x"), function_span, i32_type);
+        string_view_from_cstr("x"), function_span, s32_type);
     CogIrBlockId entry = cog_ir_add_block(
         &module, bump, string_view_from_cstr("entry"), function_span);
     if (x_slot == COG_IR_SLOT_INVALID || entry == COG_IR_BLOCK_INVALID)
         return fail("slot/block builder failed");
 
-    CogIrInstruction op = instruction(COG_IR_OP_LOCAL_ADDR, ptr_i32, function_span);
+    CogIrInstruction op = instruction(COG_IR_OP_LOCAL_ADDR, ptr_s32, function_span);
     op.as.local_addr.slot = x_slot;
     CogIrValueId x_addr = COG_IR_VALUE_INVALID;
     if (!cog_ir_emit(&module, bump, entry, &op, &x_addr)) return fail("local_addr emission failed");
@@ -197,18 +197,18 @@ int main(void)
     op.as.store.is_volatile = 0;
     if (!cog_ir_emit(&module, bump, entry, &op, NULL)) return fail("store emission failed");
 
-    op = instruction(COG_IR_OP_CONST, i32_type, function_span);
-    op.as.constant.constant = one_i32;
+    op = instruction(COG_IR_OP_CONST, s32_type, function_span);
+    op.as.constant.constant = one_s32;
     CogIrValueId one = COG_IR_VALUE_INVALID;
     if (!cog_ir_emit(&module, bump, entry, &op, &one)) return fail("const emission failed");
 
-    op = instruction(COG_IR_OP_LOAD, i32_type, function_span);
+    op = instruction(COG_IR_OP_LOAD, s32_type, function_span);
     op.as.load.address = x_addr;
     op.as.load.is_volatile = 0;
     CogIrValueId loaded = COG_IR_VALUE_INVALID;
     if (!cog_ir_emit(&module, bump, entry, &op, &loaded)) return fail("load emission failed");
 
-    op = instruction(COG_IR_OP_IADD_CHECKED, i32_type, function_span);
+    op = instruction(COG_IR_OP_IADD_CHECKED, s32_type, function_span);
     op.as.binary.lhs = loaded;
     op.as.binary.rhs = one;
     CogIrValueId added = COG_IR_VALUE_INVALID;
@@ -221,15 +221,15 @@ int main(void)
         return fail("instruction/terminator builder failed");
 
     CogIrTypeId main_type = cog_ir_type_function(
-        &module, i32_type, NULL, 0,
+        &module, s32_type, NULL, 0,
         COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
     CogIrFunctionId main_function = cog_ir_add_function(
         &module, string_view_from_cstr("main"), function_span, main_type,
         COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
     CogIrBlockId main_entry = cog_ir_add_block(
         &module, main_function, string_view_from_cstr("entry"), function_span);
-    op = instruction(COG_IR_OP_CONST, i32_type, function_span);
-    op.as.constant.constant = one_i32;
+    op = instruction(COG_IR_OP_CONST, s32_type, function_span);
+    op.as.constant.constant = one_s32;
     CogIrValueId main_result = COG_IR_VALUE_INVALID;
     if (!cog_ir_emit(&module, main_function, main_entry, &op, &main_result))
         return fail("entry result emission failed");
@@ -256,13 +256,13 @@ int main(void)
     CogIrBlockId init_entry = cog_ir_add_block(
         &module, init, string_view_from_cstr("entry"), source_span_invalid());
 
-    op = instruction(COG_IR_OP_GLOBAL_ADDR, ptr_i32, global_span);
+    op = instruction(COG_IR_OP_GLOBAL_ADDR, ptr_s32, global_span);
     op.as.global_addr.global = counter;
     CogIrValueId counter_addr = COG_IR_VALUE_INVALID;
     if (!cog_ir_emit(&module, init, init_entry, &op, &counter_addr)) return fail("global_addr emission failed");
 
-    op = instruction(COG_IR_OP_CONST, i32_type, global_span);
-    op.as.constant.constant = one_i32;
+    op = instruction(COG_IR_OP_CONST, s32_type, global_span);
+    op.as.constant.constant = one_s32;
     CogIrValueId init_one = COG_IR_VALUE_INVALID;
     if (!cog_ir_emit(&module, init, init_entry, &op, &init_one)) return fail("init const emission failed");
 
@@ -303,7 +303,7 @@ int main(void)
     if (cog_ir_type_integer(&module, 64, 1) != COG_IR_TYPE_INVALID)
         return fail("frozen module still accepted builder mutation");
 
-    if (!dump_contains(&module, "global @g0 \"counter\" : i32") ||
+    if (!dump_contains(&module, "global @g0 \"counter\" : s32") ||
         !dump_contains(&module, "iadd.checked") ||
         !dump_contains(&module, "entry @f1") ||
         !dump_contains(&module, "init @f2") ||
@@ -336,13 +336,13 @@ int main(void)
     cog_ir_module_destroy(&bad);
 
     /* Negative verifier regression: the resolved executable entry has a
-     * backend-neutral Coglet () -> i32 contract. */
+     * backend-neutral Coglet () -> s32 contract. */
     CogIrModule bad_entry;
     cog_ir_module_init(&bad_entry, &target);
-    CogIrTypeId bad_entry_i32 = cog_ir_type_integer(&bad_entry, 32, 1);
-    CogIrTypeId bad_entry_params[] = { bad_entry_i32 };
+    CogIrTypeId bad_entry_s32 = cog_ir_type_integer(&bad_entry, 32, 1);
+    CogIrTypeId bad_entry_params[] = { bad_entry_s32 };
     CogIrTypeId bad_entry_type = cog_ir_type_function(
-        &bad_entry, bad_entry_i32, bad_entry_params, 1,
+        &bad_entry, bad_entry_s32, bad_entry_params, 1,
         COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
     CogIrFunctionId bad_entry_fn = cog_ir_add_function(
         &bad_entry, string_view_from_cstr("main"), source_span_invalid(), bad_entry_type,
@@ -362,7 +362,7 @@ int main(void)
     diag_arena = arena_create(4096);
     diagnostic_list_init(&diagnostics, diag_arena);
     if (cog_ir_verify(&bad_entry, &diagnostics) || diagnostics.count == 0)
-        return fail("verifier did not reject non-() -> i32 module entry");
+        return fail("verifier did not reject non-() -> s32 module entry");
 
     arena_destroy(diag_arena);
     cog_ir_module_destroy(&bad_entry);

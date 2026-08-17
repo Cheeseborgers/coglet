@@ -5,8 +5,8 @@ State::enum {
 }
 
 test_equality_comparable_types::(
-    left_pointer: i32*,
-    right_pointer: i32*
+    left_pointer: s32*,
+    right_pointer: s32*
 ) -> void {
     1 == 2;
     1.0 != 2.0;

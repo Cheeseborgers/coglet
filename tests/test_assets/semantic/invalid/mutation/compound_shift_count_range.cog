@@ -2,15 +2,15 @@ NEGATIVE_COUNT :: -1;
 
 compound_shift_count_range::() -> void {
     value_u8: u8 = 1;
-    value_i32: i32 = 1;
+    value_s32: s32 = 1;
 
     value_u8 <<= -1;
     value_u8 >>= NEGATIVE_COUNT;
-    value_i32 <<= cast(i8, -1);
-    value_i32 >>= (1 - 2);
+    value_s32 <<= cast(s8, -1);
+    value_s32 >>= (1 - 2);
 
     value_u8 <<= 8;
     value_u8 >>= 9;
-    value_i32 <<= 32;
-    value_i32 >>= (16 + 16);
+    value_s32 <<= 32;
+    value_s32 >>= (16 + 16);
 }

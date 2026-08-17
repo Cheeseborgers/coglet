@@ -1230,7 +1230,7 @@ int cog_ir_verify(const CogIrModule *module, DiagnosticList *diagnostics)
             ir_error(
                 diagnostics,
                 entry ? entry->span : source_span_invalid(),
-                "module entry function must be an internal Coglet () -> i32 definition distinct from module init"
+                "module entry function must be an internal Coglet () -> s32 definition distinct from module init"
             );
             ok = 0;
         }

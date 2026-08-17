@@ -1,17 +1,17 @@
-takes_pointer::(pointer: i32*) -> void {
+takes_pointer::(pointer: s32*) -> void {
 }
 
-returns_pointer::() -> i32* {
+returns_pointer::() -> s32* {
     return 0;
 }
 
-ZERO_POINTER: i32* : 0;
+ZERO_POINTER: s32* : 0;
 
 test::() -> void {
-    pointer: i32* = null;
+    pointer: s32* = null;
     pointer = 0;
 
-    invalid_initializer: i32* = 0;
+    invalid_initializer: s32* = 0;
 
     takes_pointer(0);
 }

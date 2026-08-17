@@ -1,19 +1,19 @@
 module target(pointer=64)
 type %t0 "Mode" = enum(u8) {Zero=0x0, One=0x1}
-global @g0 "global_counter" : i32 = @c2(zeroinit)
+global @g0 "global_counter" : s32 = @c2(zeroinit)
 global @g1 "global_flag" : bool = @c3(zeroinit)
-func @f0 "classify"(%0: i32, %1: bool) -> i32 [abi=coglet, linkage=internal] {
+func @f0 "classify"(%0: s32, %1: bool) -> s32 [abi=coglet, linkage=internal] {
   slots:
-    $s0 : i32 "x"
+    $s0 : s32 "x"
     $s1 : bool "flag"
-    $s2 : i32 "acc"
+    $s2 : s32 "acc"
   bb0 "entry"():
     %2 = local_addr $s0
     store %2, %0
     %3 = local_addr $s1
     store %3, %1
     %4 = local_addr $s2
-    %5 = const i32 @c4(0x0)
+    %5 = const s32 @c4(0x0)
     store %4, %5
     %6 = local_addr $s1
     %7 = load %6
@@ -22,38 +22,38 @@ func @f0 "classify"(%0: i32, %1: bool) -> i32 [abi=coglet, linkage=internal] {
   bb1 "logic.and.rhs"():
     %10 = local_addr $s0
     %11 = load %10
-    %12 = const i32 @c4(0x0)
+    %12 = const s32 @c4(0x0)
     %13 = icmp.sgt %11, %12
     br bb2(%13)
   bb2 "logic.and.join"(%8: bool):
     cond_br %8, bb3(), bb5()
   bb3 "if.then"():
     %14 = local_addr $s2
-    %15 = const i32 @c6(0x1)
+    %15 = const s32 @c6(0x1)
     store %14, %15
     br bb4()
   bb4 "if.end"():
     br bb6()
   bb5 "if.else"():
     %16 = local_addr $s2
-    %17 = const i32 @c7(0x2)
+    %17 = const s32 @c7(0x2)
     store %16, %17
     br bb4()
   bb6 "while.cond"():
     %18 = local_addr $s2
     %19 = load %18
-    %20 = const i32 @c8(0x4)
+    %20 = const s32 @c8(0x4)
     %21 = icmp.slt %19, %20
     cond_br %21, bb7(), bb8()
   bb7 "while.body"():
     %22 = local_addr $s2
     %23 = load %22
-    %24 = const i32 @c6(0x1)
+    %24 = const s32 @c6(0x1)
     %25 = iadd.checked %23, %24
     store %22, %25
     %26 = local_addr $s2
     %27 = load %26
-    %28 = const i32 @c9(0x3)
+    %28 = const s32 @c9(0x3)
     %29 = icmp.eq %27, %28
     cond_br %29, bb9(), bb10()
   bb8 "while.end"():
@@ -63,7 +63,7 @@ func @f0 "classify"(%0: i32, %1: bool) -> i32 [abi=coglet, linkage=internal] {
   bb10 "if.end"():
     %30 = local_addr $s2
     %31 = load %30
-    %32 = const i32 @c8(0x4)
+    %32 = const s32 @c8(0x4)
     %33 = icmp.eq %31, %32
     cond_br %33, bb11(), bb12()
   bb11 "if.then"():
@@ -73,20 +73,20 @@ func @f0 "classify"(%0: i32, %1: bool) -> i32 [abi=coglet, linkage=internal] {
   bb13 "for.cond"():
     %34 = local_addr $s2
     %35 = load %34
-    %36 = const i32 @c10(0x6)
+    %36 = const s32 @c10(0x6)
     %37 = icmp.slt %35, %36
     cond_br %37, bb14(), bb16()
   bb14 "for.body"():
     %38 = local_addr $s2
     %39 = load %38
-    %40 = const i32 @c6(0x1)
+    %40 = const s32 @c6(0x1)
     %41 = iadd.checked %39, %40
     store %38, %41
     br bb15()
   bb15 "for.post"():
     %42 = local_addr $s2
     %43 = load %42
-    %44 = const i32 @c6(0x1)
+    %44 = const s32 @c6(0x1)
     %45 = iadd.checked %43, %44
     store %42, %45
     br bb13()
@@ -97,7 +97,7 @@ func @f0 "classify"(%0: i32, %1: bool) -> i32 [abi=coglet, linkage=internal] {
   bb17 "switch.end"():
     unreachable
   bb18 "switch.case"():
-    %48 = const i32 @c11(0x3c)
+    %48 = const s32 @c11(0x3c)
     ret %48
   bb19 "switch.default"():
     %49 = local_addr $s2
@@ -262,10 +262,10 @@ func @f5 "unsigned_less"(%0: u32, %1: u32) -> bool [abi=coglet, linkage=internal
     %8 = icmp.ult %5, %7
     ret %8
 }
-func @f6 "ptr_qual_equal"(%0: ptr<i32>, %1: readonly ptr<i32>) -> bool [abi=coglet, linkage=internal] {
+func @f6 "ptr_qual_equal"(%0: ptr<s32>, %1: readonly ptr<s32>) -> bool [abi=coglet, linkage=internal] {
   slots:
-    $s0 : ptr<i32> "a"
-    $s1 : readonly ptr<i32> "b"
+    $s0 : ptr<s32> "a"
+    $s1 : readonly ptr<s32> "b"
   bb0 "entry"():
     %2 = local_addr $s0
     store %2, %0
@@ -275,23 +275,23 @@ func @f6 "ptr_qual_equal"(%0: ptr<i32>, %1: readonly ptr<i32>) -> bool [abi=cogl
     %5 = load %4
     %6 = local_addr $s1
     %7 = load %6
-    %8 = ptr.qualify %5 to readonly ptr<i32>
+    %8 = ptr.qualify %5 to readonly ptr<s32>
     %9 = ptr.eq %8, %7
     ret %9
 }
-func @f7 "callback_missing"(%0: fn(i32) -> i32) -> bool [abi=coglet, linkage=internal] {
+func @f7 "callback_missing"(%0: fn(s32) -> s32) -> bool [abi=coglet, linkage=internal] {
   slots:
-    $s0 : fn(i32) -> i32 "cb"
+    $s0 : fn(s32) -> s32 "cb"
   bb0 "entry"():
     %1 = local_addr $s0
     store %1, %0
     %2 = local_addr $s0
     %3 = load %2
-    %4 = const fn(i32) -> i32 @c13(null)
+    %4 = const fn(s32) -> s32 @c13(null)
     %5 = ptr.eq %3, %4
     ret %5
 }
-func @f8 "bool_switch"(%0: bool) -> i32 [abi=coglet, linkage=internal] {
+func @f8 "bool_switch"(%0: bool) -> s32 [abi=coglet, linkage=internal] {
   slots:
     $s0 : bool "b"
   bb0 "entry"():
@@ -303,15 +303,15 @@ func @f8 "bool_switch"(%0: bool) -> i32 [abi=coglet, linkage=internal] {
   bb1 "switch.end"():
     unreachable
   bb2 "switch.case"():
-    %4 = const i32 @c6(0x1)
+    %4 = const s32 @c6(0x1)
     ret %4
   bb3 "switch.case"():
-    %5 = const i32 @c4(0x0)
+    %5 = const s32 @c4(0x0)
     ret %5
   bb4 "switch.unmatched"():
     unreachable
 }
-func @f9 "mode_switch"(%0: %t0) -> i32 [abi=coglet, linkage=internal] {
+func @f9 "mode_switch"(%0: %t0) -> s32 [abi=coglet, linkage=internal] {
   slots:
     $s0 : %t0 "m"
   bb0 "entry"():
@@ -323,15 +323,15 @@ func @f9 "mode_switch"(%0: %t0) -> i32 [abi=coglet, linkage=internal] {
   bb1 "switch.end"():
     unreachable
   bb2 "switch.case"():
-    %4 = const i32 @c14(0xa)
+    %4 = const s32 @c14(0xa)
     ret %4
   bb3 "switch.case"():
-    %5 = const i32 @c15(0xb)
+    %5 = const s32 @c15(0xb)
     ret %5
   bb4 "switch.unmatched"():
     unreachable
 }
-func @f10 "forever"(%0: bool) -> i32 [abi=coglet, linkage=internal] {
+func @f10 "forever"(%0: bool) -> s32 [abi=coglet, linkage=internal] {
   slots:
     $s0 : bool "done"
   bb0 "entry"():
@@ -348,7 +348,7 @@ func @f10 "forever"(%0: bool) -> i32 [abi=coglet, linkage=internal] {
   bb3 "while.end"():
     unreachable
   bb4 "if.then"():
-    %5 = const i32 @c16(0x7)
+    %5 = const s32 @c16(0x7)
     ret %5
   bb5 "if.end"():
     br bb1()
@@ -356,7 +356,7 @@ func @f10 "forever"(%0: bool) -> i32 [abi=coglet, linkage=internal] {
 init @f11 "__coglet_module_init"() -> void [abi=coglet, linkage=internal] {
   bb0 "entry"():
     %0 = global_addr @g0
-    %1 = const i32 @c4(0x0)
+    %1 = const s32 @c4(0x0)
     store %0, %1
     %2 = global_addr @g1
     %3 = const bool @c12(true)
@@ -367,7 +367,7 @@ init @f11 "__coglet_module_init"() -> void [abi=coglet, linkage=internal] {
   bb1 "if.then"():
     %6 = global_addr @g0
     %7 = function_ref @f0
-    %8 = const i32 @c6(0x1)
+    %8 = const s32 @c6(0x1)
     %9 = const bool @c12(true)
     %10 = call %7(%8, %9)
     store %6, %10

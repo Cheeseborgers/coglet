@@ -2,39 +2,39 @@ shift_left_u8::(value: u8, count: u8) -> u8 {
     return value << count;
 }
 
-shift_left_i8::(value: i8, count: u8) -> i8 {
+shift_left_s8::(value: s8, count: u8) -> s8 {
     return value << count;
 }
 
-shift_right_u8::(value: u8, count: i32) -> u8 {
+shift_right_u8::(value: u8, count: s32) -> u8 {
     return value >> count;
 }
 
-shift_right_i8::(value: i8, count: i32) -> i8 {
+shift_right_s8::(value: s8, count: s32) -> s8 {
     return value >> count;
 }
 
-shift_right_i64::(value: i64, count: u64) -> i64 {
+shift_right_s64::(value: s64, count: u64) -> s64 {
     return value >> count;
 }
 
-main::() -> i32 {
+main::() -> s32 {
     if shift_left_u8(128, 1) != 0 {
         return 1;
     }
-    if shift_left_i8(64, 1) != -128 {
+    if shift_left_s8(64, 1) != -128 {
         return 2;
     }
     if shift_right_u8(128, 1) != 64 {
         return 3;
     }
-    if shift_right_i8(-3, 1) != -2 {
+    if shift_right_s8(-3, 1) != -2 {
         return 4;
     }
-    if shift_right_i8(-3, 0) != -3 {
+    if shift_right_s8(-3, 0) != -3 {
         return 5;
     }
-    if shift_right_i64(-5, 1) != -3 {
+    if shift_right_s64(-5, 1) != -3 {
         return 6;
     }
     return 0;

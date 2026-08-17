@@ -1,10 +1,10 @@
-return_good_while_true::() -> i32 {
+return_good_while_true::() -> s32 {
     while true {
         return 1;
     }
 }
 
-return_good_while_true_nested::(b: bool) -> i32 {
+return_good_while_true_nested::(b: bool) -> s32 {
     while true {
         if b {
             return 1;

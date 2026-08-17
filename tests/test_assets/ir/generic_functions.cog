@@ -2,10 +2,10 @@ identity::<T>(value: T) -> T {
     return value;
 }
 
-main::() -> i32 {
-    left: i32 = identity(40);
-    right: i32 = identity(2);
-    wide: i64 = identity::<i64>(7);
+main::() -> s32 {
+    left: s32 = identity(40);
+    right: s32 = identity(2);
+    wide: s64 = identity::<s64>(7);
 
     if wide != 7
         return 1;

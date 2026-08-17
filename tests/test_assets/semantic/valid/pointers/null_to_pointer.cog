@@ -1,14 +1,14 @@
-NULL_I32 :: cast(i32*, null);
+NULL_S32 :: cast(s32*, null);
 
-identity::(pointer: i32*) -> i32* {
+identity::(pointer: s32*) -> s32* {
     return pointer;
 }
 
-test_null_pointer_cast::() -> i32* {
-    pointer := cast(i32*, null);
+test_null_pointer_cast::() -> s32* {
+    pointer := cast(s32*, null);
 
-    pointer = NULL_I32;
-    pointer = identity(cast(i32*, null));
+    pointer = NULL_S32;
+    pointer = identity(cast(s32*, null));
 
-    return cast(i32*, null);
+    return cast(s32*, null);
 }

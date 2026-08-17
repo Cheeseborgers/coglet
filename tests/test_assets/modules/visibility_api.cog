@@ -1,11 +1,11 @@
 module visibility;
 
 secret :: 5;
-helper::(value: i32) -> i32 { return value + secret; }
+helper::(value: s32) -> s32 { return value + secret; }
 
 export answer :: 40;
-export counter: i32 = 1;
-export left, right: i32 = 0;
+export counter: s32 = 1;
+export left, right: s32 = 0;
 
 export Mode::enum(u8) {
     Zero,
@@ -13,11 +13,11 @@ export Mode::enum(u8) {
 }
 
 export Pair::struct {
-    x: i32;
-    y: i32;
+    x: s32;
+    y: s32;
 }
 
-export compute::(value: i32) -> i32 {
+export compute::(value: s32) -> s32 {
     left = visibility.helper(value);
     right = visibility.secret;
     return left + right;

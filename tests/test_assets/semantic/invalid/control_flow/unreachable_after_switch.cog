@@ -4,7 +4,7 @@ Color :: enum(u16) {
     Blue,
 }
 
-unreachable_after_switch::(c: Color) -> i32 {
+unreachable_after_switch::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;

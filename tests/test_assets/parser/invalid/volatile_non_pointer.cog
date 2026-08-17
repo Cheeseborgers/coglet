@@ -1,1 +1,1 @@
-value: volatile i32;
+value: volatile s32;

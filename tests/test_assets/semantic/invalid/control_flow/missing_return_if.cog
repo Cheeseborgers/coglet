@@ -1,4 +1,4 @@
-return_bad_if::(b: bool) -> i32 {
+return_bad_if::(b: bool) -> s32 {
     if b {
         return 1;
     }

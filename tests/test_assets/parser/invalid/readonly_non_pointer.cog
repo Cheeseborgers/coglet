@@ -1,1 +1,1 @@
-bad: readonly i32 = 1;
+bad: readonly s32 = 1;

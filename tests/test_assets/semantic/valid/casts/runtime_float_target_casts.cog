@@ -1,5 +1,5 @@
 runtime_float_target_casts::(
-    signed_value: i64,
+    signed_value: s64,
     unsigned_value: u64,
     narrow_float: f32,
     wide_float: f64

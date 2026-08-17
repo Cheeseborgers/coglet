@@ -1,5 +1,5 @@
 Point::struct {
-    x: i32;
+    x: s32;
 }
 
 test_shadowed_struct::() -> void {
@@ -8,7 +8,7 @@ test_shadowed_struct::() -> void {
     };
 
     Point::struct {
-        x: i32;
+        x: s32;
     }
 
     inner: Point = Point {

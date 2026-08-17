@@ -1,7 +1,7 @@
 ONE :: 1;
 
 test_known_nonzero_divisor::(
-    integer: i32
+    integer: s32
 ) -> void {
     integer / 1;
     integer % 1;
@@ -9,8 +9,8 @@ test_known_nonzero_divisor::(
     integer / ONE;
     integer % ONE;
 
-    integer / cast(i32, 1);
-    integer % cast(i32, 1);
+    integer / cast(s32, 1);
+    integer % cast(s32, 1);
 
     integer / (2 - 1);
     integer % (2 - 1);
@@ -21,8 +21,8 @@ test_known_nonzero_divisor::(
     integer /= ONE;
     integer %= ONE;
 
-    integer /= cast(i32, 1);
-    integer %= cast(i32, 1);
+    integer /= cast(s32, 1);
+    integer %= cast(s32, 1);
 
     integer /= (2 - 1);
     integer %= (2 - 1);

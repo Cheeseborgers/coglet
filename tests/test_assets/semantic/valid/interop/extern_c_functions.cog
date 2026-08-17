@@ -1,8 +1,8 @@
 #extern(c)
-consume_i32::(value: i32) -> void;
+consume_s32::(value: s32) -> void;
 
 #extern(c)
-inspect_bytes::(data: readonly u8*) -> i32;
+inspect_bytes::(data: readonly u8*) -> s32;
 
 #extern(c)
 allocate::(size: uint) -> opaque*;
@@ -11,9 +11,9 @@ allocate::(size: uint) -> opaque*;
 release::(ptr: opaque*) -> void;
 
 #extern(c)
-replace_handle::(slot: opaque**) -> i32;
+replace_handle::(slot: opaque**) -> s32;
 
-use_extern::(value: i32, handle: opaque*) -> void {
-    consume_i32(value);
+use_extern::(value: s32, handle: opaque*) -> void {
+    consume_s32(value);
     release(handle);
 }

@@ -169,10 +169,10 @@ typedef struct {
 
     FlowState flow;
 
-    Type *type_i8;
-    Type *type_i16;
-    Type *type_i32;
-    Type *type_i64;
+    Type *type_s8;
+    Type *type_s16;
+    Type *type_s32;
+    Type *type_s64;
 
     Type *type_u8;
     Type *type_u16;

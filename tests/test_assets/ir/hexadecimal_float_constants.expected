@@ -1,16 +1,16 @@
 module target(pointer=64)
-func @f0 "pi32"() -> f32 [abi=coglet, linkage=internal] {
+func @f0 "ps32"() -> f32 [abi=coglet, linkage=internal] {
   bb0 "entry"():
     %0 = const f32 @c0(f32bits(0x40490fdb))
     ret %0
 }
-func @f1 "pi64"() -> f64 [abi=coglet, linkage=internal] {
+func @f1 "ps64"() -> f64 [abi=coglet, linkage=internal] {
   bb0 "entry"():
     %0 = const f64 @c1(f64bits(0x400921fb54442d18))
     ret %0
 }
-entry @f2 "main"() -> i32 [abi=coglet, linkage=internal] {
+entry @f2 "main"() -> s32 [abi=coglet, linkage=internal] {
   bb0 "entry"():
-    %0 = const i32 @c2(0x0)
+    %0 = const s32 @c2(0x0)
     ret %0
 }

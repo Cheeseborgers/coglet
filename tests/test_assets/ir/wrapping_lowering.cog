@@ -1,4 +1,4 @@
-choose_i8::(flag: bool) -> i8 {
+choose_s8::(flag: bool) -> s8 {
     if flag {
         return 1;
     }
@@ -6,22 +6,22 @@ choose_i8::(flag: bool) -> i8 {
 }
 
 wrapping_ops::(
-    signed_left: i8,
-    signed_right: i8,
+    signed_left: s8,
+    signed_right: s8,
     unsigned_left: u64,
     unsigned_right: u64,
     a: bool,
     b: bool
-) -> i8 {
-    signed_add: i8 = wrapping_add(signed_left, signed_right);
-    signed_sub: i8 = wrapping_sub(signed_left, signed_right);
-    signed_mul: i8 = wrapping_mul(signed_left, signed_right);
-    signed_neg: i8 = wrapping_neg(signed_left);
+) -> s8 {
+    signed_add: s8 = wrapping_add(signed_left, signed_right);
+    signed_sub: s8 = wrapping_sub(signed_left, signed_right);
+    signed_mul: s8 = wrapping_mul(signed_left, signed_right);
+    signed_neg: s8 = wrapping_neg(signed_left);
 
     unsigned_add: u64 = wrapping_add(unsigned_left, unsigned_right);
     unsigned_sub: u64 = wrapping_sub(unsigned_left, unsigned_right);
     unsigned_mul: u64 = wrapping_mul(unsigned_left, unsigned_right);
     unsigned_neg: u64 = wrapping_neg(unsigned_left);
 
-    return wrapping_add(signed_add, choose_i8(a && b));
+    return wrapping_add(signed_add, choose_s8(a && b));
 }

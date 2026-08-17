@@ -1,2 +1,2 @@
 import first;
-main::() -> i32 { return first.answer(); }
+main::() -> s32 { return first.answer(); }

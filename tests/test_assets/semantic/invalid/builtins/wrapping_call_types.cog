@@ -1,6 +1,6 @@
 bad_wrapping_calls::(
-    signed_small: i8,
-    signed_wide: i16,
+    signed_small: s8,
+    signed_wide: s16,
     floating: f32
 ) -> void {
     wrapping_add(signed_small);

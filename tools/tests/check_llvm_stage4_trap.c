@@ -48,10 +48,10 @@ int main(int argc, char **argv)
     CogIrModule module;
     cog_ir_module_init(&module, &target);
 
-    CogIrTypeId i32 = cog_ir_type_integer(&module, 32, 1);
+    CogIrTypeId s32 = cog_ir_type_integer(&module, 32, 1);
     CogIrTypeId entry_type = cog_ir_type_function(
         &module,
-        i32,
+        s32,
         NULL,
         0,
         COG_IR_ABI_COGLET,
@@ -80,7 +80,7 @@ int main(int argc, char **argv)
     trap.span = source_span_invalid();
     trap.as.trap.reason = COG_IR_TRAP_EXPLICIT;
 
-    if (i32 == COG_IR_TYPE_INVALID || entry_type == COG_IR_TYPE_INVALID ||
+    if (s32 == COG_IR_TYPE_INVALID || entry_type == COG_IR_TYPE_INVALID ||
         entry == COG_IR_FUNCTION_INVALID || block == COG_IR_BLOCK_INVALID ||
         !cog_ir_set_terminator(&module, entry, block, &trap) ||
         !cog_ir_set_entry_function(&module, entry)) {

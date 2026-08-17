@@ -1,4 +1,4 @@
 outer::() -> void {
     #extern(c)
-    nested::(value: i32) -> i32;
+    nested::(value: s32) -> s32;
 }

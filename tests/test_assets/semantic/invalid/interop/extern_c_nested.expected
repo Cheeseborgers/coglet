@@ -1,4 +1,4 @@
 tests/test_assets/semantic/invalid/interop/extern_c_nested.cog:3:5: error: #extern(c) declarations must be at top level
-    nested::(value: i32) -> i32;
+    nested::(value: s32) -> s32;
     ^~~~~~
 1 semantic error generated.

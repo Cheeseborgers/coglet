@@ -1,28 +1,28 @@
 wrapping_calls::(
-    signed_left: i8,
-    signed_right: i8,
+    signed_left: s8,
+    signed_right: s8,
     unsigned_left: u64,
     unsigned_right: u64
 ) -> void {
-    signed_add: i8 =
+    signed_add: s8 =
         wrapping_add(
             signed_left,
             signed_right
         );
 
-    signed_sub: i8 =
+    signed_sub: s8 =
         wrapping_sub(
             signed_left,
             signed_right
         );
 
-    signed_mul: i8 =
+    signed_mul: s8 =
         wrapping_mul(
             signed_left,
             signed_right
         );
 
-    signed_neg: i8 =
+    signed_neg: s8 =
         wrapping_neg(
             signed_left
         );

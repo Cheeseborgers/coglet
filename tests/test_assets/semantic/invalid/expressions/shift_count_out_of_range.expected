@@ -1,17 +1,17 @@
 tests/test_assets/semantic/invalid/expressions/shift_count_out_of_range.cog:6:17: error: shift count must be less than left operand bit width
-    value_i8 << 8;
+    value_s8 << 8;
                 ^
 tests/test_assets/semantic/invalid/expressions/shift_count_out_of_range.cog:7:17: error: shift count must be less than left operand bit width
     value_u8 >> 9;
                 ^
 tests/test_assets/semantic/invalid/expressions/shift_count_out_of_range.cog:8:18: error: shift count must be less than left operand bit width
-    value_i32 << 32;
+    value_s32 << 32;
                  ^~
 tests/test_assets/semantic/invalid/expressions/shift_count_out_of_range.cog:9:19: error: shift count must be less than left operand bit width
-    value_i32 >> (16 + 16);
+    value_s32 >> (16 + 16);
                   ^~~~~~~
 tests/test_assets/semantic/invalid/expressions/shift_count_out_of_range.cog:10:21: error: shift count must be less than left operand bit width
-    cast(i64, 1) << 64;
+    cast(s64, 1) << 64;
                     ^~
 tests/test_assets/semantic/invalid/expressions/shift_count_out_of_range.cog:11:21: error: shift count must be less than left operand bit width
     cast(u64, 1) >> 18446744073709551615;

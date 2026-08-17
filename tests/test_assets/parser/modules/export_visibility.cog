@@ -1,8 +1,8 @@
 module math;
 export :: 7;
 export answer :: 42;
-export counter: i32 = 0;
-export left, right: i32 = 1;
-export Pair::struct { x: i32; y: i32; }
+export counter: s32 = 0;
+export left, right: s32 = 1;
+export Pair::struct { x: s32; y: s32; }
 export Mode::enum(u8) { Zero, One }
-export add::(a: i32, b: i32) -> i32 { return a + b; }
+export add::(a: s32, b: s32) -> s32 { return a + b; }

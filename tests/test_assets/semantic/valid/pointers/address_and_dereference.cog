@@ -1,15 +1,15 @@
-main::() -> i32 {
-    value: i32 = 10;
-    pointer: i32* = &value;
+main::() -> s32 {
+    value: s32 = 10;
+    pointer: s32* = &value;
 
     *pointer = 20;
     *pointer += 2;
     (*pointer)++;
 
-    same_pointer: i32* = &*pointer;
+    same_pointer: s32* = &*pointer;
     *&value = 30;
 
-    null_pointer: i32* = null;
+    null_pointer: s32* = null;
 
     same_pointer;
     null_pointer;

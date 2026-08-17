@@ -1,6 +1,6 @@
 loop_can_break::(
     should_break: bool
-) -> i32 {
+) -> s32 {
     while true {
         if should_break {
             break;
@@ -10,7 +10,7 @@ loop_can_break::(
 
 conditional_loop_may_not_execute::(
     condition: bool
-) -> i32 {
+) -> s32 {
     while condition {
         return 10;
     }

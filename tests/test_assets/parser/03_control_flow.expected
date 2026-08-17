@@ -1,7 +1,7 @@
 program
-  func classify -> i32
+  func classify -> s32
     params:
-      param_decl value: i32
+      param_decl value: s32
       param_decl keep_going: bool
     body:
       block

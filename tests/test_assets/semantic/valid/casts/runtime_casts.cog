@@ -4,8 +4,8 @@ Color :: enum(u16) {
     Blue,
 }
 
-cast_source: i32 = 10;
+cast_source: s32 = 10;
 
-cast_i64_test: i64 = cast(i64, cast_source);
+cast_s64_test: s64 = cast(s64, cast_source);
 cast_color_test: Color = cast(Color, 0);
 cast_enum_raw_test: u16 = cast(u16, Color.Green);

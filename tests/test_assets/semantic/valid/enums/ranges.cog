@@ -3,7 +3,7 @@ EnumU8Max :: enum(u8) {
     B,
 }
 
-EnumI8Range :: enum(i8) {
+EnumS8Range :: enum(s8) {
     A = -128,
     B,
     C = 127,

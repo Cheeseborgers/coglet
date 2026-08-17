@@ -12,10 +12,10 @@ A physical source file may optionally begin with an absolute dotted module name:
 module std.math;
 
 export tau :: 6.283185307179586;
-export counter: i32 = 0;
-export add::(a: i32, b: i32) -> i32 { return a + b; }
+export counter: s32 = 0;
+export add::(a: s32, b: s32) -> s32 { return a + b; }
 
-helper::() -> i32 { return 1; } // private
+helper::() -> s32 { return 1; } // private
 ```
 
 Another file imports that namespace explicitly and uses the same dot syntax for
@@ -24,7 +24,7 @@ qualified lookup:
 ```c
 import std.math;
 
-main::() -> i32 {
+main::() -> s32 {
     std.math.counter = std.math.add(20, 22);
     return std.math.counter;
 }
@@ -67,7 +67,7 @@ Declarations in a named module are private by default. A top-level contextual
 ```c
 module std.math;
 
-export Pair::struct { x: i32; y: i32; }
+export Pair::struct { x: s32; y: s32; }
 export answer :: 42;
 
 secret :: 7;
@@ -113,7 +113,7 @@ The current module layer remains compile-time namespace/visibility only. Import
 cycles are allowed, and imports do not define runtime dependency ordering.
 Explicit files retain command-line order; discovered files are appended after
 them in first-discovery order, and that physical order remains the
-module-initializer order. Only a root-namespace `main::() -> i32` is the
+module-initializer order. Only a root-namespace `main::() -> s32` is the
 executable entry. Package manifests, automatic multi-file package membership,
 actual standard-library modules, and separate compilation remain future work.
 
@@ -160,7 +160,7 @@ An expression is assignable only when semantic analysis determines that it is an
 Variables are assignable:
 
 ```c
-x: i32 = 1;
+x: s32 = 1;
 x = 2;
 ```
 
@@ -198,7 +198,7 @@ Invalid:
 
 ```c
 y := (x = 1);
-takes_i32(x += 1);
+takes_s32(x += 1);
 return x++;
 1 + (x = 2);
 ```
@@ -210,15 +210,15 @@ Successful mutation nodes produce no value.
 A local variable declaration does not implicitly initialize the variable:
 
 ```c
-value: i32;
+value: s32;
 ```
 
-The variable exists and has type `i32`, but its value cannot be read until semantic analysis can prove that it has been initialized on every reachable incoming control-flow path.
+The variable exists and has type `s32`, but its value cannot be read until semantic analysis can prove that it has been initialized on every reachable incoming control-flow path.
 
 A plain whole-variable assignment initializes it:
 
 ```c
-value: i32;
+value: s32;
 
 value = 10;
 
@@ -228,8 +228,8 @@ return value; // valid
 Parameters and local variables declared with initializers begin initialized:
 
 ```c
-use_value::(parameter: i32) -> i32 {
-    local: i32 = 10;
+use_value::(parameter: s32) -> s32 {
+    local: s32 = 10;
 
     return parameter + local;
 }
@@ -239,7 +239,7 @@ Typed mutable declarations may bind more than one name:
 
 ```c
 a, b: u64 = 0;
-p, q: i32;
+p, q: s32;
 ```
 
 This is exact left-to-right sugar for separate declarations. In particular:
@@ -264,7 +264,7 @@ Definite-assignment analysis applies to function-local variables and parameters.
 An ordinary identifier use reads the variable and therefore requires prior initialization:
 
 ```c
-value: i32;
+value: s32;
 
 other := value; // invalid
 ```
@@ -272,7 +272,7 @@ other := value; // invalid
 A direct plain-assignment target does not read the previous value:
 
 ```c
-value: i32;
+value: s32;
 
 value = 10; // valid: initializes value
 ```
@@ -280,7 +280,7 @@ value = 10; // valid: initializes value
 Compound assignment and increment/decrement read the previous value before writing it:
 
 ```c
-value: i32;
+value: s32;
 
 value += 1; // invalid
 value++;    // invalid
@@ -290,7 +290,7 @@ value--;    // invalid
 Taking the address of a local also requires the local to be initialized:
 
 ```c
-value: i32;
+value: s32;
 
 pointer := &value; // invalid
 ```
@@ -302,7 +302,7 @@ This prevents an uninitialized local from becoming observable indirectly through
 Assigning a complete struct or array variable initializes that variable:
 
 ```c
-values: i32[3];
+values: s32[3];
 
 values = [1, 2, 3];
 
@@ -313,8 +313,8 @@ Writing only a field, element, pointee, or pointer-indexed location does not ini
 
 ```c
 point: Point;
-values: i32[3];
-pointer: i32* = get_pointer();
+values: s32[3];
+pointer: s32* = get_pointer();
 
 point.x = 10;    // does not initialize point
 values[0] = 10; // does not initialize values
@@ -331,7 +331,7 @@ Each `if` branch is checked from the same incoming state.
 When both branches can continue, a variable is initialized afterward only when both branches initialize it:
 
 ```c
-value: i32;
+value: s32;
 
 if condition {
     value = 10;
@@ -345,7 +345,7 @@ return value; // valid
 Without an `else`, the unchanged incoming path remains possible:
 
 ```c
-value: i32;
+value: s32;
 
 if condition {
     value = 10;
@@ -357,7 +357,7 @@ return value; // invalid
 A branch that cannot continue does not weaken a branch that can:
 
 ```c
-value: i32;
+value: s32;
 
 if condition {
     value = 10;
@@ -432,7 +432,7 @@ three-clause form requires parentheses.
 Loop analysis is intentionally conservative. Initialization performed only during an iteration is not generally available after the loop:
 
 ```c
-value: i32;
+value: s32;
 
 while condition {
     value = 10;
@@ -456,7 +456,7 @@ Normal body fallthrough and `continue` paths reach the post expression. `break` 
 A loop whose Boolean condition is known at compile time to be `true` and has no reachable `break` does not continue to the statement following the loop. This includes the literal `true`, named/local constants, and other checked constant Boolean expressions:
 
 ```c
-run_forever::() -> i32 {
+run_forever::() -> s32 {
     while true {
     }
 }
@@ -469,7 +469,7 @@ The same rule applies when compile-time constant evaluation proves the condition
 ```c
 ALWAYS :: true;
 
-run_forever::() -> i32 {
+run_forever::() -> s32 {
     while ALWAYS {
     }
 }
@@ -484,7 +484,7 @@ A compile-time-true loop with a reachable `break` may continue after the loop an
 Coglet reports unreachable statements during block traversal:
 
 ```c
-test::() -> i32 {
+test::() -> s32 {
     return 10;
 
     value := 20; // unreachable
@@ -500,10 +500,10 @@ Nested functions do not currently support closure capture.
 A nested function cannot read, modify, or take the address of a local variable or parameter belonging to an enclosing function:
 
 ```c
-outer::() -> i32 {
-    value: i32 = 10;
+outer::() -> s32 {
+    value: s32 = 10;
 
-    inner::() -> i32 {
+    inner::() -> s32 {
         return value; // invalid: capture is not supported
     }
 
@@ -529,7 +529,7 @@ identity::<T>(value: T) -> T {
 
 Generic type parameters are placeholders only while the source function is a
 frontend template. A call either supplies all concrete type arguments explicitly
-(`min::<i64>(a, b)`) or omits the list and infers them from ordinary function
+(`min::<s64>(a, b)`) or omits the list and infers them from ordinary function
 arguments. The current semantic checker is bottom-up, so an expected result type
 does not participate in inference. Conflicting argument evidence is rejected, and
 a type parameter that cannot be inferred requires an explicit type argument.
@@ -547,7 +547,7 @@ min::<T: ordered>(a: T, b: T) -> T {
 The builtin constraints are deliberately small:
 
 - `integer`: any concrete signed or unsigned integer type;
-- `signed_integer`: `i8`, `i16`, `i32`, or `i64`;
+- `signed_integer`: `s8`, `s16`, `s32`, or `s64`;
 - `unsigned_integer`: `u8`, `u16`, `u32`, or `u64`;
 - `floating`: `f32` or `f64`;
 - `numeric`: any concrete integer or floating-point type;
@@ -597,9 +597,9 @@ Invalid when a value is required:
 
 ```c
 x := does_nothing();
-takes_i32(does_nothing());
+takes_s32(does_nothing());
 
-bad::() -> i32 {
+bad::() -> s32 {
     return does_nothing();
 }
 
@@ -647,8 +647,8 @@ This permits correct handling of signed minimum values.
 Mutable inferred storage receives a concrete default type:
 
 ```c
-a := 1;                    // i32
-b := 2147483648;           // i64
+a := 1;                    // s32
+b := 2147483648;           // s64
 c := 9223372036854775808;  // u64
 d := 1.5;                  // f64
 ```
@@ -660,7 +660,7 @@ A :: 255;  // untyped-int
 B :: 1.5;  // untyped-float
 
 small: u8 = A;
-wide: i64 = A;
+wide: s64 = A;
 float_value: f32 = A;
 rounded: f32 = B;
 ```
@@ -679,7 +679,7 @@ value: u8 = 10;
 value + 1;    // valid: 1 adapts to u8
 value + 256;  // invalid: 256 does not fit u8
 
-signed: i32 = 1;
+signed: s32 = 1;
 unsigned: u32 = 1;
 
 signed + unsigned; // invalid: use an explicit cast
@@ -811,7 +811,7 @@ The count may have any integer type:
 ```c
 value: u32 = 1;
 small_count: u8 = 3;
-wide_count: i64 = 3;
+wide_count: s64 = 3;
 
 value << small_count; // u32
 value >> wide_count;  // u32
@@ -829,7 +829,7 @@ negative count or a count equal to or greater than the width traps.
 Shift counts are never masked modulo the operand width.
 
 An untyped left operand uses its ordinary default integer width. Therefore,
-1 << count uses i32; an explicitly wider operation starts with a cast such
+1 << count uses s32; an explicitly wider operation starts with a cast such
 as cast(u64, 1) << count.
 
 Shift result semantics
@@ -839,7 +839,7 @@ right and bits shifted beyond the width are discarded:
 
 ```
 cast(u8, 128) << 1; // u8 value 0
-cast(i8, 64)  << 1;  // i8 value -128
+cast(s8, 64)  << 1;  // s8 value -128
 ```
 Discarding high bits during a valid left shift does not cause an arithmetic
 overflow trap. This rule is specific to shifts; ordinary addition,
@@ -851,7 +851,7 @@ sign-extending:
 
 ```c
 cast(u8, 128) >> 1; // 64
-cast(i8, -3) >> 1;  // -2
+cast(s8, -3) >> 1;  // -2
 ```
 
 ### Precedence
@@ -946,12 +946,12 @@ for a later complete floating-point specification.
 Coglet supports mutable/readonly raw object pointers with optional volatile access as its low-level memory and C-interoperability foundation.
 
 ```c
-value: i32 = 10;
+value: s32 = 10;
 
-pointer: i32* = &value;
-view: readonly i32* = pointer;
-device: volatile i32* = pointer;
-status: readonly volatile i32* = pointer;
+pointer: s32* = &value;
+view: readonly s32* = pointer;
+device: volatile s32* = pointer;
+status: readonly volatile s32* = pointer;
 ```
 
 `T*` grants mutable ordinary access to its pointee. `readonly T*` removes write permission. `volatile T*` remains writable but requires accesses through that pointer to retain volatile semantics. `readonly volatile T*` combines both qualifiers.
@@ -963,8 +963,8 @@ another alias.
 The pointer variable itself remains assignable:
 
 ```c
-first: readonly i32* = get_first();
-second: readonly i32* = get_second();
+first: readonly s32* = get_first();
+second: readonly s32* = get_second();
 
 first = second; // valid
 ```
@@ -992,10 +992,10 @@ A struct field selected from an lvalue inherits the access of that lvalue:
 
 ```c
 Point :: struct {
-    x: i32;
+    x: s32;
 }
 
-read::(point: readonly Point*) -> i32 {
+read::(point: readonly Point*) -> s32 {
     return (*point).x;
 }
 
@@ -1016,10 +1016,10 @@ Address-of accepts writable or readonly lvalues and preserves both permission an
 An address/dereference round trip therefore cannot recover mutable access:
 
 ```c
-view: readonly i32* = get_view();
+view: readonly s32* = get_view();
 
-same_view: readonly i32* = &*view; // valid
-mutable: i32* = &*view;            // invalid
+same_view: readonly s32* = &*view; // valid
+mutable: s32* = &*view;            // invalid
 ```
 
 ### Pointer conversions
@@ -1027,34 +1027,34 @@ mutable: i32* = &*view;            // invalid
 Coglet permits monotonic immediate pointer qualification. A matching raw pointer may add `readonly`, `volatile`, or both, but may not remove either qualifier. The immediate pointee types must otherwise be exactly equal. These conversions are valid implicitly and through `cast`:
 
 ```c
-mutable: i32* = get_pointer();
+mutable: s32* = get_pointer();
 
-implicit_view: readonly i32* = mutable;
-volatile_view: volatile i32* = mutable;
-both: readonly volatile i32* = mutable;
-explicit_view := cast(readonly volatile i32*, mutable);
+implicit_view: readonly s32* = mutable;
+volatile_view: volatile s32* = mutable;
+both: readonly volatile s32* = mutable;
+explicit_view := cast(readonly volatile s32*, mutable);
 ```
 
 Qualifier removal is rejected because it could invent write permission or discard volatile access semantics:
 
 ```c
-view: readonly volatile i32* = get_view();
+view: readonly volatile s32* = get_view();
 
-mutable: i32* = view;            // invalid
-nonvolatile: readonly i32* = view; // invalid
-cast(i32*, view);                 // invalid
+mutable: s32* = view;            // invalid
+nonvolatile: readonly s32* = view; // invalid
+cast(s32*, view);                 // invalid
 ```
 
-Qualifiers are not introduced recursively through nested pointers. In particular, `i32**` does not adapt to `volatile i32**` or `readonly i32**`.
+Qualifiers are not introduced recursively through nested pointers. In particular, `s32**` does not adapt to `volatile s32**` or `readonly s32**`.
 
 ### Pointer equality
 
 Pointers with the same immediate pointee type may be compared even when their immediate readonly/volatile qualifiers differ:
 
 ```c
-mutable: i32* = get_pointer();
-view: readonly i32* = mutable;
-device: volatile i32* = mutable;
+mutable: s32* = get_pointer();
+view: readonly s32* = mutable;
+device: volatile s32* = mutable;
 
 mutable == view;   // valid
 mutable == device; // valid
@@ -1069,10 +1069,10 @@ different.
 `null` is Coglet's dedicated null-pointer literal. It adapts to any raw-pointer qualifier combination:
 
 ```c
-mutable: i32* = null;
-view: readonly i32* = null;
-device: volatile i32* = null;
-status: readonly volatile i32* = null;
+mutable: s32* = null;
+view: readonly s32* = null;
+device: volatile s32* = null;
+status: readonly volatile s32* = null;
 
 mutable == null;
 view != null;
@@ -1081,8 +1081,8 @@ view != null;
 Explicit casts may provide either concrete pointer type:
 
 ```c
-cast(i32*, null);
-cast(readonly i32*, null);
+cast(s32*, null);
+cast(readonly s32*, null);
 ```
 
 Integer zero is not a null-pointer constant. Integer-to-pointer,
@@ -1147,19 +1147,19 @@ is no implicit conversion and ordinary `cast` does not perform this operation.
 Arrays are fixed-size values with an element type and compile-time length.
 
 ```c
-values: i32[3] = [0, 0, 0];
+values: s32[3] = [0, 0, 0];
 
 values[0] = 1;
 values[1] += 2;
 ```
 
-The type means an array of three `i32` values.
+The type means an array of three `s32` values.
 
 Array size is part of the type:
 
 ```c
-a: i32[3];
-b: i32[4];
+a: s32[3];
+b: s32[4];
 ```
 
 `a` and `b` have different types.
@@ -1180,7 +1180,7 @@ Runtime integer indexes are allowed.
 Array literals initialize fixed-size arrays.
 
 ```c
-values: i32[3] = [1, 2, 3];
+values: s32[3] = [1, 2, 3];
 ```
 
 The expected type supplies the element type and required length.
@@ -1188,25 +1188,25 @@ The expected type supplies the element type and required length.
 Invalid:
 
 ```c
-values: i32[3] = [1, 2];       // too few elements
-values: i32[3] = [1, 2, 3, 4]; // too many elements
-values: i32[3] = [1, true, 3]; // wrong element type
+values: s32[3] = [1, 2];       // too few elements
+values: s32[3] = [1, 2, 3, 4]; // too many elements
+values: s32[3] = [1, true, 3]; // wrong element type
 ```
 
 Supported expected-type contexts include:
 
 ```c
-values: i32[3] = [1, 2, 3];
+values: s32[3] = [1, 2, 3];
 values = [4, 5, 6];
 
-takes_i32_array([1, 2, 3]);
+takes_s32_array([1, 2, 3]);
 
-make_values::() -> i32[3] {
+make_values::() -> s32[3] {
     return [1, 2, 3];
 }
 
 Point :: struct {
-    values: i32[3];
+    values: s32[3];
 }
 
 p := Point {
@@ -1222,7 +1222,7 @@ A fixed-size array may be initialized with the special contextual spelling
 `{0}`:
 
 ```c
-values: i32[64] = {0};
+values: s32[64] = {0};
 ```
 
 This initializes the entire destination array to Coglet semantic zero. The
@@ -1234,9 +1234,9 @@ The same expected-array contexts as array literals are supported:
 
 ```c
 values = {0};
-takes_i32_array({0});
+takes_s32_array({0});
 
-make_values::() -> i32[3] {
+make_values::() -> s32[3] {
     return {0};
 }
 
@@ -1250,7 +1250,7 @@ and cannot initialize a scalar or struct directly:
 
 ```c
 values := {0};      // invalid: no expected array type
-value: i32 = {0};   // invalid: destination is not an array
+value: s32 = {0};   // invalid: destination is not an array
 ```
 
 The frontend records the destination array type on the contextual initializer;
@@ -1316,7 +1316,7 @@ Invalid:
 
 ```c
 name: u8[5] = "hello";   // no room for trailing null byte
-name: i32[6] = "hello";  // destination element type is not u8
+name: s32[6] = "hello";  // destination element type is not u8
 name := "hello";         // no expected byte-array type
 "hello";                 // bare string literal is not a general expression
 ```
@@ -1381,8 +1381,8 @@ Struct fields have declared types.
 
 ```c
 Point :: struct {
-    x: i32;
-    y: i32;
+    x: s32;
+    y: s32;
 }
 ```
 
@@ -1413,11 +1413,11 @@ or source-level spelling.
 
 ```c
 First :: struct {
-    value: i32;
+    value: s32;
 }
 
 Second :: struct {
-    value: i32;
+    value: s32;
 }
 ```
 
@@ -1427,14 +1427,14 @@ The same rule applies to shadowed declarations:
 
 ```c
 Point :: struct {
-    x: i32;
+    x: s32;
 }
 
 test::() -> void {
     outer: Point = Point { x = 1 };
 
     Point :: struct {
-        x: i32;
+        x: s32;
     }
 
     inner: Point = Point { x = 2 };
@@ -1551,7 +1551,7 @@ A mutable pointer may explicitly drop write permission when the immediate
 pointee type is otherwise exactly equal:
 
 ```c
-view := cast(readonly i32*, mutable_pointer);
+view := cast(readonly s32*, mutable_pointer);
 ```
 
 A checked pointer cast may not add write permission or recursively qualify a
@@ -1608,9 +1608,9 @@ one side must be a top-level opaque raw pointer and the other a typed raw
 pointer:
 
 ```c
-p: i32* = get_pointer();
+p: s32* = get_pointer();
 h: opaque* = reinterpret(opaque*, p);
-recovered: i32* = reinterpret(i32*, h);
+recovered: s32* = reinterpret(s32*, h);
 ```
 
 The operation preserves the address bits and changes only their static pointer
@@ -1621,12 +1621,12 @@ unchecked.
 `reinterpret` never grants stronger access or weaker volatility guarantees. A readonly source may only produce a readonly target, and a volatile source may only produce a volatile target:
 
 ```c
-rp: readonly i32* = get_view();
+rp: readonly s32* = get_view();
 rh: readonly opaque* = reinterpret(readonly opaque*, rp); // valid
 
 reinterpret(opaque*, rp); // invalid: would discard readonly access
 
-vp: volatile i32* = get_device();
+vp: volatile s32* = get_device();
 reinterpret(opaque*, vp);          // invalid: would discard volatile access
 reinterpret(volatile opaque*, vp); // valid
 ```
@@ -1654,9 +1654,9 @@ signedness.
 ```c
 truncate(u8, 256);            // 0
 truncate(u8, -1);             // 255
-truncate(i8, 255);            // -1
-truncate(i8, 128);            // -128
-truncate(u16, cast(i8, -1));  // 65535
+truncate(s8, 255);            // -1
+truncate(s8, 128);            // -128
+truncate(u16, cast(s8, -1));  // 65535
 ```
 
 Truncation never fails because the mathematical source value is outside the
@@ -1727,7 +1727,7 @@ The currently accepted frontend type subset is:
 
 ```text
 bool
-i8 i16 i32 i64
+s8 s16 s32 s64
 u8 u16 u32 u64
 f32 f64
 c_char c_schar c_uchar
@@ -1878,7 +1878,7 @@ identity::(value: c_int) -> c_int {
     return value;
 }
 
-main::() -> i32 {
+main::() -> s32 {
     return run_callback(identity, 7);
 }
 ```
@@ -2028,7 +2028,7 @@ contracts. Ordinary arithmetic, literal contextualization, casts, and pointer
 composition therefore continue to use the existing Coglet semantics. Plain
 `c_char` remains distinct from `c_schar`/`c_uchar` because native C decides
 whether plain `char` is signed. For example, on a conventional LP64 host
-`c_int` resolves to `i32`, `c_long` resolves to `i64`, and `c_size` resolves to
+`c_int` resolves to `s32`, `c_long` resolves to `s64`, and `c_size` resolves to
 `u64`.
 
 The frontend now receives an explicit `TargetInfo` describing the selected C
@@ -2056,7 +2056,7 @@ Fixed-width Coglet types remain valid in C declarations when the corresponding
 C interface itself uses a representation-compatible fixed-width type.
 
 The host-C backend consumes verified CogIR and adapts Coglet's executable entry
-to the host process ABI. A source executable uses `main::() -> i32`; `c_*` types
+to the host process ABI. A source executable uses `main::() -> s32`; `c_*` types
 remain explicit C-interoperability types rather than a requirement imposed by
 the bootstrap backend. The generated C translation unit provides an
 `int main(void)` adapter that runs module initialization and returns the Coglet

@@ -2,7 +2,7 @@ tests/test_assets/semantic/invalid/interop/repr_c_enum_invalid.cog:2:1: error: #
 MissingBacking::enum {
 ^~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/interop/repr_c_enum_invalid.cog:7:1: error: #repr(c) enum backing type must be a native C integer alias
-CogletBacking::enum(i32) {
+CogletBacking::enum(s32) {
 ^~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/interop/repr_c_enum_invalid.cog:12:1: error: #repr(c) enum backing type must be a native C integer alias
 FloatBacking::enum(c_float) {

@@ -1,15 +1,15 @@
 module target(pointer=64)
 type %t0 "Tiny" = enum(u8) {Zero=0x0, High=0xc8}
-global @g0 ".str" : [3]i8 = @c8([@c5, @c6, @c7])
-declare @f0 "sink"(%0: i32, ...) -> i32 [abi=c, linkage=external]
-func @f1 "forward"(%0: fn(i32, ...) -> i32, %1: i16, %2: u16, %3: f32, %4: %t0, %5: i64, %6: f64, %7: opaque_ptr) -> i32 [abi=coglet, linkage=internal] {
+global @g0 ".str" : [3]s8 = @c8([@c5, @c6, @c7])
+declare @f0 "sink"(%0: s32, ...) -> s32 [abi=c, linkage=external]
+func @f1 "forward"(%0: fn(s32, ...) -> s32, %1: s16, %2: u16, %3: f32, %4: %t0, %5: s64, %6: f64, %7: opaque_ptr) -> s32 [abi=coglet, linkage=internal] {
   slots:
-    $s0 : fn(i32, ...) -> i32 "callback"
-    $s1 : i16 "small"
+    $s0 : fn(s32, ...) -> s32 "callback"
+    $s1 : s16 "small"
     $s2 : u16 "unsigned_small"
     $s3 : f32 "single"
     $s4 : %t0 "tiny"
-    $s5 : i64 "wide"
+    $s5 : s64 "wide"
     $s6 : f64 "double_value"
     $s7 : opaque_ptr "raw"
   bb0 "entry"():
@@ -31,21 +31,21 @@ func @f1 "forward"(%0: fn(i32, ...) -> i32, %1: i16, %2: u16, %3: f32, %4: %t0, 
     store %15, %7
     %16 = local_addr $s0
     %17 = load %16
-    %18 = const i32 @c2(0x1)
+    %18 = const s32 @c2(0x1)
     %19 = local_addr $s1
     %20 = load %19
-    %21 = c.vararg.promote %20 to i32
+    %21 = c.vararg.promote %20 to s32
     %22 = const bool @c3(true)
-    %23 = c.vararg.promote %22 to i32
+    %23 = c.vararg.promote %22 to s32
     %24 = local_addr $s2
     %25 = load %24
-    %26 = c.vararg.promote %25 to i32
+    %26 = c.vararg.promote %25 to s32
     %27 = local_addr $s3
     %28 = load %27
     %29 = c.vararg.promote %28 to f64
     %30 = local_addr $s4
     %31 = load %30
-    %32 = c.vararg.promote %31 to i32
+    %32 = c.vararg.promote %31 to s32
     %33 = local_addr $s5
     %34 = load %33
     %35 = local_addr $s6
@@ -54,21 +54,21 @@ func @f1 "forward"(%0: fn(i32, ...) -> i32, %1: i16, %2: u16, %3: f32, %4: %t0, 
     %38 = load %37
     %39 = call %17(%18, %21, %23, %26, %29, %32, %34, %36, %38)
     %40 = function_ref @f0
-    %41 = const i32 @c4(0x2)
+    %41 = const s32 @c4(0x2)
     %42 = local_addr $s1
     %43 = load %42
-    %44 = c.vararg.promote %43 to i32
+    %44 = c.vararg.promote %43 to s32
     %45 = const bool @c3(true)
-    %46 = c.vararg.promote %45 to i32
+    %46 = c.vararg.promote %45 to s32
     %47 = local_addr $s2
     %48 = load %47
-    %49 = c.vararg.promote %48 to i32
+    %49 = c.vararg.promote %48 to s32
     %50 = local_addr $s3
     %51 = load %50
     %52 = c.vararg.promote %51 to f64
     %53 = local_addr $s4
     %54 = load %53
-    %55 = c.vararg.promote %54 to i32
+    %55 = c.vararg.promote %54 to s32
     %56 = local_addr $s5
     %57 = load %56
     %58 = local_addr $s6
@@ -80,7 +80,7 @@ func @f1 "forward"(%0: fn(i32, ...) -> i32, %1: i16, %2: u16, %3: f32, %4: %t0, 
     %64 = array_elem_addr %62, %63
     %65 = local_addr $s0
     %66 = load %65
-    %67 = const i32 @c10(0x7)
+    %67 = const s32 @c10(0x7)
     %68 = const f64 @c11(f64bits(0x3ff8000000000000))
     %69 = call %40(%41, %44, %46, %49, %52, %55, %57, %59, %61, %64, %66, %67, %68)
     ret %69

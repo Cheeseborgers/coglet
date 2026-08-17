@@ -1,2 +1,2 @@
 module broken;
-export value: i32 = ;
+export value: s32 = ;

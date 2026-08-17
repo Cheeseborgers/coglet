@@ -1,30 +1,30 @@
 Box::struct {
-    tag: i32;
-    values: i32[3];
+    tag: s32;
+    values: s32[3];
 }
 
-global_values: i32[3] = [4, 5, 6];
+global_values: s32[3] = [4, 5, 6];
 global_box: Box = Box {
     tag = 7,
     values = [8, 9, 10],
 };
 
-make_values::(base: i32) -> i32[3] {
+make_values::(base: s32) -> s32[3] {
     return [base, base + 1, base + 2];
 }
 
-sum_values::(values: i32[3]) -> i32 {
+sum_values::(values: s32[3]) -> s32 {
     return values[0] + values[1] + values[2];
 }
 
-make_box::(base: i32) -> Box {
+make_box::(base: s32) -> Box {
     return Box {
         tag = base,
         values = [base + 1, base + 2, base + 3],
     };
 }
 
-main::() -> i32 {
+main::() -> s32 {
     values := make_values(11);
     copy := values;
     copy[1] = 20;
@@ -44,15 +44,15 @@ main::() -> i32 {
     if box.values[0] != 31 || copied_box.values[0] != 99
         return 4;
 
-    pointer: i32* = &copy[0];
+    pointer: s32* = &copy[0];
     pointer[2] = 41;
     raw: opaque* = reinterpret(opaque*, pointer);
-    recovered: i32* = reinterpret(i32*, raw);
+    recovered: s32* = reinterpret(s32*, raw);
     if recovered != pointer || recovered[2] != 41
         return 5;
 
-    ro: readonly i32* = pointer;
-    if ro != cast(readonly i32*, pointer)
+    ro: readonly s32* = pointer;
+    if ro != cast(readonly s32*, pointer)
         return 6;
 
     if global_values[0] != 4 || global_values[2] != 6

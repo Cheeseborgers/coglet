@@ -327,17 +327,17 @@ const char *token_debug_display_name(TokenType type)
         case TOK_UINT_KW:
             return "'uint'";
 
-        case TOK_I8:
-            return "'i8'";
+        case TOK_S8:
+            return "'s8'";
 
-        case TOK_I16:
-            return "'i16'";
+        case TOK_S16:
+            return "'s16'";
 
-        case TOK_I32:
-            return "'i32'";
+        case TOK_S32:
+            return "'s32'";
 
-        case TOK_I64:
-            return "'i64'";
+        case TOK_S64:
+            return "'s64'";
 
         case TOK_U8:
             return "'u8'";
@@ -1157,14 +1157,14 @@ static Type *parse_type(Parser *p)
             : POINTER_ACCESS_MUTABLE;
         base->pointer_is_volatile = has_volatile;
         pointer_count = 1;
-    } else if (match(p, TOK_I8)) {
-        base->kind = TYPE_I8;
-    } else if (match(p, TOK_I16)) {
-        base->kind = TYPE_I16;
-    } else if (match(p, TOK_I32)) {
-        base->kind = TYPE_I32;
-    } else if (match(p, TOK_I64) || match(p, TOK_INT_KW)) {
-        base->kind = TYPE_I64;
+    } else if (match(p, TOK_S8)) {
+        base->kind = TYPE_S8;
+    } else if (match(p, TOK_S16)) {
+        base->kind = TYPE_S16;
+    } else if (match(p, TOK_S32)) {
+        base->kind = TYPE_S32;
+    } else if (match(p, TOK_S64) || match(p, TOK_INT_KW)) {
+        base->kind = TYPE_S64;
     } else if (match(p, TOK_U8)) {
         base->kind = TYPE_U8;
     } else if (match(p, TOK_U16)) {
@@ -1479,7 +1479,7 @@ static int parse_parameter_group(Parser *p, Node *func)
 
     // One default expression parsed for the whole parameter group:
     //
-    // (x, y, z: i32 = 10)
+    // (x, y, z: s32 = 10)
     //
     // group_default_value -> NODE_NUMBER(10)
     //
@@ -1790,7 +1790,7 @@ static int parse_c_calling_convention_token(
  * Parses the first ABI declaration form:
  *
  *     #extern(c)
- *     puts::(s: readonly u8*) -> i32;
+ *     puts::(s: readonly u8*) -> s32;
  *
  * `extern` and `c` intentionally remain identifiers rather than globally
  * reserved keywords. The `#` introduces declaration metadata.

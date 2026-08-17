@@ -1,6 +1,6 @@
 Pair::struct {
-    x: i32;
-    y: i32;
+    x: s32;
+    y: s32;
 }
 
 make_pair::() -> Pair {
@@ -10,6 +10,6 @@ make_pair::() -> Pair {
     };
 }
 
-main::() -> i32 {
+main::() -> s32 {
     return make_pair().y;
 }

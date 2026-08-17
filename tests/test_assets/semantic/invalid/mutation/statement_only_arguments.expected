@@ -1,10 +1,10 @@
 tests/test_assets/semantic/invalid/mutation/statement_only_arguments.cog:7:15: error: assignment cannot be used as a value; it is a statement
-    takes_i32(x = 1);
+    takes_s32(x = 1);
               ^~~~~
 tests/test_assets/semantic/invalid/mutation/statement_only_arguments.cog:8:15: error: compound assignment cannot be used as a value; it is a statement
-    takes_i32(x += 1);
+    takes_s32(x += 1);
               ^~~~~~
 tests/test_assets/semantic/invalid/mutation/statement_only_arguments.cog:9:15: error: increment/decrement cannot be used as a value; it is a statement
-    takes_i32(x++);
+    takes_s32(x++);
               ^~~
 3 semantic errors generated.

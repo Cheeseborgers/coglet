@@ -6,8 +6,8 @@ F32_ARITHMETIC_OK: bool :
 DIRECT_INTEGER_TO_F32_OK: bool :
     cast(f32, 9223372586610589697) == cast(f32, 9223373136366403584);
 
-TRUNCATE_POSITIVE_OK: bool : cast(i32, 3.9) == 3;
-TRUNCATE_NEGATIVE_OK: bool : cast(i32, -3.9) == -3;
+TRUNCATE_POSITIVE_OK: bool : cast(s32, 3.9) == 3;
+TRUNCATE_NEGATIVE_OK: bool : cast(s32, -3.9) == -3;
 
 check_f32_arithmetic::(value: bool) -> void {
     switch value {

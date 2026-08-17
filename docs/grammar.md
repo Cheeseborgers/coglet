@@ -28,15 +28,15 @@ are private when the prefix is absent. `export` is invalid in the root namespace
 
 ```c
 module std.math;
-export Pair::struct { x: i32; y: i32; }
-export add::(a: i32, b: i32) -> i32 { return a + b; }
+export Pair::struct { x: s32; y: s32; }
+export add::(a: s32, b: s32) -> s32 { return a + b; }
 
-helper::() -> i32 { return 1; } // private to module std.math
+helper::() -> s32 { return 1; } // private to module std.math
 ```
 
 ```c
 import std.math;
-main::() -> i32 {
+main::() -> s32 {
     pair: std.math.Pair = std.math.Pair { x = 20, y = 22 };
     return std.math.add(pair.x, pair.y);
 }
@@ -85,21 +85,21 @@ cfn_call_option = "call" "=" c_calling_convention;
 `readonly` and `volatile` are valid only when at least one pointer layer follows the base type. They may appear in either order, each at most once, and qualify the first pointer layer following that base type.
 
 ```c
-mutable: i32*;
-view: readonly i32*;
-device: volatile i32*;
-status: readonly volatile i32*;
-nested: readonly volatile i32**;
+mutable: s32*;
+view: readonly s32*;
+device: volatile s32*;
+status: readonly volatile s32*;
+nested: readonly volatile s32**;
 ```
 
-`readonly volatile i32**` means a mutable outer pointer to a readonly+volatile pointer to `i32`. Additional outer pointer layers remain mutable and non-volatile unless separately represented by another type layer.
+`readonly volatile s32**` means a mutable outer pointer to a readonly+volatile pointer to `s32`. Additional outer pointer layers remain mutable and non-volatile unless separately represented by another type layer.
 
 These are invalid:
 
 ```c
-value: readonly i32;
-register: volatile i32;
-values: readonly i32[4];
+value: readonly s32;
+register: volatile s32;
+values: readonly s32[4];
 ```
 
 Named types may be module-qualified through any visible hierarchical module path, such as `std.math.Pair` (or through the current module).
@@ -107,9 +107,9 @@ Named types may be module-qualified through any visible hierarchical module path
 Examples of ordinary types:
 
 ```c
-value: i32;
-pointer: i32*;
-values: i32[4];
+value: s32;
+pointer: s32*;
+values: s32[4];
 points: Point[8];
 ```
 
@@ -141,15 +141,15 @@ missing: cfn(c_int) -> c_int = null;
 A local variable declaration may omit an initializer:
 
 ```c
-value: i32;
+value: s32;
 ```
 
 Typed mutable declarations may group multiple names before one type:
 
 ```c
 a, b: u64 = 0;
-x, y: i32[2] = [1, 2];
-p, q: i32;
+x, y: s32[2] = [1, 2];
+p, q: s32;
 ```
 
 A grouped declaration is defined as left-to-right syntax sugar for separate declarations. The initializer is cloned semantically for each name and is evaluated once per variable. Therefore `a, b: u64 = next();` calls `next()` twice. Grouped declarations do not introduce grouped constants or inferred `:=` syntax.
@@ -211,12 +211,12 @@ For example, `-2147483648` is parsed as unary negation applied to the positive l
 Pointer types use postfix `*`. The optional `readonly` and `volatile` qualifiers describe access through the first pointer layer.
 
 ```c
-value: i32 = 10;
+value: s32 = 10;
 
-mutable: i32* = &value;
-view: readonly i32* = mutable;
-device: volatile i32* = mutable;
-status: readonly volatile i32* = mutable;
+mutable: s32* = &value;
+view: readonly s32* = mutable;
+device: volatile s32* = mutable;
+status: readonly volatile s32* = mutable;
 ```
 
 `T*` grants mutable ordinary access to `T`. `readonly T*` grants read access without write permission. `volatile T*` remains writable but marks accesses through the pointer as volatile; `readonly volatile T*` combines both properties.
@@ -302,8 +302,8 @@ array_literal =
 Examples:
 
 ```c
-values: i32[3] = [1, 2, 3];
-values: i32[3] = [1, 2, 3,];
+values: s32[3] = [1, 2, 3];
+values: s32[3] = [1, 2, 3,];
 ```
 
 Array literals are contextual initializers. They require an expected array type from the surrounding context.
@@ -311,13 +311,13 @@ Array literals are contextual initializers. They require an expected array type 
 Supported expected-type contexts include:
 
 ```c
-values: i32[3] = [1, 2, 3];
+values: s32[3] = [1, 2, 3];
 
 values = [1, 2, 3];
 
-takes_i32_array([1, 2, 3]);
+takes_s32_array([1, 2, 3]);
 
-make_values::() -> i32[3] {
+make_values::() -> s32[3] {
     return [1, 2, 3];
 }
 
@@ -349,11 +349,11 @@ and does not enable C partial aggregate initialization.
 Supported expected-type contexts match ordinary array literals:
 
 ```c
-values: i32[3] = {0};
+values: s32[3] = {0};
 values = {0};
-takes_i32_array({0});
+takes_s32_array({0});
 
-make_values::() -> i32[3] {
+make_values::() -> s32[3] {
     return {0};
 }
 ```
@@ -362,8 +362,8 @@ Rejected:
 
 ```c
 values := {0};   // no expected array type
-value: i32 = {0};
-values: i32[3] = {1};
+value: s32 = {0};
+values: s32[3] = {1};
 ```
 
 ## String Literals
@@ -466,7 +466,7 @@ extern_c_option =
 Ordinary Coglet function:
 
 ```c
-add::(a, b: i32) -> i32 {
+add::(a, b: s32) -> s32 {
     return a + b;
 }
 ```
@@ -517,8 +517,8 @@ first::<T, U: integer>(a: T, b: U) -> T {
 A call may supply all type arguments explicitly using the same `::<...>` marker:
 
 ```c
-small := min::<i64>(10, 20);
-value := first::<i32, u64>(1, 2);
+small := min::<s64>(10, 20);
+value := first::<s32, u64>(1, 2);
 ```
 
 When ordinary arguments determine every type parameter unambiguously, the call
@@ -611,7 +611,7 @@ Invalid:
 
 ```c
 x := does_nothing();
-takes_i32(does_nothing());
+takes_s32(does_nothing());
 does_nothing() + 1;
 ```
 
@@ -730,7 +730,7 @@ Invalid:
 
 ```c
 y := (x = 1);
-takes_i32(x = 1);
+takes_s32(x = 1);
 return x = 1;
 ```
 
@@ -819,7 +819,7 @@ Invalid:
 ```c
 y := x++;
 return ++x;
-takes_i32(x--);
+takes_s32(x--);
 ```
 
 ## Value Expressions and Statement Expressions

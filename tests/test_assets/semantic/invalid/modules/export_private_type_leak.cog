@@ -1,7 +1,7 @@
 module leak;
 
 Hidden::struct {
-    value: i32;
+    value: s32;
 }
 
 export make::() -> Hidden {

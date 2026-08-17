@@ -1,15 +1,15 @@
 program
-  const_decl NONE: i32*
+  const_decl NONE: s32*
     value:
       null
-  func none -> i32*
+  func none -> s32*
     body:
       block
         return
           null
   func test -> bool
     params:
-      param_decl pointer: i32*
+      param_decl pointer: s32*
     body:
       block
         (=)

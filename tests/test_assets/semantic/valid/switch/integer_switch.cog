@@ -1,4 +1,4 @@
-classify_int::(x: i32) -> i32 {
+classify_int::(x: s32) -> s32 {
     switch x {
         case 0:
             return 10;

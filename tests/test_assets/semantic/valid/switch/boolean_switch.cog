@@ -1,4 +1,4 @@
-classify_bool::(b: bool) -> i32 {
+classify_bool::(b: bool) -> s32 {
     switch b {
         case true:
             return 1;

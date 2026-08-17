@@ -11,10 +11,10 @@ tests/test_assets/semantic/invalid/expressions/known_zero_divisor_compound_assig
     integer %= ZERO;
                ^~~~
 tests/test_assets/semantic/invalid/expressions/known_zero_divisor_compound_assignment.cog:12:16: error: division by zero
-    integer /= cast(i32, 0);
+    integer /= cast(s32, 0);
                ^~~~~~~~~~~
 tests/test_assets/semantic/invalid/expressions/known_zero_divisor_compound_assignment.cog:13:16: error: remainder by zero
-    integer %= cast(i32, 0);
+    integer %= cast(s32, 0);
                ^~~~~~~~~~~
 tests/test_assets/semantic/invalid/expressions/known_zero_divisor_compound_assignment.cog:15:17: error: division by zero
     integer /= (1 - 1);

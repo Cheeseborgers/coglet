@@ -1,5 +1,5 @@
 Point :: struct {
-    x: i32;
+    x: s32;
 }
 
 Mode :: enum(u32) {

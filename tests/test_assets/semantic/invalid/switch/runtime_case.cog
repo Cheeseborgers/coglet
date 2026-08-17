@@ -1,4 +1,4 @@
-test::(value, runtime_case: i32) -> i32 {
+test::(value, runtime_case: s32) -> s32 {
     switch value {
         case runtime_case:
             return 1;

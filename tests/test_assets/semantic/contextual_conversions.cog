@@ -4,23 +4,23 @@ puts::(text: readonly c_char*) -> c_int;
 #extern(c)
 printf::(format: readonly c_char*, ...) -> c_int;
 
-return_wide::() -> i64 {
+return_wide::() -> s64 {
     return 7;
 }
 
-exercise_contexts::(runtime: i32, pointer: i32*) -> i32 {
+exercise_contexts::(runtime: s32, pointer: s32*) -> s32 {
     inferred := 1;
-    wide: i64 = 2;
+    wide: s64 = 2;
     from_integer: f32 = 3;
     from_float: f32 = 1.25;
 
-    view: readonly volatile i32* = pointer;
-    empty: i32* = null;
+    view: readonly volatile s32* = pointer;
+    empty: s32* = null;
 
     arithmetic := runtime + 4;
     comparison := runtime < 5;
 
-    values: i32[2] = [6, 7];
+    values: s32[2] = [6, 7];
     selected := values[1];
 
     switch runtime {
@@ -34,7 +34,7 @@ exercise_contexts::(runtime: i32, pointer: i32*) -> i32 {
     printf("%d %f\n", 11, 2.5);
 
     if comparison {
-        return arithmetic + selected + inferred + cast(i32, wide) + cast(i32, from_integer) + cast(i32, from_float);
+        return arithmetic + selected + inferred + cast(s32, wide) + cast(s32, from_integer) + cast(s32, from_float);
     }
 
     if view == null {

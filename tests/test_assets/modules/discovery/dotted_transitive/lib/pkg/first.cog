@@ -1,3 +1,3 @@
 module pkg.first;
 import pkg.second;
-export answer::() -> i32 { return pkg.second.answer() + 2; }
+export answer::() -> s32 { return pkg.second.answer() + 2; }

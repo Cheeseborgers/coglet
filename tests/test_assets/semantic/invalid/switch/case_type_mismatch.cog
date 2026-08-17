@@ -3,7 +3,7 @@ Color :: enum(u16) {
     Green,
 }
 
-test::(color: Color) -> i32 {
+test::(color: Color) -> s32 {
     switch color {
         case 1:
             return 1;

@@ -1,5 +1,5 @@
 1 VOLATILE volatile
-1 I32 i32
+1 S32 s32
 1 STAR *
 2 READONLY readonly
 2 VOLATILE volatile

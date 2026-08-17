@@ -1,5 +1,5 @@
 nested_pointer_conversion_is_invalid::(
-    source: i32**
+    source: s32**
 ) -> void {
-    destination: readonly i32** = source;
+    destination: readonly s32** = source;
 }

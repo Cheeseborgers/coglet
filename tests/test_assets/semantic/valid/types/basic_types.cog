@@ -1,10 +1,10 @@
 test::() -> void {
     a: bool = true;
 
-    b: i8 = 1;
-    c: i16 = 2;
-    d: i32 = 3;
-    e: i64 = 4;
+    b: s8 = 1;
+    c: s16 = 2;
+    d: s32 = 3;
+    e: s64 = 4;
 
     f: u8 = 5;
     g: u16 = 6;
@@ -14,6 +14,6 @@ test::() -> void {
     j: f32 = 1.5;
     k: f64 = 2.5;
 
-    values: i32[3];
-    pointer: i32*;
+    values: s32[3];
+    pointer: s32*;
 }

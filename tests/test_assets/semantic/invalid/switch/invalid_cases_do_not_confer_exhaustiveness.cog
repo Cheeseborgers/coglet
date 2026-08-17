@@ -1,7 +1,7 @@
 invalid_bool_cases_do_not_initialize::(
-    selector: i32
-) -> i32 {
-    value: i32;
+    selector: s32
+) -> s32 {
+    value: s32;
 
     switch selector {
         case true:
@@ -15,8 +15,8 @@ invalid_bool_cases_do_not_initialize::(
 }
 
 invalid_bool_cases_do_not_satisfy_return::(
-    selector: i32
-) -> i32 {
+    selector: s32
+) -> s32 {
     switch selector {
         case true:
             return 10;
@@ -33,7 +33,7 @@ State :: enum(u8) {
 
 shadowed_enum_cases_do_not_cover_outer::(
     state: State
-) -> i32 {
+) -> s32 {
     State :: enum(u8) {
         Ready,
         Done,

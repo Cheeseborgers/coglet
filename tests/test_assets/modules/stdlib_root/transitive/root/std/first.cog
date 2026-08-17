@@ -1,6 +1,6 @@
 module std.first;
 import std.second;
 
-export answer::() -> i32 {
+export answer::() -> s32 {
     return std.second.answer;
 }

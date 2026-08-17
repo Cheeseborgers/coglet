@@ -1,4 +1,4 @@
-unreachable_after_if::(b: bool) -> i32 {
+unreachable_after_if::(b: bool) -> s32 {
     if b {
         return 1;
     } else {

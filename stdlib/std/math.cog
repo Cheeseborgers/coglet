@@ -12,7 +12,7 @@ export sqrt_2     :: 0x1.6a09e667f3bcdp+0;
 export deg_to_rad :: 0x1.1df46a2529d39p-6;
 export rad_to_deg :: 0x1.ca5dc1a63c1f8p+5;
 
-export abs_i32::(value: i32) -> i32 {
+export abs_s32::(value: s32) -> s32 {
     if value < 0
         return -value;
 

@@ -5,22 +5,22 @@ Mode::enum(u8) {
 }
 
 Bundle::struct {
-    tag: i32;
-    values: i32[3];
+    tag: s32;
+    values: s32[3];
 }
 
-global_seed: i32 = 9;
-global_values: i32[3] = [4, 5, 6];
+global_seed: s32 = 9;
+global_values: s32[3] = [4, 5, 6];
 global_bundle: Bundle = Bundle {
     tag = 7,
     values = [8, 9, 10],
 };
 
-increment::(value: i32) -> i32 {
+increment::(value: s32) -> s32 {
     return value + 1;
 }
 
-decrement::(value: i32) -> i32 {
+decrement::(value: s32) -> s32 {
     return value - 1;
 }
 
@@ -43,10 +43,10 @@ fibonacci::(n: u32) -> u64 {
     return b;
 }
 
-control_flow_checks::() -> i32 {
-    sum: i32 = 0;
+control_flow_checks::() -> s32 {
+    sum: s32 = 0;
 
-    for (i: i32 = 0; i < 6; i++) {
+    for (i: s32 = 0; i < 6; i++) {
         if i == 2
             continue;
         if i == 5
@@ -57,15 +57,15 @@ control_flow_checks::() -> i32 {
     if sum != 8
         return 1;
 
-    j: i32 = 0;
+    j: s32 = 0;
     while j < 3
         j++;
 
     if j != 3
         return 2;
 
-    k: i32 = 0;
-    compact_sum: i32 = 0;
+    k: s32 = 0;
+    compact_sum: s32 = 0;
     for (k < 3 : k++)
         compact_sum = compact_sum + k;
 
@@ -81,9 +81,9 @@ control_flow_checks::() -> i32 {
     return 0;
 }
 
-integer_checks::() -> i32 {
-    a: i32 = 40;
-    b: i32 = 2;
+integer_checks::() -> s32 {
+    a: s32 = 40;
+    b: s32 = 2;
 
     if a + b != 42
         return 11;
@@ -107,9 +107,9 @@ integer_checks::() -> i32 {
     if cast(u32, 6) * cast(u32, 7) != 42
         return 19;
 
-    if wrapping_add(cast(i8, 127), cast(i8, 1)) != -128
+    if wrapping_add(cast(s8, 127), cast(s8, 1)) != -128
         return 20;
-    if wrapping_sub(cast(i8, -128), cast(i8, 1)) != 127
+    if wrapping_sub(cast(s8, -128), cast(s8, 1)) != 127
         return 21;
     if wrapping_mul(cast(u8, 20), cast(u8, 20)) != 144
         return 22;
@@ -129,44 +129,44 @@ integer_checks::() -> i32 {
 
     if (cast(u8, 42) << cast(u8, 1)) != 84
         return 28;
-    if (cast(u8, 42) >> cast(i32, 1)) != 21
+    if (cast(u8, 42) >> cast(s32, 1)) != 21
         return 29;
-    if (cast(i8, -3) >> cast(i32, 1)) != -2
+    if (cast(s8, -3) >> cast(s32, 1)) != -2
         return 30;
 
-    wide_signed: i64 = 255;
+    wide_signed: s64 = 255;
     wide_unsigned: u64 = 255;
     if cast(u8, wide_signed) != 255
         return 31;
-    if cast(i64, wide_unsigned) != 255
+    if cast(s64, wide_unsigned) != 255
         return 32;
-    if truncate(i8, wide_unsigned) != -1
+    if truncate(s8, wide_unsigned) != -1
         return 33;
-    if truncate(u16, cast(i8, -1)) != 65535
+    if truncate(u16, cast(s8, -1)) != 65535
         return 34;
 
-    if cast(i16, Mode.Two) != 2
+    if cast(s16, Mode.Two) != 2
         return 35;
 
     return 0;
 }
 
-make_values::(base: i32) -> i32[3] {
+make_values::(base: s32) -> s32[3] {
     return [base, base + 1, base + 2];
 }
 
-sum_values::(values: i32[3]) -> i32 {
+sum_values::(values: s32[3]) -> s32 {
     return values[0] + values[1] + values[2];
 }
 
-make_bundle::(base: i32) -> Bundle {
+make_bundle::(base: s32) -> Bundle {
     return Bundle {
         tag = base,
         values = [base + 1, base + 2, base + 3],
     };
 }
 
-memory_checks::() -> i32 {
+memory_checks::() -> s32 {
     values := make_values(11);
     copy := values;
     copy[1] = 20;
@@ -187,26 +187,26 @@ memory_checks::() -> i32 {
     if bundle.values[0] != 31 || copied_bundle.values[0] != 99
         return 44;
 
-    pointer: i32* = &copy[0];
+    pointer: s32* = &copy[0];
     pointer[2] = 41;
 
-    *cast(volatile i32*, pointer) = 19;
-    loaded := *cast(readonly volatile i32*, pointer);
+    *cast(volatile s32*, pointer) = 19;
+    loaded := *cast(readonly volatile s32*, pointer);
     if loaded != 19
         return 45;
 
     raw: opaque* = reinterpret(opaque*, pointer);
-    recovered: i32* = reinterpret(i32*, raw);
+    recovered: s32* = reinterpret(s32*, raw);
     recovered[0] = 23;
 
     if recovered != pointer || copy[0] != 23
         return 46;
 
-    ro: readonly i32* = pointer;
-    if ro != cast(readonly i32*, pointer)
+    ro: readonly s32* = pointer;
+    if ro != cast(readonly s32*, pointer)
         return 47;
 
-    missing: i32* = null;
+    missing: s32* = null;
     if missing == pointer
         return 48;
 
@@ -220,7 +220,7 @@ memory_checks::() -> i32 {
     return 0;
 }
 
-float_checks::() -> i32 {
+float_checks::() -> s32 {
     left: f64 = 2.75;
     right: f64 = 3.75;
     zero: f64 = 0.0;
@@ -242,12 +242,12 @@ float_checks::() -> i32 {
     if nan < left || nan <= left || nan > left || nan >= left
         return 64;
 
-    if cast(i32, left) != 2
+    if cast(s32, left) != 2
         return 65;
     if cast(u8, right) != 3
         return 66;
 
-    signed_float := cast(f64, cast(i64, -258));
+    signed_float := cast(f64, cast(s64, -258));
     unsigned_float := cast(f64, cast(u64, 255));
     if signed_float != -258.0 || unsigned_float != 255.0
         return 67;
@@ -277,7 +277,7 @@ float_checks::() -> i32 {
     return 0;
 }
 
-integer_switch::(value: i32) -> i32 {
+integer_switch::(value: s32) -> s32 {
     switch value {
         case 1:
             return 11;
@@ -288,7 +288,7 @@ integer_switch::(value: i32) -> i32 {
     }
 }
 
-boolean_switch::(value: bool) -> i32 {
+boolean_switch::(value: bool) -> s32 {
     switch value {
         case false:
             return 4;
@@ -297,7 +297,7 @@ boolean_switch::(value: bool) -> i32 {
     }
 }
 
-enum_switch::(value: Mode) -> i32 {
+enum_switch::(value: Mode) -> s32 {
     switch value {
         case Mode.Zero:
             return 1;
@@ -308,7 +308,7 @@ enum_switch::(value: Mode) -> i32 {
     }
 }
 
-switch_checks::() -> i32 {
+switch_checks::() -> s32 {
     if integer_switch(2) != 22
         return 81;
     if boolean_switch(true) != 5
@@ -318,7 +318,7 @@ switch_checks::() -> i32 {
     return 0;
 }
 
-indirect_call_checks::() -> i32 {
+indirect_call_checks::() -> s32 {
     callback := decrement;
     if true
         callback = increment;
@@ -333,7 +333,7 @@ indirect_call_checks::() -> i32 {
     return 0;
 }
 
-main::() -> i32 {
+main::() -> s32 {
     result := control_flow_checks();
     if result != 0
         return result;

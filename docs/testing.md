@@ -145,7 +145,7 @@ ctest --test-dir cmake-build-debug -R zero_initializer --output-on-failure
 
 CogIR golden dumps cover executable entry identity, structured-CFG, data/address,
 explicit wrapping lowering, and native-C variadic default promotions. The entry
-golden demonstrates that a source `main::() -> i32` lowers to the distinguished
+golden demonstrates that a source `main::() -> s32` lowers to the distinguished
 backend-neutral `module.entry_function` without source C-scalar spelling
 metadata. The variadic golden covers both direct external calls and
 indirect `cfn(..., ...)` calls, including `bool`, narrow signed/unsigned integers,
@@ -181,7 +181,7 @@ program, and verify its process exit status. These tests now exercise the full
 frontend -> CogIR -> host-C boundary: the compiler freezes/verifies CogIR and
 destroys the frontend before backend emission, so every passing backend fixture
 also guards against accidental AST/semantic lifetime dependencies. Entry-point
-coverage executes `main::() -> i32 { return 42; }`, rejects the obsolete
+coverage executes `main::() -> s32 { return 42; }`, rejects the obsolete
 `main::() -> c_int` contract, and verifies that a nested function named `main` is
 not accepted as the process entry after CogIR flattens nested functions into the
 module function table. The C-interoperability cases cover
@@ -284,7 +284,7 @@ aligned objects, aggregate callbacks, represented globals, and addressable C
 `byval`/`sret` paths plus Win64 small and indirect aggregate rules. A negative
 regression keeps ordinary Coglet `bool*` distinct from `c_bool*`, and volatile
 whole-aggregate access remains explicitly unsupported. Stage 7 direct-link
-coverage includes native Coglet `main::() -> i32`, exact C scalar ABI linkage,
+coverage includes native Coglet `main::() -> s32`, exact C scalar ABI linkage,
 and a represented aggregate C ABI call/return through the independently compiled
 support library. Stage 7 also includes an `-O0` mutable-global executable case
 that requires position-independent object code on hosts whose compiler driver

@@ -79,7 +79,7 @@ Explicit inputs retain command-line/source order; newly discovered files are
 appended after explicit roots in deterministic first-discovery order. That
 combined physical order continues to define program-scope runtime initialization,
 so imports do not acquire an implicit dependency-initialization guarantee. Import
-cycles remain permitted. Only root-namespace `main::() -> i32` is an executable
+cycles remain permitted. Only root-namespace `main::() -> s32` is an executable
 entry; a `main` inside a named module is an ordinary function. Coglet now ships
 `stdlib/std/math.cog` as the first ordinary-source `std.math` module and installs
 the `stdlib/std` tree beneath the configured root. Package manifests, automatic
@@ -220,7 +220,7 @@ rules remain shared. Function symbols retain their source declaration node when
 syntax-level metadata is semantically significant after type aliases have been
 resolved. The first use is C-string binding: the checker can require that an
 extern parameter was actually spelled `readonly c_char*`, rather than treating
-every representation-equivalent `readonly i8*`/`readonly u8*` as a C string.
+every representation-equivalent `readonly s8*`/`readonly u8*` as a C string.
 Body checking is skipped for external declarations.
 
 The current C-ABI eligibility check permits concrete scalar types, raw typed
@@ -337,12 +337,12 @@ through parameters, locals, loads, CFG spills, and C-call results, so indirect
 calls use the same verifier-owned ABI contract as direct extern calls, including
 variadic callbacks. String escapes are decoded using Coglet's literal rules and
 lowered through IR-owned backing data at supported C ABI boundaries. Host
-executables require a source-top-level `main::() -> i32`. Semantic analysis
+executables require a source-top-level `main::() -> s32`. Semantic analysis
 validates that source contract before C aliases are canonicalized, and lowering
 records only the resolved function identity as `module.entry_function`. The
 backend therefore selects entry by IR identity rather than scanning debug names
 after nested functions have been flattened. The host-C backend adapts the Coglet
-`i32` result to the C process ABI in its generated `int main(void)` wrapper.
+`s32` result to the C process ABI in its generated `int main(void)` wrapper.
 Aggregate values
 now execute through assignable C
 wrapper structs for Coglet arrays while addressable array storage remains native C
@@ -471,7 +471,7 @@ CogIR module has been handed to the LLVM backend. Files, line/column locations,
 function/global names, source locals and parameters, and debug type descriptions
 are derived only from CogIR-owned source provenance and type/declaration metadata.
 When a source object has exact C ABI spelling, the debug type also consumes the
-frozen `CogIrAbiType` so `c_int` is not collapsed to `i32` and addressable
+frozen `CogIrAbiType` so `c_int` is not collapsed to `s32` and addressable
 `c_bool` uses the target C `_Bool` object width. `CogIrSlotKind` explicitly distinguishes source locals, source parameters, and
 compiler temporaries; the LLVM backend therefore never decides debugger visibility
 from names such as `.cfg.tmp`. Parameter slots additionally retain their exact
@@ -556,7 +556,7 @@ Semantic analysis owns one canonical `Type *` for each concrete built-in
 scalar and contextual built-in type:
 
 ```text
-i8 i16 i32 i64
+s8 s16 s32 s64
 u8 u16 u32 u64
 f32 f64
 bool void null
@@ -1096,7 +1096,7 @@ termination guard rather than a language-level recursion limit.
 
 Concrete specialization functions receive deterministic diagnostic/debug names
 formed from the source function name plus concrete types in parameter order, for
-example `min<i32>` or `first<i32, u64>`. The name is descriptive only; stable
+example `min<s32>` or `first<s32, u64>`. The name is descriptive only; stable
 specialization identity remains `SemDeclId + structural type arguments`.
 
 Generic templates are skipped during CogIR metadata/executable lowering. Only
@@ -1198,9 +1198,9 @@ example:
 ```text
 source type        semantic type       normalized ABI spelling
 -----------        -------------       -----------------------
-c_int              i32                 C int
-readonly c_char*   readonly i8*        pointer -> C char
-cfn(c_int)->c_int  cfn(i32)->i32        cfn(C int) -> C int
+c_int              s32                 C int
+readonly c_char*   readonly s8*        pointer -> C char
+cfn(c_int)->c_int  cfn(s32)->s32        cfn(C int) -> C int
 ```
 
 Native-C scalar aliases are represented by `SemCScalarKind`; pointer, opaque
@@ -1216,10 +1216,10 @@ or AST syntax. C-variadic default promotions are likewise explicit in CogIR befo
 the backend sees a call.
 
 Executable entry spelling is handled before canonical semantic type resolution
-erases the distinction between native `i32` and C aliases such as `c_int`. A
-source-top-level `main` is required to be an ordinary Coglet `() -> i32`
+erases the distinction between native `s32` and C aliases such as `c_int`. A
+source-top-level `main` is required to be an ordinary Coglet `() -> s32`
 function. CogIR then retains only the resolved `module.entry_function` identity
-and verifies its backend-neutral `() -> i32` runtime signature. Ordinary Coglet
+and verifies its backend-neutral `() -> s32` runtime signature. Ordinary Coglet
 functions do not carry source C-scalar spelling metadata. Exact C spelling
 continues to live only in normalized ABI metadata for genuine C boundaries such
 as extern declarations, callbacks, represented fields, and C variadics. The

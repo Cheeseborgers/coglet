@@ -1,23 +1,23 @@
 Box::struct {
-    tag: i32;
-    values: i32[3];
+    tag: s32;
+    values: s32[3];
 }
 
-global_values: i32[3] = [4, 5, 6];
+global_values: s32[3] = [4, 5, 6];
 global_box: Box = Box {
     tag = 7,
     values = [8, 9, 10],
 };
 
-make_values::(base: i32) -> i32[3] {
+make_values::(base: s32) -> s32[3] {
     return [base, base + 1, base + 2];
 }
 
-sum_values::(values: i32[3]) -> i32 {
+sum_values::(values: s32[3]) -> s32 {
     return values[0] + values[1] + values[2];
 }
 
-make_box::(base: i32) -> Box {
+make_box::(base: s32) -> Box {
     return Box {
         tag = base,
         values = [base + 1, base + 2, base + 3],
@@ -90,7 +90,7 @@ represented_aggregate_roundtrip::() -> bool {
     return array_struct_probe(packet) == 45;
 }
 
-main::() -> i32 {
+main::() -> s32 {
     if !ordinary_aggregates() {
         return 1;
     }

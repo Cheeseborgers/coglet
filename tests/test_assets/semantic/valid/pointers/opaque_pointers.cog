@@ -6,15 +6,15 @@ return_opaque::() -> opaque* {
 }
 
 opaque_pointer_rules::(
-    p: i32*,
-    rp: readonly i32*,
+    p: s32*,
+    rp: readonly s32*,
     h: opaque*,
     rh: readonly opaque*
 ) -> void {
     erased: opaque* = reinterpret(opaque*, p);
     erased_view: readonly opaque* = reinterpret(readonly opaque*, p);
-    recovered: i32* = reinterpret(i32*, h);
-    recovered_view: readonly i32* = reinterpret(readonly i32*, rh);
+    recovered: s32* = reinterpret(s32*, h);
+    recovered_view: readonly s32* = reinterpret(readonly s32*, rh);
 
     implicit_view: readonly opaque* = h;
     explicit_view: readonly opaque* = cast(readonly opaque*, h);

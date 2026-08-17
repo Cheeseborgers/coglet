@@ -1,6 +1,6 @@
 test_pointer_ordering::(
-    left: i32*,
-    right: i32*
+    left: s32*,
+    right: s32*
 ) -> void {
     left < right;
 }

@@ -1,8 +1,8 @@
 tests/test_assets/semantic/invalid/pointers/readonly_pointer_invalid_compatibility.cog:10:9: error: invalid explicit cast
-        cast(i32*, view);
+        cast(s32*, view);
         ^~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/pointers/readonly_pointer_invalid_compatibility.cog:16:9: error: invalid explicit cast
-        cast(readonly i32**, nested_mutable);
+        cast(readonly s32**, nested_mutable);
         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/pointers/readonly_pointer_invalid_compatibility.cog:22:5: error: comparison type mismatch
     nested_mutable == nested_readonly;

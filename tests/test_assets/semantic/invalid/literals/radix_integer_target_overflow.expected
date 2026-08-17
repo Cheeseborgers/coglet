@@ -2,6 +2,6 @@ tests/test_assets/semantic/invalid/literals/radix_integer_target_overflow.cog:2:
     too_large_for_u8: u8 = 0x100;
                            ^~~~~
 tests/test_assets/semantic/invalid/literals/radix_integer_target_overflow.cog:3:28: error: integer constant does not fit destination type
-    too_large_for_i8: i8 = 0x80;
+    too_large_for_s8: s8 = 0x80;
                            ^~~~
 2 semantic errors generated.

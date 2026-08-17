@@ -5,6 +5,6 @@ tests/test_assets/semantic/invalid/definite_assignment/partial_and_address_uses.
     values[0] = 1;
     ^~~~~~
 tests/test_assets/semantic/invalid/definite_assignment/partial_and_address_uses.cog:17:22: error: variable 'value' may be uninitialized
-    pointer: i32* = &value;
+    pointer: s32* = &value;
                      ^~~~~
 3 semantic errors generated.

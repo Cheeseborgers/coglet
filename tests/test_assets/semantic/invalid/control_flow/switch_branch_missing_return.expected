@@ -1,4 +1,4 @@
 tests/test_assets/semantic/invalid/control_flow/switch_branch_missing_return.cog:1:1: error: non-void function may not return a value
-test::(value: i32) -> i32 {
+test::(value: s32) -> s32 {
 ^~~~
 1 semantic error generated.

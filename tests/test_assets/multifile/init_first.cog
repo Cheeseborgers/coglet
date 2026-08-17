@@ -1,2 +1,2 @@
-state: i32 = 1;
+state: s32 = 1;
 state = state + 1;

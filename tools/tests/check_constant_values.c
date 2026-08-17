@@ -67,9 +67,9 @@ int main(int argc, char **argv) {
         if (info->node->type == NODE_IDENT &&
             name_is(info->node->as.ident, "BASE") &&
             info->contextual_type &&
-            info->contextual_type->kind == TYPE_I32) {
-            if (!integer_is(&value, 42, 0) || value.type->kind != TYPE_I32)
-                return fail(&result, "switch case constant did not normalize to i32");
+            info->contextual_type->kind == TYPE_S32) {
+            if (!integer_is(&value, 42, 0) || value.type->kind != TYPE_S32)
+                return fail(&result, "switch case constant did not normalize to s32");
             saw_case_base = 1;
         }
     }
@@ -104,8 +104,8 @@ int main(int argc, char **argv) {
                     return fail(&result, "BASE did not evaluate to 42");
                 saw_base = 1;
             } else if (name_is(name, "WIDE")) {
-                if (!integer_is(&value, 7, 0) || value.type->kind != TYPE_I64)
-                    return fail(&result, "WIDE did not retain its declared i64 type");
+                if (!integer_is(&value, 7, 0) || value.type->kind != TYPE_S64)
+                    return fail(&result, "WIDE did not retain its declared s64 type");
                 saw_wide = 1;
             } else if (name_is(name, "NONE")) {
                 if (value.kind != CONST_VALUE_NULL || value.type->kind != TYPE_POINTER)

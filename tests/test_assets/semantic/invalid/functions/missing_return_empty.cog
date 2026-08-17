@@ -1,2 +1,2 @@
-return_bad_empty::() -> i32 {
+return_bad_empty::() -> s32 {
 }

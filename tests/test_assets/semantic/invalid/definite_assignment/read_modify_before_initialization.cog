@@ -1,14 +1,14 @@
 compound_read::() -> void {
-    value: i32;
+    value: s32;
     value += 1;
 }
 
 increment_read::() -> void {
-    value: i32;
+    value: s32;
     value++;
 }
 
 decrement_read::() -> void {
-    value: i32;
+    value: s32;
     value--;
 }

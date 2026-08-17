@@ -116,9 +116,9 @@ int main(int argc, char **argv) {
     if (!run_target_case(
             argv[1],
             &target_a,
-            TYPE_I32,
+            TYPE_S32,
             TYPE_U64,
-            TYPE_I8,
+            TYPE_S8,
             "synthetic-llp64-like")) {
         return 1;
     }
@@ -126,7 +126,7 @@ int main(int argc, char **argv) {
     if (!run_target_case(
             argv[1],
             &target_b,
-            TYPE_I64,
+            TYPE_S64,
             TYPE_U32,
             TYPE_U8,
             "synthetic-wide-long")) {

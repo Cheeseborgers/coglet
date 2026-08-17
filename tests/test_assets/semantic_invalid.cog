@@ -1,8 +1,8 @@
 // semantic_invalid.cog
 
 Point :: struct {
-    x: i32;
-    y: i32;
+    x: s32;
+    y: s32;
 }
 
 CONST_PI::3.14159;
@@ -11,15 +11,15 @@ CONST_PI = 4;
 BAD_CALL::some_func();
 BAD_DIV::1 / 0;
 
-bad_float_assignment: i64 = 3.14;
+bad_float_assignment: s64 = 3.14;
 
 10 % 3.0;
 
-bad_cmp_i32: i32 = 1;
-bad_cmp_i64: i64 = 2;
+bad_cmp_s32: s32 = 1;
+bad_cmp_s64: s64 = 2;
 
-bad_cmp_i32 == bad_cmp_i64;
-bad_cmp_i32 < bad_cmp_i64;
+bad_cmp_s32 == bad_cmp_s64;
+bad_cmp_s32 < bad_cmp_s64;
 
 true < false;
 "hello" > "world";
@@ -93,7 +93,7 @@ BAD_COLOR_CONST_2 :: Color.Purple;
 
 BAD_COLOR_ASSIGN: Color = 1;
 
-bad_switch_float::(x: f64) -> i32 {
+bad_switch_float::(x: f64) -> s32 {
     switch x {
         case 1.0:
             return 1;
@@ -103,7 +103,7 @@ bad_switch_float::(x: f64) -> i32 {
     }
 }
 
-bad_switch_enum_case_type::(c: Color) -> i32 {
+bad_switch_enum_case_type::(c: Color) -> s32 {
     switch c {
         case 1:
             return 1;
@@ -113,7 +113,7 @@ bad_switch_enum_case_type::(c: Color) -> i32 {
     }
 }
 
-bad_switch_duplicate_enum::(c: Color) -> i32 {
+bad_switch_duplicate_enum::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;
@@ -126,7 +126,7 @@ bad_switch_duplicate_enum::(c: Color) -> i32 {
     }
 }
 
-bad_switch_duplicate_default::(c: Color) -> i32 {
+bad_switch_duplicate_default::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;
@@ -139,7 +139,7 @@ bad_switch_duplicate_default::(c: Color) -> i32 {
     }
 }
 
-bad_switch_runtime_case::(x: i32, y: i32) -> i32 {
+bad_switch_runtime_case::(x: s32, y: s32) -> s32 {
     switch x {
         case y:
             return 1;
@@ -149,23 +149,23 @@ bad_switch_runtime_case::(x: i32, y: i32) -> i32 {
     }
 }
 
-return_bad_empty::() -> i32 {
+return_bad_empty::() -> s32 {
 }
 
-return_bad_if::(b: bool) -> i32 {
+return_bad_if::(b: bool) -> s32 {
     if b {
         return 1;
     }
 }
 
-return_bad_switch_no_default::(c: Color) -> i32 {
+return_bad_switch_no_default::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;
     }
 }
 
-return_bad_switch_case_falls_through::(c: Color) -> i32 {
+return_bad_switch_case_falls_through::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;
@@ -175,15 +175,15 @@ return_bad_switch_case_falls_through::(c: Color) -> i32 {
     }
 }
 
-bad_cast_struct::() -> i32 {
-    return cast(i32, Point {
+bad_cast_struct::() -> s32 {
+    return cast(s32, Point {
         x = 1,
         y = 2,
     });
 }
 
-bad_cast_bool_to_int::() -> i32 {
-    return cast(i32, true);
+bad_cast_bool_to_int::() -> s32 {
+    return cast(s32, true);
 }
 
 bad_cast_int_to_bool::() -> bool {
@@ -198,7 +198,7 @@ bad_cast_float_to_enum::() -> Color {
     return cast(Color, 1.5);
 }
 
-classify_color_missing_case::(c: Color) -> i32 {
+classify_color_missing_case::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;
@@ -208,7 +208,7 @@ classify_color_missing_case::(c: Color) -> i32 {
     }
 }
 
-classify_color_case_falls_through::(c: Color) -> i32 {
+classify_color_case_falls_through::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;
@@ -231,18 +231,18 @@ EnumNegativeUnsigned :: enum(u8) {
     A = -1,
 }
 
-EnumTooBigExplicit :: enum(i8) {
+EnumTooBigExplicit :: enum(s8) {
     A = 128,
 }
 
-EnumTooSmallExplicit :: enum(i8) {
+EnumTooSmallExplicit :: enum(s8) {
     A = -129,
 }
 
 BAD_CAST_U8_TOO_BIG :: cast(u8, 256);
 BAD_CAST_U8_NEGATIVE :: cast(u8, -1);
-BAD_CAST_I8_TOO_BIG :: cast(i8, 128);
-BAD_CAST_I8_TOO_SMALL :: cast(i8, -129);
+BAD_CAST_S8_TOO_BIG :: cast(s8, 128);
+BAD_CAST_S8_TOO_SMALL :: cast(s8, -129);
 
 SmallCastEnum :: enum(u8) {
     A,
@@ -252,13 +252,13 @@ SmallCastEnum :: enum(u8) {
 BAD_CAST_SMALL_ENUM_TOO_BIG :: cast(SmallCastEnum, 256);
 BAD_CAST_SMALL_ENUM_NEGATIVE :: cast(SmallCastEnum, -1);
 
-unreachable_after_return::() -> i32 {
+unreachable_after_return::() -> s32 {
     return 1;
 
     x := 2;
 }
 
-unreachable_after_if::(b: bool) -> i32 {
+unreachable_after_if::(b: bool) -> s32 {
     if b {
         return 1;
     } else {
@@ -268,7 +268,7 @@ unreachable_after_if::(b: bool) -> i32 {
     x := 3;
 }
 
-unreachable_after_switch::(c: Color) -> i32 {
+unreachable_after_switch::(c: Color) -> s32 {
     switch c {
         case Color.Red:
             return 1;
@@ -292,22 +292,22 @@ continue_invalid_function::() -> void {
     continue;
 }
 
-array_index_negative::() -> i32 {
-    values: i32[3];
+array_index_negative::() -> s32 {
+    values: s32[3];
 
     return values[-1];
 }
 
-array_index_too_large::() -> i32 {
-    values: i32[3];
+array_index_too_large::() -> s32 {
+    values: s32[3];
 
     return values[3];
 }
 
 BAD_ARRAY_INDEX :: 4;
 
-array_index_bad_const::() -> i32 {
-    values: i32[3];
+array_index_bad_const::() -> s32 {
+    values: s32[3];
 
     return values[BAD_ARRAY_INDEX];
 }
@@ -344,8 +344,8 @@ compound_assignment_const::() -> void {
 }
 
 compound_assignment_mixed_concrete_numeric::() -> void {
-    x: i32 = 1;
-    y: i64 = 2;
+    x: s32 = 1;
+    y: s64 = 2;
 
     x += y;
 }
@@ -375,15 +375,15 @@ compound_assignment_bool_invalid::() -> void {
 }
 
 compound_assignment_value_bool_invalid::() -> void {
-    value: i32 = 1;
+    value: s32 = 1;
     flag: bool = true;
 
     value += flag;
 }
 
 compound_assignment_mixed_types_invalid::() -> void {
-    small: i32 = 1;
-    large: i64 = 2;
+    small: s32 = 1;
+    large: s64 = 2;
 
     small += large;
 }
@@ -399,7 +399,7 @@ compound_assignment_enum_invalid::() -> void {
     color += 1;
 }
 
-x: i32 = [1, 2, 3];    // error
+x: s32 = [1, 2, 3];    // error
 [1, 2, 3];             // error
 
 string_initializer_too_small::() -> void {
@@ -407,7 +407,7 @@ string_initializer_too_small::() -> void {
 }
 
 string_initializer_wrong_element::() -> void {
-    s: i32[6] = "hello";
+    s: s32[6] = "hello";
 }
 
 string_initializer_no_type::() -> void {
@@ -425,23 +425,23 @@ string_argument_wrong_size::() -> void {
     takes_name_invalid("hi");
 }
 
-takes_i32_array_invalid::(values: i32[3]) -> void {
+takes_s32_array_invalid::(values: s32[3]) -> void {
 }
 
 array_argument_wrong_count::() -> void {
-    takes_i32_array_invalid([1, 2]);
+    takes_s32_array_invalid([1, 2]);
 }
 
 array_argument_wrong_type::() -> void {
-    takes_i32_array_invalid([1, true, 3]);
+    takes_s32_array_invalid([1, true, 3]);
 }
 
 
-takes_i32_array_wrong::(values: i32[3]) -> void {
+takes_s32_array_wrong::(values: s32[3]) -> void {
 }
 
 array_argument_wrong_count_extra::() -> void {
-    takes_i32_array_wrong([1, 2]);
+    takes_s32_array_wrong([1, 2]);
 }
 
 assign_const_invalid::() -> void {
@@ -450,7 +450,7 @@ assign_const_invalid::() -> void {
 }
 
 AssignPoint :: struct {
-    x: i32;
+    x: s32;
 }
 
 make_assign_point::() -> AssignPoint {
@@ -467,7 +467,7 @@ assign_index_of_rvalue_invalid::() -> void {
     make_array()[0] = 1;
 }
 
-make_array::() -> i32[3] {
+make_array::() -> s32[3] {
     return [1, 2, 3];
 }
 
@@ -481,17 +481,17 @@ string_assignment_wrong_size_invalid::() -> void {
 }
 
 string_assignment_wrong_element_invalid::() -> void {
-    s: i32[6] = [0, 0, 0, 0, 0, 0];
+    s: s32[6] = [0, 0, 0, 0, 0, 0];
     s = "hello";
 }
 
 array_assignment_wrong_count_invalid::() -> void {
-    values: i32[2] = [0, 0];
+    values: s32[2] = [0, 0];
     values = [1, 2, 3];
 }
 
 array_assignment_wrong_type_invalid::() -> void {
-    values: i32[3] = [0, 0, 0];
+    values: s32[3] = [0, 0, 0];
     values = [1, true, 3];
 }
 
@@ -499,15 +499,15 @@ return_string_wrong_size_invalid::() -> u8[4] {
     return "hello";
 }
 
-return_string_wrong_element_invalid::() -> i32[6] {
+return_string_wrong_element_invalid::() -> s32[6] {
     return "hello";
 }
 
-return_array_wrong_count_invalid::() -> i32[2] {
+return_array_wrong_count_invalid::() -> s32[2] {
     return [1, 2, 3];
 }
 
-return_array_wrong_type_invalid::() -> i32[3] {
+return_array_wrong_type_invalid::() -> s32[3] {
     return [1, true, 3];
 }
 
@@ -517,61 +517,61 @@ bare_string_literal_invalid::() -> void {
 
 // new
 assignment_in_inferred_declaration_is_invalid :: () {
-    x: i32 = 0;
+    x: s32 = 0;
     y := (x = 1);
 }
 
 assignment_in_typed_declaration_is_invalid :: () {
-    x: i32 = 0;
-    y: i32 = (x = 1);
+    x: s32 = 0;
+    y: s32 = (x = 1);
 }
 
 compound_assignment_in_declaration_is_invalid :: () {
-    x: i32 = 0;
+    x: s32 = 0;
     y := (x += 1);
 }
 
 increment_in_declaration_is_invalid :: () {
-    x: i32 = 0;
+    x: s32 = 0;
     y := x++;
 }
 
-takes_i32 :: (value: i32) {
+takes_s32 :: (value: s32) {
 }
 
 mutation_argument_is_invalid :: () {
-    x: i32 = 0;
+    x: s32 = 0;
 
-    takes_i32(x = 1);
-    takes_i32(x += 1);
-    takes_i32(x++);
+    takes_s32(x = 1);
+    takes_s32(x += 1);
+    takes_s32(x++);
 }
 
-assignment_return_is_invalid :: () -> i32 {
-    x: i32 = 0;
+assignment_return_is_invalid :: () -> s32 {
+    x: s32 = 0;
     return x = 1;
 }
 
-increment_return_is_invalid :: () -> i32 {
-    x: i32 = 0;
+increment_return_is_invalid :: () -> s32 {
+    x: s32 = 0;
     return x++;
 }
 
 assignment_condition_is_invalid :: () {
-    x: i32 = 0;
+    x: s32 = 0;
 
     if x = 1 {
     }
 }
 
 mutation_operand_is_invalid :: () {
-    x: i32 = 0;
+    x: s32 = 0;
     y := 1 + (x = 2);
 }
 
 chained_assignment_is_invalid :: () {
-    a: i32 = 0;
-    b: i32 = 0;
+    a: s32 = 0;
+    b: s32 = 0;
 
     a = b = 1;
 }
@@ -602,14 +602,14 @@ void_call_inferred_variable_is_invalid :: () {
     x := does_nothing();
 }
 
-takes_i32_for_void_test :: (x: i32) -> void {
+takes_s32_for_void_test :: (x: s32) -> void {
 }
 
 void_call_argument_is_invalid :: () {
-    takes_i32_for_void_test(does_nothing());
+    takes_s32_for_void_test(does_nothing());
 }
 
-void_call_return_is_invalid :: () -> i32 {
+void_call_return_is_invalid :: () -> s32 {
     return does_nothing();
 }
 
@@ -618,7 +618,7 @@ void_call_binary_operand_is_invalid :: () {
 }
 
 x := does_nothing();
-takes_i32(does_nothing());
+takes_s32(does_nothing());
 
 x := does_nothing() + 1;
 

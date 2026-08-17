@@ -5,9 +5,9 @@ tests/test_assets/semantic/invalid/casts/integer_range.cog:2:1: error: integer c
 cast(u8, -1);
 ^~~~~~~~~~~
 tests/test_assets/semantic/invalid/casts/integer_range.cog:3:1: error: integer cast value does not fit in target type
-cast(i8, 128);
+cast(s8, 128);
 ^~~~~~~~~~~~
 tests/test_assets/semantic/invalid/casts/integer_range.cog:4:1: error: integer cast value does not fit in target type
-cast(i8, -129);
+cast(s8, -129);
 ^~~~~~~~~~~~~
 4 semantic errors generated.

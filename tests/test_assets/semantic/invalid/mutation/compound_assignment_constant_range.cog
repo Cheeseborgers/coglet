@@ -3,12 +3,12 @@ test_compound_errors::() -> void {
     x += 256;
     x -= -1;
 
-    y: i8 = 1;
+    y: s8 = 1;
     y *= 128;
 
-    concrete_i32: i32 = 1;
-    concrete_i64: i64 = 2;
-    concrete_i32 += concrete_i64;
+    concrete_s32: s32 = 1;
+    concrete_s64: s64 = 2;
+    concrete_s32 += concrete_s64;
 
     floating: f32 = 1.0;
     floating %= 1.0;

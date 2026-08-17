@@ -188,10 +188,10 @@ CogIrTypeId cog_ir_lower_type(CogIrLowerContext *ctx, const Type *type)
     switch (type->kind) {
         case TYPE_VOID: result = cog_ir_type_void(ctx->module); break;
         case TYPE_BOOL: result = cog_ir_type_bool(ctx->module); break;
-        case TYPE_I8: result = cog_ir_type_integer(ctx->module, 8, 1); break;
-        case TYPE_I16: result = cog_ir_type_integer(ctx->module, 16, 1); break;
-        case TYPE_I32: result = cog_ir_type_integer(ctx->module, 32, 1); break;
-        case TYPE_I64: result = cog_ir_type_integer(ctx->module, 64, 1); break;
+        case TYPE_S8: result = cog_ir_type_integer(ctx->module, 8, 1); break;
+        case TYPE_S16: result = cog_ir_type_integer(ctx->module, 16, 1); break;
+        case TYPE_S32: result = cog_ir_type_integer(ctx->module, 32, 1); break;
+        case TYPE_S64: result = cog_ir_type_integer(ctx->module, 64, 1); break;
         case TYPE_U8: result = cog_ir_type_integer(ctx->module, 8, 0); break;
         case TYPE_U16: result = cog_ir_type_integer(ctx->module, 16, 0); break;
         case TYPE_U32: result = cog_ir_type_integer(ctx->module, 32, 0); break;
@@ -335,10 +335,10 @@ static unsigned integer_type_width(const Type *type)
     if (type->kind == TYPE_ENUM) type = type->enum_backing_type;
     if (!type) return 0;
     switch (type->kind) {
-        case TYPE_I8: case TYPE_U8: return 8;
-        case TYPE_I16: case TYPE_U16: return 16;
-        case TYPE_I32: case TYPE_U32: return 32;
-        case TYPE_I64: case TYPE_U64: return 64;
+        case TYPE_S8: case TYPE_U8: return 8;
+        case TYPE_S16: case TYPE_U16: return 16;
+        case TYPE_S32: case TYPE_U32: return 32;
+        case TYPE_S64: case TYPE_U64: return 64;
         default: return 0;
     }
 }

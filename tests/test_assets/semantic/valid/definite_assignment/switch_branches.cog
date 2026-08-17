@@ -6,8 +6,8 @@ Color :: enum(u8) {
 
 exhaustive_bool_switch::(
     condition: bool
-) -> i32 {
-    value: i32;
+) -> s32 {
+    value: s32;
 
     switch condition {
         case true:
@@ -22,8 +22,8 @@ exhaustive_bool_switch::(
 
 exhaustive_enum_switch::(
     color: Color
-) -> i32 {
-    value: i32;
+) -> s32 {
+    value: s32;
 
     switch color {
         case Color.Red:
@@ -40,9 +40,9 @@ exhaustive_enum_switch::(
 }
 
 default_makes_switch_exhaustive::(
-    selector: i32
-) -> i32 {
-    value: i32;
+    selector: s32
+) -> s32 {
+    value: s32;
 
     switch selector {
         case 0:
@@ -57,8 +57,8 @@ default_makes_switch_exhaustive::(
 
 returning_case_does_not_weaken_merge::(
     condition: bool
-) -> i32 {
-    value: i32;
+) -> s32 {
+    value: s32;
 
     switch condition {
         case true:

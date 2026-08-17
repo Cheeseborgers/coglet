@@ -4,7 +4,7 @@ Color :: enum(u16) {
     Blue,
 }
 
-ErrorCode :: enum(i32) {
+ErrorCode :: enum(s32) {
     None = 0,
     File = 10,
     Parse,

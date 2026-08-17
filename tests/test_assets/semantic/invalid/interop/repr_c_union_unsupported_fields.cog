@@ -1,5 +1,5 @@
 Plain::struct {
-    value: i32;
+    value: s32;
 }
 
 #repr(c)

@@ -1,7 +1,7 @@
 module pkg;
 
 export Holder::struct {
-    answer: i32;
+    answer: s32;
 }
 
 export math: Holder = Holder { answer = 11 };

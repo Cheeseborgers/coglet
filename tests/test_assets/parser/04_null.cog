@@ -1,10 +1,10 @@
-NONE: i32* : null;
+NONE: s32* : null;
 
-none::() -> i32* {
+none::() -> s32* {
     return null;
 }
 
-test::(pointer: i32*) -> bool {
+test::(pointer: s32*) -> bool {
     pointer = null;
     return pointer == null;
 }

@@ -1,5 +1,5 @@
 runtime_truncating_integer::(
-    signed_value: i64,
+    signed_value: s64,
     unsigned_value: u64
 ) -> void {
     as_u8: u8 =
@@ -8,9 +8,9 @@ runtime_truncating_integer::(
             signed_value
         );
 
-    as_i8: i8 =
+    as_s8: s8 =
         truncate(
-            i8,
+            s8,
             unsigned_value
         );
 
@@ -20,9 +20,9 @@ runtime_truncating_integer::(
             signed_value
         );
 
-    as_i32: i32 =
+    as_s32: s32 =
         truncate(
-            i32,
+            s32,
             unsigned_value
         );
 }

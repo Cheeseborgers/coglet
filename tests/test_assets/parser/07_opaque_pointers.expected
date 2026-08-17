@@ -1,7 +1,7 @@
 program
   func opaque_types -> void
     params:
-      param_decl p: i32*
+      param_decl p: s32*
       param_decl h: opaque*
       param_decl rh: readonly opaque*
     body:
@@ -20,11 +20,11 @@ program
                 opaque*
               expression:
                 p
-        var_decl recovered: i32*
+        var_decl recovered: s32*
           init:
             reinterpret
               target type:
-                i32*
+                s32*
               expression:
                 h
         var_decl view: readonly opaque*

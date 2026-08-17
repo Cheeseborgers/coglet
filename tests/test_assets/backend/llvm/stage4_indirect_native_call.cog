@@ -1,12 +1,12 @@
-increment::(value: i32) -> i32 {
+increment::(value: s32) -> s32 {
     return value + 1;
 }
 
-decrement::(value: i32) -> i32 {
+decrement::(value: s32) -> s32 {
     return value - 1;
 }
 
-choose_and_call::(use_increment: bool, value: i32) -> i32 {
+choose_and_call::(use_increment: bool, value: s32) -> s32 {
     callback := decrement;
     if use_increment {
         callback = increment;
@@ -14,6 +14,6 @@ choose_and_call::(use_increment: bool, value: i32) -> i32 {
     return callback(value);
 }
 
-main::() -> i32 {
+main::() -> s32 {
     return choose_and_call(true, 41);
 }

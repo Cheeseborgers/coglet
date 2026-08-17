@@ -1,7 +1,7 @@
-explicit: i32 = 1;
+explicit: s32 = 1;
 inferred := 2;
 
 test::() -> void {
-    local_explicit: i64 = 3;
+    local_explicit: s64 = 3;
     local_inferred := 4;
 }

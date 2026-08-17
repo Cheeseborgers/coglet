@@ -1,2 +1,2 @@
 module pkg.second;
-export answer::() -> i32 { return 40; }
+export answer::() -> s32 { return 40; }

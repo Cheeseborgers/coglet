@@ -1,7 +1,7 @@
-make::<T>() -> i32 {
+make::<T>() -> s32 {
     return 1;
 }
 
-main::() -> i32 {
+main::() -> s32 {
     return make();
 }

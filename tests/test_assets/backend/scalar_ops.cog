@@ -12,12 +12,12 @@ float32_check::(a, b: f32) -> bool {
     return value < -1.0 && value > -2.0;
 }
 
-pointer_check::(p: i32*) -> bool {
+pointer_check::(p: s32*) -> bool {
     return p != null && p == p;
 }
 
-main::() -> i32 {
-    value: i32 = 9;
+main::() -> s32 {
+    value: s32 = 9;
 
     if bit_mix(0x0f0f0f0f, 0x33333333) != 0x3c3c3c3c {
         return 1;

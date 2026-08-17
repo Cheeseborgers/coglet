@@ -1,6 +1,6 @@
 runtime_checked_integer_operations::(
-    signed_left: i8,
-    signed_right: i8,
+    signed_left: s8,
+    signed_right: s8,
     unsigned_left: u8,
     unsigned_right: u8
 ) -> void {
@@ -10,16 +10,16 @@ runtime_checked_integer_operations::(
      * arithmetic traps at runtime rather than being rejected
      * solely from its operand types.
      */
-    signed_add: i8 =
+    signed_add: s8 =
         signed_left + signed_right;
 
-    signed_subtract: i8 =
+    signed_subtract: s8 =
         signed_left - signed_right;
 
-    signed_multiply: i8 =
+    signed_multiply: s8 =
         signed_left * signed_right;
 
-    signed_negate: i8 =
+    signed_negate: s8 =
         -signed_left;
 
     unsigned_add: u8 =
@@ -35,10 +35,10 @@ runtime_checked_integer_operations::(
      * The divisor may be zero, and signed_left may be the signed
      * minimum while signed_right is -1. Those are runtime checks.
      */
-    signed_divide: i8 =
+    signed_divide: s8 =
         signed_left / signed_right;
 
-    signed_remainder: i8 =
+    signed_remainder: s8 =
         signed_left % signed_right;
 
     unsigned_divide: u8 =
@@ -47,7 +47,7 @@ runtime_checked_integer_operations::(
     unsigned_remainder: u8 =
         unsigned_left % unsigned_right;
 
-    signed_value: i8 =
+    signed_value: s8 =
         signed_left;
 
     signed_value += signed_right;

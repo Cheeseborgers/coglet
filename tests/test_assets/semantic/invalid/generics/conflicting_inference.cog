@@ -2,9 +2,9 @@ first::<T>(a: T, b: T) -> T {
     return a;
 }
 
-main::() -> i32 {
-    a: i32 = 1;
-    b: i64 = 2;
+main::() -> s32 {
+    a: s32 = 1;
+    b: s64 = 2;
     value := first(a, b);
     return 0;
 }

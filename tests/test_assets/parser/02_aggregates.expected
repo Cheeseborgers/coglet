@@ -1,7 +1,7 @@
 program
   struct Point
-    struct_field_decl x: i32
-    struct_field_decl y: i32
+    struct_field_decl x: s32
+    struct_field_decl y: s32
   enum_decl Color
     Backing type
       u8

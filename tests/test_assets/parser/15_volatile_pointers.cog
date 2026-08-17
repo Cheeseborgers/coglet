@@ -1,5 +1,5 @@
 #extern(c)
 read_register::(reg: readonly volatile c_uint*) -> c_uint;
 
-probe::(a: volatile i32*, b: volatile readonly opaque*) -> void {
+probe::(a: volatile s32*, b: volatile readonly opaque*) -> void {
 }

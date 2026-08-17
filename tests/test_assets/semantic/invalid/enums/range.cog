@@ -7,10 +7,10 @@ EnumNegativeUnsigned :: enum(u8) {
     A = -1,
 }
 
-EnumTooBigExplicit :: enum(i8) {
+EnumTooBigExplicit :: enum(s8) {
     A = 128,
 }
 
-EnumTooSmallExplicit :: enum(i8) {
+EnumTooSmallExplicit :: enum(s8) {
     A = -129,
 }

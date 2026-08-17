@@ -5,7 +5,7 @@ tests/test_assets/semantic/invalid/expressions/shift_negative_count.cog:7:14: er
     value >> NEGATIVE_COUNT;
              ^~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/expressions/shift_negative_count.cog:8:14: error: shift count cannot be negative
-    value << cast(i8, -1);
+    value << cast(s8, -1);
              ^~~~~~~~~~~
 tests/test_assets/semantic/invalid/expressions/shift_negative_count.cog:9:15: error: shift count cannot be negative
     value >> (1 - 2);

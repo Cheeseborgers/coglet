@@ -9,16 +9,16 @@ use_f64::(value: f64) -> f64 {
     return value;
 }
 
-main::() -> i32 {
-    pi32: f32 = PI;
-    pi64: f64 = PI;
+main::() -> s32 {
+    ps32: f32 = PI;
+    ps64: f64 = PI;
     tau32: f32 = TAU;
     tau64: f64 = TAU;
 
     use_f32(PI);
     use_f64(PI);
 
-    if pi32 <= tau32 && pi64 <= tau64
+    if ps32 <= tau32 && ps64 <= tau64
         return 0;
 
     return 1;

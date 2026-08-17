@@ -1,9 +1,9 @@
-same_pointer::(left: i32*, right: i32*) -> bool {
+same_pointer::(left: s32*, right: s32*) -> bool {
     return left == right;
 }
 
-main::() -> i32 {
-    value: i32 = 7;
+main::() -> s32 {
+    value: s32 = 7;
     if same_pointer(&value, &value)
         return 0;
     return 1;

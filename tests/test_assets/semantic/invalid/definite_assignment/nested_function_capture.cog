@@ -1,35 +1,35 @@
-capture_without_inner_slots::() -> i32 {
-    outer_value: i32 = 10;
+capture_without_inner_slots::() -> s32 {
+    outer_value: s32 = 10;
 
-    inner::() -> i32 {
+    inner::() -> s32 {
         return outer_value;
     }
 
     return outer_value;
 }
 
-capture_with_colliding_parameter::() -> i32 {
-    outer_value: i32;
+capture_with_colliding_parameter::() -> s32 {
+    outer_value: s32;
 
-    inner::(dummy: i32) -> i32 {
+    inner::(dummy: s32) -> s32 {
         return outer_value;
     }
 
     return 0;
 }
 
-capture_outer_parameter::(outer_value: i32) -> i32 {
-    inner::() -> i32 {
+capture_outer_parameter::(outer_value: s32) -> s32 {
+    inner::() -> s32 {
         return outer_value;
     }
 
     return 0;
 }
 
-write_outer_local::() -> i32 {
-    outer_value: i32;
+write_outer_local::() -> s32 {
+    outer_value: s32;
 
-    inner::() -> i32 {
+    inner::() -> s32 {
         outer_value = 10;
         return 0;
     }

@@ -1,4 +1,4 @@
-test::(value: f64) -> i32 {
+test::(value: f64) -> s32 {
     switch value {
         case 1.0:
             return 1;

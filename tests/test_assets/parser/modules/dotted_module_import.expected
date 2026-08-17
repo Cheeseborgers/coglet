@@ -8,7 +8,7 @@ program
           1
         field_init y
           2
-  func run -> i32
+  func run -> s32
     body:
       block
         return

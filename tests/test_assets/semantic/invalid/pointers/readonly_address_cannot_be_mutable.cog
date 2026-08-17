@@ -1,5 +1,5 @@
 recover_mutable_access::(
-    value: readonly i32*
+    value: readonly s32*
 ) -> void {
-    mutable: i32* = &*value;
+    mutable: s32* = &*value;
 }

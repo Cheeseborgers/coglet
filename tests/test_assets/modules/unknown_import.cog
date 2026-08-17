@@ -1,2 +1,2 @@
 import missing;
-main::() -> i32 { return 0; }
+main::() -> s32 { return 0; }

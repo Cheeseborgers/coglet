@@ -1,18 +1,18 @@
 ALWAYS :: true;
 
-constant_true_while_satisfies_return_rule::() -> i32 {
+constant_true_while_satisfies_return_rule::() -> s32 {
     while ALWAYS {
     }
 }
 
-constant_true_for_satisfies_return_rule::() -> i32 {
+constant_true_for_satisfies_return_rule::() -> s32 {
     LOCAL_ALWAYS :: true;
 
     for LOCAL_ALWAYS {
     }
 }
 
-constant_true_expression_satisfies_return_rule::() -> i32 {
+constant_true_expression_satisfies_return_rule::() -> s32 {
     while ALWAYS && true {
     }
 }

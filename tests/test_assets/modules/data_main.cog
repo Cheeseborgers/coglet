@@ -1,13 +1,13 @@
 import data;
 
 copied_answer :: data.answer;
-root_copy: i32 = data.answer;
+root_copy: s32 = data.answer;
 
-main::() -> i32 {
+main::() -> s32 {
     if copied_answer != 40 || root_copy != 40
         return 1;
 
-    probe: i32 = 2;
+    probe: s32 = 2;
     switch probe {
         case data.step: {}
         default:

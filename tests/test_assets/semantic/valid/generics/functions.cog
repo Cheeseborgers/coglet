@@ -28,23 +28,23 @@ numeric_identity::<T: numeric>(value: T) -> T {
     return value;
 }
 
-recur::<T>(value: T, depth: i32) -> T {
+recur::<T>(value: T, depth: s32) -> T {
     if depth == 0
         return value;
     return recur(value, depth - 1);
 }
 
-main::() -> i32 {
-    inferred: i32 = min(10, 20);
-    explicit: i64 = min::<i64>(30, 40);
-    again: i32 = min(8, 9);
-    mixed: i32 = first(inferred, cast(u64, 7));
-    recursive: i32 = recur(mixed, 2);
+main::() -> s32 {
+    inferred: s32 = min(10, 20);
+    explicit: s64 = min::<s64>(30, 40);
+    again: s32 = min(8, 9);
+    mixed: s32 = first(inferred, cast(u64, 7));
+    recursive: s32 = recur(mixed, 2);
     constrained_integer: u8 = integer_identity::<u8>(7);
-    constrained_signed: i64 = signed_identity::<i64>(-9);
+    constrained_signed: s64 = signed_identity::<s64>(-9);
     constrained_unsigned: u64 = unsigned_identity::<u64>(11);
     constrained_float: f64 = floating_identity(1.5);
-    constrained_numeric: i32 = numeric_identity(12);
+    constrained_numeric: s32 = numeric_identity(12);
 
     if constrained_integer != 7
         return 4;

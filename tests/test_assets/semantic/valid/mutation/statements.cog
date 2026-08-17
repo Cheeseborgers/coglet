@@ -1,5 +1,5 @@
 mutation_statements_are_valid :: () {
-    x: i32 = 0;
+    x: s32 = 0;
 
     x = 1;
     x += 1;

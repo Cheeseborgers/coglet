@@ -1,4 +1,4 @@
-classify::(value: i32, keep_going: bool) -> i32 {
+classify::(value: s32, keep_going: bool) -> s32 {
     while keep_going {
         if value == 0 {
             break;

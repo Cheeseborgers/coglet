@@ -1,27 +1,27 @@
-for_initializer_scope::() -> i32 {
-    for (i: i32 = 0; i < 1; i++)
+for_initializer_scope::() -> s32 {
+    for (i: s32 = 0; i < 1; i++)
         continue;
 
     return i;
 }
 
-if_body_scope::(flag: bool) -> i32 {
+if_body_scope::(flag: bool) -> s32 {
     if flag
-        value: i32 = 1;
+        value: s32 = 1;
 
     return value;
 }
 
-while_body_scope::(flag: bool) -> i32 {
+while_body_scope::(flag: bool) -> s32 {
     while flag
-        value: i32 = 2;
+        value: s32 = 2;
 
     return value;
 }
 
-for_body_scope::(flag: bool) -> i32 {
+for_body_scope::(flag: bool) -> s32 {
     for flag
-        value: i32 = 3;
+        value: s32 = 3;
 
     return value;
 }

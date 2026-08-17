@@ -15,15 +15,15 @@ Mode::enum(c_int) {
     Eight,
 }
 
-COUNT: i64 : 42;
-NEG: i16 : -2;
+COUNT: s64 : 42;
+NEG: s16 : -2;
 RATIO: f32 : 1.25;
 ENABLED: bool : true;
-NONE: i32* : null;
-counter: i32 = 3;
+NONE: s32* : null;
+counter: s32 = 3;
 c_flag: c_bool = true;
 callback: cfn(c_int) -> c_int = null;
-values: i32[3] = [1, 2, 3];
+values: s32[3] = [1, 2, 3];
 
 #extern(c, name="native_probe")
 native_probe_decl::(
@@ -32,7 +32,7 @@ native_probe_decl::(
     amount: c_long
 ) -> c_int;
 
-helper::(x: i32) -> i32 {
-    local: i32 = x;
+helper::(x: s32) -> s32 {
+    local: s32 = x;
     return local;
 }

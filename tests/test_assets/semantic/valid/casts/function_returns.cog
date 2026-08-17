@@ -1,10 +1,10 @@
-cast_i32_to_i64::() -> i64 {
-    small: i32 = 10;
-    return cast(i64, small);
+cast_s32_to_s64::() -> s64 {
+    small: s32 = 10;
+    return cast(s64, small);
 }
 
-cast_float_to_int::() -> i32 {
-    return cast(i32, 3.14);
+cast_float_to_int::() -> s32 {
+    return cast(s32, 3.14);
 }
 
 Color :: enum(u16) {

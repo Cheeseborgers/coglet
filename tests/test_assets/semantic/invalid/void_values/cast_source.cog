@@ -2,5 +2,5 @@ does_nothing::() -> void {
 }
 
 test::() -> void {
-    value := cast(i32, does_nothing());
+    value := cast(s32, does_nothing());
 }

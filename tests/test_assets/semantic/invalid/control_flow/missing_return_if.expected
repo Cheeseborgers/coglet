@@ -1,4 +1,4 @@
 tests/test_assets/semantic/invalid/control_flow/missing_return_if.cog:1:1: error: non-void function may not return a value
-return_bad_if::(b: bool) -> i32 {
+return_bad_if::(b: bool) -> s32 {
 ^~~~~~~~~~~~~
 1 semantic error generated.

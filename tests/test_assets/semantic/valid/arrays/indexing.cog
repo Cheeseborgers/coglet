@@ -1,25 +1,25 @@
-array_index_valid::() -> i32 {
-    values: i32[3] = [0, 0, 0];
+array_index_valid::() -> s32 {
+    values: s32[3] = [0, 0, 0];
 
     return values[0];
 }
 
-array_index_valid_last::() -> i32 {
-    values: i32[5] = [0, 0, 0, 0, 0];
+array_index_valid_last::() -> s32 {
+    values: s32[5] = [0, 0, 0, 0, 0];
 
     return values[2];
 }
 
 ARRAY_INDEX_CONST :: 1;
 
-array_index_valid_const::() -> i32 {
-    values: i32[3] = [0, 0, 0];
+array_index_valid_const::() -> s32 {
+    values: s32[3] = [0, 0, 0];
 
     return values[ARRAY_INDEX_CONST];
 }
 
-array_index_runtime_allowed::(i: i32) -> i32 {
-    values: i32[3] = [0, 0, 0];
+array_index_runtime_allowed::(i: s32) -> s32 {
+    values: s32[3] = [0, 0, 0];
 
     return values[i];
 }

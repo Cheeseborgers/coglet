@@ -2,7 +2,7 @@ tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:
 ADD_OVERFLOW :: 2147483647 + 1;
                 ^~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:2:22: error: integer overflow in constant expression
-SUBTRACT_OVERFLOW :: cast(i32, -2147483648) - 1;
+SUBTRACT_OVERFLOW :: cast(s32, -2147483648) - 1;
                      ^~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:3:22: error: integer overflow in constant expression
 MULTIPLY_OVERFLOW :: 1073741824 * 2;
@@ -14,27 +14,27 @@ tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:
 REMAINDER_ZERO :: 1 % 0;
                   ^~~~~
 tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:6:19: error: integer overflow in constant expression
-DIVIDE_MINIMUM :: cast(i32, -2147483648) / -1;
+DIVIDE_MINIMUM :: cast(s32, -2147483648) / -1;
                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:7:22: error: integer overflow in constant expression
-REMAINDER_MINIMUM :: cast(i32, -2147483648) % -1;
+REMAINDER_MINIMUM :: cast(s32, -2147483648) % -1;
                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:8:17: error: integer overflow in constant expression
 U64_OVERFLOW :: 18446744073709551615 + 1;
                 ^~~~~~~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:9:26: error: integer overflow in constant expression
-I64_MULTIPLY_OVERFLOW :: cast(i64, 4611686018427387904) * 2;
+S64_MULTIPLY_OVERFLOW :: cast(s64, 4611686018427387904) * 2;
                          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:10:22: error: integer constant operand does not fit operation type
 ADD_OPERAND_RANGE :: cast(u8, 255) + 256;
                      ^~~~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:11:25: error: integer constant operand does not fit operation type
-DIVIDE_OPERAND_RANGE :: cast(i8, 1) / 128;
+DIVIDE_OPERAND_RANGE :: cast(s8, 1) / 128;
                         ^~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:12:28: error: integer constant operand does not fit operation type
-REMAINDER_OPERAND_RANGE :: cast(i8, 1) % 128;
+REMAINDER_OPERAND_RANGE :: cast(s8, 1) % 128;
                            ^~~~~~~~~~~~~~~~~
 tests/test_assets/semantic/invalid/declarations/checked_constant_arithmetic.cog:13:25: error: integer overflow in constant expression
-NESTED_OVERFLOW: i32 : (50000 * 50000) + 1;
+NESTED_OVERFLOW: s32 : (50000 * 50000) + 1;
                         ^~~~~~~~~~~~~
 13 semantic errors generated.

@@ -1,5 +1,5 @@
 Point :: struct {
-    x: i32;
+    x: s32;
 }
 
 mutation_targets_are_valid :: () {
@@ -7,7 +7,7 @@ mutation_targets_are_valid :: () {
         x = 0,
     };
 
-    values: i32[3] = [0, 0, 0];
+    values: s32[3] = [0, 0, 0];
 
     point.x = 1;
     point.x += 1;

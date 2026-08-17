@@ -1,22 +1,22 @@
 LEFT_U8: u8 :
     cast(u8, 128) << 1;
 
-LEFT_I8: i8 :
-    cast(i8, 64) << 1;
+LEFT_S8: s8 :
+    cast(s8, 64) << 1;
 
 RIGHT_U8: u8 :
     cast(u8, 128) >> 1;
 
-RIGHT_I8_NEGATIVE: i8 :
-    cast(i8, -3) >> 1;
+RIGHT_S8_NEGATIVE: s8 :
+    cast(s8, -3) >> 1;
 
-RIGHT_I8_MIN: i8 :
-    cast(i8, -128) >> 7;
+RIGHT_S8_MIN: s8 :
+    cast(s8, -128) >> 7;
 
-ZERO_SHIFT: i32 :
+ZERO_SHIFT: s32 :
     123 << 0;
 
-UNTYPED_LEFT: i32 :
+UNTYPED_LEFT: s32 :
     1 << 3;
 
 COUNT_EXPRESSION: u16 :
@@ -28,27 +28,27 @@ NAMED_SHIFT: u32 :
     cast(u32, 1) << NAMED_COUNT;
 
 shift_runtime::(
-    signed_value: i32,
+    signed_value: s32,
     unsigned_value: u32,
     count_u8: u8,
-    count_i64: i64
+    count_s64: s64
 ) -> void {
-    signed_left: i32 =
+    signed_left: s32 =
         signed_value << count_u8;
 
-    signed_right: i32 =
-        signed_value >> count_i64;
+    signed_right: s32 =
+        signed_value >> count_s64;
 
     unsigned_left: u32 =
-        unsigned_value << count_i64;
+        unsigned_value << count_s64;
 
     unsigned_right: u32 =
         unsigned_value >> count_u8;
 
     /*
-     * An untyped left literal defaults to i32 even though the count
+     * An untyped left literal defaults to s32 even though the count
      * is not known at compile time.
      */
-    literal_left: i32 =
+    literal_left: s32 =
         1 << count_u8;
 }

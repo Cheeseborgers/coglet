@@ -20,7 +20,7 @@ static void dump_type_ref(FILE *stream, const CogIrModule *module, CogIrTypeId i
         case COG_IR_TYPE_VOID: fprintf(stream, "void"); break;
         case COG_IR_TYPE_BOOL: fprintf(stream, "bool"); break;
         case COG_IR_TYPE_INTEGER:
-            fprintf(stream, "%c%u", type->as.integer.is_signed ? 'i' : 'u', type->as.integer.bits);
+            fprintf(stream, "%c%u", type->as.integer.is_signed ? 's' : 'u', type->as.integer.bits);
             break;
         case COG_IR_TYPE_FLOAT:
             fprintf(stream, "f%u", type->as.floating.bits);

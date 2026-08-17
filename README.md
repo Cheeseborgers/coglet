@@ -31,7 +31,7 @@ The long-term objective is a compiler capable of compiling itself. Language desi
 ### Declarations
 
 ```c
-value: i32 = 42;
+value: s32 = 42;
 other := 42;
 name: u8[6] = "hello";
 ```
@@ -51,7 +51,7 @@ Supported declaration behavior includes:
 ### Functions
 
 ```c
-add::(a, b: i32) -> i32 {
+add::(a, b: s32) -> s32 {
     return a + b;
 }
 ```
@@ -144,13 +144,13 @@ frontend supports hierarchical named semantic namespaces:
 ```c
 // lib/std/math.cog
 module std.math;
-export add::(a, b: i32) -> i32 { return a + b; }
+export add::(a, b: s32) -> s32 { return a + b; }
 ```
 
 ```c
 // main.cog
 import std.math;
-main::() -> i32 { return std.math.add(20, 22); }
+main::() -> s32 { return std.math.add(20, 22); }
 ```
 
 Module names are absolute dotted identifier paths. The same dot is used for
@@ -197,7 +197,7 @@ dependencies are resolved lazily and cycles are diagnosed.
 
 Import cycles are allowed because imports currently affect compile-time
 visibility only; top-level runtime initialization remains in physical input
-order. Only root-namespace `main::() -> i32` is the executable entry. Exported
+order. Only root-namespace `main::() -> s32` is the executable entry. Exported
 APIs may not expose private nominal types through function signatures,
 globals/constants, or exported struct fields. Package manifests, automatic multi-file package membership, additional runtime-facing standard-library modules, and
 separate compilation remain future work. Coglet now ships an initial pure-Coglet
@@ -213,7 +213,7 @@ The first shipped standard module is intentionally small:
 ```c
 import std.math;
 
-main::() -> i32 {
+main::() -> s32 {
     if std.math.gcd_u64(84, 30) != 6
         return 1;
 
@@ -221,7 +221,7 @@ main::() -> i32 {
 }
 ```
 
-`std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_i32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; and an initial floating game/application math slice with `clamp01`, `lerp`, `inverse_lerp`, `remap`, `smoothstep`, `to_radians`, and `to_degrees`. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow.
+`std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_s32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; and an initial floating game/application math slice with `clamp01`, `lerp`, `inverse_lerp`, `remap`, `smoothstep`, `to_radians`, and `to_degrees`. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow.
 
 For the current executable slice:
 
@@ -285,7 +285,7 @@ fake Coglet source location. `-g` composes with `-O0` through `-O3`; optimized
 debugging follows LLVM's normal optimized-code behavior. Host-C executable output
 rejects `-g` rather than silently claiming to provide equivalent debug metadata.
 
-Coglet executables require a source-top-level `main::() -> i32`. The `c_*`
+Coglet executables require a source-top-level `main::() -> s32`. The `c_*`
 types are C-interoperability types and are not part of the language-level entry
 contract. The host-C backend adapts the resolved CogIR entry to the C process ABI
 by emitting a C `int main(void)` wrapper. Running `coglet` with only the input
@@ -298,7 +298,7 @@ backend generation.
 Primitive and built-in types:
 
 - `bool`
-- `i8`, `i16`, `i32`, `i64`
+- `s8`, `s16`, `s32`, `s64`
 - `u8`, `u16`, `u32`, `u64`
 - `f32`, `f64`
 - `void`
@@ -355,7 +355,7 @@ They are not value-producing expressions:
 
 ```c
 y := (x = 1);       // invalid
-takes_i32(x += 1);  // invalid
+takes_s32(x += 1);  // invalid
 return x++;         // invalid
 ```
 
@@ -370,7 +370,7 @@ Invalid targets include constants, enum members, and fields or indexes derived f
 Local variables are not implicitly initialized:
 
 ```c
-value: i32;
+value: s32;
 ```
 
 A variable may be read only when semantic analysis can prove that it has been initialized on every
@@ -379,7 +379,7 @@ reachable incoming path.
 A direct whole-variable assignment initializes it:
 
 ```c
-value: i32;
+value: s32;
 
 value = 10;
 
@@ -392,7 +392,7 @@ Compound assignment and increment/decrement require prior initialization because
 the previous value:
 
 ```c
-value: i32;
+value: s32;
 
 value += 1; // invalid
 value++;    // invalid
@@ -422,7 +422,7 @@ It is invalid in a value-required context:
 
 ```c
 x := does_nothing();
-takes_i32(does_nothing());
+takes_s32(does_nothing());
 return does_nothing();
 does_nothing() + 1;
 ```
@@ -432,10 +432,10 @@ does_nothing() + 1;
 Coglet provides mutable and readonly raw object pointers:
 
 ```c
-value: i32 = 10;
+value: s32 = 10;
 
-pointer: i32* = &value;
-view: readonly i32* = pointer;
+pointer: s32* = &value;
+view: readonly s32* = pointer;
 ```
 
 `T*` is a raw pointer that grants mutable access to `T`.
@@ -443,7 +443,7 @@ view: readonly i32* = pointer;
 pointer:
 
 ```c
-read: i32 = *view;  // valid
+read: s32 = *view;  // valid
 *view = 20;         // invalid
 view[0] = 20;       // invalid
 ```
@@ -459,8 +459,8 @@ A mutable pointer may adapt implicitly or explicitly to the corresponding
 readonly pointer:
 
 ```c
-view: readonly i32* = pointer;
-other := cast(readonly i32*, pointer);
+view: readonly s32* = pointer;
+other := cast(readonly s32*, pointer);
 ```
 
 Readonly access cannot implicitly or explicitly become mutable access.
@@ -468,7 +468,7 @@ Dereference, pointer indexing, field access, and address-of preserve the
 relevant access permission:
 
 ```c
-readonly_again: readonly i32* = &*view;
+readonly_again: readonly s32* = &*view;
 ```
 
 Pointers with the same immediate pointee type may be compared even when one is
@@ -487,16 +487,16 @@ recursively through multiple pointer layers.
 `null` is the only source-level null-pointer value:
 
 ```c
-pointer: i32* = null;          // valid
-view: readonly i32* = null;    // valid
-pointer: i32* = 0;             // invalid
+pointer: s32* = null;          // valid
+view: readonly s32* = null;    // valid
+pointer: s32* = 0;             // invalid
 ```
 
 An explicit `null`-to-pointer cast may provide either concrete pointer type:
 
 ```c
-mutable_null := cast(i32*, null);
-readonly_null := cast(readonly i32*, null);
+mutable_null := cast(s32*, null);
+readonly_null := cast(readonly s32*, null);
 ```
 
 ### Opaque Raw Pointers
@@ -517,15 +517,15 @@ requires `reinterpret`, which preserves the address representation and cannot
 discard readonly access:
 
 ```c
-pointer: i32* = get_pointer();
+pointer: s32* = get_pointer();
 handle := reinterpret(opaque*, pointer);
-recovered := reinterpret(i32*, handle);
+recovered := reinterpret(s32*, handle);
 ```
 
 ### Arrays
 
 ```c
-values: i32[3] = [1, 2, 3];
+values: s32[3] = [1, 2, 3];
 ```
 
 Arrays have a fixed compile-time size that is part of the type.
@@ -573,8 +573,8 @@ name := "hello"; // invalid
 
 ```c
 Point :: struct {
-    x: i32;
-    y: i32;
+    x: s32;
+    y: s32;
 }
 
 p := Point {

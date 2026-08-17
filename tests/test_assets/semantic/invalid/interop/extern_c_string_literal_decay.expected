@@ -7,7 +7,7 @@ tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:15:
 tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:16:19: error: string literal can only initialize a byte array
     consume_bytes("bytes");
                   ^~~~~~~
-tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:19:19: error: argument type does not match parameter type: expected readonly i8*, got u8[4]
+tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:19:19: error: argument type does not match parameter type: expected readonly s8*, got u8[4]
     consume_chars(bytes);
                   ^~~~~
 4 semantic errors generated.

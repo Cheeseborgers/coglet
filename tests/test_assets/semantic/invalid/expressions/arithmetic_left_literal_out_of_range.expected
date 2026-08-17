@@ -5,9 +5,9 @@ tests/test_assets/semantic/invalid/expressions/arithmetic_left_literal_out_of_ra
     256 - value_u8;
     ^~~
 tests/test_assets/semantic/invalid/expressions/arithmetic_left_literal_out_of_range.cog:8:5: error: integer constant operand does not fit operation type
-    128 + value_i8;
+    128 + value_s8;
     ^~~
 tests/test_assets/semantic/invalid/expressions/arithmetic_left_literal_out_of_range.cog:9:5: error: integer constant operand does not fit operation type
-    -129 - value_i8;
+    -129 - value_s8;
     ^~~~
 4 semantic errors generated.

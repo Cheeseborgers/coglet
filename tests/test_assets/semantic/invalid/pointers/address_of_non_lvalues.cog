@@ -5,7 +5,7 @@ Color :: enum {
 }
 
 Point :: struct {
-    x: i32;
+    x: s32;
 }
 
 make_point::() -> Point {
@@ -14,15 +14,15 @@ make_point::() -> Point {
     };
 }
 
-make_value::() -> i32 {
+make_value::() -> s32 {
     return 1;
 }
 
 test::() -> void {
-    a: i32* = &VALUE;
+    a: s32* = &VALUE;
     b: Color* = &Color.Red;
-    c: i32* = &1;
-    d: i32* = &(1 + 2);
-    e: i32* = &make_value();
-    f: i32* = &make_point().x;
+    c: s32* = &1;
+    d: s32* = &(1 + 2);
+    e: s32* = &make_value();
+    f: s32* = &make_point().x;
 }

@@ -1,5 +1,5 @@
-missing_else::(condition: bool) -> i32 {
-    value: i32;
+missing_else::(condition: bool) -> s32 {
+    value: s32;
 
     if condition {
         value = 10;
@@ -8,8 +8,8 @@ missing_else::(condition: bool) -> i32 {
     return value;
 }
 
-only_one_branch_initializes::(condition: bool) -> i32 {
-    value: i32;
+only_one_branch_initializes::(condition: bool) -> s32 {
+    value: s32;
 
     if condition {
         value = 20;
@@ -20,8 +20,8 @@ only_one_branch_initializes::(condition: bool) -> i32 {
     return value;
 }
 
-nested_path_missing::(outer, inner: bool) -> i32 {
-    value: i32;
+nested_path_missing::(outer, inner: bool) -> s32 {
+    value: s32;
 
     if outer {
         if inner {

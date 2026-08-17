@@ -1,2 +1,2 @@
 module duplicate;
-Thing::struct { y: i32; }
+Thing::struct { y: s32; }

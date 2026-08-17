@@ -1,5 +1,5 @@
-main::() -> i32 {
+main::() -> s32 {
     a, b: u64 = 0;
-    x, y: i32[2] = [1, 2];
-    return cast(i32, a + b) + x[0] + y[1];
+    x, y: s32[2] = [1, 2];
+    return cast(s32, a + b) + x[0] + y[1];
 }

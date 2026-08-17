@@ -1,5 +1,5 @@
 test::() -> void {
-    value: i32 = 1;
+    value: s32 = 1;
     flag: bool = true;
 
     value += flag;

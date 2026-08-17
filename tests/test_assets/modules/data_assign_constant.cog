@@ -1,6 +1,6 @@
 import data;
 
-main::() -> i32 {
+main::() -> s32 {
     data.answer = 1;
     return 0;
 }

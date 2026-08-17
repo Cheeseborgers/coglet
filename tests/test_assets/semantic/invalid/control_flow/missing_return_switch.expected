@@ -1,4 +1,4 @@
 tests/test_assets/semantic/invalid/control_flow/missing_return_switch.cog:7:1: error: non-void function may not return a value
-return_bad_switch_no_default::(c: Color) -> i32 {
+return_bad_switch_no_default::(c: Color) -> s32 {
 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
 1 semantic error generated.

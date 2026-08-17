@@ -1,4 +1,4 @@
-tests/test_assets/semantic/invalid/generics/conflicting_inference.cog:8:23: error: conflicting inference for generic type parameter 'T': i32 versus i64
+tests/test_assets/semantic/invalid/generics/conflicting_inference.cog:8:23: error: conflicting inference for generic type parameter 'T': s32 versus s64
     value := first(a, b);
                       ^
 1 semantic error generated.

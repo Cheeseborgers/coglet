@@ -14,10 +14,10 @@ ordered_negative_unsigned::(x: u8) -> bool {
     return -1 < x;
 }
 
-equal_i8_too_large::(x: i8) -> bool {
+equal_s8_too_large::(x: s8) -> bool {
     return x == 128;
 }
 
-equal_i8_too_small::(x: i8) -> bool {
+equal_s8_too_small::(x: s8) -> bool {
     return x == -129;
 }

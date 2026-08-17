@@ -1,4 +1,4 @@
 tests/test_assets/semantic/invalid/pointers/readonly_address_cannot_be_mutable.cog:4:21: error: initializer type does not match declared type
-    mutable: i32* = &*value;
+    mutable: s32* = &*value;
                     ^~~~~~~
 1 semantic error generated.

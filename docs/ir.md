@@ -136,14 +136,14 @@ module.entry_function : function
 ```
 
 For the current language this is set only from the semantic declaration identity
-of root-namespace `main::() -> i32`. A `main` declared inside a named source module
+of root-namespace `main::() -> s32`. A `main` declared inside a named source module
 is an ordinary function and is never an executable entry. The source signature is
 validated before C aliases are canonicalized. The IR stores declaration identity,
 not a backend name/module lookup or a C-specific spelling marker. Nested
 non-capturing functions are still flattened
 into the module function table, but a nested function named `main` is therefore
 never mistaken for the process entry after frontend destruction. The verifier
-requires the resolved entry to be an internal Coglet `() -> i32` definition.
+requires the resolved entry to be an internal Coglet `() -> s32` definition.
 
 A module also has an optional distinguished internal initializer function:
 
@@ -235,7 +235,7 @@ CogIR contains only runtime-representable types:
 void
 bool
 
-i8  i16  i32  i64
+s8  s16  s32  s64
 u8  u16  u32  u64
 
 f32 f64
@@ -323,10 +323,10 @@ canonicalization intentionally erased, for example:
 ```text
 runtime CogIR type        C ABI spelling
 ------------------        --------------
-i32                       c_int
+s32                       c_int
 u64                       c_ulong (on the selected target)
-readonly ptr<i8>          readonly c_char*
-fn(i32)->i32              cfn(c_int)->c_int
+readonly ptr<s8>          readonly c_char*
+fn(s32)->s32              cfn(c_int)->c_int
 ```
 
 This remains separate from the normal CogIR type table. It exists so the host-C
@@ -777,7 +777,7 @@ check at least:
 - all source spans refer to copied source files or are explicitly synthetic;
 - external declarations have no body and definitions have the required body;
 - ABI metadata matches the associated runtime function/aggregate shape;
-- `module.entry_function`, when present, references an internal non-compiler-generated Coglet `() -> i32` definition and is distinct from module init;
+- `module.entry_function`, when present, references an internal non-compiler-generated Coglet `() -> s32` definition and is distinct from module init;
 - `module.init_function`, when present, is an internal `() -> void` definition.
 
 ### Constants/globals
@@ -828,17 +828,17 @@ Example:
 ```text
 module target(pointer=64)
 
-global @g0 "counter" : i32 = zeroinit
+global @g0 "counter" : s32 = zeroinit
 
-func @f0 "bump"(%arg0: i32) -> i32 [abi=coglet, linkage=internal] {
+func @f0 "bump"(%arg0: s32) -> s32 [abi=coglet, linkage=internal] {
 slots:
-    $s0 : i32 "x"
+    $s0 : s32 "x"
 
 entry:
     %0 = local_addr $s0
     store %0, %arg0
     %1 = load %0
-    %2 = const i32 1
+    %2 = const s32 1
     %3 = iadd.checked %1, %2
     ret %3
 }
@@ -846,7 +846,7 @@ entry:
 init @f1 {
 entry:
     %0 = global_addr @g0
-    %1 = const i32 1
+    %1 = const s32 1
     store %0, %1
     ret
 }
@@ -1057,7 +1057,7 @@ relationships.
 Checked numeric casts, integer truncation, raw-pointer reinterpretation, and safe
 pointer qualification now lower to their dedicated CogIR operations. Explicit
 casts are also responsible for materializing frontend-only adaptable literals:
-for example `cast(f32, 0.0)` and `cast(i32*, null)` directly produce concrete
+for example `cast(f32, 0.0)` and `cast(s32*, null)` directly produce concrete
 CogIR constants instead of attempting to create `untyped-float` or `null` IR
 values. Reinterpret verification restricts the operation to typed/opaque raw
 pointer crossings and rejects qualifier loss.
@@ -1086,9 +1086,9 @@ variadic tails are now legalized in CogIR with explicit `c.vararg.promote`
 instructions, and the verifier rejects unpromoted tails.
 
 Executable entry policy is now separated from C ABI spelling. Semantic analysis
-validates the source-top-level `main::() -> i32` contract before native-C aliases
+validates the source-top-level `main::() -> s32` contract before native-C aliases
 are canonicalized. CogIR records only the resolved `module.entry_function` and
-its canonical Coglet function type; the verifier enforces the `() -> i32` entry
+its canonical Coglet function type; the verifier enforces the `() -> s32` entry
 invariant. Exact C scalar spelling remains in `CogIrFunctionAbi` and recursive ABI
 type metadata only where an actual C boundary requires it. No ordinary Coglet
 function carries source-return C-scalar metadata.
@@ -1157,9 +1157,9 @@ volatile access contract.
     C variadic tails now carry explicit non-trapping promotion operations and
     verifier enforcement.
 12. ~~Resolve executable entry semantics without leaking the host C ABI.~~ A
-    source-top-level entry is `main::() -> i32`; semantic analysis validates the
+    source-top-level entry is `main::() -> s32`; semantic analysis validates the
     source spelling before alias canonicalization, CogIR records the resolved
-    entry identity, and the verifier enforces a backend-neutral `() -> i32`
+    entry identity, and the verifier enforces a backend-neutral `() -> s32`
     invariant without retaining source C-scalar spelling.
 13. ~~Port the host-C backend to `const CogIrModule *` and restore all backend tests
     through AST -> semantic -> CogIR -> C.~~ The public backend API is IR-only,
@@ -1191,13 +1191,13 @@ volatile access contract.
     destruction, and executable entry selection is now an explicit
     `module.entry_function` identity rather than a debug-name scan. A nested
     function named `main` cannot become the process entry accidentally, and the
-    verifier enforces the backend-neutral `() -> i32` entry invariant. The host-C
+    verifier enforces the backend-neutral `() -> s32` entry invariant. The host-C
     wrapper alone adapts that result to C `int`. The CogIR-only host-C bootstrap
     path is complete for the current executable/interop contract.
 19. ~~Establish the first LLVM backend vertical slice.~~ The optional LLVM backend
     consumes only frozen CogIR, constructs verifier-checked LLVM IR for the
     initial native scalar/CFG/storage subset, honors ordered module initialization,
-    and adapts the resolved Coglet `() -> i32` entry through an LLVM `main` wrapper.
+    and adapts the resolved Coglet `() -> s32` entry through an LLVM `main` wrapper.
     Unsupported CogIR operations fail explicitly so later milestones can add their
     semantics without approximation.
 20. ~~Lower Coglet integer semantics through LLVM.~~ Checked and wrapping integer

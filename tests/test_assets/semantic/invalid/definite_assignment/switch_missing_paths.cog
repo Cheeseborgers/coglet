@@ -5,9 +5,9 @@ Color :: enum(u8) {
 }
 
 non_exhaustive_integer::(
-    selector: i32
-) -> i32 {
-    value: i32;
+    selector: s32
+) -> s32 {
+    value: s32;
 
     switch selector {
         case 0:
@@ -19,8 +19,8 @@ non_exhaustive_integer::(
 
 non_exhaustive_enum::(
     color: Color
-) -> i32 {
-    value: i32;
+) -> s32 {
+    value: s32;
 
     switch color {
         case Color.Red:
@@ -35,8 +35,8 @@ non_exhaustive_enum::(
 
 exhaustive_branch_missing::(
     condition: bool
-) -> i32 {
-    value: i32;
+) -> s32 {
+    value: s32;
 
     switch condition {
         case true:
@@ -50,9 +50,9 @@ exhaustive_branch_missing::(
 }
 
 case_bodies_are_independent::(
-    selector: i32
+    selector: s32
 ) -> void {
-    value: i32;
+    value: s32;
 
     switch selector {
         case 0:

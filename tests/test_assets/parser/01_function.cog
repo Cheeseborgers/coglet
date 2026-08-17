@@ -1,4 +1,4 @@
-add::(a: i32, b: i32) -> i32 {
+add::(a: s32, b: s32) -> s32 {
     result := a + b * 2;
     return result;
 }

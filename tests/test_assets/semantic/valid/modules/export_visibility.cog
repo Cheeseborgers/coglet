@@ -1,17 +1,17 @@
 module visibility_semantic;
 
 secret :: 2;
-helper::(value: i32) -> i32 { return value + secret; }
+helper::(value: s32) -> s32 { return value + secret; }
 
 export answer :: 40;
-export left, right: i32 = 0;
+export left, right: s32 = 0;
 
 export Pair::struct {
-    x: i32;
-    y: i32;
+    x: s32;
+    y: s32;
 }
 
-export public_value::() -> i32 {
+export public_value::() -> s32 {
     pair := Pair { x = answer, y = helper(0) };
     left = pair.x;
     right = pair.y;

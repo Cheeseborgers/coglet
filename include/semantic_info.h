@@ -129,7 +129,7 @@ typedef enum SemAggregateKind {
  *
  * Semantic type resolution intentionally erases these aliases to Coglet's
  * concrete runtime scalar types. Keeping the spelling here lets later lowering
- * distinguish, for example, source `c_int` from source `i32` without consulting
+ * distinguish, for example, source `c_int` from source `s32` without consulting
  * the AST again.
  */
 typedef enum SemCScalarKind {
@@ -284,7 +284,7 @@ typedef struct SemDeclInfo {
     /* Concrete frontend monomorphization synthesized from a generic template. */
     int is_generic_specialization;
 
-    /* True only for the validated root-namespace `main::() -> i32`. */
+    /* True only for the validated root-namespace `main::() -> s32`. */
     int is_executable_entry;
 
     struct SemDeclInfo *next;

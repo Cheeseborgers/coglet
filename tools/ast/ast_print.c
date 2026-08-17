@@ -305,17 +305,17 @@ static const char *token_type_str(TokenType type)
         case TOK_BOOL:
             return "BOOL";
 
-        case TOK_I8:
-            return "I8";
+        case TOK_S8:
+            return "S8";
 
-        case TOK_I16:
-            return "I16";
+        case TOK_S16:
+            return "S16";
 
-        case TOK_I32:
-            return "I32";
+        case TOK_S32:
+            return "S32";
 
-        case TOK_I64:
-            return "I64";
+        case TOK_S64:
+            return "S64";
 
         case TOK_U8:
             return "U8";
@@ -364,10 +364,10 @@ static void print_type(Type *t)
         case TYPE_BOOL: printf("bool"); break;
         case TYPE_NULL: printf("null"); break;
 
-        case TYPE_I8:   printf("i8");   break;
-        case TYPE_I16:  printf("i16");  break;
-        case TYPE_I32:  printf("i32");  break;
-        case TYPE_I64:  printf("i64");  break;
+        case TYPE_S8:   printf("s8");   break;
+        case TYPE_S16:  printf("s16");  break;
+        case TYPE_S32:  printf("s32");  break;
+        case TYPE_S64:  printf("s64");  break;
         case TYPE_U8:   printf("u8");   break;
         case TYPE_U16:  printf("u16");  break;
         case TYPE_U32:  printf("u32");  break;

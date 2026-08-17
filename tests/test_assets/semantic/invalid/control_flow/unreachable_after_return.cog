@@ -1,4 +1,4 @@
-unreachable_after_return::() -> i32 {
+unreachable_after_return::() -> s32 {
     return 1;
 
     x := 2;

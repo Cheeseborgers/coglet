@@ -258,7 +258,7 @@ static void builtin_type_name(const CogIrType *type, char *buffer, size_t buffer
         case COG_IR_TYPE_VOID: snprintf(buffer, buffer_size, "void"); break;
         case COG_IR_TYPE_BOOL: snprintf(buffer, buffer_size, "bool"); break;
         case COG_IR_TYPE_INTEGER:
-            snprintf(buffer, buffer_size, "%c%u", type->as.integer.is_signed ? 'i' : 'u', type->as.integer.bits);
+            snprintf(buffer, buffer_size, "%c%u", type->as.integer.is_signed ? 's' : 'u', type->as.integer.bits);
             break;
         case COG_IR_TYPE_FLOAT: snprintf(buffer, buffer_size, "f%u", type->as.floating.bits); break;
         case COG_IR_TYPE_OPAQUE_POINTER: snprintf(buffer, buffer_size, "opaque*"); break;

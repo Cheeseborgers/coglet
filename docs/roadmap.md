@@ -275,7 +275,7 @@ TYPE_UNTYPED_FLOAT
 ```
 
 The previous mixed state of a concrete kind plus an `is_untyped` flag has been removed.
-Mutable inferred variables and parameters receive concrete default types (`i32`, `i64`, `u64`, or `f64`),
+Mutable inferred variables and parameters receive concrete default types (`s32`, `s64`, `u64`, or `f64`),
 while inferred compile-time constants may remain adaptable.
 
 ### Hexadecimal Floating-Point Literals
@@ -500,7 +500,7 @@ verifier rejects unpromoted or otherwise ABI-illegal tail values.
 
 The host-C boundary move is now complete without leaking the host process ABI
 into Coglet entry semantics. A source-top-level executable entry is
-`main::() -> i32`; semantic analysis validates that spelling before C aliases are
+`main::() -> s32`; semantic analysis validates that spelling before C aliases are
 canonicalized, and CogIR carries only the resolved entry identity plus its
 backend-neutral runtime type. `backend_c.h` accepts only `const CogIrModule *`;
 the driver lowers, verifies and freezes CogIR, destroys the frontend, then
@@ -537,7 +537,7 @@ current CogIR operation has an explicit emitter path, backend entry points accep
 only frozen CogIR, frontend lifetime ends before emission, and source executable
 entry selection is carried by `module.entry_function` rather than a debug-name
 heuristic. This preserves the source-top-level `main` rule after nested functions
-are flattened, while the verifier enforces the native Coglet `() -> i32` entry
+are flattened, while the verifier enforces the native Coglet `() -> s32` entry
 signature. The CogIR-only host-C bootstrap path is therefore complete for the
 current executable/interop contract. LLVM Stage 6 established the same frozen,
 verified-module boundary and additionally lowered target C object storage and

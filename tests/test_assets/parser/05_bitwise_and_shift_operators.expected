@@ -1,12 +1,12 @@
 program
   func operators -> void
     params:
-      param_decl a: i32
-      param_decl b: i32
-      param_decl c: i32
-      param_decl d: i32
-      param_decl flags: i32
-      param_decl mask: i32
+      param_decl a: s32
+      param_decl b: s32
+      param_decl c: s32
+      param_decl d: s32
+      param_decl flags: s32
+      param_decl mask: s32
     body:
       block
         var_decl precedence: <inferred>

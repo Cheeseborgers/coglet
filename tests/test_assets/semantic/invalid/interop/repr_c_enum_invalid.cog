@@ -4,7 +4,7 @@ MissingBacking::enum {
 }
 
 #repr(c)
-CogletBacking::enum(i32) {
+CogletBacking::enum(s32) {
     A = 0,
 }
 

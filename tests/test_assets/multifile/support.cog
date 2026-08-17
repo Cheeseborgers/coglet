@@ -1,9 +1,9 @@
 Pair::struct {
-    left: i32;
-    right: i32;
+    left: s32;
+    right: s32;
 }
 
-make_pair::(base: i32) -> Pair {
+make_pair::(base: s32) -> Pair {
     return Pair {
         left = base,
         right = 2,

@@ -1,15 +1,15 @@
-infinite_while_satisfies_return_rule::() -> i32 {
+infinite_while_satisfies_return_rule::() -> s32 {
     while true {
     }
 }
 
-infinite_continue_loop_satisfies_return_rule::() -> i32 {
+infinite_continue_loop_satisfies_return_rule::() -> s32 {
     while true {
         continue;
     }
 }
 
-return_inside_infinite_loop::() -> i32 {
+return_inside_infinite_loop::() -> s32 {
     while true {
         return 10;
     }

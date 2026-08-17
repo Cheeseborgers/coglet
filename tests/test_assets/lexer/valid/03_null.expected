@@ -1,6 +1,6 @@
 1 IDENT pointer
 1 COLON :
-1 I32 i32
+1 S32 s32
 1 STAR *
 1 EQUAL =
 1 NULL null

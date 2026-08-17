@@ -8,18 +8,18 @@ first::<T, U: integer>(a: T, b: U) -> T {
     return a;
 }
 
-recur::<T>(value: T, depth: i32) -> T {
+recur::<T>(value: T, depth: s32) -> T {
     if depth == 0
         return value;
     return recur(value, depth - 1);
 }
 
-main::() -> i32 {
-    a: i32 = min(42, 90);
-    b: i64 = min::<i64>(70, 80);
-    c: i32 = min(9, 10);
-    d: i32 = first(a, b);
-    e: i32 = recur(d, 3);
+main::() -> s32 {
+    a: s32 = min(42, 90);
+    b: s64 = min::<s64>(70, 80);
+    c: s32 = min(9, 10);
+    d: s32 = first(a, b);
+    e: s32 = recur(d, 3);
 
     if b != 70 || c != 9 || e != 42
         return 1;

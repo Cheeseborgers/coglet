@@ -1,4 +1,4 @@
-checked_ops::(a: i32, b: i32, negative: i32, six: i32, seven: i32, eighty_five: i32) -> i32 {
+checked_ops::(a: s32, b: s32, negative: s32, six: s32, seven: s32, eighty_five: s32) -> s32 {
     if a + b != 42
         return 1;
     if negative - b != -42
@@ -14,7 +14,7 @@ checked_ops::(a: i32, b: i32, negative: i32, six: i32, seven: i32, eighty_five: 
     return 0;
 }
 
-checked_unsigned_ops::(a: u32, b: u32, six: u32, seven: u32, eighty_five: u32) -> i32 {
+checked_unsigned_ops::(a: u32, b: u32, six: u32, seven: u32, eighty_five: u32) -> s32 {
     if a + b != 42
         return 7;
     if a - b != 38
@@ -28,16 +28,16 @@ checked_unsigned_ops::(a: u32, b: u32, six: u32, seven: u32, eighty_five: u32) -
     return 0;
 }
 
-checked_short_circuit::(a: i32, b: i32, enabled: bool) -> bool {
+checked_short_circuit::(a: s32, b: s32, enabled: bool) -> bool {
     return a + b == 42 && enabled;
 }
 
-wrapping_ops::(smax: i8, smin: i8, one: i8, sixty_four: i8, umax: u8, uzero: u8, uone: u8, twenty: u8) -> i32 {
+wrapping_ops::(smax: s8, smin: s8, one: s8, sixty_four: s8, umax: u8, uzero: u8, uone: u8, twenty: u8) -> s32 {
     if wrapping_add(smax, one) != -128
         return 10;
     if wrapping_sub(smin, one) != 127
         return 11;
-    if wrapping_mul(sixty_four, cast(i8, 2)) != -128
+    if wrapping_mul(sixty_four, cast(s8, 2)) != -128
         return 12;
     if wrapping_neg(smin) != -128
         return 13;
@@ -52,7 +52,7 @@ wrapping_ops::(smax: i8, smin: i8, one: i8, sixty_four: i8, umax: u8, uzero: u8,
     return 0;
 }
 
-bitwise_ops::(a: u8, b: u8) -> i32 {
+bitwise_ops::(a: u8, b: u8) -> s32 {
     if (a & b) != 0
         return 20;
     if (a | b) != 255
@@ -64,35 +64,35 @@ bitwise_ops::(a: u8, b: u8) -> i32 {
     return 0;
 }
 
-shift_ops::(left: u8, signed_left: i8, signed_count: i32, unsigned_count: u8) -> i32 {
+shift_ops::(left: u8, signed_left: s8, signed_count: s32, unsigned_count: u8) -> s32 {
     if (left << unsigned_count) != 84
         return 30;
     if (left >> signed_count) != 21
         return 31;
     if (signed_left >> signed_count) != -2
         return 32;
-    if (cast(i8, 64) << unsigned_count) != -128
+    if (cast(s8, 64) << unsigned_count) != -128
         return 33;
     return 0;
 }
 
-cast_ops::(positive: i64, negative: i64, unsigned_value: u64, signed_byte: i8) -> i32 {
+cast_ops::(positive: s64, negative: s64, unsigned_value: u64, signed_byte: s8) -> s32 {
     if cast(u8, positive) != 255
         return 40;
-    if cast(i16, negative) != -128
+    if cast(s16, negative) != -128
         return 41;
-    if cast(i64, unsigned_value) != 255
+    if cast(s64, unsigned_value) != 255
         return 42;
     if truncate(u8, positive) != 255
         return 43;
-    if truncate(i8, unsigned_value) != -1
+    if truncate(s8, unsigned_value) != -1
         return 44;
     if truncate(u16, signed_byte) != 65535
         return 45;
     return 0;
 }
 
-main::() -> i32 {
+main::() -> s32 {
     result := checked_ops(40, 2, -40, 6, 7, 85);
     if result != 0
         return result;

@@ -1,4 +1,4 @@
 tests/test_assets/semantic/invalid/control_flow/constant_true_loop_can_break.cog:3:1: error: non-void function may not return a value
-constant_true_loop_can_break::(should_break: bool) -> i32 {
+constant_true_loop_can_break::(should_break: bool) -> s32 {
 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
 1 semantic error generated.

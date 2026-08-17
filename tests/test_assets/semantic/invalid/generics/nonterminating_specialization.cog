@@ -1,7 +1,7 @@
-grow::<T>(value: T*) -> i32 {
+grow::<T>(value: T*) -> s32 {
     return grow::<T*>(null);
 }
 
-main::() -> i32 {
-    return grow::<i32>(null);
+main::() -> s32 {
+    return grow::<s32>(null);
 }

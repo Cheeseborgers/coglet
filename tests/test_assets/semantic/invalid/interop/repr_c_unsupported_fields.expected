@@ -1,8 +1,8 @@
-tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:11:5: error: #repr(c) struct field type 'i32[]' is not supported by the current C ABI subset
-    unsized: i32[];
+tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:11:5: error: #repr(c) struct field type 's32[]' is not supported by the current C ABI subset
+    unsized: s32[];
     ^~~~~~~
-tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:12:5: error: #repr(c) struct field type 'i32[0]' is not supported by the current C ABI subset
-    zero: i32[0];
+tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:12:5: error: #repr(c) struct field type 's32[0]' is not supported by the current C ABI subset
+    zero: s32[0];
     ^~~~
 tests/test_assets/semantic/invalid/interop/repr_c_unsupported_fields.cog:13:5: error: #repr(c) struct field type 'Plain' is not supported by the current C ABI subset
     nested: Plain;

@@ -1,8 +1,8 @@
 program
-  func add -> i32
+  func add -> s32
     params:
-      param_decl a: i32
-      param_decl b: i32
+      param_decl a: s32
+      param_decl b: s32
     body:
       block
         var_decl result: <inferred>

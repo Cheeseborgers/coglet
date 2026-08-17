@@ -1,4 +1,4 @@
-tests/test_assets/semantic/invalid/generics/constraint_mismatch.cog:6:14: error: cannot instantiate 'only_unsigned': type argument T = i32 does not satisfy constraint 'unsigned_integer'
+tests/test_assets/semantic/invalid/generics/constraint_mismatch.cog:6:14: error: cannot instantiate 'only_unsigned': type argument T = s32 does not satisfy constraint 'unsigned_integer'
     value := only_unsigned(1);
              ^~~~~~~~~~~~~
 1 semantic error generated.

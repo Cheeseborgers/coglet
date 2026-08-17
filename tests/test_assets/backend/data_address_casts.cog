@@ -44,53 +44,53 @@ field_and_array_addressing::(pair: ProbePair, packet: ArrayPacket) -> bool {
     return true;
 }
 
-pointer_addressing::(seed: i32) -> bool {
-    value: i32 = seed;
-    pointer: i32* = &value;
+pointer_addressing::(seed: s32) -> bool {
+    value: s32 = seed;
+    pointer: s32* = &value;
     pointer[0] += 2;
     if value != 12 {
         return false;
     }
 
-    *cast(volatile i32*, pointer) = 19;
-    loaded := *cast(readonly volatile i32*, pointer);
+    *cast(volatile s32*, pointer) = 19;
+    loaded := *cast(readonly volatile s32*, pointer);
     if loaded != 19 {
         return false;
     }
 
     raw: opaque* = reinterpret(opaque*, pointer);
-    recovered: i32* = reinterpret(i32*, raw);
+    recovered: s32* = reinterpret(s32*, raw);
     recovered[0] = 23;
     return value == 23;
 }
 
 enum_cast_checks::(mode: Mode) -> bool {
-    return cast(i32, mode) == 3;
+    return cast(s32, mode) == 3;
 }
 
 cast_checks::(
-    positive: i64,
+    positive: s64,
     unsigned_value: u64,
     low: f64,
     high: f64,
     negative_fraction: f64
 ) -> bool {
-    if cast(i16, positive) != 258 {
+    if cast(s16, positive) != 258 {
         return false;
     }
     if cast(u16, positive) != 258 {
         return false;
     }
-    if cast(i64, unsigned_value) != 255 {
+    if cast(s64, unsigned_value) != 255 {
         return false;
     }
     if cast(u8, unsigned_value) != 255 {
         return false;
     }
-    if cast(i8, low) != -128 {
+    if cast(s8, low) != -128 {
         return false;
     }
-    if cast(i8, high) != 127 {
+    if cast(s8, high) != 127 {
         return false;
     }
     if cast(u8, negative_fraction) != 0 {
@@ -109,14 +109,14 @@ cast_checks::(
     if truncate(u8, positive) != 2 {
         return false;
     }
-    if truncate(i8, unsigned_value) != -1 {
+    if truncate(s8, unsigned_value) != -1 {
         return false;
     }
 
     return true;
 }
 
-main::() -> i32 {
+main::() -> s32 {
     if !field_and_array_addressing(make_pair(17, 2.5), make_array_packet()) {
         return 1;
     }

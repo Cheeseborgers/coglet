@@ -1,4 +1,4 @@
-some_func::() -> i32 {
+some_func::() -> s32 {
     return 1;
 }
 

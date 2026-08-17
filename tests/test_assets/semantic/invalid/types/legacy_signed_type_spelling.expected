@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/types/legacy_signed_type_spelling.cog:1:1: error: unknown type 'i32'
+legacy: i32 = 1;
+^~~~~~
+1 semantic error generated.

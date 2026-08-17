@@ -1,11 +1,11 @@
 module target(pointer=64)
-entry @f0 "main"() -> i32 [abi=coglet, linkage=internal] {
+entry @f0 "main"() -> s32 [abi=coglet, linkage=internal] {
   bb0 "entry"():
-    %0 = const i32 @c0(0x0)
+    %0 = const s32 @c0(0x0)
     ret %0
 }
-func @f1 "helper"() -> i32 [abi=coglet, linkage=internal] {
+func @f1 "helper"() -> s32 [abi=coglet, linkage=internal] {
   bb0 "entry"():
-    %0 = const i32 @c0(0x0)
+    %0 = const s32 @c0(0x0)
     ret %0
 }

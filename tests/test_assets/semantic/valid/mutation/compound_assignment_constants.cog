@@ -6,7 +6,7 @@ test_compound_constants::() -> void {
     x /= 1;
     x %= 2;
 
-    y: i8 = 0;
+    y: s8 = 0;
     y += -128;
 
     z: u8 = 0;

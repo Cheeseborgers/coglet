@@ -39,6 +39,6 @@ radix_integer_literals::() -> void {
     /*
      * Unary minus remains separate from the literal magnitude.
      */
-    minimum_i64: i64 =
+    minimum_s64: s64 =
         -0x8000000000000000;
 }

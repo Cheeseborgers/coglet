@@ -1,2 +1,2 @@
 import pkg;
-main::() -> i32 { return pkg.math.answer; }
+main::() -> s32 { return pkg.math.answer; }

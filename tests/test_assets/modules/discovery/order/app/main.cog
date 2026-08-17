@@ -1,6 +1,6 @@
 import first;
 import second;
 
-main::() -> i32 {
+main::() -> s32 {
     return first.value;
 }

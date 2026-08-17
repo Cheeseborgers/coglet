@@ -1,2 +1,2 @@
 module math;
-export answer::() -> i32 { return 44; }
+export answer::() -> s32 { return 44; }

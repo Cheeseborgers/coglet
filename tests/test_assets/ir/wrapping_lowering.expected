@@ -1,5 +1,5 @@
 module target(pointer=64)
-func @f0 "choose_i8"(%0: bool) -> i8 [abi=coglet, linkage=internal] {
+func @f0 "choose_s8"(%0: bool) -> s8 [abi=coglet, linkage=internal] {
   slots:
     $s0 : bool "flag"
   bb0 "entry"():
@@ -9,30 +9,30 @@ func @f0 "choose_i8"(%0: bool) -> i8 [abi=coglet, linkage=internal] {
     %3 = load %2
     cond_br %3, bb1(), bb2()
   bb1 "if.then"():
-    %4 = const i8 @c0(0x1)
+    %4 = const s8 @c0(0x1)
     ret %4
   bb2 "if.end"():
-    %5 = const i8 @c1(0x2)
+    %5 = const s8 @c1(0x2)
     ret %5
 }
-func @f1 "wrapping_ops"(%0: i8, %1: i8, %2: u64, %3: u64, %4: bool, %5: bool) -> i8 [abi=coglet, linkage=internal] {
+func @f1 "wrapping_ops"(%0: s8, %1: s8, %2: u64, %3: u64, %4: bool, %5: bool) -> s8 [abi=coglet, linkage=internal] {
   slots:
-    $s0 : i8 "signed_left"
-    $s1 : i8 "signed_right"
+    $s0 : s8 "signed_left"
+    $s1 : s8 "signed_right"
     $s2 : u64 "unsigned_left"
     $s3 : u64 "unsigned_right"
     $s4 : bool "a"
     $s5 : bool "b"
-    $s6 : i8 "signed_add"
-    $s7 : i8 "signed_sub"
-    $s8 : i8 "signed_mul"
-    $s9 : i8 "signed_neg"
+    $s6 : s8 "signed_add"
+    $s7 : s8 "signed_sub"
+    $s8 : s8 "signed_mul"
+    $s9 : s8 "signed_neg"
     $s10 : u64 "unsigned_add"
     $s11 : u64 "unsigned_sub"
     $s12 : u64 "unsigned_mul"
     $s13 : u64 "unsigned_neg"
-    $s14 : i8 ".cfg.tmp"
-    $s15 : fn(bool) -> i8 ".cfg.tmp"
+    $s14 : s8 ".cfg.tmp"
+    $s15 : fn(bool) -> s8 ".cfg.tmp"
     $s16 : bool ".cfg.tmp"
   bb0 "entry"():
     %6 = local_addr $s0

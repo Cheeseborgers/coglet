@@ -109,10 +109,10 @@ static const char *type_kind_name(TypeKind kind)
     switch (kind) {
         case TYPE_VOID:     return "void";
         case TYPE_BOOL:     return "bool";
-        case TYPE_I8:       return "i8";
-        case TYPE_I16:      return "i16";
-        case TYPE_I32:      return "i32";
-        case TYPE_I64:      return "i64";
+        case TYPE_S8:       return "s8";
+        case TYPE_S16:      return "s16";
+        case TYPE_S32:      return "s32";
+        case TYPE_S64:      return "s64";
         case TYPE_U8:       return "u8";
         case TYPE_U16:      return "u16";
         case TYPE_U32:      return "u32";
@@ -732,10 +732,10 @@ static const char *context_conversion_name(SemContextConversionKind conversion) 
 
 static int is_concrete_integer_type_kind(TypeKind kind) {
     switch (kind) {
-        case TYPE_I8:
-        case TYPE_I16:
-        case TYPE_I32:
-        case TYPE_I64:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_S64:
         case TYPE_U8:
         case TYPE_U16:
         case TYPE_U32:
@@ -1745,10 +1745,10 @@ static int verify_abi_type(
 
         case TYPE_VOID:
         case TYPE_BOOL:
-        case TYPE_I8:
-        case TYPE_I16:
-        case TYPE_I32:
-        case TYPE_I64:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_S64:
         case TYPE_U8:
         case TYPE_U16:
         case TYPE_U32:

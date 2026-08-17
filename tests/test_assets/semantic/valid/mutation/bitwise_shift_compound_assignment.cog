@@ -12,8 +12,8 @@ bitwise_shift_compound_assignment::(
     runtime_count: u8
 ) -> void {
     unsigned_value: u32 = 240;
-    signed_value: i32 = -8;
-    wide_count: i64 = 1;
+    signed_value: s32 = -8;
+    wide_count: s64 = 1;
 
     unsigned_value &= 255;
     unsigned_value |= 15;

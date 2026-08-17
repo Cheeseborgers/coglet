@@ -66,6 +66,24 @@ Run it with:
 ctest --test-dir cmake-build-debug -L version --output-on-failure
 ```
 
+## Build-tree test artifacts
+
+CTest-generated runtime products are kept under:
+
+```text
+<build-dir>/test-artifacts/
+```
+
+This includes backend test executables, emitted `.ll`/`.s` files, trap outputs,
+and the convenience copy of `tests/test_assets`. Test/developer helper binaries (`check_*`, `dump_*`) live under
+`test-artifacts/tools`, and the test-only linker support archive lives under
+`test-artifacts/lib`. The compiler and normal compiler/backend libraries remain
+in their ordinary build locations. CTest still owns its standard
+`<build-dir>/Testing/` metadata directory.
+
+This separation keeps repeated full-suite runs from filling the build root with
+hundreds of generated programs and intermediate files.
+
 ## Standard-library root tests
 
 The `stdlib` label covers the compiler-configured `std.*` module fallback and its
@@ -82,6 +100,31 @@ Run the slice with:
 ```bash
 ctest --test-dir cmake-build-debug -L stdlib --output-on-failure
 ```
+
+## Shipped standard-library source tests
+
+The actual shipped standard-library source lives under `stdlib/`. The first
+module, `stdlib/std/math.cog`, has an ordinary consumer program at
+`tests/stdlib/math/main.cog`. These tests use the `stdlib.source` label so they
+are distinct from the lower-level stdlib-root/discovery-policy fixtures.
+
+Run them with:
+
+```bash
+ctest --test-dir cmake-build-debug -L stdlib.source --output-on-failure
+```
+
+or through the build target:
+
+```bash
+cmake --build cmake-build-debug --target check_stdlib
+```
+
+LLVM-enabled configurations compile and execute the same consumer through
+host-C, LLVM `-O0`, and LLVM `-O3`. LLVM-disabled configurations retain the
+host-C test. Generated executables are placed under `test-artifacts/`.
+
+See `docs/stdlib.md` for the public API and manual source-tree commands.
 
 ## Fixed-array zero-initializer tests
 
@@ -417,7 +460,7 @@ regression or an unintended cascade.
 To inspect one invalid program directly:
 
 ```bash
-./cmake-build-debug/check_semantics \
+./cmake-build-debug/test-artifacts/tools/check_semantics \
     tests/test_assets/semantic/invalid/types/shadowed_struct_is_distinct.cog
 
 echo $?

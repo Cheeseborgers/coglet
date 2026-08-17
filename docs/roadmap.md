@@ -472,7 +472,7 @@ access using one dot operator. Discovery is source ingestion only: explicit root
 retain command-line order, discovered files follow in first-discovery order, and
 imports do not become runtime dependency edges.
 
-- package manifests and automatic multi-file package membership
+- grow the initial pure-Coglet `std.math` module and add package manifests / automatic multi-file package membership
 - stable declaration identity for future separate compilation
 - stable declaration identity across files
 - diagnostic notes/secondary spans and richer recovery

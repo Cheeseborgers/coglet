@@ -1,0 +1,27 @@
+import std.math;
+
+main::() -> i32 {
+    if std.math.abs_i32(-42) != 42
+        return 1;
+    if std.math.abs_i32(17) != 17
+        return 2;
+
+    if std.math.min_i32(10, 20) != 10
+        return 3;
+    if std.math.max_i32(10, 20) != 20
+        return 4;
+
+    if std.math.gcd_u64(84, 30) != 6
+        return 5;
+    if std.math.gcd_u64(0, 42) != 42
+        return 6;
+    if std.math.gcd_u64(42, 0) != 42
+        return 7;
+
+    if std.math.pi < 3.1415 || std.math.pi > 3.1416
+        return 8;
+    if std.math.tau != std.math.pi * 2.0
+        return 9;
+
+    return 0;
+}

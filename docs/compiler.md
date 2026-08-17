@@ -80,9 +80,11 @@ appended after explicit roots in deterministic first-discovery order. That
 combined physical order continues to define program-scope runtime initialization,
 so imports do not acquire an implicit dependency-initialization guarantee. Import
 cycles remain permitted. Only root-namespace `main::() -> i32` is an executable
-entry; a `main` inside a named module is an ordinary function. Package manifests,
-automatic multi-file package membership, actual standard-library modules, and
-separate compilation remain future work.
+entry; a `main` inside a named module is an ordinary function. Coglet now ships
+`stdlib/std/math.cog` as the first ordinary-source `std.math` module and installs
+the `stdlib/std` tree beneath the configured root. Package manifests, automatic
+multi-file package membership, runtime-facing stdlib modules, and separate
+compilation remain future work.
 
 ## Post-semantic IR boundary
 

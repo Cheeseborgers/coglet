@@ -198,12 +198,31 @@ Import cycles are allowed because imports currently affect compile-time
 visibility only; top-level runtime initialization remains in physical input
 order. Only root-namespace `main::() -> i32` is the executable entry. Exported
 APIs may not expose private nominal types through function signatures,
-globals/constants, or exported struct fields. Package manifests, automatic
-multi-file package membership, the actual standard-library module contents, and
-separate compilation remain future work. Discovery does not imply runtime
+globals/constants, or exported struct fields. Package manifests, automatic multi-file package membership, additional runtime-facing standard-library modules, and
+separate compilation remain future work. Coglet now ships an initial pure-Coglet
+`std.math` module from `stdlib/std/math.cog`; installed builds copy the `std`
+source tree beneath the configured standard-library root. Discovery does not imply runtime
 dependency ordering: explicit inputs retain command-line order and discovered
 files are appended in deterministic first-discovery order to the existing single
 module initializer.
+
+
+The first shipped standard module is intentionally small:
+
+```c
+import std.math;
+
+main::() -> i32 {
+    if std.math.gcd_u64(84, 30) != 6
+        return 1;
+
+    return std.math.max_i32(20, 22);
+}
+```
+
+`std.math` currently exports typed `f64` constants `pi`/`tau`, integer helpers
+`abs_i32`, `min_i32`, `max_i32`, and `gcd_u64`. See `docs/stdlib.md` for the API,
+installation layout, and stdlib testing workflow.
 
 For the current executable slice:
 
@@ -889,7 +908,7 @@ object storage. Ordinary Coglet `bool*` is intentionally not interchangeable wit
 Near-term compiler work is backend-focused:
 
 1. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
-2. Extend the hierarchical module/import layer with package manifests and actual standard-library modules on top of the configured `std.*` search root, then define the runtime/standard-library boundary needed for self-hosting.
+2. Grow the initial pure-Coglet `std.math` module deliberately, then add package manifests and define the runtime/standard-library boundary needed for allocation, I/O, and self-hosting.
 3. Continue improving diagnostics, tests, and documentation.
 
 ## License

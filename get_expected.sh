@@ -3,7 +3,7 @@
 set -u
 
 TEST_ROOT="tests/test_assets/semantic/invalid"
-RUNNER="./cmake-build-debug/check_semantics"
+RUNNER="./cmake-build-debug/test-artifacts/tools/check_semantics"
 
 if [[ ! -x "$RUNNER" ]]; then
     echo "error: runner not found or not executable: $RUNNER" >&2

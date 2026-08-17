@@ -87,6 +87,7 @@ global-address operations and qualified constants become ordinary CogIR constant
 CogIR copies every registered source file into its frozen source table and retains
 declaration identities/types/CFGs only. Backends therefore do not perform module
 lookup, import resolution, or export/private checks.
+The shipped `std.math` module is ordinary Coglet source discovered above this boundary; CogIR and backends have no standard-library special case.
 
 Coglet currently permits runtime-bearing program-scope code, including global
 initializers that call functions, top-level expression/mutation statements, and

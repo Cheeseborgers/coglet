@@ -63,8 +63,7 @@ searches for `std/math.cog` beside the importing source and then under ordered
 the compiler-configured standard-library module root as the final fallback; this
 discovery policy does not change the grammar. The CLI may override that root with
 `--stdlib-root`, while non-`std` module names never consult it. Imports do not imply
-runtime dependency ordering and import cycles are allowed. Package manifests,
-the standard-library contents themselves, and separate compilation remain deferred.
+runtime dependency ordering and import cycles are allowed. Package manifests, broader/runtime-facing standard-library contents, and separate compilation remain deferred; the first shipped `std.math` module uses these ordinary module/import rules without adding grammar.
 
 ## Type Syntax
 

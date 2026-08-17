@@ -1,0 +1,38 @@
+module std.math;
+
+export pi :: cast(f64, 3.141592653589793);
+export tau :: cast(f64, 6.283185307179586);
+
+export abs_i32::(value: i32) -> i32 {
+    if value < 0
+        return -value;
+
+    return value;
+}
+
+export min_i32::(a: i32, b: i32) -> i32 {
+    if a < b
+        return a;
+
+    return b;
+}
+
+export max_i32::(a: i32, b: i32) -> i32 {
+    if a > b
+        return a;
+
+    return b;
+}
+
+export gcd_u64::(a: u64, b: u64) -> u64 {
+    left := a;
+    right := b;
+
+    while right != 0 {
+        remainder := left % right;
+        left = right;
+        right = remainder;
+    }
+
+    return left;
+}

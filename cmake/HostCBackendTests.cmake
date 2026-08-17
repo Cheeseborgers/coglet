@@ -10,7 +10,7 @@ function(add_host_c_executable_test name fixture expected_exit labels)
             "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${name}
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/${name}
             -DEXPECT_EXIT=${expected_exit}
     )
 
@@ -34,7 +34,7 @@ function(add_host_c_library_test name fixture expected_exit style labels)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${name}
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/${name}
             -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
             -DLIB_NAME=coglet_backend_link_support
             -DSTYLE=${style}
@@ -50,7 +50,7 @@ function(add_host_c_trap_test name fixture no_trap_exit labels)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${name}
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/${name}
             -DNO_TRAP_EXIT=${no_trap_exit}
             -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_trap_test.cmake"
     )
@@ -63,7 +63,7 @@ function(add_host_c_failure_test name fixture expected_exit expected_substring l
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${name}
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/${name}
             -DEXPECT_EXIT=${expected_exit}
             "-DEXPECT_SUBSTRING=${expected_substring}"
             -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_failure_test.cmake"

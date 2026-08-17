@@ -14,6 +14,11 @@ endif()
 file(TO_CMAKE_PATH "${COGLET_CONFIGURED_STDLIB_ROOT}" COGLET_CONFIGURED_STDLIB_ROOT)
 string(REPLACE "\"" "\\\"" COGLET_CONFIGURED_STDLIB_ROOT_C "${COGLET_CONFIGURED_STDLIB_ROOT}")
 
+# Generated CTest outputs belong under one build-tree directory instead of
+# cluttering the build root with backend executables, LLVM IR, and assembly.
+set(COGLET_TEST_ARTIFACT_DIR "${CMAKE_BINARY_DIR}/test-artifacts")
+file(MAKE_DIRECTORY "${COGLET_TEST_ARTIFACT_DIR}")
+
 set(COGLET_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${COGLET_GENERATED_INCLUDE_DIR}")
 configure_file(
@@ -164,6 +169,9 @@ endif()
 add_executable(coglet src/coglet.c ${COMMON_SOURCES})
 target_link_libraries(coglet PRIVATE compiler_core coglet_backend_c)
 install(TARGETS coglet RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/stdlib/std"
+        DESTINATION "${COGLET_STDLIB_INSTALL_DIR}"
+)
 if(COGLET_HAS_LLVM_BACKEND)
     target_link_libraries(coglet PRIVATE coglet_backend_llvm)
     target_compile_definitions(coglet PRIVATE COGLET_HAS_LLVM_BACKEND=1)
@@ -354,7 +362,7 @@ function(add_module_discovery_host_test test_name inputs expected_exit)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${inputs}"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/${test_name}
         -DEXPECT_EXIT=${expected_exit}
         -DBACKEND=host-c
         ${ARGN}
@@ -1064,7 +1072,7 @@ add_custom_command(
         TARGET coglet POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/tests/test_assets
-        $<TARGET_FILE_DIR:coglet>/test_assets
+        ${COGLET_TEST_ARTIFACT_DIR}/test_assets
 )
 
 # Host-C backend integration tests. These exercise frozen CogIR through the
@@ -1076,6 +1084,32 @@ include(cmake/HostCBackendTests.cmake)
 # outside the default link set so -L/-l forwarding tests do real work.
 add_library(coglet_backend_link_support STATIC
         tests/support/backend_link_support.c
+)
+
+# Keep test/developer helper targets out of the build root as well. Generator
+# expressions use TARGET_FILE throughout the suite, so tests remain independent
+# of these physical output locations.
+set(COGLET_TEST_TOOL_TARGETS
+        check_semantic_info
+        check_semantics
+        check_target_info
+        check_contextual_conversions
+        check_constant_values
+        check_source_provenance
+        check_cog_ir_core
+        check_cog_ir_lower_metadata
+        dump_tokens
+        dump_ast
+        dump_ir
+)
+if(TARGET check_llvm_stage4_trap)
+    list(APPEND COGLET_TEST_TOOL_TARGETS check_llvm_stage4_trap)
+endif()
+set_target_properties(${COGLET_TEST_TOOL_TARGETS}
+        PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${COGLET_TEST_ARTIFACT_DIR}/tools"
+)
+set_target_properties(coglet_backend_link_support
+        PROPERTIES ARCHIVE_OUTPUT_DIRECTORY "${COGLET_TEST_ARTIFACT_DIR}/lib"
 )
 
 add_host_c_executable_test(
@@ -1233,7 +1267,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_MULTIFILE_MAIN}|${COGLET_MULTIFILE_SUPPORT}"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_multifile_host_c
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_multifile_host_c
         -DEXPECT_EXIT=42
         -DBACKEND=host-c
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1246,7 +1280,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/init_first.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/init_second.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_multifile_host_c_module_init_order
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_multifile_host_c_module_init_order
         -DEXPECT_EXIT=20
         -DBACKEND=host-c
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1259,7 +1293,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_MODULE_MAIN}|${COGLET_MODULE_MATH_OPS}|${COGLET_MODULE_MATH_TYPES}"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_host_c
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_host_c
         -DEXPECT_EXIT=42
         -DBACKEND=host-c
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1272,7 +1306,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/namespace_a.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/namespace_b.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/namespace_main.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_namespace_isolation_host_c
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_namespace_isolation_host_c
         -DEXPECT_EXIT=30
         -DBACKEND=host-c
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1285,7 +1319,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_a.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_b.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_main.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_import_cycle_host_c
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_import_cycle_host_c
         -DEXPECT_EXIT=42
         -DBACKEND=host-c
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1298,7 +1332,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_qualified_data_host_c
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_qualified_data_host_c
         -DEXPECT_EXIT=27
         -DBACKEND=host-c
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1311,7 +1345,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_namespace_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_right.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_left.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_qualified_data_namespace_host_c
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_qualified_data_namespace_host_c
         -DEXPECT_EXIT=40
         -DBACKEND=host-c
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1324,7 +1358,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/visibility_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/visibility_api.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_visibility_host_c
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_visibility_host_c
         -DEXPECT_EXIT=42
         -DBACKEND=host-c
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1337,7 +1371,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_DOTTED_PREFIX_DIR}/main_both.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg_math.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_dotted_longest_prefix_host_c
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_dotted_longest_prefix_host_c
         -DEXPECT_EXIT=42
         -DBACKEND=host-c
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1350,7 +1384,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_DOTTED_PREFIX_DIR}/main_short.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg_math.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_dotted_shorter_visible_prefix_host_c
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_dotted_shorter_visible_prefix_host_c
         -DEXPECT_EXIT=11
         -DBACKEND=host-c
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1430,16 +1464,62 @@ add_host_c_library_test(
         "backend;backend.c;interop;abi;volatile"
 )
 
+# --- Shipped standard-library integration tests. ---
+set(COGLET_STDLIB_SOURCE_ROOT "${CMAKE_SOURCE_DIR}/stdlib")
+set(COGLET_STDLIB_MATH_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/math/main.cog")
+
+add_test(
+        NAME stdlib_math_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_MATH_TEST_MAIN}"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_math_host_c
+        -DEXPECT_EXIT=0
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+)
+set_tests_properties(stdlib_math_host_c
+        PROPERTIES LABELS "stdlib;stdlib.source;std.math;backend;backend.c;module;import;discovery")
+
+add_custom_target(check_stdlib
+        COMMAND "${CMAKE_CTEST_COMMAND}"
+                --test-dir "${CMAKE_BINARY_DIR}"
+                -L stdlib.source
+                --output-on-failure
+        DEPENDS coglet
+        USES_TERMINAL
+        COMMENT "Running Coglet standard-library integration tests"
+)
+
 # --- LLVM backend tests. ---
 if(COGLET_HAS_LLVM_BACKEND)
     find_program(COGLET_CLANG_EXECUTABLE NAMES clang)
+
+
+    foreach(stdlib_opt_level IN ITEMS 0 3)
+        add_test(
+            NAME stdlib_math_llvm_O${stdlib_opt_level}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            "-DINPUTS=${COGLET_STDLIB_MATH_TEST_MAIN}"
+            "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_math_llvm_O${stdlib_opt_level}
+            -DEXPECT_EXIT=0
+            -DBACKEND=llvm
+            -DOPT_LEVEL=${stdlib_opt_level}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+        )
+        set_tests_properties(stdlib_math_llvm_O${stdlib_opt_level}
+            PROPERTIES LABELS "stdlib;stdlib.source;std.math;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
+    endforeach()
 
     add_test(
         NAME backend_llvm_stage1_scalar_cfg_entry
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage1_entry.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage1_entry.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage1_entry.ll
         -DEXPECT_EXIT=11
         "-DEXPECT_IR_SUBSTRING=br i1"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1453,7 +1533,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage1_module_init.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage1_module_init.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage1_module_init.ll
         -DEXPECT_EXIT=7
         "-DEXPECT_IR_SUBSTRING=call void @cog.fn.1()"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1467,7 +1547,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_checked_add.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_checked_add.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage2_checked_add.ll
         -DEXPECT_EXIT=3
         "-DEXPECT_IR_SUBSTRING=llvm.sadd.with.overflow.i32"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1481,7 +1561,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_integer_semantics.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_integer_semantics.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage2_integer_semantics.ll
         -DEXPECT_EXIT=0
         "-DEXPECT_IR_SUBSTRING=llvm.smul.with.overflow.i32"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1495,7 +1575,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_enum_integer.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_enum_integer.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage2_enum_integer.ll
         -DEXPECT_EXIT=0
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
@@ -1508,7 +1588,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_fibonacci.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_fibonacci.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage2_fibonacci.ll
         -DEXPECT_EXIT=55
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
@@ -1535,7 +1615,7 @@ if(COGLET_HAS_LLVM_BACKEND)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${trap_input}
-            -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage2_${trap_stem}.ll
+            -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage2_${trap_stem}.ll
             -DNO_TRAP_EXIT=${trap_no_exit}
             -DCLANG=${COGLET_CLANG_EXECUTABLE}
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_trap_test.cmake"
@@ -1549,7 +1629,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_pointer_compare.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_pointer_compare.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage3_pointer_compare.ll
         -DEXPECT_EXIT=0
         "-DEXPECT_IR_SUBSTRING=icmp eq ptr"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1563,7 +1643,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_memory_aggregates.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_memory_aggregates.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage3_memory_aggregates.ll
         -DEXPECT_EXIT=73
         "-DEXPECT_IR_SUBSTRING=getelementptr inbounds"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1577,7 +1657,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_extract_struct_value.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_extract_struct_value.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage3_extract_struct_value.ll
         -DEXPECT_EXIT=9
         "-DEXPECT_IR_SUBSTRING=extractvalue %cog.struct"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1591,7 +1671,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_rejects_volatile_aggregate.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage3_volatile_aggregate_unsupported.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage3_volatile_aggregate_unsupported.ll
         "-DEXPECT_SUBSTRING=volatile aggregate loads remain unsupported in the LLVM backend"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
     )
@@ -1603,7 +1683,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage4_float_semantics.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage4_float_semantics.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage4_float_semantics.ll
         -DEXPECT_EXIT=0
         "-DEXPECT_IR_SUBSTRING=fcmp une"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1617,7 +1697,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage4_switch.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage4_switch.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage4_switch.ll
         -DEXPECT_EXIT=29
         "-DEXPECT_IR_SUBSTRING=switch i32"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1631,7 +1711,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage4_indirect_native_call.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage4_indirect_native_call.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage4_indirect_native_call.ll
         -DEXPECT_EXIT=42
         "-DEXPECT_IR_SUBSTRING=call i32 %"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1655,7 +1735,7 @@ if(COGLET_HAS_LLVM_BACKEND)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${float_trap_input}
-            -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage4_${float_trap_stem}.ll
+            -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage4_${float_trap_stem}.ll
             -DNO_TRAP_EXIT=${float_trap_no_exit}
             -DCLANG=${COGLET_CLANG_EXECUTABLE}
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_trap_test.cmake"
@@ -1667,7 +1747,7 @@ if(COGLET_HAS_LLVM_BACKEND)
     add_test(
         NAME backend_llvm_stage4_explicit_trap_terminator
         COMMAND $<TARGET_FILE:check_llvm_stage4_trap>
-                ${CMAKE_BINARY_DIR}/llvm_stage4_explicit_trap.ll
+                ${COGLET_TEST_ARTIFACT_DIR}/llvm_stage4_explicit_trap.ll
     )
     set_tests_properties(backend_llvm_stage4_explicit_trap_terminator
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;cfg;trap")
@@ -1678,7 +1758,7 @@ if(COGLET_HAS_LLVM_BACKEND)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT_IR=${CMAKE_BINARY_DIR}/${test_name}.ll
+            -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/${test_name}.ll
             -DEXPECT_EXIT=${expected_exit}
             "-DEXPECT_IR_SUBSTRING=${ir_substring}"
             -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1723,7 +1803,7 @@ if(COGLET_HAS_LLVM_BACKEND)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT_IR=${CMAKE_BINARY_DIR}/${test_name}.ll
+            -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/${test_name}.ll
             -DEXPECT_EXIT=${expected_exit}
             "-DEXPECT_IR_SUBSTRING=${ir_substring}"
             -DCLANG=${COGLET_CLANG_EXECUTABLE}
@@ -1777,7 +1857,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_MULTIFILE_SUPPORT}|${COGLET_MULTIFILE_MAIN}"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_multifile_native
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_multifile_native
         -DEXPECT_EXIT=42
         -DBACKEND=llvm
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1790,7 +1870,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/init_first.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/init_second.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_multifile_module_init_order
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_multifile_module_init_order
         -DEXPECT_EXIT=20
         -DBACKEND=llvm
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1803,7 +1883,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_MULTIFILE_MAIN}|${COGLET_MULTIFILE_SUPPORT}"
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_multifile_debug_sources.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_multifile_debug_sources.ll
         -DEXPECT_FIRST_SOURCE=main.cog
         -DEXPECT_SECOND_SOURCE=support.cog
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_llvm_ir_test.cmake"
@@ -1816,7 +1896,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_MODULE_MATH_OPS}|${COGLET_MODULE_MAIN}|${COGLET_MODULE_MATH_TYPES}"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_native
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_native
         -DEXPECT_EXIT=42
         -DBACKEND=llvm
         -DOPT_LEVEL=2
@@ -1831,7 +1911,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_b.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_a.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_main.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_import_cycle
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_import_cycle
         -DEXPECT_EXIT=42
         -DBACKEND=llvm
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1844,7 +1924,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_qualified_data
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_qualified_data
         -DEXPECT_EXIT=27
         -DBACKEND=llvm
         -DOPT_LEVEL=3
@@ -1859,7 +1939,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_right.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_namespace_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_left.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_qualified_data_namespace
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_qualified_data_namespace
         -DEXPECT_EXIT=40
         -DBACKEND=llvm
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1872,7 +1952,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/visibility_api.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/visibility_main.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_visibility
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_visibility
         -DEXPECT_EXIT=42
         -DBACKEND=llvm
         -DOPT_LEVEL=3
@@ -1888,7 +1968,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_DISCOVERY_DIR}/transitive/app/main.cog"
         "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/transitive/lib"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_discovery_native
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_discovery_native
         -DEXPECT_EXIT=42
         -DBACKEND=llvm
         -DOPT_LEVEL=3
@@ -1904,7 +1984,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_DISCOVERY_DIR}/order/app/main.cog"
         "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/order/lib"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_discovery_module_init_order
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_discovery_module_init_order
         -DEXPECT_EXIT=11
         -DBACKEND=llvm
         -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
@@ -1918,7 +1998,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${COGLET_DISCOVERY_DIR}/debug/app/main.cog
         -DSEARCH_DIR=${COGLET_DISCOVERY_DIR}/debug/lib
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_modules_discovery_debug_source.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_discovery_debug_source.ll
         -DEXPECT_SOURCE=math.cog
         -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_llvm_ir_test.cmake"
     )
@@ -1931,7 +2011,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_DOTTED_DISCOVERY_DIR}/app/main.cog"
         "-DSEARCH_DIRS=${COGLET_DOTTED_DISCOVERY_DIR}/lib"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_dotted_discovery_native
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_dotted_discovery_native
         -DEXPECT_EXIT=42
         -DBACKEND=llvm
         -DOPT_LEVEL=3
@@ -1946,7 +2026,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_DOTTED_PREFIX_DIR}/pkg_math.cog|${COGLET_DOTTED_PREFIX_DIR}/main_both.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg.cog"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_dotted_longest_prefix
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_dotted_longest_prefix
         -DEXPECT_EXIT=42
         -DBACKEND=llvm
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
@@ -1960,7 +2040,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${COGLET_DOTTED_DISCOVERY_DIR}/app/main.cog
         -DSEARCH_DIR=${COGLET_DOTTED_DISCOVERY_DIR}/lib
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_modules_dotted_discovery_debug_source.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_dotted_discovery_debug_source.ll
         -DEXPECT_SOURCE=math.cog
         -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_llvm_ir_test.cmake"
     )
@@ -1973,7 +2053,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_STDLIB_TEST_DIR}/transitive/app/main.cog"
         "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/transitive/root"
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_stdlib_root_native
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_stdlib_root_native
         -DEXPECT_EXIT=42
         -DBACKEND=llvm
         -DOPT_LEVEL=3
@@ -1989,7 +2069,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${COGLET_STDLIB_TEST_DIR}/transitive/app/main.cog
         "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/transitive/root"
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_modules_stdlib_root_debug_source.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_modules_stdlib_root_debug_source.ll
         -DEXPECT_SOURCE=first.cog
         -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_llvm_ir_test.cmake"
     )
@@ -2002,7 +2082,7 @@ if(COGLET_HAS_LLVM_BACKEND)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/${test_name}
             -DEXPECT_EXIT=${expected_exit}
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
         )
@@ -2016,7 +2096,7 @@ if(COGLET_HAS_LLVM_BACKEND)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/${test_name}
             -DEXPECT_EXIT=${expected_exit}
             -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
             -DLIB_NAME=coglet_backend_link_support
@@ -2046,7 +2126,7 @@ if(COGLET_HAS_LLVM_BACKEND)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/${test_name}
             -DEXPECT_EXIT=${expected_exit}
             -DOPT_LEVEL=${opt_level}
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
@@ -2061,7 +2141,7 @@ if(COGLET_HAS_LLVM_BACKEND)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/${test_name}
             -DEXPECT_EXIT=${expected_exit}
             -DOPT_LEVEL=${opt_level}
             -DLIB_DIR=$<TARGET_FILE_DIR:coglet_backend_link_support>
@@ -2091,7 +2171,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_stage8_O2_ir_pipeline.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_O2_ir_pipeline.ll
         -DOPT_LEVEL=2
         "-DEXPECT_SUBSTRING=ret i32 42"
         "-DABSENT_SUBSTRING=@cog.fn.0"
@@ -2105,7 +2185,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/checked_overflow_trap.cog
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_stage8_O3_checked_overflow_trap
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_O3_checked_overflow_trap
         -DOPT_LEVEL=3
         -DNO_TRAP_EXIT=96
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_trap_test.cmake"
@@ -2120,7 +2200,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=optimization currently requires --backend llvm"
-        "-DARGS=-o;${CMAKE_BINARY_DIR}/backend_llvm_stage8_rejects_host_c_optimization.out;-O2"
+        "-DARGS=-o;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_rejects_host_c_optimization.out;-O2"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
     )
     set_tests_properties(backend_llvm_stage8_rejects_host_c_optimization
@@ -2133,7 +2213,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=unsupported optimization level '-O4'"
-        "-DARGS=--emit-llvm;${CMAKE_BINARY_DIR}/backend_llvm_stage8_invalid_O4.ll;-O4"
+        "-DARGS=--emit-llvm;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_invalid_O4.ll;-O4"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
     )
     set_tests_properties(backend_llvm_stage8_rejects_unknown_optimization_level
@@ -2145,7 +2225,7 @@ if(COGLET_HAS_LLVM_BACKEND)
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
-            -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/${test_name}
             -DEXPECT_EXIT=${expected_exit}
             -DOPT_LEVEL=${opt_level}
             -DDEBUG_INFO=ON
@@ -2161,7 +2241,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_info.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_stage9_debug_ir_metadata.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage9_debug_ir_metadata.ll
         -DOPT_LEVEL=0
         "-DREQUIRED_TEXT_1=!DICompileUnit("
         "-DREQUIRED_TEXT_2=!DISubprogram(name: \"compute\""
@@ -2184,7 +2264,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_info.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_stage9_debug_O2_ir.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage9_debug_O2_ir.ll
         -DOPT_LEVEL=2
         "-DREQUIRED_TEXT_1=!DICompileUnit("
         "-DREQUIRED_TEXT_2=isOptimized: true"
@@ -2199,7 +2279,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_repr_union.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_stage9_repr_c_union_metadata.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage9_repr_c_union_metadata.ll
         -DOPT_LEVEL=0
         "-DREQUIRED_TEXT_1=!DILocalVariable(name: \"packet\""
         "-DREQUIRED_TEXT_2=!DICompositeType(tag: DW_TAG_union_type, name: \"BackendValue\""
@@ -2225,7 +2305,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=executable debug information currently requires --backend llvm"
-        "-DARGS=-o;${CMAKE_BINARY_DIR}/backend_llvm_stage9_rejects_host_c_debug.out;-g"
+        "-DARGS=-o;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage9_rejects_host_c_debug.out;-g"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
     )
     set_tests_properties(backend_llvm_stage9_rejects_host_c_debug
@@ -2249,7 +2329,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage6_rejects_native_bool_as_c_bool_pointer.cog
-        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/llvm_stage6_native_bool_c_bool_pointer_unsupported.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage6_native_bool_c_bool_pointer_unsupported.ll
         "-DEXPECT_SUBSTRING=C pointer argument requires exact addressable C _Bool object storage"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
     )
@@ -2259,7 +2339,7 @@ if(COGLET_HAS_LLVM_BACKEND)
     set(COGLET_ASSEMBLY_ROUNDTRIP_ARGS)
     if(UNIX)
         list(APPEND COGLET_ASSEMBLY_ROUNDTRIP_ARGS
-            -DASSEMBLED_OUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_O0_pic_global
+            -DASSEMBLED_OUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_O0_pic_global
             -DCC=${CMAKE_C_COMPILER}
         )
     endif()
@@ -2269,7 +2349,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage7_pic_global.cog
-        -DOUTPUT_ASM=${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_O0_pic_global.s
+        -DOUTPUT_ASM=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_O0_pic_global.s
         ${COGLET_ASSEMBLY_ROUNDTRIP_ARGS}
         -DOPT_LEVEL=0
         -DEXPECT_EXIT=9
@@ -2284,7 +2364,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_info.cog
-        -DOUTPUT_ASM=${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_O3_debug.s
+        -DOUTPUT_ASM=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_O3_debug.s
         -DOPT_LEVEL=3
         -DDEBUG_INFO=ON
         "-DEXPECT_ASM_SUBSTRING=stage9_debug_info.cog"
@@ -2298,7 +2378,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/array_zero_initializer.cog
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_array_zero_initializer
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_array_zero_initializer
         -DEXPECT_EXIT=42
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
     )
@@ -2311,7 +2391,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/grouped_var_decl.cog
-        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_grouped_var_decl
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_grouped_var_decl
         -DEXPECT_EXIT=42
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
     )
@@ -2323,8 +2403,8 @@ if(COGLET_HAS_LLVM_BACKEND)
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
-        -DOUTPUT_ASM=${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_with_native_executable.s
-        -DEXECUTABLE_OUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_with_native_executable
+        -DOUTPUT_ASM=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_with_native_executable.s
+        -DEXECUTABLE_OUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_with_native_executable
         -DOPT_LEVEL=2
         -DEXPECT_EXIT=42
         "-DEXPECT_ASM_SUBSTRING=main"
@@ -2340,7 +2420,7 @@ else()
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=LLVM backend is not available in this build"
-        "-DARGS=--emit-asm;${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_unavailable.s"
+        "-DARGS=--emit-asm;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_unavailable.s"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
     )
     set_tests_properties(backend_llvm_emit_asm_unavailable

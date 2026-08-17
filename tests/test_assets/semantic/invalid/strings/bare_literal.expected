@@ -1,4 +1,0 @@
-tests/test_assets/semantic/invalid/strings/bare_literal.cog:5:5: error: string literal requires an expected byte array type
-    "hello";
-    ^~~~~~~
-1 semantic error generated.

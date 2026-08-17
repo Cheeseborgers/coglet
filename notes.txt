@@ -1,1 +1,0 @@
-Token-to-string logic is triplicated and permissive.

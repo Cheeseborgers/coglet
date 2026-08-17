@@ -1,10 +1,10 @@
-tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:14:14: error: string literal can only initialize a byte array
+tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:14:14: error: string literal requires a u8 array or readonly u8[] slice
     ordinary("ordinary");
              ^~~~~~~~~~
-tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:15:21: error: string literal can only initialize a byte array
+tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:15:21: error: string literal requires a u8 array or readonly u8[] slice
     consume_mutable("mutable");
                     ^~~~~~~~~
-tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:16:19: error: string literal can only initialize a byte array
+tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:16:19: error: string literal requires a u8 array or readonly u8[] slice
     consume_bytes("bytes");
                   ^~~~~~~
 tests/test_assets/semantic/invalid/interop/extern_c_string_literal_decay.cog:19:19: error: argument type does not match parameter type: expected readonly s8*, got u8[4]

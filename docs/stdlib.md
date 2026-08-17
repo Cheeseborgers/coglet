@@ -152,8 +152,8 @@ main::() -> s32 {
 Initial exports are:
 
 ```text
-print(readonly c_char*)
-println(readonly c_char*)
+print(readonly u8[])
+println(readonly u8[])
 newline()
 flush()
 print_bool(bool)
@@ -162,10 +162,7 @@ print_u8/u16/u32/u64
 print_f32/f64
 ```
 
-`print` and `println` intentionally accept the current direct C-string boundary,
-not a general Coglet string value. String/slice types and formatting remain later
-language/library work. The scalar printers are explicit rather than variadic so
-the first I/O API does not require variadic generics or runtime type descriptors.
+`print` and `println` accept readonly byte slices. String literals infer directly to that type, and arbitrary byte views may be printed without requiring NUL termination. The Coglet wrapper passes `.data` and `.len` to the private `coglet_rt_io_write` runtime ABI, so slices themselves do not cross the C ABI by value. Formatting remains later library/language work. The scalar printers are explicit rather than variadic so the first I/O API does not require variadic generics or runtime type descriptors.
 `print_f32` uses enough significant decimal digits to round-trip a binary32 value;
 `print_f64` does the corresponding binary64 formatting.
 

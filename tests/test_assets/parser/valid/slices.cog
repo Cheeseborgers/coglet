@@ -1,0 +1,11 @@
+take_len::(values: readonly s32[]) -> u64 {
+    return values.len;
+}
+
+main::() -> s32 {
+    values: s32[3] = [1, 2, 3];
+    view: s32[] = values;
+    readonly_view: readonly s32[] = view;
+    text := "abc";
+    return cast(s32, take_len(readonly_view) + text.len);
+}

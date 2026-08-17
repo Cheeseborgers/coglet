@@ -42,6 +42,7 @@ typedef enum {
     TYPE_POINTER,
     TYPE_OPAQUE_POINTER,
     TYPE_ARRAY,
+    TYPE_SLICE,
 
     TYPE_NAMED, // Used as a placeholder kind until later resolution to struct, enum etc
 
@@ -99,10 +100,11 @@ struct Type {
     TypeKind kind;
 
     /*
-    * Pointer and array types.
+    * Pointer, array, and slice types.
     *
-    * pointer_access is meaningful when kind == TYPE_POINTER or
-    * TYPE_OPAQUE_POINTER.
+    * pointer_access is meaningful when kind == TYPE_POINTER,
+    * TYPE_OPAQUE_POINTER, or TYPE_SLICE. Slice access controls mutation
+    * through indexing/data, not assignment of the slice value itself.
     */
     Type *element;
     PointerAccess pointer_access;

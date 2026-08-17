@@ -74,9 +74,12 @@ should not be forgotten.
 
 ## Strings and I/O
 
-- **There is no Coglet string/slice runtime type yet.** `std.io.print` and
-  `println` currently take `readonly c_char*`, which is appropriate for the
-  bootstrap ABI but not the eventual user-facing string model.
+- **Slices are non-owning and have no lifetime/escape analysis.** `T[]` / `readonly T[]` prevent immediate array-temporary conversion, but the compiler does not yet prove that a slice cannot outlive local backing storage. String-literal slices are safe because their backing storage is compiler-owned static data.
+- **Slice indexing is currently unchecked at runtime.** Constant fixed-array indexes retain compile-time bounds checks, but a slice index does not yet trap/check `index < len`. Decide the language's checked/unchecked indexing policy before slices become a safety boundary.
+- **Slice length is fixed `u64`, not a target-sized `usize`.** This matches the current 64-bit Linux/Windows x86-64/AArch64 target focus but should be revisited before 32-bit targets or a general target-sized integer type are supported.
+- **Slice syntax cannot independently qualify an enclosing slice when its element is itself a qualified pointer.** Prefix `readonly` retains the existing first-pointer-layer binding. A future qualifier grammar may need a clearer nested-type spelling.
+- **There is no reslicing/subview syntax yet.** `.data`, `.len`, indexing, array-to-slice conversion, and mutable-to-readonly weakening exist, but operations such as `view[a:b]` are deferred.
+- **There is no distinct first-class text/string type yet.** `readonly u8[]` is the general byte-string view. Encoding/UTF-8 policy, owned strings, and text-specific APIs remain separate design work.
 - **Formatting is intentionally primitive.** Users currently compose text with
   explicit scalar printer calls. There is no formatting language, interpolation,
   generic formatting protocol, or variadic type-safe `print`.
@@ -87,7 +90,7 @@ should not be forgotten.
 
 - **Generic structs/enums are not implemented.** Generic functions are
   monomorphized before CogIR, but reusable aggregate containers such as
-  `Vec3<T>`, `Slice<T>`, `Optional<T>`, and `Result<T, E>` still need a coherent
+  `Vec3<T>`, owned/growable containers, `Optional<T>`, and `Result<T, E>` still need a coherent
   aggregate-instantiation design.
 - **No methods/associated functions or operator overloading.** These should be
   designed after generic aggregates so vector/matrix code can drive the language

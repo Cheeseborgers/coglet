@@ -1,0 +1,49 @@
+first::<T>(values: readonly T[]) -> T {
+    return values[0];
+}
+
+Holder :: struct {
+    view: readonly s32[];
+}
+
+sum::(values: readonly s32[]) -> s32 {
+    index: u64 = 0;
+    total: s32 = 0;
+    while index < values.len {
+        total += values[index];
+        index += 1;
+    }
+    return total;
+}
+
+main::() -> s32 {
+    values: s32[4] = [1, 2, 3, 4];
+    mutable: s32[] = values;
+    mutable[2] = 8;
+    view: readonly s32[] = mutable;
+
+    if view.len != 4
+        return 1;
+    if view.data[2] != 8
+        return 2;
+    if sum(view) != 15
+        return 3;
+    if first(values) != 1
+        return 4;
+
+    holder := Holder { view = view, };
+    if holder.view[3] != 4
+        return 5;
+
+    holder_pointer: readonly Holder* = &holder;
+    if sum((*holder_pointer).view) != 15
+        return 6;
+
+    text := "game";
+    if text.len != 4
+        return 7;
+    if text[0] != 103 || text[3] != 101
+        return 8;
+
+    return 0;
+}

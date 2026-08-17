@@ -108,8 +108,7 @@ The actual shipped standard-library source lives under `stdlib/`. `std.math` and
 the `stdlib.source` label so they are distinct from the lower-level stdlib-root/
 discovery-policy fixtures. The `std.io` integration test links the runtime through
 the same executable path users invoke and compares its complete stdout, covering
-string output, Boolean output, every fixed-width integer printer, `f32`, `f64`,
-newline, and flush. The `std.math` integration test exercises both precisions of
+readonly byte-slice string output, Boolean output, every fixed-width integer printer, `f32`, `f64`, newline, and flush. The `std.math` integration test exercises both precisions of
 the runtime-backed square-root, trigonometric, inverse-trigonometric, rounding,
 and floating-remainder functions. Transcendental comparisons use tolerances;
 rounding/remainder cases use exact expected values. Separate failure-path tests

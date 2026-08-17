@@ -1,0 +1,10 @@
+Box :: struct {
+    values: s32[2];
+}
+
+main::() -> s32 {
+    box := Box { values = [1, 2], };
+    pointer: volatile Box* = &box;
+    view: readonly s32[] = (*pointer).values;
+    return 0;
+}

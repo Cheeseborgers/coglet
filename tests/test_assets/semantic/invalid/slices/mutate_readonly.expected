@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/slices/mutate_readonly.cog:4:5: error: assignment target is readonly
+    view[0] = 9;
+    ^~~~~~~~~~~
+1 semantic error generated.

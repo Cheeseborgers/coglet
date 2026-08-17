@@ -1,0 +1,4 @@
+test::() -> u64 {
+    value := "hello";
+    return value.len;
+}

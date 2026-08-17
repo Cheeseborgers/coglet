@@ -15,15 +15,12 @@
  * compiles for Linux and Windows on both x86-64 and AArch64 native toolchains.
  */
 
-void coglet_rt_io_print(const char *text)
+void coglet_rt_io_write(const uint8_t *data, uint64_t length)
 {
-    fputs(text, stdout);
-}
+    if (length == 0)
+        return;
 
-void coglet_rt_io_println(const char *text)
-{
-    fputs(text, stdout);
-    fputc('\n', stdout);
+    (void)fwrite(data, 1, (size_t)length, stdout);
 }
 
 void coglet_rt_io_newline(void)

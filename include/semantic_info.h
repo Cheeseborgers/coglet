@@ -102,6 +102,12 @@ typedef enum SemContextConversionKind {
     /* matching raw pointer with only monotonic immediate qualifier addition */
     SEM_CONTEXT_CONVERSION_POINTER_QUALIFICATION,
 
+    /* mutable T[] -> readonly T[] */
+    SEM_CONTEXT_CONVERSION_SLICE_QUALIFICATION,
+
+    /* addressable fixed T[N] storage -> T[]/readonly T[] */
+    SEM_CONTEXT_CONVERSION_ARRAY_TO_SLICE,
+
     /* direct string literal admitted at the narrow readonly c_char* C boundary */
     SEM_CONTEXT_CONVERSION_C_STRING_TO_POINTER,
 } SemContextConversionKind;

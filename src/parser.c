@@ -1226,30 +1226,40 @@ static Type *parse_type(Parser *p)
         pointer_count++;
     }
 
-    if (has_readonly && pointer_count == 0) {
-        error_at(
-            p,
-            &readonly_token,
-            "'readonly' must qualify a pointer type"
-        );
-    }
-
-    if (has_volatile && pointer_count == 0) {
-        error_at(
-            p,
-            &volatile_token,
-            "'volatile' must qualify a pointer type"
-        );
-    }
-
     if (match(p, TOK_LBRACKET)) {
-        Type *arr = arena_new(p->arena, Type);
+        /*
+         * Fixed arrays keep the existing suffix spelling `T[N]`.
+         * An empty suffix is the first-class non-owning slice type `T[]`.
+         *
+         * `readonly T[]` removes mutation through slice indexing/data. The
+         * qualifier belongs to the slice only when no pointer layer consumed
+         * it first, preserving the established nested-pointer qualifier rule.
+         */
+        if (match(p, TOK_RBRACKET)) {
+            Type *slice = arena_new(p->arena, Type);
+            slice->kind = TYPE_SLICE;
+            slice->element = base;
+            slice->array_size = -1;
+            slice->pointer_access = has_readonly && pointer_count == 0
+                ? POINTER_ACCESS_READONLY
+                : POINTER_ACCESS_MUTABLE;
 
-        arr->kind = TYPE_ARRAY;
-        arr->element = base;
-        arr->array_size = -1;
+            if (has_volatile && pointer_count == 0) {
+                error_at(
+                    p,
+                    &volatile_token,
+                    "'volatile' is not supported on slice types"
+                );
+            }
 
-        if (!check(p, TOK_RBRACKET)) {
+            base = slice;
+        } else {
+            Type *arr = arena_new(p->arena, Type);
+
+            arr->kind = TYPE_ARRAY;
+            arr->element = base;
+            arr->array_size = -1;
+
             if (match(p, TOK_NUMBER_INT)) {
                 Token size_token = p->previous;
                 uint64_t size;
@@ -1263,15 +1273,15 @@ static Type *parse_type(Parser *p)
                         &size_token,
                         "array size exceeds u64 range"
                     );
-                    } else if (size > INT_MAX) {
-                        error_at(
-                            p,
-                            &size_token,
-                            "array size exceeds compiler limit"
-                        );
-                    } else {
-                        arr->array_size = (int)size;
-                    }
+                } else if (size > INT_MAX) {
+                    error_at(
+                        p,
+                        &size_token,
+                        "array size exceeds compiler limit"
+                    );
+                } else {
+                    arr->array_size = (int)size;
+                }
             } else {
                 error_at(
                     p,
@@ -1279,11 +1289,26 @@ static Type *parse_type(Parser *p)
                     "expected array size"
                 );
             }
+
+            consume(p, TOK_RBRACKET);
+            base = arr;
         }
+    }
 
-        consume(p, TOK_RBRACKET);
+    if (has_readonly && pointer_count == 0 && base->kind != TYPE_SLICE) {
+        error_at(
+            p,
+            &readonly_token,
+            "'readonly' must qualify a pointer or slice type"
+        );
+    }
 
-        base = arr;
+    if (has_volatile && pointer_count == 0 && base->kind != TYPE_SLICE) {
+        error_at(
+            p,
+            &volatile_token,
+            "'volatile' must qualify a pointer type"
+        );
     }
 
     return base;

@@ -1,0 +1,38 @@
+program
+  func take_len -> u64
+    params:
+      param_decl values: readonly s32[]
+    body:
+      block
+        return
+          field .len
+            values
+  func main -> s32
+    body:
+      block
+        var_decl values: s32[3]
+          init:
+            array_literal
+              1
+              2
+              3
+        var_decl view: s32[]
+          init:
+            values
+        var_decl readonly_view: readonly s32[]
+          init:
+            view
+        var_decl text: <inferred>
+          init:
+            "abc"
+        return
+          cast
+            target type:
+              s32
+            expression:
+              (+)
+                call
+                  take_len
+                  readonly_view
+                field .len
+                  text

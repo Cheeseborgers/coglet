@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/slices/extern_c_slice.cog:2:11: error: #extern(c) parameter type 'readonly u8[]' is not supported by the current C ABI subset
+consume::(values: readonly u8[]) -> void;
+          ^~~~~~
+1 semantic error generated.

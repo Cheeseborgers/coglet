@@ -452,18 +452,19 @@ The manual/native-host C interop surface is now intentionally paused at this sta
 
 ### 2. Slices and Pointer-Length Views
 
-Slices remain a strong candidate after opaque-pointer and ABI rules are
-clearer. Their design must settle:
+The first slice milestone is implemented:
 
-- mutable versus readonly slices;
-- pointer-and-length versus pointer-length-capacity layout;
-- fixed-array-to-slice conversion;
-- string-literal-to-byte-view conversion;
-- lifetime of temporary arrays and literals;
-- null termination and visible length.
+- `T[]` is a mutable non-owning slice and `readonly T[]` is a readonly slice;
+- the frozen value representation is pointer + `u64` length, with no capacity or ownership;
+- addressable fixed arrays adapt to matching slices;
+- mutable slices weaken to readonly slices;
+- string literals are inferred `readonly u8[]` byte views whose visible length excludes the compiler-owned trailing NUL;
+- `.data`, `.len`, indexing, generic type inference through slice shapes, host-C lowering, and conditional LLVM coverage are wired;
+- direct slice-by-value `#extern(c)` signatures remain rejected, so runtime wrappers cross C ABI boundaries as pointer + length.
 
-A first-class `string` type should wait until slice, ownership, mutability,
-encoding, and C-interoperability rules are clearer.
+Remaining slice work includes runtime bounds checking policy, reslicing/subviews, a target-sized length type instead of fixed `u64`, lifetime/escape safety, richer qualifier syntax for slices of pointer elements, and deciding whether an owning growable container carries capacity separately from the slice view.
+
+A distinct first-class `string` type should still wait until ownership, encoding, mutation, and C-interoperability rules are clearer; `readonly u8[]` is currently the general byte-string view.
 
 ## Later Frontend Work
 

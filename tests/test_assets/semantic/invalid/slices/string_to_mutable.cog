@@ -1,0 +1,4 @@
+main::() -> s32 {
+    text: u8[] = "abc";
+    return 0;
+}

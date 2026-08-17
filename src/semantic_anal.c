@@ -32,6 +32,13 @@ typedef enum GenericSpecializationState {
     GENERIC_SPECIALIZATION_INVALID,
 } GenericSpecializationState;
 
+struct SliceTypeIntern {
+    Type *type;
+    SliceTypeIntern *next;
+};
+
+static int type_equal(const Type *a, const Type *b);
+
 struct GenericSpecialization {
     SemDeclId template_id;
     Node *template_decl;
@@ -56,6 +63,32 @@ static Type *new_type(SemanticContext *ctx, TypeKind kind)
     type->pointer_is_volatile = 0;
     type->array_size          = -1;
 
+    return type;
+}
+
+static Type *intern_slice_type(
+    SemanticContext *ctx,
+    Type *element,
+    PointerAccess access
+) {
+    if (!ctx || !element)
+        return NULL;
+
+    for (SliceTypeIntern *it = ctx->slice_types; it; it = it->next) {
+        if (it->type && it->type->pointer_access == access &&
+            type_equal(it->type->element, element)) {
+            return it->type;
+        }
+    }
+
+    Type *type = new_type(ctx, TYPE_SLICE);
+    type->element = element;
+    type->pointer_access = access;
+
+    SliceTypeIntern *entry = arena_new(ctx->arena, SliceTypeIntern);
+    entry->type = type;
+    entry->next = ctx->slice_types;
+    ctx->slice_types = entry;
     return type;
 }
 
@@ -1778,13 +1811,22 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
         return resolved;
     }
 
-    if (type->kind == TYPE_POINTER || type->kind == TYPE_ARRAY) {
+    if (type->kind == TYPE_POINTER || type->kind == TYPE_ARRAY ||
+        type->kind == TYPE_SLICE) {
 
         Type *resolved_element =
             resolve_type(ctx, type->element, error_node);
 
         if (!resolved_element)
             return NULL;
+
+        if (type->kind == TYPE_SLICE) {
+            return intern_slice_type(
+                ctx,
+                resolved_element,
+                type->pointer_access
+            );
+        }
 
         if (resolved_element != type->element) {
 
@@ -1955,6 +1997,11 @@ static SemAbiType *make_sem_abi_type(
             );
             return abi_type;
 
+        case TYPE_SLICE:
+            assert(semantic_type->kind == TYPE_SLICE);
+            abi_type->kind = SEM_ABI_TYPE_SEMANTIC;
+            return abi_type;
+
         case TYPE_FUNCTION:
             assert(semantic_type->kind == TYPE_FUNCTION);
             assert(source_type->parameter_count == semantic_type->parameter_count);
@@ -2098,7 +2145,8 @@ static int contains_void_type(Type *type) {
 
     if (type->kind == TYPE_VOID) return 1;
 
-    if (type->kind == TYPE_POINTER || type->kind == TYPE_ARRAY)
+    if (type->kind == TYPE_POINTER || type->kind == TYPE_ARRAY ||
+        type->kind == TYPE_SLICE)
         return contains_void_type(type->element);
 
     if (type->kind == TYPE_FUNCTION) {
@@ -2282,33 +2330,31 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
         case TYPE_ARRAY: {
             char element[128];
             format_type_name(type->element, element, sizeof(element));
+            snprintf(buffer, buffer_size, "%s[%d]", element, type->array_size);
+            return;
+        }
 
-            /*
-             * Build the suffix into the caller's remaining space. Besides
-             * making truncation behavior explicit, this avoids asking one
-             * snprintf call to reason about the maximum recursive type name.
-             */
-            snprintf(buffer, buffer_size, "%s", element);
-            size_t used = strlen(buffer);
-
-            if (used < buffer_size) {
-                if (type->array_size >= 0) {
-                    snprintf(
-                        buffer + used,
-                        buffer_size - used,
-                        "[%d]",
-                        type->array_size
-                    );
-                } else {
-                    snprintf(buffer + used, buffer_size - used, "[]");
-                }
-            }
-
+        case TYPE_SLICE: {
+            char element[128];
+            format_type_name(type->element, element, sizeof(element));
+            snprintf(
+                buffer,
+                buffer_size,
+                type->pointer_access == POINTER_ACCESS_READONLY
+                    ? "readonly %s[]"
+                    : "%s[]",
+                element
+            );
             return;
         }
     }
 
     snprintf(buffer, buffer_size, "<unknown>");
+}
+
+void semantic_format_type_name(Type *type, char *buffer, size_t buffer_size)
+{
+    format_type_name(type, buffer, buffer_size);
 }
 
 static int is_valid_pointer_access(PointerAccess access) {
@@ -2391,7 +2437,15 @@ static int type_equal(const Type *a, const Type *b) {
 
         case TYPE_ARRAY:
             return a->array_size == b->array_size &&
-                        type_equal(a->element, b->element);
+                   type_equal(a->element, b->element);
+
+        case TYPE_SLICE:
+            if (!is_valid_pointer_access(a->pointer_access) ||
+                !is_valid_pointer_access(b->pointer_access)) {
+                return 0;
+            }
+            return a->pointer_access == b->pointer_access &&
+                   type_equal(a->element, b->element);
 
         case TYPE_FUNCTION:
             if (a->function_abi != b->function_abi ||
@@ -2558,6 +2612,7 @@ static int integer_type_info(TypeKind kind, IntegerTypeInfo *out) {
         case TYPE_POINTER:
         case TYPE_OPAQUE_POINTER:
         case TYPE_ARRAY:
+        case TYPE_SLICE:
         case TYPE_NAMED:
         case TYPE_STRUCT:
         case TYPE_ENUM:
@@ -3460,6 +3515,10 @@ static int is_opaque_pointer_type(const Type *type) {
 static int is_raw_pointer_type(const Type *type) {
     return is_typed_pointer_type(type) || is_opaque_pointer_type(type);
 }
+static int is_slice_type(const Type *type) {
+    return type && type->kind == TYPE_SLICE;
+}
+
 static int is_c_function_pointer_type(const Type *type) {
     return type &&
            type->kind == TYPE_FUNCTION &&
@@ -3564,6 +3623,28 @@ static int pointer_qualification_conversion_allowed(
            target->pointer_is_volatile != source->pointer_is_volatile;
 }
 
+static int slice_qualification_conversion_allowed(
+    const Type *target,
+    const Type *source
+) {
+    if (!is_slice_type(target) || !is_slice_type(source) ||
+        !type_equal(target->element, source->element)) {
+        return 0;
+    }
+
+    return source->pointer_access == POINTER_ACCESS_MUTABLE &&
+           target->pointer_access == POINTER_ACCESS_READONLY;
+}
+
+static int array_to_slice_conversion_allowed(
+    const Type *target,
+    const Type *source
+) {
+    return is_slice_type(target) && source && source->kind == TYPE_ARRAY &&
+           source->array_size >= 0 &&
+           type_equal(target->element, source->element);
+}
+
 static SemContextConversionKind classify_context_conversion(
     Type *target,
     Type *source
@@ -3589,6 +3670,12 @@ static SemContextConversionKind classify_context_conversion(
 
     if (pointer_qualification_conversion_allowed(target, source))
         return SEM_CONTEXT_CONVERSION_POINTER_QUALIFICATION;
+
+    if (slice_qualification_conversion_allowed(target, source))
+        return SEM_CONTEXT_CONVERSION_SLICE_QUALIFICATION;
+
+    if (array_to_slice_conversion_allowed(target, source))
+        return SEM_CONTEXT_CONVERSION_ARRAY_TO_SLICE;
 
     return SEM_CONTEXT_CONVERSION_NONE;
 }
@@ -3971,6 +4058,11 @@ static int initializer_compatible(Type *declared, Type *init_type) {
     if (pointer_qualification_conversion_allowed(declared, init_type))
         return 1;
 
+    if (slice_qualification_conversion_allowed(declared, init_type) ||
+        array_to_slice_conversion_allowed(declared, init_type)) {
+        return 1;
+    }
+
     /*
      * A null literal contextually adapts to any raw pointer type:
      *
@@ -3993,6 +4085,47 @@ static int initializer_compatible(Type *declared, Type *init_type) {
     }
 
     return 0;
+}
+
+static int check_array_to_slice_source_access(
+    SemanticContext *ctx,
+    Type *target,
+    Type *source,
+    Node *expression
+) {
+    if (!array_to_slice_conversion_allowed(target, source))
+        return 1;
+
+    SemExprInfo *info = sem_find_expr_info(ctx, expression);
+    if (!info || info->value_category != VALUE_CATEGORY_LVALUE) {
+        semantic_error(
+            ctx,
+            expression,
+            "array-to-slice conversion requires addressable array storage"
+        );
+        return 0;
+    }
+
+    if (info->value_is_volatile) {
+        semantic_error(
+            ctx,
+            expression,
+            "cannot create slice from volatile array storage"
+        );
+        return 0;
+    }
+
+    if (target->pointer_access == POINTER_ACCESS_MUTABLE &&
+        info->value_access != VALUE_ACCESS_WRITABLE) {
+        semantic_error(
+            ctx,
+            expression,
+            "cannot create mutable slice from readonly array storage"
+        );
+        return 0;
+    }
+
+    return 1;
 }
 
 // ============================================================
@@ -5910,7 +6043,6 @@ static int check_binary_constant_operands(
             return 0;
         }
 
-
         sem_record_context_conversion_if_needed(
             ctx,
             operands[i],
@@ -6158,23 +6290,13 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
     }
 }
 
-static int check_string_initializer(SemanticContext *ctx,Type *expected,Node *initializer) {
+static int check_string_initializer(SemanticContext *ctx, Type *expected, Node *initializer) {
 
     if (!expected || !initializer)
         return 0;
 
     if (initializer->type != NODE_STRING) {
         semantic_error(ctx, initializer, "internal error: expected string literal");
-        return 0;
-    }
-
-    if (expected->kind != TYPE_ARRAY) {
-        semantic_error(ctx, initializer, "string literal can only initialize a byte array");
-        return 0;
-    }
-
-    if (!is_u8_type(expected->element)) {
-        semantic_error(ctx, initializer, "string literal destination must be u8 array");
         return 0;
     }
 
@@ -6194,15 +6316,34 @@ static int check_string_initializer(SemanticContext *ctx,Type *expected,Node *in
         return 0;
     }
 
-    /*
-     * Stage 1 rule:
-     *
-     * "hello" initializes:
-     *
-     *     h e l l o \0
-     *
-     * so it requires u8[6].
-     */
+    if (expected->kind == TYPE_SLICE) {
+        if (!is_u8_type(expected->element)) {
+            semantic_error(ctx, initializer,
+                "string literal slice destination must have element type u8");
+            return 0;
+        }
+
+        if (expected->pointer_access != POINTER_ACCESS_READONLY) {
+            semantic_error(ctx, initializer,
+                "string literal can only initialize readonly u8[]");
+            return 0;
+        }
+
+        return 1;
+    }
+
+    if (expected->kind != TYPE_ARRAY) {
+        semantic_error(ctx, initializer,
+            "string literal requires a u8 array or readonly u8[] slice");
+        return 0;
+    }
+
+    if (!is_u8_type(expected->element)) {
+        semantic_error(ctx, initializer, "string literal destination must be u8 array");
+        return 0;
+    }
+
+    /* Fixed-array string initialization includes the trailing NUL byte. */
     int required_size = info.decoded_length + 1;
 
     if (expected->array_size != required_size) {
@@ -6261,6 +6402,7 @@ static int source_type_contains_generic_parameter(const Node *func, const Type *
     switch (type->kind) {
         case TYPE_POINTER:
         case TYPE_ARRAY:
+        case TYPE_SLICE:
             return source_type_contains_generic_parameter(func, type->element);
 
         case TYPE_FUNCTION:
@@ -6778,6 +6920,13 @@ static int infer_generic_argument_candidate(
         return infer_generic_argument_candidate(
             ctx, template_decl, pattern->element, actual->element, argument, inferred
         );
+
+    if (pattern->kind == TYPE_SLICE &&
+        (actual->kind == TYPE_SLICE || actual->kind == TYPE_ARRAY)) {
+        return infer_generic_argument_candidate(
+            ctx, template_decl, pattern->element, actual->element, argument, inferred
+        );
+    }
 
     if (pattern->kind == TYPE_FUNCTION && actual->kind == TYPE_FUNCTION) {
         int count = pattern->parameter_count < actual->parameter_count
@@ -8832,11 +8981,48 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             if (!object_type)
                 return NULL;
 
+            if (object_type->kind == TYPE_SLICE) {
+                Type *field_type = NULL;
+
+                if (names_equal(
+                        node->as.field.name.data,
+                        node->as.field.name.length,
+                        "len",
+                        sizeof("len") - 1)) {
+                    field_type = ctx->type_u64;
+                } else if (names_equal(
+                               node->as.field.name.data,
+                               node->as.field.name.length,
+                               "data",
+                               sizeof("data") - 1)) {
+                    field_type = new_type(ctx, TYPE_POINTER);
+                    field_type->element = object_type->element;
+                    field_type->pointer_access = object_type->pointer_access;
+                } else {
+                    semantic_error(
+                        ctx,
+                        node,
+                        "unknown slice field; expected 'data' or 'len'"
+                    );
+                    return NULL;
+                }
+
+                /* Slice metadata is observational; mutate/rebind the slice as a whole. */
+                sem_record_expr_info(
+                    ctx,
+                    node,
+                    field_type,
+                    NULL,
+                    VALUE_CATEGORY_RVALUE
+                );
+                return field_type;
+            }
+
             if (object_type->kind != TYPE_STRUCT) {
                 semantic_error(
                     ctx,
                     node,
-                    "field access requires a struct"
+                    "field access requires a struct or slice"
                 );
 
                 return NULL;
@@ -8966,7 +9152,8 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             }
 
             if (object_type->kind != TYPE_ARRAY &&
-                object_type->kind != TYPE_POINTER) {
+                object_type->kind != TYPE_POINTER &&
+                object_type->kind != TYPE_SLICE) {
                 semantic_error(
                     ctx,
                     node,
@@ -8976,12 +9163,15 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 return NULL;
             }
 
-            if (object_type->kind == TYPE_POINTER &&
+            if ((object_type->kind == TYPE_POINTER ||
+                 object_type->kind == TYPE_SLICE) &&
                 object_type->element &&
                 object_type->element->kind == TYPE_STRUCT &&
                 object_type->element->struct_is_incomplete) {
                 semantic_error(ctx, node,
-                    "cannot index a pointer to an incomplete C struct");
+                    object_type->kind == TYPE_SLICE
+                        ? "cannot index a slice of an incomplete C struct"
+                        : "cannot index a pointer to an incomplete C struct");
                 return NULL;
             }
 
@@ -9039,6 +9229,17 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         object_type->pointer_access
                     ),
                     object_type->pointer_is_volatile
+                );
+            } else if (object_type->kind == TYPE_SLICE) {
+                sem_record_lvalue_info_qualified(
+                    ctx,
+                    node,
+                    element_type,
+                    NULL,
+                    value_access_from_pointer_access(
+                        object_type->pointer_access
+                    ),
+                    0
                 );
             } else if (
                 object_info &&
@@ -9113,10 +9314,25 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         }
 
         case NODE_STRING:
-            semantic_error(ctx, node,
-                "string literal requires an expected byte array type");
+        {
+            Type *type = intern_slice_type(
+                ctx,
+                ctx->type_u8,
+                POINTER_ACCESS_READONLY
+            );
 
-            return NULL;
+            if (!type || !check_string_initializer(ctx, type, node))
+                return NULL;
+
+            sem_record_expr_info(
+                ctx,
+                node,
+                type,
+                NULL,
+                VALUE_CATEGORY_RVALUE
+            );
+            return type;
+        }
 
         case NODE_CHAR:
         {
@@ -10199,6 +10415,11 @@ static int check_initializer_against_type(SemanticContext *ctx, Type *expected, 
         return 0;
     }
 
+    if (!check_array_to_slice_source_access(
+            ctx, expected, actual, initializer)) {
+        return 0;
+    }
+
     if (!check_constant_value_against_type(
         ctx,
         initializer,
@@ -10406,6 +10627,7 @@ static int check_c_variadic_argument(SemanticContext *ctx, Node *argument) {
         case TYPE_VOID:
         case TYPE_NULL:
         case TYPE_ARRAY:
+        case TYPE_SLICE:
         case TYPE_NAMED:
         case TYPE_STRUCT:
         case TYPE_UNTYPED_INT:
@@ -10476,6 +10698,11 @@ static int check_argument_against_parameter(SemanticContext *ctx, Type *expected
             actual_name
         );
 
+        return 0;
+    }
+
+    if (!check_array_to_slice_source_access(
+            ctx, expected, actual, argument)) {
         return 0;
     }
 
@@ -11054,6 +11281,7 @@ static int semantic_export_type_is_public(
 
         case TYPE_POINTER:
         case TYPE_ARRAY:
+        case TYPE_SLICE:
             return semantic_export_type_is_public(
                 ctx,
                 type->element,
@@ -11144,7 +11372,8 @@ static int validate_generic_export_source_type(
     if (source_type_is_generic_parameter(generic_decl, source_type, NULL))
         return 1;
 
-    if (source_type->kind == TYPE_POINTER || source_type->kind == TYPE_ARRAY) {
+    if (source_type->kind == TYPE_POINTER || source_type->kind == TYPE_ARRAY ||
+        source_type->kind == TYPE_SLICE) {
         return validate_generic_export_source_type(
             ctx,
             generic_decl,
@@ -11675,6 +11904,7 @@ static int extern_c_type_supported(const Type *type, int allow_void)
         case TYPE_UNTYPED_FLOAT:
         case TYPE_NULL:
         case TYPE_ARRAY:
+        case TYPE_SLICE:
         case TYPE_NAMED:
             return 0;
 
@@ -12241,6 +12471,7 @@ static int repr_c_struct_field_type_supported(const Type *type)
                    type->element != NULL &&
                    repr_c_struct_field_type_supported(type->element);
 
+        case TYPE_SLICE:
         case TYPE_VOID:
         case TYPE_UNTYPED_INT:
         case TYPE_UNTYPED_FLOAT:

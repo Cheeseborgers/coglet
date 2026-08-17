@@ -1,0 +1,65 @@
+module target(pointer=64)
+type %t3 "readonly s32[]" = struct {data: readonly ptr<s32>, len: u64}
+type %t9 "readonly u8[]" = struct {data: readonly ptr<u8>, len: u64}
+global @g0 ".str" : [3]u8 = @c8([@c5, @c6, @c7])
+func @f0 "consume"(%0: %t3) -> s32 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : %t3 "values"
+  bb0 "entry"():
+    %1 = local_addr $s0
+    store %1, %0
+    %2 = local_addr $s0
+    %3 = load %2
+    %4 = extract_field %3, 1
+    %5 = const u64 @c0(0x0)
+    %6 = icmp.eq %4, %5
+    cond_br %6, bb1(), bb2()
+  bb1 "if.then"():
+    %7 = const s32 @c1(0x0)
+    ret %7
+  bb2 "if.end"():
+    %8 = local_addr $s0
+    %9 = load %8
+    %10 = extract_field %9, 0
+    %11 = const s32 @c1(0x0)
+    %12 = ptr_index_addr %10, %11
+    %13 = load %12
+    ret %13
+}
+entry @f1 "main"() -> s32 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : [2]s32 "values"
+    $s1 : %t3 "view"
+    $s2 : %t9 "text"
+  bb0 "entry"():
+    %0 = local_addr $s0
+    %1 = const s32 @c2(0x4)
+    %2 = const s32 @c3(0x5)
+    %3 = make_array (%1, %2)
+    store %0, %3
+    %4 = local_addr $s1
+    %5 = local_addr $s0
+    %6 = const u64 @c0(0x0)
+    %7 = array_elem_addr %5, %6
+    %8 = ptr.qualify %7 to readonly ptr<s32>
+    %9 = const u64 @c4(0x2)
+    %10 = make_struct (%8, %9)
+    store %4, %10
+    %11 = local_addr $s2
+    %12 = global_addr @g0
+    %13 = const u64 @c0(0x0)
+    %14 = array_elem_addr %12, %13
+    %15 = const u64 @c4(0x2)
+    %16 = make_struct (%14, %15)
+    store %11, %16
+    %17 = function_ref @f0
+    %18 = local_addr $s1
+    %19 = load %18
+    %20 = call %17(%19)
+    %21 = local_addr $s2
+    %22 = load %21
+    %23 = extract_field %22, 1
+    %24 = cast.checked %23 to s32
+    %25 = iadd.checked %20, %24
+    ret %25
+}

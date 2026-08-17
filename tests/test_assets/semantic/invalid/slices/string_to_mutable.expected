@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/slices/string_to_mutable.cog:2:18: error: string literal can only initialize readonly u8[]
+    text: u8[] = "abc";
+                 ^~~~~
+1 semantic error generated.

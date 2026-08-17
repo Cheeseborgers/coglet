@@ -22,6 +22,9 @@ exercise_contexts::(runtime: s32, pointer: s32*) -> s32 {
 
     values: s32[2] = [6, 7];
     selected := values[1];
+    mutable_slice: s32[] = values;
+    readonly_slice: readonly s32[] = mutable_slice;
+    selected += readonly_slice[0];
 
     switch runtime {
         case 8:

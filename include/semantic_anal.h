@@ -98,6 +98,7 @@ typedef struct Scope {
 
 typedef struct SemanticModule SemanticModule;
 typedef struct GenericSpecialization GenericSpecialization;
+typedef struct SliceTypeIntern SliceTypeIntern;
 
 typedef struct SemanticSourceModule {
     SourceFileId source_id;
@@ -194,6 +195,9 @@ typedef struct {
     /* Frontend-only monomorphization cache/state. */
     GenericSpecialization *generic_specializations;
     GenericSpecialization *active_generic_specialization;
+
+    /* Canonical structural slice types, frontend-only. */
+    SliceTypeIntern *slice_types;
 } SemanticContext;
 
 void semantic_check(
@@ -212,6 +216,9 @@ SemExprInfo *semantic_get_expr_info(SemanticContext *ctx, Node *node);
  * selected, otherwise the expression's intrinsic SemExprInfo.type.
  */
 Type *semantic_get_effective_expr_type(SemanticContext *ctx, Node *node);
+
+/* Formats a checked semantic type for diagnostics/frozen debug names. */
+void semantic_format_type_name(Type *type, char *buffer, size_t buffer_size);
 
 /*
  * Returns a previously checked compile-time value without re-running semantic

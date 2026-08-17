@@ -122,6 +122,7 @@ static const char *type_kind_name(TypeKind kind)
         case TYPE_POINTER:  return "pointer";
         case TYPE_OPAQUE_POINTER: return "opaque-pointer";
         case TYPE_ARRAY:    return "array";
+        case TYPE_SLICE:    return "slice";
         case TYPE_STRUCT:   return "struct";
         case TYPE_ENUM:     return "enum";
         case TYPE_FUNCTION: return "function";
@@ -725,6 +726,10 @@ static const char *context_conversion_name(SemContextConversionKind conversion) 
             return "pointer-qualification";
         case SEM_CONTEXT_CONVERSION_C_STRING_TO_POINTER:
             return "c-string-to-pointer";
+        case SEM_CONTEXT_CONVERSION_SLICE_QUALIFICATION:
+            return "slice-qualification";
+        case SEM_CONTEXT_CONVERSION_ARRAY_TO_SLICE:
+            return "array-to-slice";
     }
 
     return "<invalid>";
@@ -867,6 +872,26 @@ static int verify_context_conversion_info(
                 target->pointer_access != POINTER_ACCESS_READONLY) {
                 verifier_error(verifier, expression,
                     "C-string contextualization does not target a readonly typed pointer");
+                valid = 0;
+            }
+            break;
+
+        case SEM_CONTEXT_CONVERSION_SLICE_QUALIFICATION:
+            if (info->type->kind != TYPE_SLICE ||
+                target->kind != TYPE_SLICE ||
+                info->type->pointer_access != POINTER_ACCESS_MUTABLE ||
+                target->pointer_access != POINTER_ACCESS_READONLY) {
+                verifier_error(verifier, expression,
+                    "slice qualification conversion does not weaken mutable to readonly access");
+                valid = 0;
+            }
+            break;
+
+        case SEM_CONTEXT_CONVERSION_ARRAY_TO_SLICE:
+            if (info->type->kind != TYPE_ARRAY ||
+                target->kind != TYPE_SLICE) {
+                verifier_error(verifier, expression,
+                    "array-to-slice contextualization has invalid source or destination");
                 valid = 0;
             }
             break;
@@ -1147,6 +1172,20 @@ static int verify_field_access_info(Verifier *verifier, Node *expression, SemExp
 
     int valid = 1;
 
+    /* Slice metadata fields are observational rvalues even when the slice
+     * variable itself is an lvalue; mutability applies through .data/indexing,
+     * not to piecemeal mutation of the {data,len} value. */
+    if (object_info->type->kind == TYPE_SLICE) {
+        if (info->value_category != VALUE_CATEGORY_RVALUE ||
+            info->value_access != VALUE_ACCESS_NONE ||
+            info->value_is_volatile) {
+            verifier_error(verifier, expression,
+                "slice metadata field is not an ordinary rvalue");
+            valid = 0;
+        }
+        return valid;
+    }
+
     if (object_info->value_category == VALUE_CATEGORY_LVALUE) {
         if (info->value_category != VALUE_CATEGORY_LVALUE) {
             verifier_error(verifier, expression,
@@ -1219,9 +1258,10 @@ static int verify_index_access_info(Verifier *verifier, Node *expression, SemExp
         object_info->type;
 
     if (object_type->kind != TYPE_POINTER &&
-        object_type->kind != TYPE_ARRAY) {
+        object_type->kind != TYPE_ARRAY &&
+        object_type->kind != TYPE_SLICE) {
         verifier_error(verifier, expression,
-            "index object is not an array or pointer");
+            "index object is not an array, slice, or pointer");
 
         return 0;
     }
@@ -1235,12 +1275,15 @@ static int verify_index_access_info(Verifier *verifier, Node *expression, SemExp
         valid = 0;
     }
 
-    if (object_type->kind == TYPE_POINTER) {
+    if (object_type->kind == TYPE_POINTER ||
+        object_type->kind == TYPE_SLICE) {
         ValueAccess expected_access;
 
         if (!pointer_access_to_value_access(object_type->pointer_access, &expected_access)) {
             verifier_error(verifier, expression,
-                "indexed pointer has invalid access");
+                object_type->kind == TYPE_SLICE
+                    ? "indexed slice has invalid access"
+                    : "indexed pointer has invalid access");
 
             return 0;
         }
@@ -1248,7 +1291,9 @@ static int verify_index_access_info(Verifier *verifier, Node *expression, SemExp
         if (info->value_category !=
             VALUE_CATEGORY_LVALUE) {
             verifier_error(verifier, expression,
-                "pointer index result is not an lvalue");
+                object_type->kind == TYPE_SLICE
+                    ? "slice index result is not an lvalue"
+                    : "pointer index result is not an lvalue");
 
             valid = 0;
         }
@@ -1256,16 +1301,24 @@ static int verify_index_access_info(Verifier *verifier, Node *expression, SemExp
         if (info->value_access !=
             expected_access) {
             verifier_error(verifier, expression,
-                "pointer index has access %s instead of %s",
+                object_type->kind == TYPE_SLICE
+                    ? "slice index has access %s instead of %s"
+                    : "pointer index has access %s instead of %s",
                 value_access_name(info->value_access),
                 value_access_name(expected_access));
 
             valid = 0;
         }
 
-        if (info->value_is_volatile != object_type->pointer_is_volatile) {
+        if (object_type->kind == TYPE_POINTER) {
+            if (info->value_is_volatile != object_type->pointer_is_volatile) {
+                verifier_error(verifier, expression,
+                    "pointer index does not preserve volatile pointer access");
+                valid = 0;
+            }
+        } else if (info->value_is_volatile) {
             verifier_error(verifier, expression,
-                "pointer index does not preserve volatile pointer access");
+                "slice index unexpectedly has volatile access");
             valid = 0;
         }
 
@@ -1758,6 +1811,7 @@ static int verify_abi_type(
         case TYPE_NAMED:
         case TYPE_STRUCT:
         case TYPE_ENUM:
+        case TYPE_SLICE:
             if (abi_type->kind != SEM_ABI_TYPE_SEMANTIC) {
                 verifier_error(verifier, owner,
                     "normalized semantic ABI leaf has the wrong kind");

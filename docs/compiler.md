@@ -1152,7 +1152,8 @@ Current conversion kinds cover:
 - monotonic immediate raw-pointer qualification (`readonly`/`volatile`
   addition only);
 - the deliberately narrow direct string-literal binding to
-  `readonly c_char*` at supported C call boundaries.
+  `readonly c_char*` at supported C call boundaries;
+- addressable fixed-array to slice conversion and mutable-slice to readonly-slice qualification.
 
 The public helper:
 
@@ -1176,6 +1177,7 @@ literals and the fixed-array `{0}` initializer receive their expected array type
 in `SemExprInfo`; `{0}` is then lowered directly to CogIR's existing typed
 `zeroinit` constant. It is not modeled as a one-element literal, and backends do
 not interpret the source spelling or reproduce C partial-initializer rules.
+Array-to-slice conversion is likewise explicit semantic metadata: lowering takes the address of element zero from addressable storage (or a null data pointer for a zero-length array), freezes the fixed length as `u64`, and constructs the slice value. Mutable-to-readonly slice adaptation emits only an explicit data-pointer qualification; backends never reconstruct slice mutability from frontend objects.
 
 Explicit casts are intentionally not represented as contextual conversions:
 their conversion kind and destination already exist explicitly in the
@@ -1310,16 +1312,16 @@ Ordered source global/top-level execution uses the same machinery inside the
 synthetic module initializer. Values that must survive a short-circuit CFG split
 are spilled to compiler-generated slots rather than relying on implicit dominance.
 Executable lowering now also uses a generic place abstraction for identifier,
-field, array-index, pointer-index, and dereference storage. Aggregate construction
+field, array-index, slice-index, pointer-index, and dereference storage. Aggregate construction
 and by-value flow, address-of/dereference, checked/truncating/reinterpret casts,
-volatile loads/stores, character literals, fixed-array strings, and the direct C
+volatile loads/stores, character literals, fixed-array strings, readonly byte-slice strings, array-to-slice conversion, and the direct C
 string-literal boundary all lower into verifier-checked CogIR. Explicit casts
 materialize adaptable numeric/null constants directly in their checked destination
 type so frontend-only types never escape into IR. Runtime `wrapping_add`,
 `wrapping_sub`, `wrapping_mul`, and `wrapping_neg` calls
 now lower directly to `iadd.wrap`, `isub.wrap`, `imul.wrap`, and `ineg.wrap`;
 compile-time wrapping calls continue to materialize through checked constant
-metadata. All 106 programs under `tests/test_assets/semantic/valid/` now lower and
+metadata. All 110 programs under `tests/test_assets/semantic/valid/` now lower and
 verify through `dump_ir`. Native-C variadic calls are legalized before the call:
 CogIR inserts `c.vararg.promote` for target-required integer/Boolean/enum and
 `f32` promotions, and the verifier rejects unpromoted C-variadic tails. The

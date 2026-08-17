@@ -408,12 +408,14 @@ static void print_type(Type *t)
 
         case TYPE_ARRAY:
             print_type(t->element);
+            printf("[%d]", t->array_size);
+            break;
 
-            if (t->array_size >= 0)
-                printf("[%d]", t->array_size);
-            else
-                printf("[]");
-
+        case TYPE_SLICE:
+            if (t->pointer_access == POINTER_ACCESS_READONLY)
+                printf("readonly ");
+            print_type(t->element);
+            printf("[]");
             break;
 
         case TYPE_NAMED:

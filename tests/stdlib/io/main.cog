@@ -4,6 +4,10 @@ main::() -> s32 {
     std.io.print("text");
     std.io.println(" + line");
 
+    bytes: u8[4] = [115, 108, 105, 99];
+    std.io.print("view = ");
+    std.io.println(bytes);
+
     std.io.print_bool(true);
     std.io.print(" ");
     std.io.print_bool(false);

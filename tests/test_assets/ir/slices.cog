@@ -1,0 +1,12 @@
+consume::(values: readonly s32[]) -> s32 {
+    if values.len == 0
+        return 0;
+    return values[0];
+}
+
+main::() -> s32 {
+    values: s32[2] = [4, 5];
+    view: readonly s32[] = values;
+    text := "hi";
+    return consume(view) + cast(s32, text.len);
+}

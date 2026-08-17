@@ -1,0 +1,34 @@
+first::<T>(values: readonly T[]) -> T {
+    return values[0];
+}
+
+main::() -> s32 {
+    values: s32[3] = [10, 20, 30];
+    mutable: s32[] = values;
+    mutable[1] = 25;
+
+    view: readonly s32[] = mutable;
+    if view.len != 3
+        return 1;
+    if view.data[1] != 25
+        return 2;
+    if first(values) != 10
+        return 3;
+    if first(view) != 10
+        return 4;
+
+    text := "slice";
+    if text.len != 5
+        return 5;
+    if text[0] != 115
+        return 6;
+    if first(text) != 115
+        return 7;
+
+    empty_values: s32[0] = [];
+    empty: readonly s32[] = empty_values;
+    if empty.len != 0
+        return 8;
+
+    return 0;
+}

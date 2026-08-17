@@ -1,0 +1,6 @@
+#extern(c)
+consume::(values: readonly u8[]) -> void;
+
+main::() -> s32 {
+    return 0;
+}

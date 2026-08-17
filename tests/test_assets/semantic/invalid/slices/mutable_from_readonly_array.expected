@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/slices/mutable_from_readonly_array.cog:8:30: error: cannot create mutable slice from readonly array storage
+    view: s32[] = (*pointer).values;
+                             ^~~~~~
+1 semantic error generated.

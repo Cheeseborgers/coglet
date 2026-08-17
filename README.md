@@ -224,7 +224,7 @@ main::() -> s32 {
 `std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_s32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; floating game/application helpers such as `lerp`/`smoothstep`; and runtime-backed `f32`/`f64` square-root, trigonometric, inverse-trigonometric, rounding, and floating-remainder functions. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow. Known implementation limitations and follow-up work are tracked separately in `docs/known_shortcomings.md`.
 
 `std.io` is the first runtime-backed standard module. It provides `print`/`println`
-for direct C-string literals or pointers, `newline`, `flush`, Boolean printing,
+for `readonly u8[]` byte views, `newline`, `flush`, Boolean printing,
 and explicit scalar printers for every fixed-width integer plus `f32`/`f64`.
 The public module is ordinary Coglet source; its reserved `coglet_rt_*` extern
 symbols are supplied by `<stdlib-root>/runtime/coglet_runtime.c` only when the
@@ -365,6 +365,7 @@ Compound and declared types:
 - mutable and readonly raw nullable object pointers
 - mutable and readonly opaque raw pointers
 - fixed-size arrays
+- mutable `T[]` and readonly `readonly T[]` slices
 - nominal structs
 - nominal enums
 - function types
@@ -375,7 +376,7 @@ Compound and declared types:
 
 Supported expression forms include:
 
-- numeric, boolean, character, `null`, and contextual string literals
+- numeric, boolean, character, `null`, and readonly byte-slice string literals
 - identifiers
 - arithmetic operators
 - bitwise operators (`&`, `|`, `^`, `~`)
@@ -598,30 +599,34 @@ Typed mutable declarations may group names (`a, b: u64 = 0;`). The initializer i
 - struct fields containing arrays
 - compile-time bounds checking for constant indexes
 
-### String Literals
+### Slices and String Literals
 
-String literals are currently contextual initializers for fixed-size `u8` arrays.
+A slice is a non-owning pointer-and-length view. `T[]` permits mutation through the view; `readonly T[]` permits reads only. Fixed, addressable arrays adapt to matching slices, and mutable slices may weaken to readonly slices.
+
+```c
+values: s32[3] = [1, 2, 3];
+view: s32[] = values;
+readonly_view: readonly s32[] = view;
+
+view[1] = 20;
+count := readonly_view.len;
+first := readonly_view.data;
+```
+
+String literals are ordinary `readonly u8[]` expressions:
+
+```c
+text := "hello";
+// text.len == 5
+```
+
+Their compiler-owned backing storage contains a trailing NUL for C interoperability, but that terminator is excluded from the slice's visible length. A literal may still initialize a fixed `u8[N]` array, where the trailing NUL *is* part of the required array size:
 
 ```c
 name: u8[6] = "hello";
 ```
 
-The trailing null byte is included, so `"hello"` requires six bytes.
-
-String literals currently work in expected-type contexts such as:
-
-- variable declarations
-- assignments
-- function arguments
-- return values
-- struct field initializers
-
-They are not yet inferred standalone expressions:
-
-```c
-name := "hello"; // invalid
-"hello";         // invalid
-```
+Slices are non-owning and lifetime-unchecked in this first version, and slice indexing does not yet add runtime bounds checks. See `docs/language.md` and `docs/known_shortcomings.md`.
 
 ### Structs
 

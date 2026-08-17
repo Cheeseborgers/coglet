@@ -1,3 +1,3 @@
-error: 'readonly' must qualify a pointer type
+error: 'readonly' must qualify a pointer or slice type
 bad: readonly s32 = 1;
      ^~~~~~~~

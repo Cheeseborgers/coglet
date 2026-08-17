@@ -219,6 +219,60 @@ CogIrTypeId cog_ir_lower_type(CogIrLowerContext *ctx, const Type *type)
                 result = cog_ir_type_array(ctx->module, element, (size_t)type->array_size);
             break;
         }
+        case TYPE_SLICE: {
+            CogIrTypeId element = cog_ir_lower_type(ctx, type->element);
+            if (element == COG_IR_TYPE_INVALID)
+                break;
+
+            CogIrTypeId data_type = cog_ir_type_pointer(
+                ctx->module,
+                element,
+                type->pointer_access == POINTER_ACCESS_READONLY,
+                0
+            );
+            CogIrTypeId length_type = cog_ir_type_integer(ctx->module, 64, 0);
+            if (data_type == COG_IR_TYPE_INVALID || length_type == COG_IR_TYPE_INVALID)
+                break;
+
+            char debug_name[256];
+            semantic_format_type_name((Type *)type, debug_name, sizeof(debug_name));
+            result = cog_ir_declare_nominal_type(
+                ctx->module,
+                COG_IR_TYPE_STRUCT,
+                string_view_from_cstr(debug_name),
+                source_span_invalid()
+            );
+            if (result == COG_IR_TYPE_INVALID)
+                break;
+
+            /* Remember before defining fields so recursive nominal elements remain safe. */
+            if (!remember_type(ctx, type, result))
+                return COG_IR_TYPE_INVALID;
+
+            CogIrAggregateField fields[2];
+            memset(fields, 0, sizeof(fields));
+            fields[0].debug_name = string_view_from_cstr("data");
+            fields[0].type = data_type;
+            fields[0].abi_type = COG_IR_ABI_TYPE_INVALID;
+            fields[0].span = source_span_invalid();
+            fields[1].debug_name = string_view_from_cstr("len");
+            fields[1].type = length_type;
+            fields[1].abi_type = COG_IR_ABI_TYPE_INVALID;
+            fields[1].span = source_span_invalid();
+
+            if (!cog_ir_define_aggregate_type(
+                    ctx->module,
+                    result,
+                    fields,
+                    2,
+                    0,
+                    0,
+                    0)) {
+                lower_error(ctx, source_span_invalid(), "failed to define frozen CogIR slice representation");
+                return COG_IR_TYPE_INVALID;
+            }
+            break;
+        }
         case TYPE_FUNCTION: {
             CogIrTypeId return_type = cog_ir_lower_type(ctx, type->return_type);
             if (return_type == COG_IR_TYPE_INVALID)
@@ -1071,7 +1125,20 @@ static Type *effective_semantic_type(ExecLowerState *state, Node *node)
 
 static int semantic_struct_field_index(Type *type, StringView name)
 {
-    if (!type || type->kind != TYPE_STRUCT)
+    if (!type)
+        return -1;
+
+    if (type->kind == TYPE_SLICE) {
+        if (name.length == sizeof("data") - 1 &&
+            memcmp(name.data, "data", sizeof("data") - 1) == 0)
+            return 0;
+        if (name.length == sizeof("len") - 1 &&
+            memcmp(name.data, "len", sizeof("len") - 1) == 0)
+            return 1;
+        return -1;
+    }
+
+    if (type->kind != TYPE_STRUCT)
         return -1;
     for (int i = 0; i < type->field_count; ++i)
         if (string_view_equal(type->fields[i].name, name))
@@ -1217,7 +1284,9 @@ static int lower_place(ExecLowerState *state, Node *node, LoweredPlace *out)
 
     SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
     SemExprInfo *expr = semantic_get_expr_info(sem, node);
-    Type *sem_type = semantic_get_effective_expr_type(sem, node);
+    /* A place always denotes its intrinsic storage type; contextual conversion
+     * belongs to the value loaded from that storage, never to its address. */
+    Type *sem_type = expr ? expr->type : NULL;
     if (!expr || !sem_type || expr->value_category != VALUE_CATEGORY_LVALUE) {
         lower_error(state->lower, node->span, "expression is not an addressable place during CogIR lowering");
         return 0;
@@ -1299,8 +1368,28 @@ static int lower_place(ExecLowerState *state, Node *node, LoweredPlace *out)
             } else if (object_type->kind == TYPE_POINTER) {
                 base = lower_expression(state, node->as.index.object);
                 op = COG_IR_OP_PTR_INDEX_ADDR;
+            } else if (object_type->kind == TYPE_SLICE) {
+                CogIrValueId slice = lower_expression(state, node->as.index.object);
+                CogIrTypeId element = cog_ir_lower_type(state->lower, object_type->element);
+                CogIrTypeId data_type = cog_ir_type_pointer(
+                    state->lower->module,
+                    element,
+                    object_type->pointer_access == POINTER_ACCESS_READONLY,
+                    0
+                );
+                if (slice == COG_IR_VALUE_INVALID || element == COG_IR_TYPE_INVALID ||
+                    data_type == COG_IR_TYPE_INVALID)
+                    return 0;
+                CogIrInstruction extract = {
+                    .op = COG_IR_OP_EXTRACT_FIELD,
+                    .result_type = data_type,
+                    .span = node->as.index.object->span,
+                    .as.extract = { .aggregate = slice, .index = 0 },
+                };
+                base = emit_instruction_value(state, extract);
+                op = COG_IR_OP_PTR_INDEX_ADDR;
             } else {
-                lower_error(state->lower, node->span, "indexed expression is neither an array nor typed pointer");
+                lower_error(state->lower, node->span, "indexed expression is neither an array, slice, nor typed pointer");
                 return 0;
             }
             if (base == COG_IR_VALUE_INVALID)
@@ -1391,6 +1480,172 @@ static CogIrValueId emit_pointer_qualify(
         .as.conversion = { .operand = operand, .target_type = target_type },
     };
     return emit_instruction_value(state, instruction);
+}
+
+static CogIrValueId emit_slice_value(
+    ExecLowerState *state,
+    Type *slice_type,
+    CogIrValueId data,
+    CogIrValueId length,
+    SourceSpan span
+) {
+    CogIrTypeId type = cog_ir_lower_type(state->lower, slice_type);
+    if (type == COG_IR_TYPE_INVALID || data == COG_IR_VALUE_INVALID ||
+        length == COG_IR_VALUE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrValueId fields[2] = { data, length };
+    return emit_aggregate_value(
+        state,
+        COG_IR_OP_MAKE_STRUCT,
+        type,
+        fields,
+        2,
+        span
+    );
+}
+
+static CogIrValueId lower_array_to_slice_conversion(
+    ExecLowerState *state,
+    Node *node,
+    Type *target_slice
+) {
+    SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
+    SemExprInfo *info = semantic_get_expr_info(sem, node);
+    Type *source = info ? info->type : NULL;
+    if (!source || source->kind != TYPE_ARRAY || !target_slice ||
+        target_slice->kind != TYPE_SLICE || source->array_size < 0) {
+        lower_error(state->lower, node->span,
+            "invalid array-to-slice contextual conversion reached CogIR lowering");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    CogIrTypeId element = cog_ir_lower_type(state->lower, source->element);
+    CogIrTypeId data_type = cog_ir_type_pointer(
+        state->lower->module,
+        element,
+        target_slice->pointer_access == POINTER_ACCESS_READONLY,
+        0
+    );
+    CogIrTypeId length_type = cog_ir_type_integer(state->lower->module, 64, 0);
+    if (element == COG_IR_TYPE_INVALID || data_type == COG_IR_TYPE_INVALID ||
+        length_type == COG_IR_TYPE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrValueId data = COG_IR_VALUE_INVALID;
+    if (source->array_size == 0) {
+        CogIrConstId null_value = cog_ir_const_null(state->lower->module, data_type);
+        data = null_value == COG_IR_CONST_INVALID
+            ? COG_IR_VALUE_INVALID
+            : emit_constant_value(state, null_value, node->span);
+    } else {
+        LoweredPlace place;
+        if (!lower_place(state, node, &place))
+            return COG_IR_VALUE_INVALID;
+
+        CogIrConstId zero_constant = cog_ir_const_integer(
+            state->lower->module, length_type, 0);
+        CogIrValueId zero = emit_constant_value(state, zero_constant, node->span);
+        if (zero == COG_IR_VALUE_INVALID)
+            return COG_IR_VALUE_INVALID;
+
+        /* ARRAY_ELEM_ADDR preserves the access qualifiers of the array
+         * storage pointer.  If the slice weakens mutable storage to readonly,
+         * perform that as an explicit pointer qualification afterwards. */
+        CogIrTypeId source_data_type = cog_ir_type_pointer(
+            state->lower->module,
+            element,
+            !place.is_writable,
+            place.is_volatile
+        );
+        data = emit_index_address(
+            state,
+            COG_IR_OP_ARRAY_ELEM_ADDR,
+            place.address,
+            zero,
+            element,
+            !place.is_writable,
+            place.is_volatile,
+            node->span
+        );
+        if (data == COG_IR_VALUE_INVALID || source_data_type == COG_IR_TYPE_INVALID)
+            return COG_IR_VALUE_INVALID;
+
+        if (source_data_type != data_type) {
+            data = emit_pointer_qualify(state, data, data_type, node->span);
+            if (data == COG_IR_VALUE_INVALID)
+                return COG_IR_VALUE_INVALID;
+        }
+    }
+
+    CogIrConstId length_constant = cog_ir_const_integer(
+        state->lower->module,
+        length_type,
+        (uint64_t)source->array_size
+    );
+    CogIrValueId length = emit_constant_value(
+        state, length_constant, node->span);
+    return emit_slice_value(state, target_slice, data, length, node->span);
+}
+
+static CogIrValueId lower_slice_qualification_conversion(
+    ExecLowerState *state,
+    Node *node,
+    CogIrValueId value,
+    Type *source_slice,
+    Type *target_slice
+) {
+    if (!source_slice || source_slice->kind != TYPE_SLICE ||
+        !target_slice || target_slice->kind != TYPE_SLICE) {
+        lower_error(state->lower, node->span,
+            "invalid slice qualification conversion reached CogIR lowering");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    CogIrTypeId element = cog_ir_lower_type(state->lower, source_slice->element);
+    CogIrTypeId source_data_type = cog_ir_type_pointer(
+        state->lower->module,
+        element,
+        source_slice->pointer_access == POINTER_ACCESS_READONLY,
+        0
+    );
+    CogIrTypeId target_data_type = cog_ir_type_pointer(
+        state->lower->module,
+        element,
+        target_slice->pointer_access == POINTER_ACCESS_READONLY,
+        0
+    );
+    CogIrTypeId length_type = cog_ir_type_integer(state->lower->module, 64, 0);
+    if (element == COG_IR_TYPE_INVALID || source_data_type == COG_IR_TYPE_INVALID ||
+        target_data_type == COG_IR_TYPE_INVALID || length_type == COG_IR_TYPE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrInstruction data_extract = {
+        .op = COG_IR_OP_EXTRACT_FIELD,
+        .result_type = source_data_type,
+        .span = node->span,
+        .as.extract = { .aggregate = value, .index = 0 },
+    };
+    CogIrValueId data = emit_instruction_value(state, data_extract);
+
+    CogIrInstruction length_extract = {
+        .op = COG_IR_OP_EXTRACT_FIELD,
+        .result_type = length_type,
+        .span = node->span,
+        .as.extract = { .aggregate = value, .index = 1 },
+    };
+    CogIrValueId length = emit_instruction_value(state, length_extract);
+    if (data == COG_IR_VALUE_INVALID || length == COG_IR_VALUE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    if (source_data_type != target_data_type) {
+        data = emit_pointer_qualify(
+            state, data, target_data_type, node->span);
+        if (data == COG_IR_VALUE_INVALID)
+            return COG_IR_VALUE_INVALID;
+    }
+
+    return emit_slice_value(state, target_slice, data, length, node->span);
 }
 
 static int normalize_pointer_comparison_operands(
@@ -2034,6 +2289,87 @@ static CogIrValueId lower_string_literal(ExecLowerState *state, Node *node)
         return COG_IR_VALUE_INVALID;
     }
 
+    if (sem_type->kind == TYPE_SLICE) {
+        CogIrTypeId element_type = cog_ir_lower_type(state->lower, sem_type->element);
+        CogIrTypeId array_type = cog_ir_type_array(state->lower->module, element_type, count);
+        CogIrConstId *elements = count ? calloc(count, sizeof(*elements)) : NULL;
+        if (element_type == COG_IR_TYPE_INVALID || array_type == COG_IR_TYPE_INVALID ||
+            (count && !elements)) {
+            free(bytes);
+            free(elements);
+            lower_error(state->lower, node->span, "failed to construct string-slice backing array");
+            return COG_IR_VALUE_INVALID;
+        }
+
+        for (size_t i = 0; i < count; ++i) {
+            elements[i] = cog_ir_const_integer(state->lower->module, element_type, bytes[i]);
+            if (elements[i] == COG_IR_CONST_INVALID) {
+                free(bytes);
+                free(elements);
+                return COG_IR_VALUE_INVALID;
+            }
+        }
+        CogIrConstId initializer = cog_ir_const_array(
+            state->lower->module, array_type, elements, count);
+        free(elements);
+        free(bytes);
+        if (initializer == COG_IR_CONST_INVALID)
+            return COG_IR_VALUE_INVALID;
+
+        CogIrGlobalId global = cog_ir_add_global(
+            state->lower->module,
+            string_view_from_cstr(".str"),
+            node->span,
+            array_type,
+            COG_IR_ABI_TYPE_INVALID,
+            COG_IR_LINKAGE_INTERNAL,
+            1,
+            1,
+            initializer
+        );
+        if (global == COG_IR_GLOBAL_INVALID) {
+            lower_error(state->lower, node->span, "failed to create string-slice backing global");
+            return COG_IR_VALUE_INVALID;
+        }
+
+        CogIrValueId base = emit_global_address(state, global, array_type, 1, node->span);
+        CogIrTypeId index_type = cog_ir_type_integer(state->lower->module, 64, 0);
+        CogIrConstId zero = cog_ir_const_integer(state->lower->module, index_type, 0);
+        CogIrValueId index = emit_constant_value(state, zero, node->span);
+        if (base == COG_IR_VALUE_INVALID || index == COG_IR_VALUE_INVALID)
+            return COG_IR_VALUE_INVALID;
+
+        CogIrValueId data = emit_index_address(
+            state,
+            COG_IR_OP_ARRAY_ELEM_ADDR,
+            base,
+            index,
+            element_type,
+            1,
+            0,
+            node->span
+        );
+        CogIrConstId length_constant = cog_ir_const_integer(
+            state->lower->module,
+            index_type,
+            count ? (uint64_t)(count - 1) : 0
+        );
+        CogIrValueId length = emit_constant_value(
+            state, length_constant, node->span);
+        if (data == COG_IR_VALUE_INVALID || length == COG_IR_VALUE_INVALID)
+            return COG_IR_VALUE_INVALID;
+
+        CogIrValueId fields[2] = { data, length };
+        return emit_aggregate_value(
+            state,
+            COG_IR_OP_MAKE_STRUCT,
+            result_type,
+            fields,
+            2,
+            node->span
+        );
+    }
+
     if (ir_type->kind == COG_IR_TYPE_ARRAY) {
         CogIrValueId value = lower_array_value_from_bytes(
             state,
@@ -2650,12 +2986,25 @@ static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
 
 static CogIrValueId lower_expression(ExecLowerState *state, Node *node)
 {
-    CogIrValueId value = lower_expression_raw(state, node);
-    if (value == COG_IR_VALUE_INVALID || !node)
-        return value;
+    if (!node)
+        return COG_IR_VALUE_INVALID;
 
     SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
     SemExprInfo *info = semantic_get_expr_info(sem, node);
+
+    /* Array-to-slice adaptation needs the source place address, not an array
+     * value load, so lower it before the ordinary raw-expression path. */
+    if (info &&
+        info->contextual_conversion == SEM_CONTEXT_CONVERSION_ARRAY_TO_SLICE &&
+        info->contextual_type) {
+        return lower_array_to_slice_conversion(
+            state, node, info->contextual_type);
+    }
+
+    CogIrValueId value = lower_expression_raw(state, node);
+    if (value == COG_IR_VALUE_INVALID)
+        return value;
+
     if (!info || info->contextual_conversion == SEM_CONTEXT_CONVERSION_NONE || !info->contextual_type)
         return value;
 
@@ -2670,6 +3019,16 @@ static CogIrValueId lower_expression(ExecLowerState *state, Node *node)
     switch (info->contextual_conversion) {
         case SEM_CONTEXT_CONVERSION_POINTER_QUALIFICATION:
             return emit_pointer_qualify(state, value, target, node->span);
+
+        case SEM_CONTEXT_CONVERSION_SLICE_QUALIFICATION:
+            return lower_slice_qualification_conversion(
+                state, node, value, info->type, info->contextual_type);
+
+        case SEM_CONTEXT_CONVERSION_ARRAY_TO_SLICE:
+            /* Handled before raw expression lowering above. */
+            lower_error(state->lower, node->span,
+                "array-to-slice conversion reached late contextual lowering");
+            return COG_IR_VALUE_INVALID;
 
         case SEM_CONTEXT_CONVERSION_INT_MATERIALIZE:
         case SEM_CONTEXT_CONVERSION_INT_TO_FLOAT_MATERIALIZE:

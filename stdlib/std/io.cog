@@ -1,14 +1,19 @@
 module std.io;
 
-// Minimal bootstrap I/O. String arguments are currently direct C-string
-// literals/pointers because Coglet does not yet have a general string/slice
-// runtime type.
+// Minimal bootstrap I/O. Text is a readonly byte slice so callers pass an
+// explicit pointer+length view rather than relying on C NUL termination.
 
-export #extern(c, name="coglet_rt_io_print")
-print::(text: readonly c_char*) -> void;
+#extern(c, name="coglet_rt_io_write")
+write_bytes::(data: readonly u8*, length: u64) -> void;
 
-export #extern(c, name="coglet_rt_io_println")
-println::(text: readonly c_char*) -> void;
+export print::(text: readonly u8[]) -> void {
+    write_bytes(text.data, text.len);
+}
+
+export println::(text: readonly u8[]) -> void {
+    write_bytes(text.data, text.len);
+    newline();
+}
 
 export #extern(c, name="coglet_rt_io_newline")
 newline::() -> void;

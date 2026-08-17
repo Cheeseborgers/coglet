@@ -77,30 +77,34 @@ type =
       | "opaque" "*" {"*"}
       | "cfn" "(" [cfn_call_option [","]] [type {"," type} ["," "..."]] ")" ["->" type] {"*"}
     )
-    ["[" integer_constant "]"];
+    ["[" [integer_constant] "]"];
 
 cfn_call_option = "call" "=" c_calling_convention;
 ```
 
-`readonly` and `volatile` are valid only when at least one pointer layer follows the base type. They may appear in either order, each at most once, and qualify the first pointer layer following that base type.
+`T[N]` is fixed-size owned array storage. `T[]` is a non-owning mutable slice, represented semantically as a pointer-and-length view; `readonly T[]` is the corresponding readonly view. A slice has no capacity or ownership semantics in this first version.
+
+`readonly` and `volatile` still qualify the first pointer layer when a pointer follows the base type. When no pointer layer consumes `readonly`, it may instead qualify an empty `[]` slice suffix. `volatile` slices are not supported.
 
 ```c
 mutable: s32*;
 view: readonly s32*;
 device: volatile s32*;
 status: readonly volatile s32*;
-nested: readonly volatile s32**;
+values: s32[];
+readonly_values: readonly s32[];
 ```
-
-`readonly volatile s32**` means a mutable outer pointer to a readonly+volatile pointer to `s32`. Additional outer pointer layers remain mutable and non-volatile unless separately represented by another type layer.
 
 These are invalid:
 
 ```c
 value: readonly s32;
 register: volatile s32;
-values: readonly s32[4];
+fixed: readonly s32[4];
+volatile_view: volatile s32[];
 ```
+
+For a pointer element type, the existing prefix qualifier still binds to the first pointer layer. The language does not yet have separate syntax for independently qualifying both that pointer layer and the enclosing slice.
 
 Named types may be module-qualified through any visible hierarchical module path, such as `std.math.Pair` (or through the current module).
 
@@ -390,9 +394,7 @@ Example:
 name: u8[6] = "hello";
 ```
 
-String literals are contextual initializers for fixed-size byte arrays.
-
-The destination must be `u8[N]`, where `N` exactly matches the decoded byte length plus a trailing null byte.
+String literals are immutable compile-time byte data. Standalone literals have type `readonly u8[]`; their visible slice length is the decoded byte length, while the compiler-owned backing storage also carries a trailing NUL byte. They may still contextually initialize fixed-size `u8[N]` arrays, where `N` must equal the decoded byte length plus that trailing NUL.
 
 Supported expected-type contexts include:
 

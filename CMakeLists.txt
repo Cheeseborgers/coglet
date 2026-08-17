@@ -782,6 +782,21 @@ set_tests_properties(
 )
 
 add_test(
+        NAME cog_ir_slices_lowering_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/slices.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/slices.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_slices_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;slice;string;aggregate;conversion"
+)
+
+add_test(
         NAME cog_ir_semantic_valid_fixture_suite
         COMMAND "${CMAKE_COMMAND}"
         -DEXE=$<TARGET_FILE:dump_ir>
@@ -1219,6 +1234,11 @@ add_host_c_executable_test(
 add_host_c_executable_test(
         backend_generic_functions generic_functions.cog 42
         "backend;backend.c;ir;generic;semantic;monomorphization"
+)
+
+add_host_c_executable_test(
+        backend_slices slices.cog 0
+        "backend;backend.c;ir;slice;string;aggregate;generic"
 )
 
 foreach(cast_trap_case IN ITEMS integer float_integer float_narrow)
@@ -2283,6 +2303,11 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_generic_functions
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;generic;semantic;monomorphization;codegen;object;linker;stage7")
+    add_llvm_stage7_native_test(
+        backend_llvm_slices slices.cog 0
+    )
+    set_tests_properties(backend_llvm_slices
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;slice;string;aggregate;generic;codegen;object;linker;stage7")
     add_llvm_stage7_native_test(
         backend_llvm_stage7_pic_global_link llvm/stage7_pic_global.cog 9
     )

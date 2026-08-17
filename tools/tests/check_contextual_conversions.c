@@ -10,6 +10,8 @@ typedef struct ConversionCounts {
     int null_to_pointer;
     int pointer_qualification;
     int c_string_to_pointer;
+    int slice_qualification;
+    int array_to_slice;
 } ConversionCounts;
 
 static int fail(const char *message) {
@@ -75,6 +77,14 @@ int main(int argc, char **argv) {
             case SEM_CONTEXT_CONVERSION_C_STRING_TO_POINTER:
                 counts.c_string_to_pointer++;
                 break;
+
+            case SEM_CONTEXT_CONVERSION_SLICE_QUALIFICATION:
+                counts.slice_qualification++;
+                break;
+
+            case SEM_CONTEXT_CONVERSION_ARRAY_TO_SLICE:
+                counts.array_to_slice++;
+                break;
         }
     }
 
@@ -92,18 +102,22 @@ int main(int argc, char **argv) {
     REQUIRE_COUNT(null_to_pointer, "null-to-pointer");
     REQUIRE_COUNT(pointer_qualification, "pointer qualification");
     REQUIRE_COUNT(c_string_to_pointer, "C-string-to-pointer");
+    REQUIRE_COUNT(slice_qualification, "slice qualification");
+    REQUIRE_COUNT(array_to_slice, "array-to-slice");
 
 #undef REQUIRE_COUNT
 
     printf(
         "contextual conversions recorded: int=%d int->float=%d float=%d "
-        "null=%d pointer-qual=%d c-string=%d\n",
+        "null=%d pointer-qual=%d c-string=%d slice-qual=%d array-to-slice=%d\n",
         counts.int_materialize,
         counts.int_to_float,
         counts.float_materialize,
         counts.null_to_pointer,
         counts.pointer_qualification,
-        counts.c_string_to_pointer
+        counts.c_string_to_pointer,
+        counts.slice_qualification,
+        counts.array_to_slice
     );
 
     compile_result_destroy(&result);

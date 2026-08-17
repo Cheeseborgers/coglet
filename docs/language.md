@@ -1267,100 +1267,88 @@ values := [1, 2, 3];
 [1, 2, 3];
 ```
 
+## Slices
+
+A slice is a non-owning view over contiguous storage. `T[]` grants mutable element access and `readonly T[]` grants readonly element access. The first representation is exactly two machine-independent Coglet values: a typed data pointer and a `u64` element count. There is no capacity, allocator, or ownership field.
+
+```c
+values: s32[3] = [1, 2, 3];
+view: s32[] = values;
+readonly_view: readonly s32[] = view;
+
+view[1] = 20;
+count := readonly_view.len;
+first_ptr := readonly_view.data;
+```
+
+`.len` is the number of elements and `.data` is a pointer carrying the same mutable/readonly access as the slice. Slice metadata fields are observational rvalues; code may reassign a whole slice variable, but cannot mutate only its `.data` or `.len` field. Indexing a mutable slice produces a writable lvalue; indexing a readonly slice produces a readonly lvalue.
+
+A fixed array may adapt to a matching slice only when the array expression denotes addressable storage. Mutable storage may become either a mutable or readonly slice. Readonly storage may only become a readonly slice. A mutable slice may weaken to a matching readonly slice; readonly access cannot be recovered as mutable.
+
+```c
+values: s32[3] = [1, 2, 3];
+mutable: s32[] = values;
+readonly_view: readonly s32[] = mutable;
+```
+
+Array temporaries do not adapt to slices because the resulting view would immediately refer to temporary storage:
+
+```c
+make_values::() -> s32[3] {
+    return [1, 2, 3];
+}
+
+view: readonly s32[] = make_values(); // invalid
+```
+
+Slices are deliberately non-owning and Coglet does not yet perform borrow/lifetime analysis. The addressability rule prevents the most immediate temporary-array error, but it does not prove that a slice cannot escape a local array's lifetime. Slice indexing also has no runtime bounds check in this first version. These limitations are tracked in `docs/known_shortcomings.md`.
+
+Slices are ordinary Coglet values and may be function arguments/returns, generic parameter shapes, locals, and fields of ordinary Coglet structs. Direct by-value slice parameters/returns are not part of the current `#extern(c)` ABI subset; FFI boundaries should pass pointer and length explicitly.
+
 ## String Literals
 
-String literals represent immutable compile-time byte data.
+String literals represent immutable compile-time byte data and are now ordinary readonly byte-slice expressions.
 
-They are contextual initializers for fixed-size byte arrays and, at the C FFI
-boundary, may also bind directly to a `readonly c_char*` parameter of a
-`#extern(c)` function. These are two explicit contexts; Coglet does not perform
-general array-to-pointer decay.
+```c
+text := "hello";
+// text: readonly u8[]
+// text.len == 5
+```
+
+The visible slice contains the decoded bytes only. Compiler-owned static backing storage also includes one trailing NUL byte for compatibility with the existing direct C-string boundary, but that terminator is not counted by `.len`. An embedded `\0` is an ordinary visible byte and does not shorten the slice.
+
+A string literal may also contextually initialize a fixed-size byte array. In that context the destination receives the decoded bytes plus the trailing NUL, so the fixed array must be one byte larger than the visible string length:
 
 ```c
 name: u8[6] = "hello";
+view: readonly u8[] = "hello";
+```
 
+The explicit C FFI convenience remains intentionally narrow:
+
+```c
 #extern(c)
 puts::(s: readonly c_char*) -> c_int;
 
 puts("hello");
 ```
 
-The literal contains five visible bytes and one trailing null byte:
-
-```text
-h e l l o \0
-```
-
-The destination must therefore have length 6.
-
-Supported expected-type contexts include:
-
-```c
-name: u8[6] = "hello";
-name = "hello";
-
-takes_name("hello");
-
-make_name::() -> u8[6] {
-    return "hello";
-}
-
-Person :: struct {
-    name: u8[6];
-}
-
-p := Person {
-    name = "hello",
-};
-```
-
-Invalid:
-
-```c
-name: u8[5] = "hello";   // no room for trailing null byte
-name: s32[6] = "hello";  // destination element type is not u8
-name := "hello";         // no expected byte-array type
-"hello";                 // bare string literal is not a general expression
-```
-
-The C-boundary conversion is intentionally narrower than C array decay:
+Only a direct literal argument to a `#extern(c)` parameter spelled exactly `readonly c_char*` receives that NUL-terminated pointer conversion. General slices and arrays do not decay to C pointers, and direct slice-by-value C ABI parameters are rejected.
 
 ```c
 normal::(s: readonly c_char*) -> void { }
 
 #extern(c)
-mutable_text::(s: c_char*) -> void;
-
-#extern(c)
 bytes::(s: readonly u8*) -> void;
 
-normal("hello");       // invalid: ordinary Coglet call
-mutable_text("hello"); // invalid: literal cannot grant mutable access
-bytes("hello");        // invalid: parameter is not spelled readonly c_char*
+normal("hello"); // invalid: ordinary Coglet call does not use the C-string conversion
+bytes("hello");  // invalid: parameter is not readonly c_char*
 
 array: u8[6] = "hello";
-puts(array);            // invalid: arrays do not decay to pointers
+puts(array);      // invalid: arrays do not decay to pointers
 ```
 
-Only a direct string-literal argument to a `#extern(c)` parameter whose source
-type is exactly `readonly c_char*` receives this conversion. The semantic value
-is readonly pointer-like for that call only; this does not turn string literals
-into general pointer expressions.
-
-The required array length is based on decoded bytes plus the trailing null byte.
-
-Supported escape sequences currently include:
-
-```text
-\n
-\t
-\r
-\\
-\"
-\0
-```
-
-Invalid escape sequences are rejected during semantic analysis.
+Supported escape sequences currently include `\n`, `\t`, `\r`, `\\`, `\"`, and `\0`. Invalid escapes are rejected during semantic analysis.
 
 ## String Mutability
 

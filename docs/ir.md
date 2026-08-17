@@ -273,13 +273,11 @@ Coglet type identity and C ABI contracts.
 Actual volatile memory behavior is also explicit on `load`/`store`; it must not
 be inferred only from a backend's pointer type representation.
 
-### Arrays
+### Arrays and slices
 
-Only concrete fixed-size arrays reach CogIR. Unsized/frontend placeholder array
-forms are not runtime IR types.
+Only concrete fixed-size arrays reach CogIR as array types. Source-level slices are resolved before backend emission and freeze as compiler-generated ordinary CogIR structs with exactly two fields: a typed data pointer carrying slice readonly access and a `u64` element count. No frontend `TYPE_SLICE`, AST node, or semantic type object is required by a backend.
 
-Array values do not implicitly decay to pointers. Array-element addressing and
-raw-pointer indexing remain distinct IR operations.
+Array values do not implicitly decay to pointers. An explicit semantic array-to-slice conversion lowers to an `array_elem_addr` plus (when needed) monotonic pointer qualification, then `make_struct(data, len)`. Slice indexing extracts the frozen data pointer and uses ordinary `ptr_index_addr`. This keeps slice behavior backend-neutral.
 
 ### Nominal aggregates
 
@@ -389,13 +387,11 @@ Constants may live in a module-level table and be referenced by `CogIrConstId`.
 Constant declarations themselves need no runtime storage unless a future
 language feature makes them addressable.
 
-String literals have two lowering forms:
+String literals have three lowering forms:
 
-- when initializing an array value, lower the decoded bytes plus trailing NUL as
-  an array constant/value and copy it into the destination;
-- at the supported C string pointer boundary, create compiler-generated readonly
-  static byte storage and take its element address. This is not general
-  array-to-pointer decay.
+- when initializing a fixed array value, lower the decoded bytes plus trailing NUL as an array constant/value and copy it into the destination;
+- as an ordinary `readonly u8[]` expression, create compiler-generated readonly static byte storage containing the decoded bytes plus trailing NUL, then construct a slice whose visible `len` excludes that terminator;
+- at the supported C string pointer boundary, take the static backing storage's element address directly. This remains a narrow FFI conversion, not general array/slice-to-pointer decay.
 
 ## Functions, blocks, values, and slots
 
@@ -498,7 +494,7 @@ local_addr      slot -> ptr<T>
 global_addr     global -> ptr<T>
 field_addr      ptr<Struct>, field-index -> ptr<Field>
 array_elem_addr ptr<Array>, index -> ptr<Element>
-ptr_index_addr  ptr<T>, index -> ptr<T>
+ptr_index_addr  ptr<T>, index -> ptr<T>   # also used after extracting slice.data
 load            ptr<T> -> T
 store           ptr<T>, T -> void
 ```
@@ -506,9 +502,7 @@ store           ptr<T>, T -> void
 `load` and `store` carry an explicit volatile bit. The verifier rejects stores
 through readonly addresses and checks that the value type matches the pointee.
 
-Known array-index bounds remain a semantic compile-time check. CogIR v1 does not
-invent a runtime array-bounds trap where the language does not currently specify
-one.
+Known fixed-array index bounds remain a semantic compile-time check. Slice indexing currently lowers without a runtime bounds trap; the language's checked-slice-indexing policy remains future work rather than a backend-specific invention.
 
 Dereference requires no dedicated runtime instruction: lowering a dereference
 as a place uses the pointer value itself as the resulting address.
@@ -1079,7 +1073,7 @@ left-to-right evaluation and spills an earlier operand when a later wrapping
 argument can introduce CFG. Compile-time wrapping calls still use semantic
 constant metadata and therefore materialize as typed CogIR constants.
 
-All 100 `semantic/valid` fixture programs now lower successfully through `dump_ir`.
+All 110 `semantic/valid` fixture programs now lower successfully through `dump_ir`.
 A registered integration test recursively runs the entire fixture directory so
 future frontend-valid additions must also cross the CogIR boundary. Native-C
 variadic tails are now legalized in CogIR with explicit `c.vararg.promote`

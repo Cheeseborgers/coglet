@@ -1,4 +1,4 @@
-tests/test_assets/semantic/invalid/pointers/pointer_field_precedence.cog:6:12: error: field access requires a struct
+tests/test_assets/semantic/invalid/pointers/pointer_field_precedence.cog:6:12: error: field access requires a struct or slice
     *point.x = 1;
            ^
 1 semantic error generated.

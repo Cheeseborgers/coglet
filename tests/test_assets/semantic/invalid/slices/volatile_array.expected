@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/slices/volatile_array.cog:8:39: error: cannot create slice from volatile array storage
+    view: readonly s32[] = (*pointer).values;
+                                      ^~~~~~
+1 semantic error generated.

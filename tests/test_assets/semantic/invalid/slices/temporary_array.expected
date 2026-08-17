@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/slices/temporary_array.cog:6:28: error: array-to-slice conversion requires addressable array storage
+    view: readonly s32[] = make_values();
+                           ^~~~~~~~~~~
+1 semantic error generated.

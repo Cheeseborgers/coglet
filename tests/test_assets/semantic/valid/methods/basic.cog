@@ -1,0 +1,37 @@
+Pair::<A, B> struct {
+    first: A;
+    second: B;
+
+    new::(first: A, second: B) -> Self {
+        return Self { first = first, second = second };
+    }
+
+    get_first::(self: readonly Self*) -> A {
+        return (*self).first;
+    }
+
+    replace_first::(self: Self*, value: A) -> void {
+        (*self).first = value;
+    }
+}
+
+Counter::struct {
+    value: s32;
+
+    zero::() -> Self {
+        return Self { value = 0 };
+    }
+
+    get::(self: Self) -> s32 {
+        return self.value;
+    }
+}
+
+main::() -> s32 {
+    pair := Pair::<s32, f32>.new(10, 2.5);
+    pair.replace_first(42);
+    first := pair.get_first();
+
+    counter := Counter.zero();
+    return first + counter.get();
+}

@@ -99,10 +99,26 @@ should not be forgotten.
   pointer recursion is supported and by-value recursive layouts are rejected, but
   a chain that continually changes concrete type arguments is currently stopped at
   32 active instantiations rather than by a more general well-foundedness proof.
-- **No methods/associated functions or operator overloading.** These should be
-  designed now that generic aggregates exist, using vector/matrix and container
-  code to drive the language design rather than adding compiler magic for specific
-  game-math types.
+- **Methods are intentionally narrow.** Methods/associated functions are supported
+  only on ordinary complete Coglet structs. There are no methods on `#repr(c)`
+  aggregates, unions, incomplete structs, or foreign/extension types.
+- **Generic methods are not implemented.** A generic struct may have methods, but a
+  method cannot currently introduce its own `::<U>` type-parameter list.
+- **Method visibility follows the owning struct.** There is no independent
+  per-method private/export control yet, and there is no method overloading.
+- **Method values are not first-class.** `value.method()` and `Type.function()` are
+  calls, but extracting `value.method` or `Type.function` as a callable value is not
+  supported.
+- **Pointer receivers still use explicit dereference in method bodies.** The caller
+  can write `value.set_x(1)`, but the body currently writes `(*self).x`; Coglet has
+  no implicit pointer-field dereference or `->` syntax.
+- **Generic struct constraints apply to the whole attached method set.** Concrete
+  specialization currently resolves/checks every method body on the specialized
+  owner. There is no method-specific generic constraint mechanism for operations
+  needed by only one method.
+- **Operator overloading is still absent.** Vector/matrix and container code should
+  drive that design now that ordinary methods exist, rather than introducing a
+  separate trait or dispatch system prematurely.
 - **Builtin generic constraints are closed.** The current constraint set is a
   small compiler-defined vocabulary, not a user-extensible trait/interface
   system. Do not grow it into an accidental trait system one special case at a

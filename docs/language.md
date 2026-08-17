@@ -634,9 +634,68 @@ private concrete type arguments.
 Generic templates never reach CogIR. Generic functions lower only as concrete
 ordinary functions, and generic structs lower only as concrete ordinary nominal
 struct layouts. Generic enums, generic unions, generic aliases, generic
-`#repr(c)` aggregates, nested generic declarations, methods/associated functions,
-specialization, dynamic dispatch, type erasure, user-defined traits, and separate
-generic compilation remain outside this first aggregate-generic facility.
+`#repr(c)` aggregates, nested generic declarations, specialization, dynamic
+dispatch, type erasure, user-defined traits, and separate generic compilation
+remain outside this first aggregate-generic facility.
+
+## Struct Methods and Associated Functions
+
+Ordinary complete Coglet structs may declare functions directly in the struct
+body. Fields still use `name: Type;`; a function member uses the same `name::(...)`
+spelling as an ordinary Coglet function. No separate `impl` block or out-of-class
+member-definition syntax exists.
+
+```c
+Vec3::<T: floating> struct {
+    x: T;
+    y: T;
+    z: T;
+
+    new::(x: T, y: T, z: T) -> Self {
+        return Self { x = x, y = y, z = z };
+    }
+
+    length_squared::(self: readonly Self*) -> T {
+        return (*self).x * (*self).x +
+               (*self).y * (*self).y +
+               (*self).z * (*self).z;
+    }
+
+    set_x::(self: Self*, value: T) -> void {
+        (*self).x = value;
+    }
+}
+```
+
+`Self` is a method-scope type alias for the concrete owning struct. For a generic
+owner it includes the concrete type arguments automatically. This avoids repeating
+long names such as `Vec3::<T>` in every signature and constructor.
+
+A member whose first parameter is named exactly `self` is an instance method. The
+receiver type must be `Self`, `Self*`, or a qualified pointer to `Self`. A member
+without a `self` parameter is an associated function. A parameter named `self` in
+any later position is rejected.
+
+Calls use ordinary member spelling:
+
+```c
+point := Vec3::<f32>.new(1.0, 2.0, 3.0);
+length2 := point.length_squared();
+point.set_x(5.0);
+```
+
+For a pointer receiver, calling through an addressable struct value implicitly
+passes its address. The compiler does not implicitly borrow a temporary; a
+pointer-receiver call therefore requires addressable storage. A by-value receiver
+is passed as an ordinary value. Method bodies currently use explicit pointer
+dereference for field access, for example `(*self).x`.
+
+Methods on generic structs are specialized together with their concrete owning
+struct. Associated and instance calls are resolved semantically and rewritten to
+ordinary concrete function calls with an explicit receiver before CogIR lowering.
+CogIR and both backends contain no method-dispatch concept. There is no virtual
+dispatch, method overloading, extension-method mechanism, generic method type
+parameter list, or operator overloading in this first version.
 
 ## Void-Returning Calls
 

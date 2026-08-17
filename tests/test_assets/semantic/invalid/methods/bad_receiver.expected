@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/methods/bad_receiver.cog:4:14: error: method receiver 'self' must have type 'Point' or a pointer to it
+    broken::(self: Other) -> s32 {
+             ^~~~
+1 semantic error generated.

@@ -75,6 +75,7 @@ static const char *node_type_name(NodeType type)
         case NODE_CALL:              return "call";
         case NODE_FIELD:             return "field";
         case NODE_INDEX:             return "index";
+        case NODE_TYPE_REF:          return "type_ref";
         case NODE_PROGRAM:           return "program";
         case NODE_MODULE_DECL:       return "module_decl";
         case NODE_IMPORT_DECL:       return "import_decl";
@@ -511,6 +512,14 @@ static void walk_node(ExpressionWalker *walker, Node *node)
                 walker,
                 &node->as.struct_decl.fields
             );
+            walk_node_list(
+                walker,
+                &node->as.struct_decl.methods
+            );
+            break;
+
+        case NODE_TYPE_REF:
+            /* Compile-time type qualifier used only while resolving a method. */
             break;
 
         case NODE_STRUCT_FIELD_DECL:

@@ -1,0 +1,17 @@
+Point::struct {
+    x: s32;
+    y: s32;
+
+    new::(x: s32, y: s32) -> Self {
+        return Self { x = x, y = y };
+    }
+
+    sum::(self: readonly Self*) -> s32 {
+        return (*self).x + (*self).y;
+    }
+}
+
+main::() -> s32 {
+    point := Point.new(20, 22);
+    return point.sum();
+}

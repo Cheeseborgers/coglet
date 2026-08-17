@@ -52,6 +52,13 @@ static GenericStructSpecialization *instantiate_generic_struct(
     int type_argument_count,
     Node *use_node
 );
+static StructMethodBinding *find_struct_method_binding(
+    SemanticContext *ctx,
+    Type *owner_type,
+    StringView name
+);
+static int register_struct_method_signatures(SemanticContext *ctx, Node *owner_decl);
+static void check_struct_method_bodies(SemanticContext *ctx, Node *owner_decl);
 
 struct GenericSpecialization {
     SemDeclId template_id;
@@ -79,6 +86,17 @@ struct GenericStructSpecialization {
 
     GenericStructSpecialization *active_parent;
     GenericStructSpecialization *next;
+};
+
+struct StructMethodBinding {
+    Type *owner_type;
+    Node *owner_decl;
+    StringView source_name;
+    Node *function;
+    Symbol *symbol;
+    Type *function_type;
+    int is_instance;
+    StructMethodBinding *next;
 };
 
 static Type *new_type(SemanticContext *ctx, TypeKind kind)
@@ -7456,6 +7474,267 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
     return spec->function_type->return_type;
 }
 
+static void prepend_call_argument(SemanticContext *ctx, Node *call, Node *argument)
+{
+    assert(call && call->type == NODE_CALL);
+    int old_count = call->as.call.arguments.count;
+    Node **items = arena_alloc(
+        ctx->arena,
+        sizeof(Node *) * (size_t)(old_count + 1)
+    );
+    items[0] = argument;
+    if (old_count > 0) {
+        memcpy(
+            items + 1,
+            call->as.call.arguments.items,
+            sizeof(Node *) * (size_t)old_count
+        );
+    }
+    call->as.call.arguments.items = items;
+    call->as.call.arguments.count = old_count + 1;
+    call->as.call.arguments.capacity = old_count + 1;
+}
+
+static Type *associated_method_owner_type(SemanticContext *ctx, Node *object)
+{
+    if (!object)
+        return NULL;
+
+    if (object->type == NODE_TYPE_REF)
+        return resolve_type(ctx, object->as.type_ref.source_type, object);
+
+    if (object->type == NODE_IDENT) {
+        Symbol *symbol = scope_lookup(
+            ctx->current_scope,
+            object->as.ident.data,
+            object->as.ident.length
+        );
+        return symbol && symbol->kind == SYMBOL_TYPE ? symbol->type : NULL;
+    }
+
+    if (object->type == NODE_FIELD) {
+        int recognized = 0;
+        Symbol *symbol = semantic_lookup_qualified_field_symbol(
+            ctx,
+            object,
+            0,
+            NULL,
+            NULL,
+            &recognized
+        );
+        if (recognized && symbol && symbol->kind == SYMBOL_TYPE)
+            return symbol->type;
+    }
+
+    return NULL;
+}
+
+/*
+ * Recognize a source method call and rewrite it to an ordinary function call.
+ *
+ *     value.length()          -> Struct.length(&value)
+ *     Vec3::<f32>.new(...)    -> Vec3<f32>.new(...)
+ *
+ * The rewritten callee/implicit receiver are ordinary checked AST nodes, so
+ * CogIR and both backends remain completely unaware of methods.
+ *
+ * Returns 1 when rewritten, 0 when this is not a method call, and -1 after a
+ * method-specific diagnostic.
+ */
+static int prepare_struct_method_call(
+    SemanticContext *ctx,
+    Node *call,
+    StructMethodBinding **out_binding
+) {
+    *out_binding = NULL;
+    if (!call || call->type != NODE_CALL ||
+        !call->as.call.callee || call->as.call.callee->type != NODE_FIELD) {
+        return 0;
+    }
+
+    Node *field = call->as.call.callee;
+    StringView method_name = field->as.field.name;
+
+    /*
+     * Preserve ordinary module-qualified calls such as `std.io.println(...)`.
+     * They use the same dotted NODE_FIELD syntax as source method calls, so
+     * resolve the complete dotted callee first before treating its prefix as a
+     * runtime receiver.
+     */
+    if (field->as.field.dotted_path.length != 0) {
+        int recognized = 0;
+        Symbol *qualified = semantic_lookup_qualified_field_symbol(
+            ctx,
+            field,
+            0,
+            NULL,
+            NULL,
+            &recognized
+        );
+        if (recognized && qualified)
+            return 0;
+    }
+
+    Type *owner_type = associated_method_owner_type(ctx, field->as.field.object);
+    if (owner_type && owner_type->kind == TYPE_STRUCT) {
+        StructMethodBinding *binding = find_struct_method_binding(
+            ctx, owner_type, method_name);
+        if (!binding) {
+            semantic_error_fmt(
+                ctx,
+                call,
+                "struct type '%.*s' has no associated function '%.*s'",
+                (int)owner_type->struct_name.length,
+                owner_type->struct_name.data,
+                (int)method_name.length,
+                method_name.data
+            );
+            return -1;
+        }
+        if (binding->is_instance) {
+            semantic_error_fmt(
+                ctx,
+                call,
+                "instance method '%.*s' must be called on a value",
+                (int)method_name.length,
+                method_name.data
+            );
+            return -1;
+        }
+        if (call->as.call.type_arguments.count > 0) {
+            semantic_error(ctx, call, "generic methods are not supported");
+            return -1;
+        }
+
+        Node *callee = ast_new_ident(
+            ctx->arena,
+            binding->function->as.func_decl.name.data,
+            (int)binding->function->as.func_decl.name.length,
+            field->span
+        );
+        call->as.call.callee = callee;
+        sem_record_expr_info(
+            ctx,
+            callee,
+            binding->function_type,
+            binding->symbol,
+            VALUE_CATEGORY_RVALUE
+        );
+        *out_binding = binding;
+        return 1;
+    }
+
+    Node *object = field->as.field.object;
+    Type *object_type = check_value_expression(ctx, object);
+    if (!object_type)
+        return 0;
+
+    Type *instance_owner = object_type;
+    if (instance_owner->kind == TYPE_POINTER)
+        instance_owner = instance_owner->element;
+    if (!instance_owner || instance_owner->kind != TYPE_STRUCT)
+        return 0;
+
+    StructMethodBinding *binding = find_struct_method_binding(
+        ctx, instance_owner, method_name);
+    if (!binding)
+        return 0;
+    if (!binding->is_instance) {
+        semantic_error_fmt(
+            ctx,
+            call,
+            "associated function '%.*s' must be called through the type",
+            (int)method_name.length,
+            method_name.data
+        );
+        return -1;
+    }
+    if (call->as.call.type_arguments.count > 0) {
+        semantic_error(ctx, call, "generic methods are not supported");
+        return -1;
+    }
+
+    Type *receiver = binding->function_type->parameters[0];
+    Node *receiver_argument = object;
+    if (receiver->kind == TYPE_POINTER && !type_equal(object_type, receiver)) {
+        if (!type_equal(object_type, receiver->element))
+            return 0;
+        if (!expression_is_lvalue(ctx, object)) {
+            semantic_error(
+                ctx,
+                call,
+                "pointer-receiver method requires an addressable value"
+            );
+            return -1;
+        }
+        receiver_argument = ast_new_unary(
+            ctx->arena,
+            TOK_AND,
+            object,
+            object->span
+        );
+    } else if (!type_equal(object_type, receiver)) {
+        return 0;
+    }
+
+    prepend_call_argument(ctx, call, receiver_argument);
+    Node *callee = ast_new_ident(
+        ctx->arena,
+        binding->function->as.func_decl.name.data,
+        (int)binding->function->as.func_decl.name.length,
+        field->span
+    );
+    call->as.call.callee = callee;
+    sem_record_expr_info(
+        ctx,
+        callee,
+        binding->function_type,
+        binding->symbol,
+        VALUE_CATEGORY_RVALUE
+    );
+    *out_binding = binding;
+    return 1;
+}
+
+static Type *check_prepared_struct_method_call(
+    SemanticContext *ctx,
+    Node *call,
+    StructMethodBinding *binding
+) {
+    Type *callee = binding->function_type;
+    int argc = call->as.call.arguments.count;
+    if (argc != callee->parameter_count) {
+        semantic_error_fmt(
+            ctx,
+            call,
+            "wrong number of arguments to method '%.*s': expected %d, got %d",
+            (int)binding->source_name.length,
+            binding->source_name.data,
+            callee->parameter_count - (binding->is_instance ? 1 : 0),
+            argc - (binding->is_instance ? 1 : 0)
+        );
+        return NULL;
+    }
+
+    int ok = 1;
+    for (int i = 0; i < argc; i++) {
+        if (!check_argument_against_parameter(
+                ctx,
+                callee->parameters[i],
+                call->as.call.arguments.items[i])) {
+            ok = 0;
+        }
+    }
+    if (!ok)
+        return NULL;
+
+    ValueCategory category = callee->return_type->kind == TYPE_VOID
+        ? VALUE_CATEGORY_NONE
+        : VALUE_CATEGORY_RVALUE;
+    sem_record_expr_info(ctx, call, callee->return_type, NULL, category);
+    return callee->return_type;
+}
+
 static Type *check_identifier_expression(SemanticContext *ctx, Node *node,IdentifierUse use) {
 
     assert(node);
@@ -8247,6 +8526,11 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         case NODE_IDENT:
             return check_identifier_expression(ctx, node, IDENTIFIER_USE_READ);
 
+        case NODE_TYPE_REF:
+            semantic_error(ctx, node,
+                "type reference can only qualify an associated function call");
+            return NULL;
+
         case NODE_UNARY:
         {
             Type *operand = check_value_expression(ctx, node->as.unary.operand);
@@ -8962,6 +9246,15 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return NULL;
 
         case NODE_CALL: {
+            StructMethodBinding *method_binding = NULL;
+            int method_status = prepare_struct_method_call(
+                ctx, node, &method_binding);
+            if (method_status < 0)
+                return NULL;
+            if (method_status > 0)
+                return check_prepared_struct_method_call(
+                    ctx, node, method_binding);
+
             Symbol *generic_template =
                 resolve_generic_template_callee_no_diag(ctx, node->as.call.callee);
 
@@ -11738,6 +12031,14 @@ static int validate_generic_export_source_type(
 ) {
     if (!source_type)
         return 1;
+    if (generic_decl->type == NODE_STRUCT_DECL &&
+        source_type->kind == TYPE_NAMED &&
+        source_type->named_module.length == 0 &&
+        source_type->type_argument_count == 0 &&
+        source_type->named_name.length == 4 &&
+        memcmp(source_type->named_name.data, "Self", 4) == 0) {
+        return 1;
+    }
     if (source_type_is_generic_parameter(generic_decl, source_type, NULL))
         return 1;
 
@@ -11875,6 +12176,31 @@ static void validate_generic_struct_export(SemanticContext *ctx, Node *node)
         }
     }
 
+    for (int i = 0; i < node->as.struct_decl.methods.count; i++) {
+        Node *method = node->as.struct_decl.methods.items[i];
+        int ok = 1;
+        for (int j = 0; j < method->as.func_decl.params.count && ok; j++) {
+            ok = validate_generic_export_source_type(
+                ctx,
+                node,
+                method->as.func_decl.params.items[j]->as.param_decl.var_type,
+                node,
+                name
+            );
+        }
+        if (ok) {
+            ok = validate_generic_export_source_type(
+                ctx,
+                node,
+                method->as.func_decl.return_type,
+                node,
+                name
+            );
+        }
+        if (!ok)
+            break;
+    }
+
     ctx->current_scope = saved_scope;
     ctx->current_module = saved_module;
     ctx->current_source_id = saved_source_id;
@@ -11928,6 +12254,18 @@ static void validate_one_exported_declaration(
             if (!semantic_export_type_is_public(
                     ctx,
                     type->fields[i].type,
+                    node,
+                    name
+                )) {
+                return;
+            }
+        }
+        for (int i = 0; i < node->as.struct_decl.methods.count; i++) {
+            Node *method = node->as.struct_decl.methods.items[i];
+            if (method->as.func_decl.resolved_type &&
+                !semantic_export_type_is_public(
+                    ctx,
+                    method->as.func_decl.resolved_type,
                     node,
                     name
                 )) {
@@ -12018,6 +12356,18 @@ static void check_program(SemanticContext *ctx, Node *node)
     /* Pass 3: register all function signatures in their module namespaces. */
     for (int i = 0; i < stmts->count; i++) {
         Node *stmt = stmts->items[i];
+        if (stmt->type != NODE_STRUCT_DECL ||
+            stmt->as.struct_decl.type_parameters.count > 0) {
+            continue;
+        }
+
+        semantic_select_source_module(ctx, stmt->span.file_id);
+        register_struct_method_signatures(ctx, stmt);
+    }
+
+    /* Pass 3b: register all top-level function signatures. */
+    for (int i = 0; i < stmts->count; i++) {
+        Node *stmt = stmts->items[i];
         if (stmt->type != NODE_FUNC_DECL)
             continue;
 
@@ -12100,7 +12450,13 @@ static void check_program(SemanticContext *ctx, Node *node)
     for (int i = 0; i < stmts->count; i++) {
         Node *stmt = stmts->items[i];
         if (stmt->type == NODE_MODULE_DECL || stmt->type == NODE_IMPORT_DECL ||
-            stmt->type == NODE_STRUCT_DECL || stmt->type == NODE_ENUM_DECL) {
+            stmt->type == NODE_ENUM_DECL) {
+            continue;
+        }
+
+        if (stmt->type == NODE_STRUCT_DECL) {
+            if (stmt->as.struct_decl.type_parameters.count == 0)
+                check_struct_method_bodies(ctx, stmt);
             continue;
         }
 
@@ -12583,6 +12939,14 @@ static int declare_generic_struct_template(SemanticContext *ctx, Node *node)
         return 0;
     }
 
+    for (int i = 0; i < node->as.struct_decl.methods.count; i++) {
+        Node *method = node->as.struct_decl.methods.items[i];
+        if (method->as.func_decl.type_parameters.count > 0) {
+            semantic_error(ctx, method, "generic methods are not supported");
+            return 0;
+        }
+    }
+
     scope_predeclare_declared(
         ctx,
         node,
@@ -12868,6 +13232,238 @@ static void check_function(SemanticContext *ctx, Node *node)
         return;
 
     check_function_body(ctx, node);
+}
+
+static int string_view_is_self(StringView name)
+{
+    return name.length == 4 && memcmp(name.data, "self", 4) == 0;
+}
+
+static StructMethodBinding *find_struct_method_binding(
+    SemanticContext *ctx,
+    Type *owner_type,
+    StringView name
+) {
+    for (StructMethodBinding *binding = ctx->struct_methods;
+         binding;
+         binding = binding->next) {
+        if (binding->owner_type == owner_type &&
+            string_view_equals(binding->source_name, name)) {
+            return binding;
+        }
+    }
+    return NULL;
+}
+
+static StringView make_struct_method_function_name(
+    SemanticContext *ctx,
+    Type *owner_type,
+    StringView method_name
+) {
+    StringView module_name = ctx->current_module
+        ? ctx->current_module->name
+        : string_view_empty();
+    size_t module_prefix = module_name.length ? module_name.length + 1 : 0;
+    size_t length = module_prefix + owner_type->struct_name.length + 1 + method_name.length;
+    char *buffer = arena_alloc(ctx->arena, length + 1);
+    size_t at = 0;
+    if (module_name.length) {
+        memcpy(buffer + at, module_name.data, module_name.length);
+        at += module_name.length;
+        buffer[at++] = '.';
+    }
+    memcpy(buffer + at, owner_type->struct_name.data, owner_type->struct_name.length);
+    at += owner_type->struct_name.length;
+    buffer[at++] = '.';
+    memcpy(buffer + at, method_name.data, method_name.length);
+    at += method_name.length;
+    buffer[at] = '\0';
+    return string_view(buffer, length);
+}
+
+static int record_struct_method_signature(
+    SemanticContext *ctx,
+    Node *owner_decl,
+    Node *method
+) {
+    assert(owner_decl && owner_decl->type == NODE_STRUCT_DECL);
+    assert(method && method->type == NODE_FUNC_DECL);
+    Type *owner_type = owner_decl->as.struct_decl.resolved_type;
+    assert(owner_type && owner_type->kind == TYPE_STRUCT);
+
+    StringView source_name = method->as.func_decl.name;
+    if (find_struct_method_binding(ctx, owner_type, source_name)) {
+        semantic_error_fmt(
+            ctx,
+            method,
+            "duplicate method '%.*s' on struct '%.*s'",
+            (int)source_name.length,
+            source_name.data,
+            (int)owner_type->struct_name.length,
+            owner_type->struct_name.data
+        );
+        return 0;
+    }
+
+    for (int i = 0; i < owner_type->field_count; i++) {
+        if (string_view_equals(owner_type->fields[i].name, source_name)) {
+            semantic_error_fmt(
+                ctx,
+                method,
+                "method '%.*s' conflicts with a field of the same name",
+                (int)source_name.length,
+                source_name.data
+            );
+            return 0;
+        }
+    }
+
+    if (method->as.func_decl.linkage != FUNCTION_LINKAGE_COGLET ||
+        method->as.func_decl.is_repr_c ||
+        method->as.func_decl.is_variadic ||
+        method->as.func_decl.type_parameters.count > 0) {
+        semantic_error(
+            ctx,
+            method,
+            "generic methods are not supported"
+        );
+        return 0;
+    }
+
+    int is_instance = 0;
+    for (int i = 0; i < method->as.func_decl.params.count; i++) {
+        Node *param = method->as.func_decl.params.items[i];
+        if (!string_view_is_self(param->as.param_decl.name))
+            continue;
+        if (i != 0) {
+            semantic_error(ctx, param, "'self' must be the first method parameter");
+            return 0;
+        }
+        is_instance = 1;
+    }
+
+    scope_push(ctx);
+    scope_define(
+        ctx,
+        string_view_from_cstr("Self"),
+        SYMBOL_TYPE,
+        owner_type
+    );
+    Type *function_type = make_function_type(ctx, method);
+    scope_pop(ctx);
+    if (!function_type)
+        return 0;
+
+    if (is_instance) {
+        Type *receiver = function_type->parameters[0];
+        int valid_receiver = type_equal(receiver, owner_type) ||
+            (receiver->kind == TYPE_POINTER && type_equal(receiver->element, owner_type));
+        if (!valid_receiver) {
+            semantic_error_fmt(
+                ctx,
+                method->as.func_decl.params.items[0],
+                "method receiver 'self' must have type '%.*s' or a pointer to it",
+                (int)owner_type->struct_name.length,
+                owner_type->struct_name.data
+            );
+            return 0;
+        }
+    }
+
+    method->as.func_decl.name = make_struct_method_function_name(
+        ctx, owner_type, source_name);
+    method->as.func_decl.resolved_type = function_type;
+
+    Symbol *symbol = arena_new(ctx->arena, Symbol);
+    *symbol = (Symbol){
+        .name = method->as.func_decl.name,
+        .kind = SYMBOL_FUNCTION,
+        .builtin_kind = BUILTIN_NONE,
+        .type = function_type,
+        .declaration = NULL,
+        .declaration_id = INVALID_SEM_DECL_ID,
+        .variable_storage = VARIABLE_STORAGE_NONE,
+        .flow_owner_id = INVALID_FLOW_OWNER_ID,
+        .variable_id = INVALID_VARIABLE_ID,
+        .next = NULL,
+    };
+
+    SemDeclInfo *func_info = sem_record_decl_info(ctx, method, function_type, symbol);
+    func_info->abi_kind = SEM_DECL_ABI_FUNCTION;
+    func_info->abi.function.abi = FUNCTION_ABI_COGLET;
+    func_info->abi.function.linkage = SEM_FUNCTION_LINKAGE_INTERNAL;
+    func_info->abi.function.c_call_conv = C_CALL_DEFAULT;
+    func_info->abi.function.is_variadic = 0;
+
+    for (int i = 0; i < method->as.func_decl.params.count; i++) {
+        sem_record_decl_info(
+            ctx,
+            method->as.func_decl.params.items[i],
+            function_type->parameters[i],
+            NULL
+        );
+    }
+
+    StructMethodBinding *binding = arena_new(ctx->arena, StructMethodBinding);
+    *binding = (StructMethodBinding){
+        .owner_type = owner_type,
+        .owner_decl = owner_decl,
+        .source_name = source_name,
+        .function = method,
+        .symbol = symbol,
+        .function_type = function_type,
+        .is_instance = is_instance,
+        .next = ctx->struct_methods,
+    };
+    ctx->struct_methods = binding;
+    return 1;
+}
+
+static int register_struct_method_signatures(SemanticContext *ctx, Node *owner_decl)
+{
+    if (!owner_decl || owner_decl->type != NODE_STRUCT_DECL ||
+        owner_decl->as.struct_decl.methods.count == 0) {
+        return 1;
+    }
+
+    if (owner_decl->as.struct_decl.is_repr_c || owner_decl->as.struct_decl.is_union ||
+        owner_decl->as.struct_decl.is_incomplete) {
+        semantic_error(
+            ctx,
+            owner_decl,
+            "methods are currently supported only on ordinary complete Coglet structs"
+        );
+        return 0;
+    }
+
+    int ok = 1;
+    for (int i = 0; i < owner_decl->as.struct_decl.methods.count; i++) {
+        if (!record_struct_method_signature(
+                ctx, owner_decl, owner_decl->as.struct_decl.methods.items[i])) {
+            ok = 0;
+        }
+    }
+    return ok;
+}
+
+static void check_struct_method_bodies(SemanticContext *ctx, Node *owner_decl)
+{
+    if (!owner_decl || owner_decl->type != NODE_STRUCT_DECL)
+        return;
+    for (int i = 0; i < owner_decl->as.struct_decl.methods.count; i++) {
+        Node *method = owner_decl->as.struct_decl.methods.items[i];
+        if (method->as.func_decl.resolved_type) {
+            scope_push(ctx);
+            scope_define(
+                ctx,
+                string_view_from_cstr("Self"),
+                SYMBOL_TYPE,
+                owner_decl->as.struct_decl.resolved_type
+            );
+            check_function_body(ctx, method);
+            scope_pop(ctx);
+        }
+    }
 }
 
 static int declare_struct_shell(SemanticContext *ctx, Node *node) {
@@ -13333,6 +13929,8 @@ static GenericStructSpecialization *instantiate_generic_struct(
         spec->active_parent = ctx->active_generic_struct_specialization;
         ctx->active_generic_struct_specialization = spec;
         fill_struct_fields(ctx, decl);
+        register_struct_method_signatures(ctx, decl);
+        check_struct_method_bodies(ctx, decl);
         ctx->active_generic_struct_specialization = spec->active_parent;
     }
 

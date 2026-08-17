@@ -1,0 +1,9 @@
+Point::struct {
+    x: s32;
+    zero::() -> Self { return Self { x = 0 }; }
+}
+main::() -> s32 {
+    point := Point { x = 1 };
+    point.zero();
+    return 0;
+}

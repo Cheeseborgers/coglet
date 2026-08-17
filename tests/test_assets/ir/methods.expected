@@ -1,0 +1,51 @@
+module target(pointer=64)
+type %t0 "Point" = struct {x: s32, y: s32}
+func @f0 "Point.new"(%0: s32, %1: s32) -> %t0 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : s32 "x"
+    $s1 : s32 "y"
+  bb0 "entry"():
+    %2 = local_addr $s0
+    store %2, %0
+    %3 = local_addr $s1
+    store %3, %1
+    %4 = local_addr $s0
+    %5 = load %4
+    %6 = local_addr $s1
+    %7 = load %6
+    %8 = make_struct (%5, %7)
+    ret %8
+}
+func @f1 "Point.sum"(%0: readonly ptr<%t0>) -> s32 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : readonly ptr<%t0> "self"
+  bb0 "entry"():
+    %1 = local_addr $s0
+    store %1, %0
+    %2 = local_addr $s0
+    %3 = load %2
+    %4 = field_addr %3, field 0
+    %5 = load %4
+    %6 = local_addr $s0
+    %7 = load %6
+    %8 = field_addr %7, field 1
+    %9 = load %8
+    %10 = iadd.checked %5, %9
+    ret %10
+}
+entry @f2 "main"() -> s32 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : %t0 "point"
+  bb0 "entry"():
+    %0 = local_addr $s0
+    %1 = function_ref @f0
+    %2 = const s32 @c0(0x14)
+    %3 = const s32 @c1(0x16)
+    %4 = call %1(%2, %3)
+    store %0, %4
+    %5 = function_ref @f1
+    %6 = local_addr $s0
+    %7 = ptr.qualify %6 to readonly ptr<%t0>
+    %8 = call %5(%7)
+    ret %8
+}

@@ -1,0 +1,10 @@
+module methods_api;
+
+Private::struct { value: s32; }
+
+export Box::<T> struct {
+    value: T;
+    leak::(self: Self) -> Private {
+        return Private { value = 1 };
+    }
+}

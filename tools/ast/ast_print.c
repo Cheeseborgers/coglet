@@ -644,6 +644,12 @@ static void print_node(Node *node)
 
             break;
 
+        case NODE_TYPE_REF:
+            printf("(type_ref ");
+            print_type(node->as.type_ref.source_type);
+            printf(")");
+            break;
+
         case NODE_CONST_DECL:
             printf("(const_decl ");
             print_type(node->as.const_decl.const_type);
@@ -985,6 +991,12 @@ static void print_node(Node *node)
                     printf(" ");
             }
 
+            for (int i = 0; i < node->as.struct_decl.methods.count; i++) {
+                if (node->as.struct_decl.fields.count > 0 || i > 0)
+                    printf(" ");
+                print_node(node->as.struct_decl.methods.items[i]);
+            }
+
             printf(")");
 
             break;
@@ -1185,6 +1197,13 @@ static void print_node_pretty(Node *node, int depth)
 
             print_node_pretty(node->as.index.object, depth + 1);
             print_node_pretty(node->as.index.index, depth + 1);
+            break;
+
+        case NODE_TYPE_REF:
+            indent(depth);
+            printf("type_ref ");
+            print_type(node->as.type_ref.source_type);
+            printf("\n");
             break;
 
         case NODE_EXPR_STMT:
@@ -1645,6 +1664,15 @@ static void print_node_pretty(Node *node, int depth)
             {
                 print_node_pretty(
                     node->as.struct_decl.fields.items[i],
+                    depth + 1
+                );
+            }
+
+
+            for (int i = 0; i < node->as.struct_decl.methods.count; i++)
+            {
+                print_node_pretty(
+                    node->as.struct_decl.methods.items[i],
                     depth + 1
                 );
             }

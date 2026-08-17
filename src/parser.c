@@ -38,7 +38,6 @@ static Node *parse_generic_decl_rest(Parser *p, Token name, SourceSpan span);
 static Node *parse_attribute_decl(Parser *p);
 
 static Node *parse_struct_decl_rest(Parser *p, Token name, SourceSpan span);
-static Node *parse_struct_field(Parser *p);
 static Node *finish_struct_init(Parser *p, Token type_name);
 
 static Node *parse_enum_decl_rest(Parser *p, Token name, SourceSpan span);
@@ -84,6 +83,7 @@ static Node *finish_field(Parser *p, Node *object);
 static Node *finish_index(Parser *p, Node *object);
 
 static int is_assignable(Node *n);
+static int generic_suffix_followed_by_dot(Parser *p);
 
 static void error_at(Parser *p, Token *tok, const char *msg);
 static void add_diagnostic(Parser *p, Token token, const char *message);
@@ -2278,23 +2278,54 @@ static Node *parse_struct_decl_rest(Parser *p,Token name,SourceSpan span) {
     consume(p, TOK_LBRACE);
 
     while (!check(p, TOK_RBRACE) && !check(p, TOK_EOF)) {
-        Node *field = parse_struct_field(p);
-        nodelist_push(p->arena, &decl->as.struct_decl.fields, field);
+        if (!consume(p, TOK_IDENT)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        Token member = p->previous;
+
+        if (match(p, TOK_COLON)) {
+            Type *type = parse_type(p);
+            consume(p, TOK_SEMICOLON);
+            Node *field = ast_new_struct_field_decl(
+                p->arena, type, member.start, member.length, member.span);
+            nodelist_push(p->arena, &decl->as.struct_decl.fields, field);
+            continue;
+        }
+
+        if (match(p, TOK_COLON_COLON)) {
+            GenericTypeParameterList method_type_parameters = {0};
+            if (match(p, TOK_LESS)) {
+                if (!parse_generic_type_parameter_list_after_less(
+                        p,
+                        &method_type_parameters,
+                        "generic method")) {
+                    return ast_new_error(p->arena, p->previous);
+                }
+            }
+            if (!check(p, TOK_LPAREN)) {
+                error_at(p, &p->current,
+                    "struct member declaration must be a field or function");
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
+            }
+            Node *method = parse_proc_decl_rest(p, member, member.span);
+            if (method && method->type == NODE_FUNC_DECL)
+                method->as.func_decl.type_parameters = method_type_parameters;
+            nodelist_push(p->arena, &decl->as.struct_decl.methods, method);
+            continue;
+        }
+
+        error_at(p, &p->current,
+            "expected ':' for a field or '::' for a method");
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
     }
 
     consume(p, TOK_RBRACE);
 
     return decl;
-}
-
-static Node *parse_struct_field(Parser *p) {
-
-    consume(p, TOK_IDENT);
-    Token field = p->previous;
-    consume(p, TOK_COLON);
-    Type *type = parse_type(p);
-    consume(p, TOK_SEMICOLON);
-    return ast_new_struct_field_decl(p->arena, type, field.start, field.length, field.span);
 }
 
 // Struct initializer: `Point{ x = 5, y = 10 }` (trailing comma allowed).
@@ -2608,6 +2639,23 @@ static Node *parse_decl_or_expr_statement(Parser *p)
         }
 
         if (match(p, TOK_COLON_COLON)) {
+            if (check(p, TOK_LESS) && generic_suffix_followed_by_dot(p)) {
+                Node *base = ast_new_ident(
+                    p->arena,
+                    name.start,
+                    name.length,
+                    name.span
+                );
+                base = finish_generic_call(p, base);
+                Node *postfixed = parse_postfix_from(p, base);
+                Node *binary = parse_binary_from(p, postfixed, PREC_LOGICAL_OR);
+                Node *full = parse_assignment_from(p, binary);
+                if (!consume(p, TOK_SEMICOLON)) {
+                    synchronize(p);
+                    return ast_new_error(p->arena, p->current);
+                }
+                return ast_new_expr_stmt(p->arena, full, name.span);
+            }
             return parse_decl_after_name(p, name);
         }
 
@@ -3212,6 +3260,29 @@ static int parse_explicit_type_arguments(Parser *p, TypeList *out, const char *s
     return consume_generic_greater(p, "expected '>' after generic type arguments");
 }
 
+static int generic_suffix_followed_by_dot(Parser *p)
+{
+    if (!p || p->current.type != TOK_LESS)
+        return 0;
+
+    Lexer lookahead = p->lexer;
+    int depth = 1;
+    while (depth > 0) {
+        Token token = lexer_next(&lookahead);
+        if (token.type == TOK_EOF || token.type == TOK_ERROR)
+            return 0;
+        if (token.type == TOK_LESS) {
+            depth++;
+        } else if (token.type == TOK_GREATER) {
+            depth--;
+        } else if (token.type == TOK_SHIFT_RIGHT) {
+            depth -= 2;
+        }
+    }
+
+    return lexer_next(&lookahead).type == TOK_DOT;
+}
+
 static int generic_callee_dotted_name(
     Node *callee,
     StringView *out_module,
@@ -3252,6 +3323,22 @@ static Node *finish_generic_call(Parser *p, Node *callee)
                 p, module_name, type_name, callee->span);
             init->as.struct_init.type_arguments = arguments;
             return init;
+        }
+    }
+
+    if (check(p, TOK_DOT)) {
+        StringView module_name = string_view_empty();
+        StringView type_name = string_view_empty();
+        if (generic_callee_dotted_name(callee, &module_name, &type_name)) {
+            Type *source_type = arena_new(p->arena, Type);
+            memset(source_type, 0, sizeof(*source_type));
+            source_type->kind = TYPE_NAMED;
+            source_type->array_size = -1;
+            source_type->named_module = module_name;
+            source_type->named_name = type_name;
+            source_type->type_arguments = arguments.items;
+            source_type->type_argument_count = arguments.count;
+            return ast_new_type_ref(p->arena, source_type, callee->span);
         }
     }
 

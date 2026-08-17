@@ -81,6 +81,14 @@ struct display names may be copied as frozen diagnostic/debug text, but identity
 CogIR remains the ordinary concrete nominal type ID rather than generated-name
 lookup.
 
+Struct methods and associated functions are also frontend-only syntax. Semantic
+analysis resolves a method call, inserts the receiver argument when applicable,
+and binds the call to an ordinary concrete function before lowering. CogIR
+therefore has no method-call opcode, owner lookup, `Self` type, receiver convention,
+or dynamic-dispatch metadata. A method body lowers exactly like an ordinary
+function body, and a method invocation lowers exactly like an ordinary function
+call. Frozen function/debug names such as `Vec2<f32>.sum` are descriptive only.
+
 ## Compilation unit and module initialization
 
 A `CogIrModule` represents one Coglet compilation unit, not necessarily exactly

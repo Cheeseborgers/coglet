@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/methods/pointer_receiver_temporary.cog:7:18: error: pointer-receiver method requires an addressable value
+    Point.new(1).set(2);
+                 ^~~
+1 semantic error generated.

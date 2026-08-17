@@ -1,0 +1,7 @@
+Point::struct {
+    x: s32;
+    get::(self: Self) -> s32 { return self.x; }
+}
+main::() -> s32 {
+    return Point.get();
+}

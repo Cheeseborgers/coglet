@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/methods/field_name_conflict.cog:3:5: error: method 'x' conflicts with a field of the same name
+    x::(self: Self) -> s32 { return self.x; }
+    ^
+1 semantic error generated.

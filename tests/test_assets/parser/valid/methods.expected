@@ -1,0 +1,56 @@
+program
+  struct Vec2<T: numeric>
+    struct_field_decl x: T
+    struct_field_decl y: T
+    func new -> Self
+      params:
+        param_decl x: T
+        param_decl y: T
+      body:
+        block
+          return
+            struct_init Self
+              field_init x
+                x
+              field_init y
+                y
+    func sum -> T
+      params:
+        param_decl self: Self
+      body:
+        block
+          return
+            (+)
+              field .x
+                self
+              field .y
+                self
+    func set_x -> void
+      params:
+        param_decl self: Self*
+        param_decl value: T
+      body:
+        block
+          (=)
+            field .x
+              (*)
+                self
+            value
+  func main -> s32
+    body:
+      block
+        var_decl value: <inferred>
+          init:
+            call
+              field .new
+                type_ref Vec2::<s32>
+              10
+              20
+        call
+          field .set_x
+            value
+          22
+        return
+          call
+            field .sum
+              value

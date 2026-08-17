@@ -100,6 +100,7 @@ typedef struct SemanticModule SemanticModule;
 typedef struct GenericSpecialization GenericSpecialization;
 typedef struct GenericStructSpecialization GenericStructSpecialization;
 typedef struct SliceTypeIntern SliceTypeIntern;
+typedef struct StructMethodBinding StructMethodBinding;
 
 typedef struct SemanticSourceModule {
     SourceFileId source_id;
@@ -198,6 +199,9 @@ typedef struct {
     GenericSpecialization *active_generic_specialization;
     GenericStructSpecialization *generic_struct_specializations;
     GenericStructSpecialization *active_generic_struct_specialization;
+
+    /* Frontend-only methods attached to concrete nominal struct types. */
+    StructMethodBinding *struct_methods;
 
     /* Canonical structural slice types, frontend-only. */
     SliceTypeIntern *slice_types;

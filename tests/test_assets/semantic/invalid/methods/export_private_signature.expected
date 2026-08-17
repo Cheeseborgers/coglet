@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/methods/export_private_signature.cog:5:1: error: exported declaration 'Box' exposes private type 'Private'
+export Box::<T> struct {
+^~~~~~~~~~
+1 semantic error generated.

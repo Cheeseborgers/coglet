@@ -62,6 +62,7 @@ typedef enum {
     NODE_CALL,         // function calls
     NODE_FIELD,
     NODE_INDEX,
+    NODE_TYPE_REF,     // type used as an associated-member qualifier
 
     NODE_PROGRAM,      // the whole compilation unit: a list of statements
     NODE_MODULE_DECL,  // top-level `module name;` file metadata
@@ -247,6 +248,10 @@ struct Node {
         } index;
 
         struct {
+            Type *source_type;
+        } type_ref;
+
+        struct {
             Token token;
         } error;
 
@@ -363,6 +368,7 @@ struct Node {
             StringView name;
             GenericTypeParameterList type_parameters; /* source generic parameters; empty for ordinary/concrete structs */
             NodeList fields;      // list of NODE_STRUCT_FIELD_DECL
+            NodeList methods;     // NODE_FUNC_DECL namespace members; never part of layout
 
             /*
              * Explicit native C aggregate representation contract:
@@ -467,6 +473,7 @@ Node *ast_new_import_decl(Arena *arena, const char *name, int length, SourceSpan
 Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, SourceSpan span);
 Node *ast_new_var_decl_group(Arena *arena, SourceSpan span);
 Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, SourceSpan span);
+Node *ast_new_type_ref(Arena *arena, Type *source_type, SourceSpan span);
 Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, SourceSpan span);
 Node *ast_new_return(Arena *arena, Node *value, SourceSpan span);
 Node *ast_new_while(Arena *arena, Node *cond, Node *body, SourceSpan span);

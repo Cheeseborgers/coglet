@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/methods/instance_on_type.cog:6:18: error: instance method 'get' must be called on a value
+    return Point.get();
+                 ^~~
+1 semantic error generated.

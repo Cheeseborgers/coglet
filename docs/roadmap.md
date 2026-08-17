@@ -606,7 +606,15 @@ structural concrete arguments, support finite pointer recursion, reject recursiv
 by-value layouts, obey module/export visibility, and participate in generic-function
 inference through parameter shapes. CogIR and both backends remain generic-unaware.
 
-Remaining generic design work includes generic enums/aliases, generic represented-C
-aggregates if justified, methods/associated functions, user-defined
-traits/constraints, specialization, dynamic dispatch, type erasure, and separate
-generic compilation.
+Struct methods and associated functions are now implemented for ordinary complete
+Coglet structs, including generic struct specializations. They are declared in the
+struct body, use `Self` for the concrete owner, support value and pointer receivers,
+and desugar to ordinary function calls before CogIR. The initial facility avoids a
+separate implementation-block language and does not add dispatch machinery.
+
+Remaining generic/type-system design work includes generic enums/aliases, generic
+represented-C aggregates if justified, generic methods, user-defined
+traits/constraints, operator overloading, specialization, dynamic dispatch, type
+erasure, and separate generic compilation. Vector/matrix and container APIs should
+drive the next method/operator design decisions rather than adding syntax in the
+abstract.

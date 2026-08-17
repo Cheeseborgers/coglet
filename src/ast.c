@@ -237,6 +237,12 @@ Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int 
     return node;
 }
 
+Node *ast_new_type_ref(Arena *arena, Type *source_type, SourceSpan span) {
+    Node *node = new_node(arena, NODE_TYPE_REF, span);
+    node->as.type_ref.source_type = source_type;
+    return node;
+}
+
 Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, SourceSpan span) {
     Node *node = new_node(arena, NODE_FUNC_PARAM_DECL, span);
     node->as.param_decl.var_type      = type;
@@ -340,6 +346,10 @@ Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, Sourc
     node->as.struct_decl.fields.items    = NULL;
     node->as.struct_decl.fields.count    = 0;
     node->as.struct_decl.fields.capacity = 0;
+
+    node->as.struct_decl.methods.items    = NULL;
+    node->as.struct_decl.methods.count    = 0;
+    node->as.struct_decl.methods.capacity = 0;
 
     return node;
 }
@@ -549,6 +559,10 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.field.dotted_path = node->as.field.dotted_path;
             break;
 
+        case NODE_TYPE_REF:
+            clone->as.type_ref.source_type = node->as.type_ref.source_type;
+            break;
+
         case NODE_INDEX:
             clone->as.index.object = ast_clone(arena, node->as.index.object);
             clone->as.index.index  = ast_clone(arena, node->as.index.index);
@@ -677,6 +691,19 @@ Node *ast_clone(Arena *arena, const Node *node)
                     arena,
                     &clone->as.struct_decl.fields,
                     ast_clone(arena, node->as.struct_decl.fields.items[i])
+                );
+            }
+
+
+            clone->as.struct_decl.methods.items = NULL;
+            clone->as.struct_decl.methods.count = 0;
+            clone->as.struct_decl.methods.capacity = 0;
+
+            for (int i = 0; i < node->as.struct_decl.methods.count; i++) {
+                nodelist_push(
+                    arena,
+                    &clone->as.struct_decl.methods,
+                    ast_clone(arena, node->as.struct_decl.methods.items[i])
                 );
             }
             break;

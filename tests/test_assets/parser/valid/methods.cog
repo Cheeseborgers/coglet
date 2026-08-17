@@ -1,0 +1,22 @@
+Vec2::<T: numeric> struct {
+    x: T;
+    y: T;
+
+    new::(x: T, y: T) -> Self {
+        return Self { x = x, y = y };
+    }
+
+    sum::(self: Self) -> T {
+        return self.x + self.y;
+    }
+
+    set_x::(self: Self*, value: T) -> void {
+        (*self).x = value;
+    }
+}
+
+main::() -> s32 {
+    value := Vec2::<s32>.new(10, 20);
+    value.set_x(22);
+    return value.sum();
+}

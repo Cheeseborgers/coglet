@@ -1,0 +1,9 @@
+Point::struct {
+    x: s32;
+    new::(x: s32) -> Self { return Self { x = x }; }
+    set::(self: Self*, x: s32) -> void { (*self).x = x; }
+}
+main::() -> s32 {
+    Point.new(1).set(2);
+    return 0;
+}

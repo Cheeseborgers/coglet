@@ -1,0 +1,4 @@
+Point::struct {
+    x: s32;
+    x::(self: Self) -> s32 { return self.x; }
+}

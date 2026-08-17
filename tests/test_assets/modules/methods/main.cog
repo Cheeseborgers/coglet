@@ -1,0 +1,7 @@
+import method_api;
+
+main::() -> s32 {
+    counter := method_api.Counter::<s32>.new(40);
+    counter.set(42);
+    return counter.get();
+}

@@ -797,6 +797,21 @@ set_tests_properties(
 )
 
 add_test(
+        NAME cog_ir_methods_lowering_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/methods.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/methods.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_methods_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;method;struct;semantic;desugar"
+)
+
+add_test(
         NAME cog_ir_slices_lowering_dump
         COMMAND "${CMAKE_COMMAND}"
         -DEXE=$<TARGET_FILE:dump_ir>
@@ -1257,6 +1272,11 @@ add_host_c_executable_test(
 )
 
 add_host_c_executable_test(
+        backend_methods methods.cog 42
+        "backend;backend.c;ir;method;generic;struct;semantic;desugar"
+)
+
+add_host_c_executable_test(
         backend_slices slices.cog 0
         "backend;backend.c;ir;slice;string;aggregate;generic"
 )
@@ -1519,6 +1539,19 @@ add_test(
 )
 set_tests_properties(driver_modules_generic_struct_private_visibility
         PROPERTIES LABELS "driver;semantic;generic;struct;module;import;visibility;private;multi-file;invalid")
+
+add_test(
+        NAME backend_modules_methods_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/methods/main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/methods/api.cog"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_methods_host_c
+        -DEXPECT_EXIT=42
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_methods_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;method;generic;struct;module;import;visibility;multi-file")
 
 add_test(
         NAME backend_modules_dotted_longest_prefix_host_c
@@ -2355,6 +2388,11 @@ if(COGLET_HAS_LLVM_BACKEND)
     set_tests_properties(backend_llvm_generic_structs
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;generic;struct;semantic;monomorphization;codegen;object;linker;stage7")
     add_llvm_stage7_native_test(
+        backend_llvm_methods methods.cog 42
+    )
+    set_tests_properties(backend_llvm_methods
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;method;generic;struct;semantic;desugar;codegen;object;linker;stage7")
+    add_llvm_stage7_native_test(
         backend_llvm_slices slices.cog 0
     )
     set_tests_properties(backend_llvm_slices
@@ -2522,6 +2560,20 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_generic_struct_debug_ir
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;metadata;generic;struct;monomorphization;stage9;O0")
+
+    add_test(
+        NAME backend_llvm_methods_debug_ir
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/methods.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_methods_debug_ir.ll
+        -DOPT_LEVEL=0
+        "-DREQUIRED_TEXT_1=!DISubprogram(name: \"Point.new\""
+        "-DREQUIRED_TEXT_2=!DISubprogram(name: \"Point.sum\""
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_debug_ir_test.cmake"
+    )
+    set_tests_properties(backend_llvm_methods_debug_ir
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;metadata;method;struct;desugar;stage9;O0")
 
     add_test(
         NAME backend_llvm_stage9_debug_O2_ir

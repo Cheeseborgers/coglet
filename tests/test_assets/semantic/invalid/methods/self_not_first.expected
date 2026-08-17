@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/methods/self_not_first.cog:3:26: error: 'self' must be the first method parameter
+    broken::(value: s32, self: Self) -> s32 {
+                         ^~~~
+1 semantic error generated.

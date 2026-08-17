@@ -1,0 +1,7 @@
+Box::<T> struct {
+    value: T;
+
+    map::<U>(value: U) -> U {
+        return value;
+    }
+}

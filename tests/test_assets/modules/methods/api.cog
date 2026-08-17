@@ -1,0 +1,17 @@
+module method_api;
+
+export Counter::<T: integer> struct {
+    value: T;
+
+    new::(value: T) -> Self {
+        return Self { value = value };
+    }
+
+    get::(self: readonly Self*) -> T {
+        return (*self).value;
+    }
+
+    set::(self: Self*, value: T) -> void {
+        (*self).value = value;
+    }
+}

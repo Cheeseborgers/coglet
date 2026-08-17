@@ -515,16 +515,45 @@ Pair::<T, U> struct {
 }
 ```
 
-Conceptually, the generic-struct addition is:
+Conceptually, generic structs and struct members are:
 
 ```ebnf
 generic_struct_declaration =
     identifier "::" generic_type_parameter_list
-    "struct" "{" {struct_field_decl} "}";
+    "struct" "{" {struct_member} "}";
+
+struct_member =
+      struct_field_decl
+    | struct_method_decl;
+
+struct_method_decl =
+    identifier "::"
+    "(" [parameter_list] ")"
+    ["->" type]
+    block;
 
 generic_type_application =
     named_type "::" "<" type {"," type} ">";
 ```
+
+The same `struct_member` rule applies to ordinary complete Coglet structs. A
+method declaration with first parameter `self` is an instance method; one without
+`self` is an associated function. `Self` denotes the concrete owner inside method
+signatures and bodies. Generic methods (`method::<U>(...)`) are not part of the
+initial method grammar.
+
+Calls use:
+
+```c
+value.method(args);
+Point.new(args);
+Vec2::<f32>.new(args);
+```
+
+A generic type application followed by `.` is parsed as a type-qualified
+associated call. This context also preserves the existing interpretation of `>>`
+as nested generic-list closing delimiters while ordinary expression `>>` remains
+the shift operator.
 
 Concrete generic struct types and constructors use explicit arguments:
 

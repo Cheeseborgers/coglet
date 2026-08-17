@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/methods/generic_method.cog:4:5: error: generic methods are not supported
+    map::<U>(value: U) -> U {
+    ^~~
+1 semantic error generated.

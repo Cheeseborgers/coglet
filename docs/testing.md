@@ -636,6 +636,22 @@ ctest \
     --output-on-failure
 ```
 
+Method and associated-function work can be selected by name:
+
+```bash
+ctest \
+    --test-dir cmake-build-debug \
+    -R "methods|method_" \
+    --output-on-failure
+```
+
+The method coverage includes parser snapshots, valid and invalid semantic cases,
+semantic-info verification, CogIR desugaring snapshots, host-C execution, module
+visibility, and conditional LLVM execution. Important negative fixtures cover bad
+receiver types, non-first `self`, pointer receivers on temporaries, associated
+functions called through values, instance methods called through types, field/name
+conflicts, and exported signatures that leak private types.
+
 A focused run does not replace the complete semantic or full regression suite.
 
 ## Sanitizer Verification

@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/methods/associated_on_value.cog:7:11: error: associated function 'zero' must be called through the type
+    point.zero();
+          ^~~~
+1 semantic error generated.

@@ -1149,6 +1149,25 @@ functions or nominal struct types, so neither host-C nor LLVM contains
 generic-specific runtime or name-recovery logic. Frontend template/type objects
 therefore do not cross the CogIR lifetime boundary.
 
+Struct methods use the same frontend-only boundary. During semantic analysis each
+method is registered as an ordinary concrete function associated with its owning
+nominal struct. `Self` resolves in a temporary method scope to that concrete owner.
+For generic structs, cloned concrete method declarations are resolved and checked
+as part of the concrete struct specialization.
+
+A call such as `value.method(args)` is resolved before lowering. Semantic analysis
+selects the method by owner type, validates receiver form, inserts the implicit
+receiver as the first ordinary call argument, and records the concrete function
+symbol on the rewritten callee. Pointer receivers may auto-borrow an addressable
+owner value, but temporaries are not implicitly borrowed. Associated calls such as
+`Vec2::<f32>.new(...)` resolve through the concrete type instead of a value.
+
+After this rewrite, CogIR lowering sees only normal function declarations and
+normal calls. There is no method lookup, receiver insertion, `Self`, or dynamic
+dispatch in CogIR or either backend. Concrete method display/debug names are
+deterministic (`Point.new`, `Vec2<f32>.sum`) but symbol text is not used as semantic
+identity.
+
 ## Contextual Conversion Metadata
 
 Semantic analysis now records implicit/contextual expression adaptation

@@ -380,6 +380,32 @@ argument-based inference; generic struct types are explicit, for example
 `ordered`). Every specialization is resolved and checked before CogIR, so both
 backends see only ordinary concrete functions and nominal struct layouts.
 
+Ordinary complete Coglet structs may also declare methods directly beside their
+fields. A first parameter named `self` makes the declaration an instance method;
+a declaration without `self` is an associated function. `Self` names the owning
+concrete struct inside the method signature and body:
+
+```c
+Vec2::<T: numeric> struct {
+    x: T;
+    y: T;
+
+    new::(x: T, y: T) -> Self {
+        return Self { x = x, y = y };
+    }
+
+    sum::(self: readonly Self*) -> T {
+        return (*self).x + (*self).y;
+    }
+}
+
+point := Vec2::<f32>.new(1.0, 2.0);
+total := point.sum();
+```
+
+Methods are frontend sugar only: semantic analysis inserts the receiver and
+lowers both forms to ordinary concrete function calls before CogIR.
+
 ### Expressions
 
 Supported expression forms include:

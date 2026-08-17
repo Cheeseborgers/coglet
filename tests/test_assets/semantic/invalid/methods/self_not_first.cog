@@ -1,0 +1,6 @@
+Point::struct {
+    x: s32;
+    broken::(value: s32, self: Self) -> s32 {
+        return value;
+    }
+}

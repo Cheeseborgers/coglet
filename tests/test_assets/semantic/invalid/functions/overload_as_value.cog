@@ -1,0 +1,11 @@
+value::(x: f32) -> f32 {
+    return x;
+}
+
+value::(x: f64) -> f64 {
+    return x;
+}
+
+test::() -> void {
+    fn := value;
+}

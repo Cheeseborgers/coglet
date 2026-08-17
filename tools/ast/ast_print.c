@@ -685,6 +685,10 @@ static void print_node(Node *node)
         case NODE_IMPORT_DECL:
             printf("(import ");
             print_string_view(node->as.import_decl.name);
+            if (node->as.import_decl.alias.length) {
+                printf(" as ");
+                print_string_view(node->as.import_decl.alias);
+            }
             printf(")");
             break;
 
@@ -1239,7 +1243,12 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_IMPORT_DECL:
             indent(depth);
             printf("import ");
-            print_string_view_ln(node->as.import_decl.name);
+            print_string_view(node->as.import_decl.name);
+            if (node->as.import_decl.alias.length) {
+                printf(" as ");
+                print_string_view(node->as.import_decl.alias);
+            }
+            printf("\n");
             break;
 
         case NODE_VAR_DECL:

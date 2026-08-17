@@ -1,0 +1,4 @@
+module app.core;
+import std.math as math;
+value: math.Pair = math.Pair { x = 1, y = 2 };
+run::() -> s32 { return math.add(value.x, value.y); }

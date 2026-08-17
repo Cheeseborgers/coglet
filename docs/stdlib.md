@@ -66,19 +66,19 @@ Vec2<T: numeric>
 Vec3<T: numeric>
 Vec4<T: numeric>
 
-sqrt_f32/sqrt_f64
-sin_f32/sin_f64
-cos_f32/cos_f64
-tan_f32/tan_f64
-asin_f32/asin_f64
-acos_f32/acos_f64
-atan_f32/atan_f64
-atan2_f32/atan2_f64
-floor_f32/floor_f64
-ceil_f32/ceil_f64
-round_f32/round_f64
-trunc_f32/trunc_f64
-fmod_f32/fmod_f64
+sqrt(f32) / sqrt(f64)
+sin(f32) / sin(f64)
+cos(f32) / cos(f64)
+tan(f32) / tan(f64)
+asin(f32) / asin(f64)
+acos(f32) / acos(f64)
+atan(f32) / atan(f64)
+atan2(f32, f32) / atan2(f64, f64)
+floor(f32) / floor(f64)
+ceil(f32) / ceil(f64)
+round(f32) / round(f64)
+trunc(f32) / trunc(f64)
+fmod(f32, f32) / fmod(f64, f64)
 ```
 
 The floating constants are written as hexadecimal floating-point source constants
@@ -141,6 +141,9 @@ scale(scalar)           scalar multiplication
 dot(other)              dot product
 length_squared()         squared Euclidean length
 distance_squared(other) squared Euclidean distance
+length()                 Euclidean length for floating specializations
+distance(other)          Euclidean distance for floating specializations
+normalized()             unit vector for non-zero floating specializations
 min(other)              component-wise minimum
 max(other)              component-wise maximum
 clamp(low, high)         component-wise clamp
@@ -151,21 +154,22 @@ clamp(low, high)         component-wise clamp
 rules; for example, an unsigned subtraction or cross-product component can still
 hit the language's ordinary checked underflow behavior.
 
-The first vector slice intentionally exposes squared length/distance rather than
-`length`, `distance`, or normalization. Those require selecting the concrete
-`f32` or `f64` runtime square-root entry point from generic code, while the
-current generic system has neither overload resolution nor compile-time type
-dispatch and struct constraints currently apply to the entire attached method
-set. The stdlib does not hide that gap behind lossy casts or approximation code.
-Likewise, operator overloading is not yet present; the method spelling is the
-stable explicit API until that language design is addressed.
+`length`, `distance`, and `normalized` are checked lazily with the concrete
+generic-vector specialization. They are therefore available for `VecN<f32>` and
+`VecN<f64>` because the concrete body resolves the exact `sqrt` overload and
+floating-point division. Integer vectors remain valid and retain their non-floating
+operations; attempting to call one of these floating-only-by-body-validity methods
+on `VecN<s32>` or another integer specialization produces a semantic diagnostic at
+the call and invalid operation. `normalized()` requires a non-zero vector; no safe
+zero-length normalization helper is provided yet.
 
-The runtime-backed functions use precision-explicit names because Coglet does not
-yet have overload resolution or compile-time type dispatch. For example,
-`sin_f32` and `sin_f64` map to distinct reserved runtime ABI symbols but remain
-ordinary `#extern(c)` declarations from the language's point of view. This is a
-temporary public API compromise tracked in `docs/known_shortcomings.md`; it does
-not justify a standard-library-only compiler special case.
+Runtime-backed math has a type-directed public API implemented with Coglet's
+strict exact overload resolution. For example, `sin(x)` selects `sin(f32)` for an
+`f32` argument and `sin(f64)` for an `f64` argument. Untyped floating literals
+follow ordinary Coglet defaulting, so `sin(1.0)` selects `f64`; an expected return
+type does not steer overload selection. The private `_f32`/`_f64` declarations
+remain only as the standard library's bridge to distinct reserved runtime ABI
+symbols. There is no stdlib-specific backend or compiler intrinsic for these calls.
 
 The transcendental functions delegate to the host C math implementation through
 `stdlib/runtime/coglet_runtime.c`. `floor`, `ceil`, `trunc`, and `fmod` follow the

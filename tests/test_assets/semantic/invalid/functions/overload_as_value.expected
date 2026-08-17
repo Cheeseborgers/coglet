@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/functions/overload_as_value.cog:10:11: error: overloaded function 'value' can only be used as a call target
+    fn := value;
+          ^~~~~
+1 semantic error generated.

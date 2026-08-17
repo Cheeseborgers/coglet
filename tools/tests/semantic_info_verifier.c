@@ -486,7 +486,9 @@ static void walk_node(ExpressionWalker *walker, Node *node)
             /*
              * Generic source templates are intentionally not semantically
              * checked as concrete bodies. Their synthesized monomorphizations
-             * are walked separately below.
+             * are walked separately below. Concrete methods attached to a
+             * generic-struct specialization may also defer body checking until
+             * first use; their signature declarations are still verified here.
              */
             if (node->as.func_decl.type_parameters.count > 0)
                 break;
@@ -494,6 +496,15 @@ static void walk_node(ExpressionWalker *walker, Node *node)
                 walker,
                 &node->as.func_decl.params
             );
+            {
+                SemDeclInfo *function_info =
+                    semantic_get_decl_info(walker->sem, node);
+                if (function_info &&
+                    function_info->is_deferred_generic_method &&
+                    !function_info->semantic_check_complete) {
+                    break;
+                }
+            }
             walk_node(
                 walker,
                 node->as.func_decl.body

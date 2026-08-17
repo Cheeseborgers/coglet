@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/functions/overload_duplicate_parameters.cog:5:1: error: duplicate overload for function 'value' with the same parameter types
+value::(x: f32) -> f64 {
+^~~~~
+1 semantic error generated.

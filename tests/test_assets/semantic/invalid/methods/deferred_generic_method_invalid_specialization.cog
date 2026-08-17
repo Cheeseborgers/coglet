@@ -1,0 +1,20 @@
+sqrt::(value: f32) -> f32 {
+    return value;
+}
+
+sqrt::(value: f64) -> f64 {
+    return value;
+}
+
+Vec::<T: numeric> struct {
+    x: T;
+
+    length::(self: Self) -> T {
+        return sqrt(self.x * self.x);
+    }
+}
+
+test::() -> void {
+    v := Vec::<s32> { x = 3 };
+    v.length();
+}

@@ -1,0 +1,6 @@
+import math as m;
+
+main::() -> s32 {
+    pair := m.make_pair(20, 22);
+    return m.sum_pair(pair);
+}

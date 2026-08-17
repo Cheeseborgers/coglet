@@ -3464,17 +3464,36 @@ Node *parse_program(Parser *p) {
             } else {
                 ParsedDottedName name =
                     parse_dotted_name_from_first(p, p->previous);
-                if (!consume(p, TOK_SEMICOLON)) {
+                StringView import_alias = string_view_empty();
+                SourceSpan directive_span = source_span_join(keyword.span, name.span);
+
+                if (!is_module && check(p, TOK_IDENT) &&
+                    token_text_equals(p->current, "as")) {
+                    advance(p);
+                    if (!consume(p, TOK_IDENT)) {
+                        synchronize(p);
+                        decl = ast_new_error(p->arena, p->current);
+                    } else {
+                        import_alias = string_view(
+                            p->previous.start,
+                            (size_t)p->previous.length
+                        );
+                        directive_span = source_span_join(directive_span, p->previous.span);
+                    }
+                }
+
+                if (!decl && !consume(p, TOK_SEMICOLON)) {
                     synchronize(p);
                     decl = ast_new_error(p->arena, p->current);
-                } else if (is_module) {
+                } else if (!decl && is_module) {
                     decl = ast_new_module_decl(
                         p->arena, name.full.data, (int)name.full.length,
-                        source_span_join(keyword.span, name.span));
-                } else {
+                        directive_span);
+                } else if (!decl) {
                     decl = ast_new_import_decl(
                         p->arena, name.full.data, (int)name.full.length,
-                        source_span_join(keyword.span, name.span));
+                        import_alias.data, (int)import_alias.length,
+                        directive_span);
                 }
             }
         } else if (check(p, TOK_IDENT) &&

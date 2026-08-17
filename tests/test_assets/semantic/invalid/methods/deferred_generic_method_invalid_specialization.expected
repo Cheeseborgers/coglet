@@ -1,0 +1,7 @@
+tests/test_assets/semantic/invalid/methods/deferred_generic_method_invalid_specialization.cog:13:16: error: no exact overload of 'sqrt' matches argument types (s32)
+        return sqrt(self.x * self.x);
+               ^~~~
+tests/test_assets/semantic/invalid/methods/deferred_generic_method_invalid_specialization.cog:19:7: error: cannot use method 'length' for Vec<s32> because its body is not valid for this specialization
+    v.length();
+      ^~~~~~
+2 semantic errors generated.

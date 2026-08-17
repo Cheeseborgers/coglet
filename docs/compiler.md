@@ -1123,6 +1123,15 @@ formed from the source function name plus concrete types in parameter order, for
 example `min<s32>` or `first<s32, u64>`. The name is descriptive only; stable
 specialization identity remains `SemDeclId + structural type arguments`.
 
+Ordinary function overload sets are also resolved entirely during semantic analysis.
+A scope may contain multiple ordinary non-generic Coglet functions with the same
+name when their concrete parameter lists differ. At a call, arguments are checked
+and normal untyped-numeric defaulting is applied once; the checker then selects the
+single visible candidate whose parameter list is structurally exact. No conversion
+ranking or expected-result-type selection occurs. Semantic call metadata records the
+selected function symbol, so lowering receives an ordinary concrete direct call and
+has no overload concept.
+
 Generic structs use the same frontend-only specialization boundary. A generic
 struct template receives a stable declaration ID but no concrete runtime layout.
 A concrete application is cached by `template SemDeclId + structural concrete
@@ -1152,8 +1161,13 @@ therefore do not cross the CogIR lifetime boundary.
 Struct methods use the same frontend-only boundary. During semantic analysis each
 method is registered as an ordinary concrete function associated with its owning
 nominal struct. `Self` resolves in a temporary method scope to that concrete owner.
-For generic structs, cloned concrete method declarations are resolved and checked
-as part of the concrete struct specialization.
+For generic structs, cloned concrete method signatures are resolved as part of the
+concrete struct specialization, but method bodies are checked lazily on first use of
+that concrete method. The semantic side table records deferred/checking/complete or
+failed state. Recursive use may reuse an in-progress concrete signature; a failed
+body is summarized at the method call and is not repeatedly rechecked. Unused
+deferred method bodies are intentionally skipped by CogIR lowering and semantic-info
+body verification because they have no checked semantic facts yet.
 
 A call such as `value.method(args)` is resolved before lowering. Semantic analysis
 selects the method by owner type, validates receiver form, inserts the implicit

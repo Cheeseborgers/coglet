@@ -153,6 +153,22 @@ import std.math;
 main::() -> s32 { return std.math.add(20, 22); }
 ```
 
+Imports may use a file-local alias when the canonical path is too repetitive:
+
+```c
+import std.math as math;
+import std.io as io;
+
+main::() -> s32 {
+    io.print_s32(math.add(20, 22));
+    io.newline();
+    return 0;
+}
+```
+
+The alias changes only local qualification; module discovery and identity still
+use the canonical name (`std.math`, `std.io`).
+
 Module names are absolute dotted identifier paths. The same dot is used for
 module qualification and ordinary member selection: `std.math.add`,
 `std.math.Pair`, `std.math.Mode.Red`, `state.point.x`. Semantic resolution uses

@@ -1,0 +1,14 @@
+choose::(value: f32) -> s32 {
+    return 32;
+}
+
+choose::(value: f64) -> s32 {
+    return 64;
+}
+
+test::() -> s32 {
+    value32: f32 = 1.0;
+    a := choose(value32);
+    b := choose(1.0);
+    return a + b;
+}

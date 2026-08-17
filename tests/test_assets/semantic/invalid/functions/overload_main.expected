@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/functions/overload_main.cog:5:1: error: executable entry point 'main' cannot be overloaded
+main::(value: s32) -> s32 {
+^~~~
+1 semantic error generated.

@@ -290,6 +290,13 @@ typedef struct SemDeclInfo {
     /* Concrete frontend monomorphization synthesized from a generic template. */
     int is_generic_specialization;
 
+    /*
+     * Method attached to a concrete generic-struct specialization whose body
+     * is checked lazily on first use. The signature is already concrete.
+     */
+    int is_deferred_generic_method;
+    int deferred_method_check_failed;
+
     /* True only for the validated root-namespace `main::() -> s32`. */
     int is_executable_entry;
 

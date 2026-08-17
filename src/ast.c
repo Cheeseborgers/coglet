@@ -205,10 +205,19 @@ Node *ast_new_module_decl(Arena *arena, const char *name, int length, SourceSpan
     return node;
 }
 
-Node *ast_new_import_decl(Arena *arena, const char *name, int length, SourceSpan span) {
+Node *ast_new_import_decl(
+    Arena *arena,
+    const char *name,
+    int length,
+    const char *alias,
+    int alias_length,
+    SourceSpan span
+) {
     Node *node = new_node(arena, NODE_IMPORT_DECL, span);
     node->as.import_decl.name.data = name;
     node->as.import_decl.name.length = (size_t)length;
+    node->as.import_decl.alias.data = alias;
+    node->as.import_decl.alias.length = (size_t)alias_length;
     return node;
 }
 
@@ -588,6 +597,7 @@ Node *ast_clone(Arena *arena, const Node *node)
 
         case NODE_IMPORT_DECL:
             clone->as.import_decl.name = node->as.import_decl.name;
+            clone->as.import_decl.alias = node->as.import_decl.alias;
             break;
 
         case NODE_VAR_DECL:

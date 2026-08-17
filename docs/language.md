@@ -30,6 +30,23 @@ main::() -> s32 {
 }
 ```
 
+For shorter local spelling, an import may declare a file-local alias:
+
+```c
+import std.math as math;
+
+main::() -> s32 {
+    math.counter = math.add(20, 22);
+    return math.counter;
+}
+```
+
+The canonical module remains `std.math`; the alias affects only qualification in
+the importing file. Automatic discovery, diagnostics about the imported module,
+and module identity continue to use the canonical name. An aliased import is
+qualified through the alias in that file, so `std.math.*` is not simultaneously
+made visible by `import std.math as math;`.
+
 Module names may contain any number of identifier components (`math`,
 `std.math`, `vendor.graphics.math`). Files without a module declaration belong
 to the root namespace. Multiple physical files may contribute declarations to
@@ -518,6 +535,41 @@ Nested functions may still refer to visible global variables, compile-time const
 Closure environments and captured runtime storage remain future language-design work.
 
 
+## Exact Function Overloads
+
+Ordinary non-generic Coglet functions may share a name when their concrete
+parameter type lists differ. Overload resolution is intentionally exact and does
+not use C++-style conversion ranking:
+
+```c
+measure::(value: f32) -> f32 { return value; }
+measure::(value: f64) -> f64 { return value; }
+
+test::() -> void {
+    x: f32 = 1.0;
+    a := measure(x);   // measure(f32)
+    b := measure(1.0); // untyped float defaults to f64, then measure(f64)
+}
+```
+
+Arguments are checked once and untyped numeric literals use the language's normal
+inference/defaulting rules before overload selection. A candidate matches only when
+each resulting argument type exactly equals the corresponding parameter type. The
+return type is not used to choose an overload, and there is no implicit-conversion
+ranking, best-match scoring, or source-order tie breaking.
+
+Two overloads may not differ only by return type because their parameter lists are
+identical. This first overload facility is limited to ordinary non-generic,
+non-variadic Coglet functions. `#extern(c)`, `#repr(c)`, generic functions, methods,
+and the executable `main` entry point do not form overload sets. An overloaded
+function name is currently usable only as a direct call target; selecting an
+overload as a first-class function value requires future function-type contextual
+resolution.
+
+Overloads are ordinary semantic functions. The selected concrete declaration is
+recorded before CogIR lowering, so CogIR and both backends see a normal direct
+function reference and contain no overload-resolution machinery.
+
 ## Generic Functions and Structs
 
 Coglet generics are deliberately frontend-only and compile-time monomorphized.
@@ -692,11 +744,19 @@ is passed as an ordinary value. Method bodies currently use explicit pointer
 dereference for field access, for example `(*self).x`.
 
 Methods on generic structs are specialized together with their concrete owning
-struct. Associated and instance calls are resolved semantically and rewritten to
-ordinary concrete function calls with an explicit receiver before CogIR lowering.
-CogIR and both backends contain no method-dispatch concept. There is no virtual
-dispatch, method overloading, extension-method mechanism, generic method type
-parameter list, or operator overloading in this first version.
+struct. Their concrete signatures are registered with the specialization, while a
+method body is checked lazily the first time that concrete method is used. This
+allows a broad owner constraint such as `T: numeric` to coexist with a method whose
+body is valid only for floating concrete specializations: unused invalid method
+bodies do not invalidate the owning type, but calling one produces the ordinary
+body diagnostic plus a specialization-use summary. Successfully checked bodies are
+cached and lower normally.
+
+Associated and instance calls are resolved semantically and rewritten to ordinary
+concrete function calls with an explicit receiver before CogIR lowering. CogIR and
+both backends contain no method-dispatch concept. There is no virtual dispatch,
+method overloading, extension-method mechanism, generic method type parameter list,
+or operator overloading in this first version.
 
 ## Void-Returning Calls
 

@@ -28,11 +28,12 @@ should not be forgotten.
 
 ## `std.math`
 
-- **Runtime math has precision-suffixed public names.** Coglet has no overload
-  resolution or compile-time type dispatch, so the first runtime API exposes
-  pairs such as `sin_f32`/`sin_f64` and `sqrt_f32`/`sqrt_f64`. A future language
-  mechanism should allow the public spelling `std.math.sin(x)` without adding a
-  special compiler rule solely for the standard library.
+- **Exact overloads deliberately do not perform conversion ranking.** The first
+  overload facility matches only exact concrete parameter lists after normal
+  untyped-numeric defaulting. `sqrt(1.0)` therefore selects `f64`, and an expected
+  destination such as `result: f32 = sqrt(1.0)` does not cause the `f32` overload
+  to win. Overloaded function values, generic overloads, method overloads, and C
+  ABI overload sets remain future work.
 - **Transcendental results are platform-libm results.** Host-C and LLVM call the
   same Coglet runtime ABI, but the runtime delegates to the host C math library.
   The language does not currently guarantee bit-identical transcendental results
@@ -52,17 +53,16 @@ should not be forgotten.
 
 ## Vector math
 
-- **Generic vectors cannot yet expose clean `length`/`distance`/normalization methods.**
-  `Vec2<T>`, `Vec3<T>`, and `Vec4<T>` currently provide squared length/distance,
-  but generic code cannot select `sqrt_f32` versus `sqrt_f64` without overload
-  resolution or compile-time type dispatch. Do not solve this with hidden casts or
-  stdlib-only compiler magic; the same future mechanism should improve the public
-  runtime-math API generally.
-- **Struct constraints apply to the whole method set.** The vectors use
+- **Struct constraints still apply to the whole method set.** The vectors use
   `T: numeric` so integer grid vectors and floating gameplay vectors share one type
-  family. There is no way yet to attach a `floating` requirement only to methods
-  such as normalization or interpolation. Method-specific constraints should be
-  considered together with the future generic-method/constraint design.
+  family. Generic-struct method bodies are now checked lazily, which lets
+  `length`/`distance`/`normalized` exist and succeed for floating specializations
+  while an integer vector remains usable until such a method is called. This is a
+  semantic validity mechanism, not an explicit method contract; method-specific
+  constraints should still be designed with future generic-method constraints.
+- **Vector normalization has a non-zero precondition.** `normalized()` divides by
+  `length()` and currently has no `try_normalized`, epsilon policy, or zero-vector
+  fallback. Game code that may normalize degenerate vectors must guard that case.
 - **Vector arithmetic is scalar arithmetic, not SIMD or special backend IR.** The
   current vectors are ordinary Coglet structs. They have no guaranteed packed/SIMD
   ABI, no shader-vector ABI promise, and no automatic vector instruction mapping.
@@ -141,9 +141,10 @@ should not be forgotten.
   can write `value.set_x(1)`, but the body currently writes `(*self).x`; Coglet has
   no implicit pointer-field dereference or `->` syntax.
 - **Generic struct constraints apply to the whole attached method set.** Concrete
-  specialization currently resolves/checks every method body on the specialized
-  owner. There is no method-specific generic constraint mechanism for operations
-  needed by only one method.
+  specialization resolves every method signature, but generic-struct method bodies
+  are checked lazily on first use. That permits specialization-specific body
+  validity without declaring the requirement in the method signature. There is
+  still no explicit method-specific generic constraint mechanism.
 - **Operator overloading is still absent.** Vector/matrix and container code should
   drive that design now that ordinary methods exist, rather than introducing a
   separate trait or dispatch system prematurely.

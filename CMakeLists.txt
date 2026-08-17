@@ -1267,6 +1267,11 @@ add_host_c_executable_test(
 )
 
 add_host_c_executable_test(
+        backend_exact_overloads overloads.cog 42
+        "backend;backend.c;ir;semantic;overload;dispatch"
+)
+
+add_host_c_executable_test(
         backend_generic_structs generic_structs.cog 42
         "backend;backend.c;ir;generic;struct;semantic;monomorphization"
 )
@@ -1552,6 +1557,19 @@ add_test(
 )
 set_tests_properties(backend_modules_methods_host_c
         PROPERTIES LABELS "backend;backend.c;semantic;method;generic;struct;module;import;visibility;multi-file")
+
+add_test(
+        NAME backend_modules_import_alias_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_MODULE_MATH_TYPES}|${COGLET_MODULE_MATH_OPS}|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/import_alias_main.cog"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_import_alias_host_c
+        -DEXPECT_EXIT=42
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_import_alias_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;module;import;alias;multi-file")
 
 add_test(
         NAME backend_modules_dotted_longest_prefix_host_c
@@ -2413,6 +2431,11 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_generic_functions
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;generic;semantic;monomorphization;codegen;object;linker;stage7")
+    add_llvm_stage7_native_test(
+        backend_llvm_exact_overloads overloads.cog 42
+    )
+    set_tests_properties(backend_llvm_exact_overloads
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;semantic;overload;dispatch;codegen;object;linker;stage7")
     add_llvm_stage7_native_test(
         backend_llvm_generic_structs generic_structs.cog 42
     )

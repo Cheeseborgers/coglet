@@ -102,10 +102,16 @@ typedef struct GenericStructSpecialization GenericStructSpecialization;
 typedef struct SliceTypeIntern SliceTypeIntern;
 typedef struct StructMethodBinding StructMethodBinding;
 
+typedef struct SemanticImportBinding {
+    SemanticModule *module;
+    /* Empty for canonical qualification; otherwise file-local alias. */
+    StringView alias;
+} SemanticImportBinding;
+
 typedef struct SemanticSourceModule {
     SourceFileId source_id;
     SemanticModule *module;
-    SemanticModule **imports;
+    SemanticImportBinding *imports;
     size_t import_count;
     size_t import_capacity;
     Node *module_decl;

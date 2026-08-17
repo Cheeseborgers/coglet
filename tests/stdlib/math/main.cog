@@ -97,62 +97,70 @@ main::() -> s32 {
 
     eps32: f32 = 0.0001;
     eps64: f64 = 0.000000000001;
+    nine32: f32 = 9.0;
+    one_math32: f32 = 1.0;
+    zero_math32: f32 = 0.0;
+    one_point_seven_five32: f32 = 1.75;
+    one_point_two_five32: f32 = 1.25;
+    one_point_five32: f32 = 1.5;
+    five_point_five32: f32 = 5.5;
+    two_math32: f32 = 2.0;
 
-    if !approx_f32(std.math.sqrt_f32(9.0), 3.0, eps32)
+    if !approx_f32(std.math.sqrt(nine32), 3.0, eps32)
         return 39;
-    if !approx_f64(std.math.sqrt_f64(9.0), 3.0, eps64)
+    if !approx_f64(std.math.sqrt(9.0), 3.0, eps64)
         return 40;
 
-    if !approx_f32(std.math.sin_f32(std.math.half_pi), 1.0, eps32)
+    if !approx_f32(std.math.sin(ps32 * 0.5), 1.0, eps32)
         return 41;
-    if !approx_f64(std.math.sin_f64(std.math.half_pi), 1.0, eps64)
+    if !approx_f64(std.math.sin(std.math.half_pi), 1.0, eps64)
         return 42;
-    if !approx_f32(std.math.cos_f32(std.math.pi), -1.0, eps32)
+    if !approx_f32(std.math.cos(ps32), -1.0, eps32)
         return 43;
-    if !approx_f64(std.math.cos_f64(std.math.pi), -1.0, eps64)
+    if !approx_f64(std.math.cos(std.math.pi), -1.0, eps64)
         return 44;
-    if !approx_f32(std.math.tan_f32(std.math.quarter_pi), 1.0, eps32)
+    if !approx_f32(std.math.tan(ps32 * 0.25), 1.0, eps32)
         return 45;
-    if !approx_f64(std.math.tan_f64(std.math.quarter_pi), 1.0, eps64)
+    if !approx_f64(std.math.tan(std.math.quarter_pi), 1.0, eps64)
         return 46;
 
-    if !approx_f32(std.math.asin_f32(1.0), std.math.half_pi, eps32)
+    if !approx_f32(std.math.asin(one_math32), std.math.half_pi, eps32)
         return 47;
-    if !approx_f64(std.math.asin_f64(1.0), std.math.half_pi, eps64)
+    if !approx_f64(std.math.asin(1.0), std.math.half_pi, eps64)
         return 48;
-    if !approx_f32(std.math.acos_f32(0.0), std.math.half_pi, eps32)
+    if !approx_f32(std.math.acos(zero_math32), std.math.half_pi, eps32)
         return 49;
-    if !approx_f64(std.math.acos_f64(0.0), std.math.half_pi, eps64)
+    if !approx_f64(std.math.acos(0.0), std.math.half_pi, eps64)
         return 50;
-    if !approx_f32(std.math.atan_f32(1.0), std.math.quarter_pi, eps32)
+    if !approx_f32(std.math.atan(one_math32), std.math.quarter_pi, eps32)
         return 51;
-    if !approx_f64(std.math.atan_f64(1.0), std.math.quarter_pi, eps64)
+    if !approx_f64(std.math.atan(1.0), std.math.quarter_pi, eps64)
         return 52;
-    if !approx_f32(std.math.atan2_f32(1.0, 0.0), std.math.half_pi, eps32)
+    if !approx_f32(std.math.atan2(one_math32, zero_math32), std.math.half_pi, eps32)
         return 53;
-    if !approx_f64(std.math.atan2_f64(1.0, 0.0), std.math.half_pi, eps64)
+    if !approx_f64(std.math.atan2(1.0, 0.0), std.math.half_pi, eps64)
         return 54;
 
-    if std.math.floor_f32(1.75) != 1.0
+    if std.math.floor(one_point_seven_five32) != 1.0
         return 55;
-    if std.math.floor_f64(-1.25) != -2.0
+    if std.math.floor(-1.25) != -2.0
         return 56;
-    if std.math.ceil_f32(1.25) != 2.0
+    if std.math.ceil(one_point_two_five32) != 2.0
         return 57;
-    if std.math.ceil_f64(-1.75) != -1.0
+    if std.math.ceil(-1.75) != -1.0
         return 58;
-    if std.math.round_f32(1.5) != 2.0
+    if std.math.round(one_point_five32) != 2.0
         return 59;
-    if std.math.round_f64(-1.5) != -2.0
+    if std.math.round(-1.5) != -2.0
         return 60;
-    if std.math.trunc_f32(1.75) != 1.0
+    if std.math.trunc(one_point_seven_five32) != 1.0
         return 61;
-    if std.math.trunc_f64(-1.75) != -1.0
+    if std.math.trunc(-1.75) != -1.0
         return 62;
 
-    if !approx_f32(std.math.fmod_f32(5.5, 2.0), 1.5, eps32)
+    if !approx_f32(std.math.fmod(five_point_five32, two_math32), 1.5, eps32)
         return 63;
-    if !approx_f64(std.math.fmod_f64(-5.5, 2.0), -1.5, eps64)
+    if !approx_f64(std.math.fmod(-5.5, 2.0), -1.5, eps64)
         return 64;
 
     if ps32 < 3.1415 || ps32 > 3.1416

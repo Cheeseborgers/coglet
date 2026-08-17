@@ -440,6 +440,14 @@ CogIrConstId cog_ir_lower_const_value(CogIrLowerContext *ctx, const ConstValue *
     return COG_IR_CONST_INVALID;
 }
 
+static int semantic_decl_skipped_by_lowering(const SemDeclInfo *info)
+{
+    return info && (
+        info->is_generic_template ||
+        (info->is_deferred_generic_method && !info->semantic_check_complete)
+    );
+}
+
 const CogIrLowerDeclBinding *cog_ir_lower_get_decl_binding(const CogIrLowerContext *ctx, SemDeclId id)
 {
     if (!ctx || id == INVALID_SEM_DECL_ID || id >= ctx->decl_binding_count) return NULL;
@@ -461,7 +469,7 @@ static int predeclare_nominal_types(CogIrLowerContext *ctx)
             lower_error(ctx, source_span_invalid(), "semantic declaration table is incomplete during CogIR lowering");
             return 0;
         }
-        if (info->is_generic_template)
+        if (semantic_decl_skipped_by_lowering(info))
             continue;
         if (!info->type) {
             lower_error(ctx, source_span_invalid(), "semantic declaration table is incomplete during CogIR lowering");
@@ -561,7 +569,7 @@ static int define_nominal_types(CogIrLowerContext *ctx)
     for (SemDeclId id = 0; id < ctx->decl_binding_count; ++id) {
         SemDeclInfo *info = semantic_get_decl_info_by_id(sem, id);
         if (!info || !info->node) return 0;
-        if (info->is_generic_template)
+        if (semantic_decl_skipped_by_lowering(info))
             continue;
         if (info->node->type == NODE_STRUCT_DECL) { if (!define_aggregate(ctx, info)) return 0; }
         else if (info->node->type == NODE_ENUM_DECL) { if (!define_enum(ctx, info)) return 0; }
@@ -629,7 +637,7 @@ static int lower_remaining_declarations(CogIrLowerContext *ctx)
     for (SemDeclId id = 0; id < ctx->decl_binding_count; ++id) {
         SemDeclInfo *info = semantic_get_decl_info_by_id(sem, id);
         if (!info || !info->node) return 0;
-        if (info->is_generic_template)
+        if (semantic_decl_skipped_by_lowering(info))
             continue;
         if (!info->type) return 0;
         CogIrLowerDeclBinding *binding = get_decl_binding_mut(ctx, id); if (!binding) return 0;
@@ -707,7 +715,7 @@ int cog_ir_lower_prepare_metadata(CogIrLowerContext *ctx)
             (SemanticContext *)&ctx->frontend->sem,
             (SemDeclId)i
         );
-        if (info && info->is_generic_template)
+        if (semantic_decl_skipped_by_lowering(info))
             continue;
 
         CogIrLowerDeclBinding *binding = &ctx->decl_bindings[i];
@@ -3943,7 +3951,7 @@ int cog_ir_lower_executable(CogIrLowerContext *ctx)
         SemDeclInfo *info = semantic_get_decl_info_by_id(sem, id);
         if (!info || !info->node)
             return 0;
-        if (info->is_generic_template)
+        if (semantic_decl_skipped_by_lowering(info))
             continue;
         if (info->node->type == NODE_FUNC_DECL && info->node->as.func_decl.body) {
             if (!lower_function_body(ctx, info))

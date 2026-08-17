@@ -957,6 +957,31 @@ static Symbol *scope_lookup(Scope *scope, const char *name, size_t length) {
     return NULL;
 }
 
+static Scope *scope_find_defining_scope(Scope *scope, const char *name, size_t length) {
+    for (Scope *s = scope; s; s = s->parent) {
+        if (scope_find_local(s, name, length))
+            return s;
+    }
+    return NULL;
+}
+
+static int scope_count_local_functions_named(
+    const Scope *scope,
+    const char *name,
+    size_t length
+) {
+    int count = 0;
+    if (!scope)
+        return 0;
+    for (Symbol *sym = scope->symbols; sym; sym = sym->next) {
+        if (sym->kind == SYMBOL_FUNCTION &&
+            names_equal(sym->name.data, sym->name.length, name, length)) {
+            count++;
+        }
+    }
+    return count;
+}
+
 
 static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
 
@@ -1013,6 +1038,11 @@ static void semantic_select_source_module(
     ctx->current_scope = source->module->scope;
 }
 
+static StringView semantic_import_qualifier(
+    const SemanticModule *module,
+    StringView alias
+);
+
 static int semantic_source_imports_module(
     const SemanticSourceModule *source,
     const SemanticModule *module
@@ -1021,10 +1051,29 @@ static int semantic_source_imports_module(
         return 0;
 
     for (size_t i = 0; i < source->import_count; i++)
-        if (source->imports[i] == module)
+        if (source->imports[i].module == module)
             return 1;
 
     return 0;
+}
+
+static SemanticModule *semantic_source_resolve_import_qualifier(
+    const SemanticSourceModule *source,
+    StringView name
+) {
+    if (!source || name.length == 0)
+        return NULL;
+
+    for (size_t i = 0; i < source->import_count; i++) {
+        const SemanticImportBinding *binding = &source->imports[i];
+        StringView qualifier = binding->alias.length
+            ? binding->alias
+            : binding->module->name;
+        if (string_view_equals(qualifier, name))
+            return binding->module;
+    }
+
+    return NULL;
 }
 
 static SemanticModule *semantic_resolve_module_qualifier(
@@ -1032,25 +1081,17 @@ static SemanticModule *semantic_resolve_module_qualifier(
     StringView name,
     Node *use_node
 ) {
-    SemanticModule *module = semantic_find_module(ctx, name);
-    if (!module) {
-        semantic_error_fmt(
-            ctx,
-            use_node,
-            "unknown module '%.*s'",
-            (int)name.length,
-            name.data
-        );
-        return NULL;
-    }
-
-    if (module == ctx->current_module)
-        return module;
+    if (ctx->current_module && string_view_equals(ctx->current_module->name, name))
+        return ctx->current_module;
 
     SemanticSourceModule *source =
         semantic_source_module(ctx, ctx->current_source_id);
+    SemanticModule *module = semantic_source_resolve_import_qualifier(source, name);
+    if (module)
+        return module;
 
-    if (!semantic_source_imports_module(source, module)) {
+    SemanticModule *known = semantic_find_module(ctx, name);
+    if (known) {
         semantic_error_fmt(
             ctx,
             use_node,
@@ -1058,10 +1099,69 @@ static SemanticModule *semantic_resolve_module_qualifier(
             (int)name.length,
             name.data
         );
+    } else {
+        semantic_error_fmt(
+            ctx,
+            use_node,
+            "unknown module or import alias '%.*s'",
+            (int)name.length,
+            name.data
+        );
+    }
+    return NULL;
+}
+
+static Symbol *semantic_lookup_symbol_in_module(
+    SemanticContext *ctx,
+    SemanticModule *module,
+    StringView qualifier,
+    StringView member_name,
+    Node *use_node,
+    int diagnose
+) {
+    if (!module)
+        return NULL;
+
+    Symbol *symbol = scope_find_local(
+        module->scope,
+        member_name.data,
+        member_name.length
+    );
+
+    if (!symbol) {
+        if (diagnose) {
+            semantic_error_fmt(
+                ctx,
+                use_node,
+                "module '%.*s' has no member '%.*s'",
+                (int)qualifier.length,
+                qualifier.data,
+                (int)member_name.length,
+                member_name.data
+            );
+        }
         return NULL;
     }
 
-    return module;
+    if (module != ctx->current_module) {
+        SemDeclInfo *info = sem_find_decl_info_by_id(ctx, symbol->declaration_id);
+        if (!info || !info->is_exported) {
+            if (diagnose) {
+                semantic_error_fmt(
+                    ctx,
+                    use_node,
+                    "module '%.*s' member '%.*s' is private",
+                    (int)qualifier.length,
+                    qualifier.data,
+                    (int)member_name.length,
+                    member_name.data
+                );
+            }
+            return NULL;
+        }
+    }
+
+    return symbol;
 }
 
 static Symbol *semantic_lookup_qualified_symbol(
@@ -1074,59 +1174,20 @@ static Symbol *semantic_lookup_qualified_symbol(
         semantic_resolve_module_qualifier(ctx, module_name, use_node);
     if (!module)
         return NULL;
-
-    Symbol *symbol = scope_find_local(
-        module->scope,
-        member_name.data,
-        member_name.length
-    );
-
-    if (!symbol) {
-        semantic_error_fmt(
-            ctx,
-            use_node,
-            "module '%.*s' has no member '%.*s'",
-            (int)module_name.length,
-            module_name.data,
-            (int)member_name.length,
-            member_name.data
-        );
-        return NULL;
-    }
-
-    if (module != ctx->current_module) {
-        SemDeclInfo *info = sem_find_decl_info_by_id(ctx, symbol->declaration_id);
-        if (!info || !info->is_exported) {
-            semantic_error_fmt(
-                ctx,
-                use_node,
-                "module '%.*s' member '%.*s' is private",
-                (int)module_name.length,
-                module_name.data,
-                (int)member_name.length,
-                member_name.data
-            );
-            return NULL;
-        }
-    }
-
-    return symbol;
+    return semantic_lookup_symbol_in_module(
+        ctx, module, module_name, member_name, use_node, 1);
 }
 
 static SemanticModule *semantic_visible_module_qualifier(
     SemanticContext *ctx,
     StringView name
 ) {
-    SemanticModule *module = semantic_find_module(ctx, name);
-    if (!module)
-        return NULL;
-
-    if (module == ctx->current_module)
-        return module;
+    if (ctx->current_module && string_view_equals(ctx->current_module->name, name))
+        return ctx->current_module;
 
     SemanticSourceModule *source =
         semantic_source_module(ctx, ctx->current_source_id);
-    return semantic_source_imports_module(source, module) ? module : NULL;
+    return semantic_source_resolve_import_qualifier(source, name);
 }
 
 static Symbol *semantic_lookup_visible_qualified_symbol_no_diag(
@@ -1137,22 +1198,8 @@ static Symbol *semantic_lookup_visible_qualified_symbol_no_diag(
     SemanticModule *module = semantic_visible_module_qualifier(ctx, module_name);
     if (!module)
         return NULL;
-
-    Symbol *symbol = scope_find_local(
-        module->scope,
-        member_name.data,
-        member_name.length
-    );
-    if (!symbol)
-        return NULL;
-
-    if (module != ctx->current_module) {
-        SemDeclInfo *info = sem_find_decl_info_by_id(ctx, symbol->declaration_id);
-        if (!info || !info->is_exported)
-            return NULL;
-    }
-
-    return symbol;
+    return semantic_lookup_symbol_in_module(
+        ctx, module, module_name, member_name, NULL, 0);
 }
 
 static StringView dotted_first_component(StringView path)
@@ -1213,20 +1260,6 @@ static int dotted_module_suffix(
     return 1;
 }
 
-static int semantic_module_is_visible(
-    SemanticContext *ctx,
-    SemanticModule *module
-) {
-    if (!ctx || !module)
-        return 0;
-    if (module == ctx->current_module)
-        return 1;
-
-    SemanticSourceModule *source =
-        semantic_source_module(ctx, ctx->current_source_id);
-    return semantic_source_imports_module(source, module);
-}
-
 static int semantic_dotted_path_shadowed(
     SemanticContext *ctx,
     StringView path
@@ -1236,6 +1269,14 @@ static int semantic_dotted_path_shadowed(
         ctx->current_scope, first.data, first.length) != NULL;
 }
 
+static int path_has_module_qualifier_prefix(StringView path, StringView qualifier)
+{
+    return qualifier.length != 0 &&
+           path.length > qualifier.length + 1 &&
+           memcmp(path.data, qualifier.data, qualifier.length) == 0 &&
+           path.data[qualifier.length] == '.';
+}
+
 static int semantic_has_visible_module_prefix(
     SemanticContext *ctx,
     StringView path
@@ -1243,14 +1284,20 @@ static int semantic_has_visible_module_prefix(
     if (!ctx || path.length == 0 || semantic_dotted_path_shadowed(ctx, path))
         return 0;
 
-    for (SemanticModule *module = ctx->modules; module; module = module->next) {
-        if (module->is_root || !semantic_module_is_visible(ctx, module))
-            continue;
-        if (path.length > module->name.length + 1 &&
-            memcmp(path.data, module->name.data, module->name.length) == 0 &&
-            path.data[module->name.length] == '.') {
+    if (ctx->current_module && !ctx->current_module->is_root &&
+        path_has_module_qualifier_prefix(path, ctx->current_module->name)) {
+        return 1;
+    }
+
+    SemanticSourceModule *source =
+        semantic_source_module(ctx, ctx->current_source_id);
+    if (!source)
+        return 0;
+    for (size_t i = 0; i < source->import_count; i++) {
+        StringView qualifier = semantic_import_qualifier(
+            source->imports[i].module, source->imports[i].alias);
+        if (path_has_module_qualifier_prefix(path, qualifier))
             return 1;
-        }
     }
     return 0;
 }
@@ -1267,20 +1314,41 @@ static SemanticModule *semantic_longest_module_prefix(
         return NULL;
 
     SemanticModule *best = NULL;
-    for (SemanticModule *module = ctx->modules; module; module = module->next) {
-        if (module->is_root)
-            continue;
-        if (visible_only && !semantic_module_is_visible(ctx, module))
-            continue;
+    StringView best_qualifier = string_view_empty();
 
-        if (path.length <= module->name.length + 1 ||
-            memcmp(path.data, module->name.data, module->name.length) != 0 ||
-            path.data[module->name.length] != '.') {
-            continue;
+    if (visible_only) {
+        if (ctx->current_module && !ctx->current_module->is_root &&
+            path_has_module_qualifier_prefix(path, ctx->current_module->name)) {
+            best = ctx->current_module;
+            best_qualifier = ctx->current_module->name;
         }
 
-        if (!best || module->name.length > best->name.length)
-            best = module;
+        SemanticSourceModule *source =
+            semantic_source_module(ctx, ctx->current_source_id);
+        if (source) {
+            for (size_t i = 0; i < source->import_count; i++) {
+                SemanticImportBinding *binding = &source->imports[i];
+                StringView qualifier = semantic_import_qualifier(
+                    binding->module, binding->alias);
+                if (!path_has_module_qualifier_prefix(path, qualifier))
+                    continue;
+                if (!best || qualifier.length > best_qualifier.length) {
+                    best = binding->module;
+                    best_qualifier = qualifier;
+                }
+            }
+        }
+    } else {
+        for (SemanticModule *module = ctx->modules; module; module = module->next) {
+            if (module->is_root ||
+                !path_has_module_qualifier_prefix(path, module->name)) {
+                continue;
+            }
+            if (!best || module->name.length > best_qualifier.length) {
+                best = module;
+                best_qualifier = module->name;
+            }
+        }
     }
 
     if (!best)
@@ -1290,7 +1358,7 @@ static SemanticModule *semantic_longest_module_prefix(
     StringView second = string_view_empty();
     if (!dotted_module_suffix(
             path,
-            best->name,
+            best_qualifier,
             suffix_components,
             &first,
             &second)) {
@@ -1304,16 +1372,17 @@ static SemanticModule *semantic_longest_module_prefix(
     return best;
 }
 
-static Symbol *semantic_lookup_qualified_field_symbol(
+static SemanticModule *semantic_resolve_qualified_field_location(
     SemanticContext *ctx,
     Node *node,
     int diagnose,
-    SemanticModule **out_module,
     StringView *out_member,
     int *out_recognized
 ) {
     if (out_recognized)
         *out_recognized = 0;
+    if (out_member)
+        *out_member = string_view_empty();
 
     if (!node || node->type != NODE_FIELD ||
         node->as.field.dotted_path.length == 0) {
@@ -1321,6 +1390,7 @@ static Symbol *semantic_lookup_qualified_field_symbol(
     }
 
     StringView member_name = string_view_empty();
+    int found_only_as_nonvisible_module = 0;
     SemanticModule *module = semantic_longest_module_prefix(
         ctx,
         node->as.field.dotted_path,
@@ -1330,11 +1400,6 @@ static Symbol *semantic_lookup_qualified_field_symbol(
         NULL
     );
 
-    /*
-     * Preserve the existing targeted "not imported" diagnostic when the
-     * complete chain names a known module member and there is no shorter
-     * visible module prefix that could make the same dots ordinary fields.
-     */
     if (!module && diagnose &&
         !semantic_has_visible_module_prefix(ctx, node->as.field.dotted_path)) {
         module = semantic_longest_module_prefix(
@@ -1345,6 +1410,7 @@ static Symbol *semantic_lookup_qualified_field_symbol(
             &member_name,
             NULL
         );
+        found_only_as_nonvisible_module = module != NULL;
     }
 
     if (!module)
@@ -1353,11 +1419,38 @@ static Symbol *semantic_lookup_qualified_field_symbol(
     if (out_recognized)
         *out_recognized = 1;
 
-    Symbol *symbol = diagnose
-        ? semantic_lookup_qualified_symbol(ctx, module->name, member_name, node)
-        : semantic_lookup_visible_qualified_symbol_no_diag(
-            ctx, module->name, member_name);
+    if (found_only_as_nonvisible_module) {
+        semantic_error_fmt(
+            ctx,
+            node,
+            "module '%.*s' is not imported in this file",
+            (int)module->name.length,
+            module->name.data
+        );
+        return NULL;
+    }
 
+    if (out_member)
+        *out_member = member_name;
+    return module;
+}
+
+static Symbol *semantic_lookup_qualified_field_symbol(
+    SemanticContext *ctx,
+    Node *node,
+    int diagnose,
+    SemanticModule **out_module,
+    StringView *out_member,
+    int *out_recognized
+) {
+    StringView member_name = string_view_empty();
+    SemanticModule *module = semantic_resolve_qualified_field_location(
+        ctx, node, diagnose, &member_name, out_recognized);
+    if (!module)
+        return NULL;
+
+    Symbol *symbol = semantic_lookup_symbol_in_module(
+        ctx, module, module->name, member_name, node, diagnose);
     if (!symbol)
         return NULL;
 
@@ -1386,6 +1479,7 @@ static int semantic_qualified_enum_member(
 
     StringView type_name = string_view_empty();
     StringView member_name = string_view_empty();
+    int found_only_as_nonvisible_module = 0;
     SemanticModule *module = semantic_longest_module_prefix(
         ctx,
         node->as.field.dotted_path,
@@ -1405,15 +1499,25 @@ static int semantic_qualified_enum_member(
             &type_name,
             &member_name
         );
+        found_only_as_nonvisible_module = module != NULL;
     }
 
     if (!module)
         return 0;
 
-    Symbol *symbol = diagnose
-        ? semantic_lookup_qualified_symbol(ctx, module->name, type_name, node)
-        : semantic_lookup_visible_qualified_symbol_no_diag(
-            ctx, module->name, type_name);
+    if (found_only_as_nonvisible_module) {
+        semantic_error_fmt(
+            ctx,
+            node,
+            "module '%.*s' is not imported in this file",
+            (int)module->name.length,
+            module->name.data
+        );
+        return -1;
+    }
+
+    Symbol *symbol = semantic_lookup_symbol_in_module(
+        ctx, module, module->name, type_name, node, diagnose);
     if (!symbol)
         return diagnose ? -1 : 0;
 
@@ -7696,11 +7800,107 @@ static int prepare_struct_method_call(
     return 1;
 }
 
+static int ensure_struct_method_body_checked(
+    SemanticContext *ctx,
+    StructMethodBinding *binding,
+    Node *use_node
+) {
+    SemDeclInfo *info = sem_find_decl_info(ctx, binding->function);
+    if (!info || !info->is_deferred_generic_method)
+        return 1;
+    if (info->semantic_check_complete)
+        return 1;
+
+    if (info->deferred_method_check_failed) {
+        char owner_name[128];
+        format_type_name(binding->owner_type, owner_name, sizeof(owner_name));
+        semantic_error_fmt(
+            ctx,
+            use_node,
+            "method '%.*s' is not valid for %s",
+            (int)binding->source_name.length,
+            binding->source_name.data,
+            owner_name
+        );
+        return 0;
+    }
+
+    /* Ordinary recursive calls reuse the in-progress concrete signature. */
+    if (info->semantic_check_started)
+        return 1;
+
+    Type *owner_type = binding->owner_type;
+    if (owner_type->struct_generic_template_id == INVALID_SEM_DECL_ID) {
+        semantic_error(ctx, use_node,
+            "internal error: deferred method has no generic struct template identity");
+        return 0;
+    }
+
+    SemDeclInfo *template_info = semantic_get_decl_info_by_id(
+        ctx, owner_type->struct_generic_template_id);
+    if (!template_info || !template_info->node ||
+        template_info->node->type != NODE_STRUCT_DECL) {
+        semantic_error(ctx, use_node,
+            "internal error: deferred method generic struct template is unavailable");
+        return 0;
+    }
+
+    Node *template_decl = template_info->node;
+    Scope *saved_scope = ctx->current_scope;
+    SemanticModule *saved_module = ctx->current_module;
+    SourceFileId saved_source_id = ctx->current_source_id;
+
+    info->semantic_check_started = 1;
+    int errors_before = ctx->error_count;
+
+    semantic_select_source_module(ctx, template_decl->span.file_id);
+    scope_push(ctx);
+    define_generic_type_aliases(
+        ctx,
+        template_decl,
+        owner_type->struct_type_arguments
+    );
+    scope_define(
+        ctx,
+        string_view_from_cstr("Self"),
+        SYMBOL_TYPE,
+        owner_type
+    );
+    check_function_body(ctx, binding->function);
+    scope_pop(ctx);
+
+    ctx->current_scope = saved_scope;
+    ctx->current_module = saved_module;
+    ctx->current_source_id = saved_source_id;
+
+    info->semantic_check_started = 0;
+    if (ctx->error_count == errors_before) {
+        info->semantic_check_complete = 1;
+        return 1;
+    }
+
+    info->deferred_method_check_failed = 1;
+    char owner_name[128];
+    format_type_name(owner_type, owner_name, sizeof(owner_name));
+    semantic_error_fmt(
+        ctx,
+        use_node,
+        "cannot use method '%.*s' for %s because its body is not valid for this specialization",
+        (int)binding->source_name.length,
+        binding->source_name.data,
+        owner_name
+    );
+    return 0;
+}
+
 static Type *check_prepared_struct_method_call(
     SemanticContext *ctx,
     Node *call,
     StructMethodBinding *binding
 ) {
+    if (!ensure_struct_method_body_checked(ctx, binding, call))
+        return NULL;
+
     Type *callee = binding->function_type;
     int argc = call->as.call.arguments.count;
     if (argc != callee->parameter_count) {
@@ -7808,6 +8008,22 @@ static Type *check_identifier_expression(SemanticContext *ctx, Node *node,Identi
             node->as.ident.data
         );
         return NULL;
+    }
+
+    if (sym->kind == SYMBOL_FUNCTION) {
+        Scope *defining_scope = scope_find_defining_scope(
+            ctx->current_scope, node->as.ident.data, node->as.ident.length);
+        if (scope_count_local_functions_named(
+                defining_scope, node->as.ident.data, node->as.ident.length) > 1) {
+            semantic_error_fmt(
+                ctx,
+                node,
+                "overloaded function '%.*s' can only be used as a call target",
+                (int)node->as.ident.length,
+                node->as.ident.data
+            );
+            return NULL;
+        }
     }
 
     if (sym->kind == SYMBOL_CONSTANT && !sym->type) {
@@ -8206,6 +8422,239 @@ static Type *check_builtin_call(SemanticContext *ctx, Node *call, Symbol *builti
         VALUE_CATEGORY_RVALUE
     );
 
+    return result_type;
+}
+
+typedef struct FunctionOverloadTarget {
+    Scope *scope;
+    StringView name;
+    SemanticModule *module;
+    int require_exported;
+} FunctionOverloadTarget;
+
+static int overload_symbol_visible(
+    SemanticContext *ctx,
+    const FunctionOverloadTarget *target,
+    Symbol *symbol
+) {
+    if (!target->require_exported)
+        return 1;
+    SemDeclInfo *info = sem_find_decl_info_by_id(ctx, symbol->declaration_id);
+    return info && info->is_exported;
+}
+
+/*
+ * Returns 1 when the callee denotes an overload set, 0 when ordinary call
+ * resolution should continue, and -1 when module qualification already emitted
+ * a diagnostic.
+ */
+static int resolve_function_overload_target(
+    SemanticContext *ctx,
+    Node *callee,
+    FunctionOverloadTarget *out
+) {
+    memset(out, 0, sizeof(*out));
+
+    if (callee->type == NODE_IDENT) {
+        Scope *scope = scope_find_defining_scope(
+            ctx->current_scope,
+            callee->as.ident.data,
+            callee->as.ident.length
+        );
+        if (!scope || scope_count_local_functions_named(
+                scope, callee->as.ident.data, callee->as.ident.length) < 2) {
+            return 0;
+        }
+        out->scope = scope;
+        out->name = string_view(callee->as.ident.data, callee->as.ident.length);
+        return 1;
+    }
+
+    if (callee->type == NODE_FIELD) {
+        StringView member = string_view_empty();
+        int recognized = 0;
+        SemanticModule *module = semantic_resolve_qualified_field_location(
+            ctx, callee, 1, &member, &recognized);
+        if (recognized && !module)
+            return -1;
+        if (!module)
+            return 0;
+        if (scope_count_local_functions_named(
+                module->scope, member.data, member.length) < 2) {
+            return 0;
+        }
+        out->scope = module->scope;
+        out->name = member;
+        out->module = module;
+        out->require_exported = module != ctx->current_module;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int append_overload_type_name(
+    char *buffer,
+    size_t buffer_size,
+    size_t *at,
+    Type *type
+) {
+    char type_name[128];
+    format_type_name(type, type_name, sizeof(type_name));
+    size_t length = strlen(type_name);
+    if (*at + length + 1 >= buffer_size)
+        return 0;
+    memcpy(buffer + *at, type_name, length);
+    *at += length;
+    buffer[*at] = '\0';
+    return 1;
+}
+
+static Type *check_overloaded_function_call(
+    SemanticContext *ctx,
+    Node *call,
+    const FunctionOverloadTarget *target
+) {
+    if (call->as.call.type_arguments.count > 0) {
+        semantic_error(ctx, call,
+            "explicit type arguments are not supported on overloaded functions");
+        return NULL;
+    }
+
+    const int argc = call->as.call.arguments.count;
+    Type **actual_types = argc > 0
+        ? arena_alloc(ctx->arena, sizeof(Type *) * (size_t)argc)
+        : NULL;
+
+    for (int i = 0; i < argc; i++) {
+        Node *argument = call->as.call.arguments.items[i];
+        SemExprInfo *existing = sem_find_expr_info(ctx, argument);
+        Type *actual = existing ? existing->type : check_value_expression(ctx, argument);
+        if (!actual)
+            return NULL;
+        if (is_untyped_numeric_type(actual)) {
+            actual = concretize_inferred_type(ctx, argument, actual);
+            if (!actual)
+                return NULL;
+        }
+        actual_types[i] = actual;
+    }
+
+    Symbol *selected = NULL;
+    int match_count = 0;
+    int visible_candidate_count = 0;
+
+    for (Symbol *sym = target->scope->symbols; sym; sym = sym->next) {
+        if (sym->kind != SYMBOL_FUNCTION ||
+            !names_equal(sym->name.data, sym->name.length,
+                         target->name.data, target->name.length) ||
+            !sym->type || sym->type->kind != TYPE_FUNCTION ||
+            !overload_symbol_visible(ctx, target, sym)) {
+            continue;
+        }
+
+        visible_candidate_count++;
+        Type *function_type = sym->type;
+        if (function_type->function_is_variadic ||
+            function_type->parameter_count != argc) {
+            continue;
+        }
+
+        int exact = 1;
+        for (int i = 0; i < argc; i++) {
+            if (!type_equal(function_type->parameters[i], actual_types[i])) {
+                exact = 0;
+                break;
+            }
+        }
+        if (!exact)
+            continue;
+
+        selected = sym;
+        match_count++;
+    }
+
+    if (match_count != 1) {
+        char actual_buffer[512] = {0};
+        size_t at = 0;
+        actual_buffer[at++] = '(';
+        actual_buffer[at] = '\0';
+        for (int i = 0; i < argc; i++) {
+            if (i != 0) {
+                if (at + 3 >= sizeof(actual_buffer))
+                    break;
+                actual_buffer[at++] = ',';
+                actual_buffer[at++] = ' ';
+                actual_buffer[at] = '\0';
+            }
+            if (!append_overload_type_name(
+                    actual_buffer, sizeof(actual_buffer), &at, actual_types[i])) {
+                break;
+            }
+        }
+        if (at + 2 < sizeof(actual_buffer)) {
+            actual_buffer[at++] = ')';
+            actual_buffer[at] = '\0';
+        }
+
+        if (visible_candidate_count == 0 && target->module) {
+            semantic_error_fmt(
+                ctx,
+                call,
+                "module '%.*s' has no exported overload '%.*s'",
+                (int)target->module->name.length,
+                target->module->name.data,
+                (int)target->name.length,
+                target->name.data
+            );
+        } else if (match_count == 0) {
+            semantic_error_fmt(
+                ctx,
+                call,
+                "no exact overload of '%.*s' matches argument types %s",
+                (int)target->name.length,
+                target->name.data,
+                actual_buffer
+            );
+        } else {
+            semantic_error_fmt(
+                ctx,
+                call,
+                "ambiguous exact overload of '%.*s' for argument types %s",
+                (int)target->name.length,
+                target->name.data,
+                actual_buffer
+            );
+        }
+        return NULL;
+    }
+
+    sem_record_expr_info(
+        ctx,
+        call->as.call.callee,
+        selected->type,
+        selected,
+        VALUE_CATEGORY_RVALUE
+    );
+
+    int ok = 1;
+    for (int i = 0; i < argc; i++) {
+        if (!check_argument_against_parameter(
+                ctx, selected->type->parameters[i], call->as.call.arguments.items[i])) {
+            ok = 0;
+        }
+    }
+    if (!ok)
+        return NULL;
+
+    Type *result_type = selected->type->return_type;
+    sem_record_expr_info(
+        ctx,
+        call,
+        result_type,
+        NULL,
+        result_type->kind == TYPE_VOID ? VALUE_CATEGORY_NONE : VALUE_CATEGORY_RVALUE
+    );
     return result_type;
 }
 
@@ -9261,6 +9710,14 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             if (generic_template)
                 return check_generic_call(ctx, node, generic_template);
 
+            FunctionOverloadTarget overload_target;
+            int overload_status = resolve_function_overload_target(
+                ctx, node->as.call.callee, &overload_target);
+            if (overload_status < 0)
+                return NULL;
+            if (overload_status > 0)
+                return check_overloaded_function_call(ctx, node, &overload_target);
+
             Symbol *builtin =
                 resolve_builtin_callee(ctx,node->as.call.callee);
 
@@ -9490,6 +9947,21 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             if (qualified_recognized) {
                 if (!qualified_member)
                     return NULL;
+
+                if (qualified_member->kind == SYMBOL_FUNCTION &&
+                    scope_count_local_functions_named(
+                        qualified_module->scope,
+                        qualified_member_name.data,
+                        qualified_member_name.length) > 1) {
+                    semantic_error_fmt(
+                        ctx,
+                        node,
+                        "overloaded function '%.*s' can only be used as a call target",
+                        (int)qualified_member_name.length,
+                        qualified_member_name.data
+                    );
+                    return NULL;
+                }
 
                 if (qualified_member->kind == SYMBOL_FUNCTION ||
                     qualified_member->kind == SYMBOL_CONSTANT) {
@@ -11703,14 +12175,39 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
     flow_register_variable(ctx, symbol, 1);
 }
 
+static StringView semantic_import_qualifier(
+    const SemanticModule *module,
+    StringView alias
+) {
+    return alias.length ? alias : module->name;
+}
+
+static int semantic_source_has_import_qualifier(
+    const SemanticSourceModule *source,
+    StringView qualifier
+) {
+    if (!source)
+        return 0;
+    for (size_t i = 0; i < source->import_count; i++) {
+        StringView existing = semantic_import_qualifier(
+            source->imports[i].module,
+            source->imports[i].alias
+        );
+        if (string_view_equals(existing, qualifier))
+            return 1;
+    }
+    return 0;
+}
+
 static void semantic_append_import(
     SemanticContext *ctx,
     SemanticSourceModule *source,
-    SemanticModule *module
+    SemanticModule *module,
+    StringView alias
 ) {
     if (source->import_count >= source->import_capacity) {
         size_t new_capacity = source->import_capacity ? source->import_capacity * 2 : 4;
-        SemanticModule **grown = arena_alloc(
+        SemanticImportBinding *grown = arena_alloc(
             ctx->arena,
             new_capacity * sizeof(*grown)
         );
@@ -11725,7 +12222,10 @@ static void semantic_append_import(
         source->import_capacity = new_capacity;
     }
 
-    source->imports[source->import_count++] = module;
+    source->imports[source->import_count++] = (SemanticImportBinding){
+        .module = module,
+        .alias = alias,
+    };
 }
 
 static void prepare_program_modules(SemanticContext *ctx, Node *program)
@@ -11825,7 +12325,33 @@ static void prepare_program_modules(SemanticContext *ctx, Node *program)
             continue;
         }
 
-        semantic_append_import(ctx, source, module);
+        StringView qualifier = semantic_import_qualifier(
+            module,
+            stmt->as.import_decl.alias
+        );
+        if (source->module && string_view_equals(source->module->name, qualifier)) {
+            semantic_error_fmt(
+                ctx,
+                stmt,
+                "import qualifier '%.*s' conflicts with the current module name",
+                (int)qualifier.length,
+                qualifier.data
+            );
+            continue;
+        }
+        if (semantic_source_has_import_qualifier(source, qualifier)) {
+            semantic_error_fmt(
+                ctx,
+                stmt,
+                "duplicate import qualifier '%.*s'",
+                (int)qualifier.length,
+                qualifier.data
+            );
+            continue;
+        }
+
+        semantic_append_import(
+            ctx, source, module, stmt->as.import_decl.alias);
     }
 }
 
@@ -12884,6 +13410,78 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
     return type;
 }
 
+static int function_decl_supports_overloading(const Node *node) {
+    return node && node->type == NODE_FUNC_DECL &&
+           node->as.func_decl.type_parameters.count == 0 &&
+           node->as.func_decl.linkage == FUNCTION_LINKAGE_COGLET &&
+           !node->as.func_decl.is_repr_c &&
+           !node->as.func_decl.is_variadic;
+}
+
+static int function_types_have_same_parameters(const Type *a, const Type *b) {
+    if (!a || !b || a->kind != TYPE_FUNCTION || b->kind != TYPE_FUNCTION ||
+        a->parameter_count != b->parameter_count) {
+        return 0;
+    }
+    for (int i = 0; i < a->parameter_count; i++) {
+        if (!type_equal(a->parameters[i], b->parameters[i]))
+            return 0;
+    }
+    return 1;
+}
+
+static int validate_function_overload_set_member(
+    SemanticContext *ctx,
+    Node *node,
+    Type *func_type
+) {
+    Scope *scope = ctx->current_scope;
+    int same_name_count = 0;
+
+    for (Symbol *sym = scope->symbols; sym; sym = sym->next) {
+        if (!names_equal(
+                sym->name.data, sym->name.length,
+                node->as.func_decl.name.data, node->as.func_decl.name.length)) {
+            continue;
+        }
+        same_name_count++;
+
+        if (sym->kind != SYMBOL_FUNCTION || !sym->declaration ||
+            !function_decl_supports_overloading(sym->declaration) ||
+            !function_decl_supports_overloading(node)) {
+            semantic_error_name(
+                ctx, node,
+                "duplicate declaration",
+                node->as.func_decl.name.data,
+                node->as.func_decl.name.length
+            );
+            return 0;
+        }
+
+        if (function_types_have_same_parameters(sym->type, func_type)) {
+            semantic_error_fmt(
+                ctx,
+                node,
+                "duplicate overload for function '%.*s' with the same parameter types",
+                (int)node->as.func_decl.name.length,
+                node->as.func_decl.name.data
+            );
+            return 0;
+        }
+    }
+
+    if (same_name_count > 0 &&
+        ctx->current_module && ctx->current_module->is_root &&
+        names_equal(
+            node->as.func_decl.name.data, node->as.func_decl.name.length,
+            "main", 4)) {
+        semantic_error(ctx, node, "executable entry point 'main' cannot be overloaded");
+        return 0;
+    }
+
+    return 1;
+}
+
 static int validate_generic_parameter_declarations(
     SemanticContext *ctx,
     Node *node,
@@ -13027,24 +13625,12 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
 {
     node->as.func_decl.resolved_type = NULL;
 
-    if (scope_find_local(
-        ctx->current_scope,
-        node->as.func_decl.name.data,
-        node->as.func_decl.name.length)) {
-
-        semantic_error_name(
-            ctx, node,
-            "duplicate declaration",
-            node->as.func_decl.name.data,
-            node->as.func_decl.name.length
-        );
-
-        return 0;
-    }
-
     Type *func_type = make_function_type(ctx, node);
 
     if (!func_type)
+        return 0;
+
+    if (!validate_function_overload_set_member(ctx, node, func_type))
         return 0;
 
     if (node->as.func_decl.is_variadic &&
@@ -13404,6 +13990,9 @@ static int record_struct_method_signature(
     };
 
     SemDeclInfo *func_info = sem_record_decl_info(ctx, method, function_type, symbol);
+    SemDeclInfo *owner_info = sem_find_decl_info(ctx, owner_decl);
+    func_info->is_deferred_generic_method =
+        owner_info && owner_info->is_generic_specialization;
     func_info->abi_kind = SEM_DECL_ABI_FUNCTION;
     func_info->abi.function.abi = FUNCTION_ABI_COGLET;
     func_info->abi.function.linkage = SEM_FUNCTION_LINKAGE_INTERNAL;
@@ -13945,7 +14534,12 @@ static GenericStructSpecialization *instantiate_generic_struct(
         ctx->active_generic_struct_specialization = spec;
         fill_struct_fields(ctx, decl);
         register_struct_method_signatures(ctx, decl);
-        check_struct_method_bodies(ctx, decl);
+        /*
+         * Concrete generic-struct method signatures are resolved here, but
+         * bodies are checked lazily on first call. This mirrors generic
+         * function instantiation: unused methods do not impose operations that
+         * may be invalid for an otherwise valid struct specialization.
+         */
         ctx->active_generic_struct_specialization = spec->active_parent;
     }
 

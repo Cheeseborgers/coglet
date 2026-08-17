@@ -1,0 +1,12 @@
+value::(x: f32) -> f32 {
+    return x;
+}
+
+value::(x: f64) -> f64 {
+    return x;
+}
+
+test::() -> void {
+    x: s32 = 1;
+    value(x);
+}

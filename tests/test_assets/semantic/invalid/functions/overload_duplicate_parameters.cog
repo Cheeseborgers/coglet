@@ -1,0 +1,7 @@
+value::(x: f32) -> f32 {
+    return x;
+}
+
+value::(x: f32) -> f64 {
+    return x;
+}

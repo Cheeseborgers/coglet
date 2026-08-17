@@ -265,6 +265,8 @@ struct Node {
 
         struct {
             StringView name;
+            /* Optional file-local qualifier from `import name as alias;`. */
+            StringView alias;
         } import_decl;
 
         struct {
@@ -469,7 +471,7 @@ Node *ast_new_index(Arena *arena,Node *object, Node *index, SourceSpan span);
 Node *ast_new_error(Arena *arena, Token token);
 Node *ast_new_program(Arena *arena, SourceSpan span);
 Node *ast_new_module_decl(Arena *arena, const char *name, int length, SourceSpan span);
-Node *ast_new_import_decl(Arena *arena, const char *name, int length, SourceSpan span);
+Node *ast_new_import_decl(Arena *arena, const char *name, int length, const char *alias, int alias_length, SourceSpan span);
 Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, SourceSpan span);
 Node *ast_new_var_decl_group(Arena *arena, SourceSpan span);
 Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, SourceSpan span);

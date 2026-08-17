@@ -616,9 +616,15 @@ so fluent value-call chains such as `v.add(other).scale(0.5)` remain valid.
 
 `std.math` now uses these facilities for ordinary-source `Vec2<T>`, `Vec3<T>`, and
 `Vec4<T>` numeric vectors. The first slice includes constructors, component arithmetic,
-dot products, `Vec3.cross`, squared length/distance, and component min/max/clamp.
-Square-root-dependent length/normalization operations remain deferred until generic
-code has principled type-directed access to the precision-specific runtime math API.
+dot products, `Vec3.cross`, squared length/distance, component min/max/clamp, and
+floating-specialization `length`, `distance`, and `normalized` methods.
+
+A deliberately strict exact-overload facility now provides type-directed runtime math
+without stdlib compiler magic: ordinary non-generic functions may share a name when
+their concrete parameter lists differ, and calls select only an exact match after
+normal untyped-numeric defaulting. Generic-struct method bodies are checked lazily on
+first concrete use, so integer vector specializations remain valid while a floating-
+only body is diagnosed only if called for an integer specialization.
 
 Remaining generic/type-system design work includes generic enums/aliases, generic
 represented-C aggregates if justified, generic methods, user-defined

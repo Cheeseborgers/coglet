@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/functions/overload_no_exact_match.cog:11:5: error: no exact overload of 'value' matches argument types (s32)
+    value(x);
+    ^~~~~
+1 semantic error generated.

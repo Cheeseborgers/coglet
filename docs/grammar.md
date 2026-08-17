@@ -11,7 +11,7 @@ Module and import names are absolute dotted identifier paths:
 ```ebnf
 module_name = identifier {"." identifier};
 module_declaration = "module" module_name ";";
-import_declaration = "import" module_name ";";
+import_declaration = "import" module_name ["as" identifier] ";";
 exported_declaration = "export" top_level_declaration;
 qualified_name = identifier {"." identifier};
 ```
@@ -41,6 +41,23 @@ main::() -> s32 {
     return std.math.add(pair.x, pair.y);
 }
 ```
+
+An import may bind a shorter file-local qualifier without changing the canonical
+module identity or source-discovery path:
+
+```c
+import std.math as math;
+
+main::() -> s32 {
+    pair: math.Pair = math.Pair { x = 20, y = 22 };
+    return math.add(pair.x, pair.y);
+}
+```
+
+The alias replaces the canonical qualifier in that file: after
+`import std.math as math;`, use `math.*`, not `std.math.*`. Aliases are simple
+identifiers, are file-scoped, and must not collide with another visible import
+qualifier. Source discovery still uses the canonical `std.math` name.
 
 The same dot syntax composes module qualification, enum qualification, and
 ordinary runtime field selection: `std.math.add`, `std.math.Mode.Red`, and

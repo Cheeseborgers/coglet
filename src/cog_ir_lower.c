@@ -3234,6 +3234,12 @@ static int lower_statement(ExecLowerState *state, Node *node)
     switch (node->type) {
         case NODE_VAR_DECL:
             return lower_variable_declaration(state, node);
+        case NODE_VAR_DECL_GROUP:
+            for (int i = 0; i < node->as.var_decl_group.declarations.count; i++) {
+                if (!lower_variable_declaration(state, node->as.var_decl_group.declarations.items[i]))
+                    return 0;
+            }
+            return 1;
         case NODE_ASSIGN:
             return lower_assignment_statement(state, node);
         case NODE_COMPOUND_ASSIGN:
@@ -3384,6 +3390,13 @@ static int node_is_runtime_module_item(Node *node)
     switch (node->type) {
         case NODE_VAR_DECL:
             return node->as.var_decl.initializer != NULL;
+        case NODE_VAR_DECL_GROUP:
+            for (int i = 0; i < node->as.var_decl_group.declarations.count; i++) {
+                Node *decl = node->as.var_decl_group.declarations.items[i];
+                if (decl->as.var_decl.initializer)
+                    return 1;
+            }
+            return 0;
         case NODE_ASSIGN:
         case NODE_COMPOUND_ASSIGN:
         case NODE_INC_DEC:

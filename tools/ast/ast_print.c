@@ -661,6 +661,15 @@ static void print_node(Node *node)
 
             break;
 
+        case NODE_VAR_DECL_GROUP:
+            printf("(var_decl_group");
+            for (int i = 0; i < node->as.var_decl_group.declarations.count; i++) {
+                printf(" ");
+                print_node(node->as.var_decl_group.declarations.items[i]);
+            }
+            printf(")");
+            break;
+
         case NODE_FUNC_PARAM_DECL:
             printf("(param_decl ");
 
@@ -1132,6 +1141,13 @@ static void print_node_pretty(Node *node, int depth)
                 );
             }
 
+            break;
+
+        case NODE_VAR_DECL_GROUP:
+            indent(depth);
+            printf("var_decl_group\n");
+            for (int i = 0; i < node->as.var_decl_group.declarations.count; i++)
+                print_node_pretty(node->as.var_decl_group.declarations.items[i], depth + 1);
             break;
 
         case NODE_FUNC_PARAM_DECL:

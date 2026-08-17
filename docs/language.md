@@ -122,6 +122,28 @@ use_value::(parameter: i32) -> i32 {
 }
 ```
 
+Typed mutable declarations may bind more than one name:
+
+```c
+a, b: u64 = 0;
+p, q: i32;
+```
+
+This is exact left-to-right sugar for separate declarations. In particular:
+
+```c
+a, b: u64 = next();
+```
+
+is equivalent to:
+
+```c
+a: u64 = next();
+b: u64 = next();
+```
+
+The initializer is therefore evaluated independently for every declared variable. Each declaration retains ordinary value-copy semantics, so grouped array declarations also produce distinct array values. Grouped syntax currently applies only to typed mutable declarations; constants and inferred `:=` declarations remain single-name forms.
+
 Definite-assignment analysis applies to function-local variables and parameters. Global variables are not tracked by this local flow analysis.
 
 ### Reads and writes

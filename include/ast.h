@@ -66,6 +66,7 @@ typedef enum {
     NODE_PROGRAM,      // the whole file: a list of statements
 
     NODE_VAR_DECL,
+    NODE_VAR_DECL_GROUP,
 
     NODE_FUNC_DECL,
     NODE_FUNC_PARAM_DECL,
@@ -214,6 +215,10 @@ struct Node {
             StringView name;
             Node *initializer;   // NULL if none
         } var_decl;
+
+        struct {
+            NodeList declarations;  // NODE_VAR_DECL children, evaluated left-to-right
+        } var_decl_group;
 
         struct {
             Type *var_type;
@@ -402,6 +407,7 @@ Node *ast_new_index(Arena *arena,Node *object, Node *index, SourceSpan span);
 Node *ast_new_error(Arena *arena, Token token);
 Node *ast_new_program(Arena *arena, SourceSpan span);
 Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, SourceSpan span);
+Node *ast_new_var_decl_group(Arena *arena, SourceSpan span);
 Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, SourceSpan span);
 Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, SourceSpan span);
 Node *ast_new_return(Arena *arena, Node *value, SourceSpan span);

@@ -183,6 +183,14 @@ Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, N
     return node;
 }
 
+Node *ast_new_var_decl_group(Arena *arena, SourceSpan span) {
+    Node *node = new_node(arena, NODE_VAR_DECL_GROUP, span);
+    node->as.var_decl_group.declarations.items = NULL;
+    node->as.var_decl_group.declarations.count = 0;
+    node->as.var_decl_group.declarations.capacity = 0;
+    return node;
+}
+
 Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, SourceSpan span) {
     Node *node = new_node(arena, NODE_STRUCT_FIELD_DECL, span);
     node->as.struct_field_decl.var_type    = type;
@@ -502,6 +510,19 @@ Node *ast_clone(Arena *arena, const Node *node)
                 ast_clone(arena, node->as.var_decl.initializer);
             break;
 
+        case NODE_VAR_DECL_GROUP:
+            clone->as.var_decl_group.declarations.items = NULL;
+            clone->as.var_decl_group.declarations.count = 0;
+            clone->as.var_decl_group.declarations.capacity = 0;
+            for (int i = 0; i < node->as.var_decl_group.declarations.count; i++) {
+                nodelist_push(
+                    arena,
+                    &clone->as.var_decl_group.declarations,
+                    ast_clone(arena, node->as.var_decl_group.declarations.items[i])
+                );
+            }
+            break;
+
         case NODE_FUNC_PARAM_DECL:
             clone->as.param_decl.var_type      = node->as.param_decl.var_type;
             clone->as.param_decl.name.data     = node->as.param_decl.name.data;
@@ -712,12 +733,18 @@ Node *ast_clone(Arena *arena, const Node *node)
             break;
 
         case NODE_ARRAY_LITERAL:
-                // Nothing to clone just ensure values are zero and recheck
-                clone->as.array_literal.elements.items    = NULL;
-                clone->as.array_literal.elements.count    = 0;
-                clone->as.array_literal.elements.capacity = 0;
-                clone->as.array_literal.is_zero_initializer =
-                    node->as.array_literal.is_zero_initializer;
+            clone->as.array_literal.elements.items    = NULL;
+            clone->as.array_literal.elements.count    = 0;
+            clone->as.array_literal.elements.capacity = 0;
+            clone->as.array_literal.is_zero_initializer =
+                node->as.array_literal.is_zero_initializer;
+            for (int i = 0; i < node->as.array_literal.elements.count; i++) {
+                nodelist_push(
+                    arena,
+                    &clone->as.array_literal.elements,
+                    ast_clone(arena, node->as.array_literal.elements.items[i])
+                );
+            }
             break;
 
         case NODE_NULL:

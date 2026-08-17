@@ -10632,6 +10632,10 @@ static void check_node(SemanticContext *ctx,Node *node) {
         case NODE_BLOCK:           check_block(ctx,node);            break;
         case NODE_PROGRAM:         check_program(ctx,node);          break;
         case NODE_VAR_DECL:        check_var_decl(ctx,node);         break;
+        case NODE_VAR_DECL_GROUP:
+            for (int i = 0; i < node->as.var_decl_group.declarations.count; i++)
+                check_var_decl(ctx, node->as.var_decl_group.declarations.items[i]);
+            break;
         case NODE_FUNC_PARAM_DECL: check_param_decl(ctx,node);       break;
         case NODE_FUNC_DECL:       check_function(ctx,node);         break;
         case NODE_IF:              check_if_statement(ctx,node);     break;

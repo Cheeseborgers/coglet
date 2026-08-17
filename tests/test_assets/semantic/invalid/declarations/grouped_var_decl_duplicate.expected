@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/declarations/grouped_var_decl_duplicate.cog:2:8: error: duplicate variable declaration 'a'
+    a, a: i32 = 0;
+       ^
+1 semantic error generated.

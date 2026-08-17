@@ -730,6 +730,11 @@ add_host_c_executable_test(
         "backend;backend.c;ir;array;initializer;zero"
 )
 
+add_host_c_executable_test(
+        backend_grouped_var_decl grouped_var_decl.cog 42
+        "backend;backend.c;ir;declaration;grouped"
+)
+
 foreach(cast_trap_case IN ITEMS integer float_integer float_narrow)
     add_host_c_trap_test(
             backend_checked_cast_${cast_trap_case}_trap
@@ -1542,6 +1547,19 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_array_zero_initializer
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;array;initializer;zero")
+
+
+    add_test(
+        NAME backend_llvm_grouped_var_decl
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/grouped_var_decl.cog
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_grouped_var_decl
+        -DEXPECT_EXIT=42
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_grouped_var_decl
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;declaration;grouped")
 
     add_test(
         NAME backend_llvm_emit_asm_with_native_executable

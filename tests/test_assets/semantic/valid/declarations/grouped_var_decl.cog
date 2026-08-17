@@ -1,0 +1,36 @@
+counter: i32 = 0;
+global_a, global_b: i32 = 3;
+
+next::() -> u64 {
+    counter = counter + 1;
+    return cast(u64, counter);
+}
+
+main::() -> i32 {
+    a, b: u64 = next();
+    if a != 1 || b != 2
+        return 1;
+
+    x, y: i32[2] = [3, 4];
+    x[0] = 9;
+    if x[0] != 9 || y[0] != 3
+        return 2;
+
+    p, q: i32;
+    p = 5;
+    q = 7;
+    if p + q != 12
+        return 3;
+
+    if global_a != 3 || global_b != 3
+        return 4;
+
+    sum: i32 = 0;
+    for (i, j: i32 = 0; i < 3; i++) {
+        sum = sum + i + j;
+    }
+    if sum != 3
+        return 5;
+
+    return 0;
+}

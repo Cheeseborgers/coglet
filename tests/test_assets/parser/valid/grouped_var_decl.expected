@@ -1,0 +1,38 @@
+program
+  func main -> i32
+    body:
+      block
+        var_decl_group
+          var_decl a: u64
+            init:
+              0
+          var_decl b: u64
+            init:
+              0
+        var_decl_group
+          var_decl x: i32[2]
+            init:
+              array_literal
+                1
+                2
+          var_decl y: i32[2]
+            init:
+              array_literal
+                1
+                2
+        return
+          (+)
+            (+)
+              cast
+                target type:
+                  i32
+                expression:
+                  (+)
+                    a
+                    b
+              index
+                x
+                0
+            index
+              y
+              1

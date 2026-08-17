@@ -77,6 +77,7 @@ static const char *node_type_name(NodeType type)
         case NODE_INDEX:             return "index";
         case NODE_PROGRAM:           return "program";
         case NODE_VAR_DECL:          return "var_decl";
+        case NODE_VAR_DECL_GROUP:    return "var_decl_group";
         case NODE_FUNC_DECL:         return "func_decl";
         case NODE_FUNC_PARAM_DECL:   return "param_decl";
         case NODE_STRUCT_DECL:       return "struct_decl";
@@ -460,6 +461,10 @@ static void walk_node(ExpressionWalker *walker, Node *node)
                 walker,
                 node->as.var_decl.initializer
             );
+            break;
+
+        case NODE_VAR_DECL_GROUP:
+            walk_node_list(walker, &node->as.var_decl_group.declarations);
             break;
 
         case NODE_FUNC_PARAM_DECL:

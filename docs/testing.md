@@ -569,3 +569,5 @@ paired `.expected` diagnostic snapshots. This includes the diagnostic-list growt
 stress case and invalid enum default-type syntax; they are registered through the
 non-zero parser harness rather than being silently skipped by the successful AST
 snapshot harness.
+
+- Grouped typed mutable declarations are covered across parser, semantic, host-C, and LLVM paths.

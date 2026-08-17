@@ -435,6 +435,8 @@ Supported array behavior includes:
 - assignable indexed elements when the base is assignable
 - contextual array literals
 - contextual fixed-array `{0}` semantic-zero initialization
+
+Typed mutable declarations may group names (`a, b: u64 = 0;`). The initializer is evaluated separately for each name, left-to-right.
 - array assignment
 - array arguments
 - array return values

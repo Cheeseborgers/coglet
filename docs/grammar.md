@@ -81,6 +81,16 @@ A local variable declaration may omit an initializer:
 value: i32;
 ```
 
+Typed mutable declarations may group multiple names before one type:
+
+```c
+a, b: u64 = 0;
+x, y: i32[2] = [1, 2];
+p, q: i32;
+```
+
+A grouped declaration is defined as left-to-right syntax sugar for separate declarations. The initializer is cloned semantically for each name and is evaluated once per variable. Therefore `a, b: u64 = next();` calls `next()` twice. Grouped declarations do not introduce grouped constants or inferred `:=` syntax.
+
 This is syntactically valid.
 
 The variable is **not** implicitly initialized.

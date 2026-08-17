@@ -1216,6 +1216,79 @@ static Type *parse_type(Parser *p)
 
 // =================== variable declarations ==========================
 
+typedef struct PendingVarName {
+    Token name;
+    struct PendingVarName *next;
+} PendingVarName;
+
+static void pending_var_push(Parser *p, PendingVarName **head, PendingVarName **tail, Token name) {
+    PendingVarName *item = arena_alloc(p->arena, sizeof(*item));
+    item->name = name;
+    item->next = NULL;
+    if (*tail)
+        (*tail)->next = item;
+    else
+        *head = item;
+    *tail = item;
+}
+
+static Node *finish_grouped_typed_var_decl(Parser *p, Token first_name) {
+    PendingVarName *head = NULL;
+    PendingVarName *tail = NULL;
+    pending_var_push(p, &head, &tail, first_name);
+
+    while (match(p, TOK_COMMA)) {
+        if (!check(p, TOK_IDENT)) {
+            error_at(p, &p->current, "expected variable name after ','");
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+        Token name = p->current;
+        advance(p);
+        pending_var_push(p, &head, &tail, name);
+    }
+
+    if (!consume(p, TOK_COLON)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Type *type = parse_type(p);
+
+    if (match(p, TOK_COLON)) {
+        error_at(p, &p->previous, "grouped declarations cannot declare constants");
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *initializer = NULL;
+    if (match(p, TOK_EQUAL))
+        initializer = parse_assignment(p);
+
+    if (!consume(p, TOK_SEMICOLON)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *group = ast_new_var_decl_group(p->arena, first_name.span);
+    int index = 0;
+    for (PendingVarName *item = head; item; item = item->next, index++) {
+        Node *child_init = initializer;
+        if (initializer && index > 0)
+            child_init = ast_clone(p->arena, initializer);
+        Node *decl = ast_new_var_decl(
+            p->arena,
+            type,
+            item->name.start,
+            item->name.length,
+            child_init,
+            item->name.span
+        );
+        nodelist_push(p->arena, &group->as.var_decl_group.declarations, decl);
+    }
+    return group;
+}
+
 static Node *finish_typed_decl(Parser *p, Token name) {
 
     SourceSpan span = name.span;
@@ -2197,6 +2270,10 @@ static Node *parse_decl_or_expr_statement(Parser *p)
         Token name = p->current;
         advance(p);
 
+        if (check(p, TOK_COMMA)) {
+            return finish_grouped_typed_var_decl(p, name);
+        }
+
         if (match(p, TOK_COLON_EQUAL)) {
             return finish_inferred_var_decl(p, name);
         }
@@ -2360,6 +2437,7 @@ static int for_initializer_is_allowed(Node *node)
 {
     return node &&
         (node->type == NODE_VAR_DECL ||
+         node->type == NODE_VAR_DECL_GROUP ||
          node->type == NODE_CONST_DECL ||
          node->type == NODE_EXPR_STMT);
 }

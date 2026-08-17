@@ -1,0 +1,3 @@
+Shared::struct {
+    second: i32;
+}

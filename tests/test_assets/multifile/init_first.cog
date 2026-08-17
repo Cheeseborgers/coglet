@@ -1,0 +1,2 @@
+state: i32 = 1;
+state = state + 1;

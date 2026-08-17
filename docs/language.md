@@ -1943,8 +1943,8 @@ Near-term candidate areas include:
 - mutable and readonly slices and byte views;
 - ownership and lifetime rules only when justified by concrete use cases;
 - a later first-class string type;
-- imports and modules;
-- multi-file compilation;
+- imports and modules (multiple physical source files already form one shared compilation unit);
+- module/package visibility rules;
 - standard library facilities;
 - generics, if justified by real use cases;
 - self-hosting.

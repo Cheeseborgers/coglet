@@ -74,8 +74,10 @@ control-flow legality checking. Those are frontend responsibilities.
 ## Compilation unit and module initialization
 
 A `CogIrModule` represents one Coglet compilation unit, not necessarily exactly
-one physical source file. Its source table is multi-file-capable from the
-beginning.
+one physical source file. The driver can now parse multiple physical inputs into
+one frontend program and CogIR copies every registered source file into its own
+frozen source table. Backends therefore resolve diagnostics/debug locations for
+all input files without frontend lifetime dependencies.
 
 Coglet currently permits runtime-bearing program-scope code, including global
 initializers that call functions, top-level expression/mutation statements, and

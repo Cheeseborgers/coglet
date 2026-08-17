@@ -21,7 +21,7 @@ static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [--emit-asm <file>] [-O0|-O1|-O2|-O3] [-g] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
+        "usage: %s <file> [<file> ...] [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [--emit-asm <file>] [-O0|-O1|-O2|-O3] [-g] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
         "       %s --version\n",
         program,
         program
@@ -74,7 +74,8 @@ int main(int argc, char **argv)
         return COMPILE_STATUS_DRIVER_ERROR;
     }
 
-    const char *input_path = argv[1];
+    const char *input_paths[argc];
+    size_t input_path_count = 0;
     const char *output_path = NULL;
     const char *emit_c_path = NULL;
     const char *emit_llvm_path = NULL;
@@ -90,7 +91,7 @@ int main(int argc, char **argv)
     int library_dir_count = 0;
     int library_count = 0;
 
-    for (int i = 2; i < argc; i++) {
+    for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-o") == 0) {
             if (i + 1 >= argc || output_path) {
                 print_usage(argv[0]);
@@ -191,7 +192,18 @@ int main(int argc, char **argv)
             continue;
         }
 
+        if (argv[i][0] != '-') {
+            input_paths[input_path_count++] = argv[i];
+            continue;
+        }
+
         fprintf(stderr, "error: unknown option '%s'\n", argv[i]);
+        print_usage(argv[0]);
+        return COMPILE_STATUS_DRIVER_ERROR;
+    }
+
+    if (input_path_count == 0) {
+        fprintf(stderr, "error: no input file\n");
         print_usage(argv[0]);
         return COMPILE_STATUS_DRIVER_ERROR;
     }
@@ -239,7 +251,7 @@ int main(int argc, char **argv)
     }
 
     CompileResult result;
-    CompileStatus status = compile_parse_and_check(input_path, &result);
+    CompileStatus status = compile_parse_and_check_files(input_paths, input_path_count, &result);
 
     if (status != COMPILE_STATUS_OK) {
         int exit_code = status_to_exit_code(status);

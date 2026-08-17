@@ -20,6 +20,10 @@ typedef struct CompileResult {
     const char *filename;
     char *source;
 
+    /* Owned source buffers in command-line/input order; source aliases [0]. */
+    char **source_buffers;
+    size_t source_buffer_count;
+
     /* Multi-file-capable source provenance; filename/source identify primary. */
     SourceManager sources;
     SourceFileId primary_source_id;
@@ -67,11 +71,30 @@ typedef struct CompileResult {
 CompileStatus compile_parse_and_check(const char *filename, CompileResult *out);
 
 /*
+ * Parses and checks one compilation unit assembled from multiple source files.
+ * Files are parsed in the supplied order into one NODE_PROGRAM and share one
+ * semantic/global namespace. `filenames` is borrowed; source contents are
+ * owned by `out` until compile_result_destroy().
+ */
+CompileStatus compile_parse_and_check_files(
+    const char *const *filenames,
+    size_t filename_count,
+    CompileResult *out
+);
+
+/*
  * Same frontend pipeline using an explicit target description. The target is
  * copied into the result; the caller does not need to keep it alive.
  */
 CompileStatus compile_parse_and_check_for_target(
     const char *filename,
+    const TargetInfo *target,
+    CompileResult *out
+);
+
+CompileStatus compile_parse_and_check_files_for_target(
+    const char *const *filenames,
+    size_t filename_count,
     const TargetInfo *target,
     CompileResult *out
 );

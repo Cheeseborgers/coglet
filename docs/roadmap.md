@@ -453,15 +453,15 @@ encoding, and C-interoperability rules are clearer.
 
 ## Later Frontend Work
 
-Source provenance is now multi-file-capable even though compilation is still
-entered through one primary file: tokens/AST nodes carry `SourceFileId` + byte
-spans, parser and semantic diagnostics share the generic diagnostic layer, and a
-single `SourceManager` can register multiple source buffers. Actual module/import
-resolution and cross-file semantic composition remain separate language/compiler
-work.
+Source provenance and the compilation driver are now multi-file-capable: one
+command can parse multiple physical `.cog` inputs into a single ordered program,
+one semantic/global namespace, and one frozen CogIR module. Tokens/AST nodes
+retain per-file `SourceFileId` + byte spans, parser diagnostics aggregate across
+inputs, and LLVM debug metadata can name each original source file. This is a
+single compilation unit, not yet a module/package system.
 
 - imports and modules
-- multi-file compilation
+- declaration visibility / exports across modules
 - package and visibility rules
 - stable declaration identity across files
 - diagnostic notes/secondary spans and richer recovery

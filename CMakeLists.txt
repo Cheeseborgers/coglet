@@ -187,6 +187,36 @@ set_tests_properties(
         PROPERTIES LABELS "source;diagnostic;multi-file"
 )
 
+# --- Multi-file single-compilation-unit frontend/driver regressions. ---
+set(COGLET_MULTIFILE_MAIN "${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/main.cog")
+set(COGLET_MULTIFILE_SUPPORT "${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/support.cog")
+
+add_test(
+        NAME driver_multifile_semantic_duplicate
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/duplicate_a.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/duplicate_b.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=duplicate declaration 'Shared'"
+        "-DEXPECT_PATH_SUBSTRING=duplicate_b.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_multifile_semantic_duplicate
+        PROPERTIES LABELS "driver;source;semantic;multi-file;invalid")
+
+add_test(
+        NAME driver_multifile_parser_provenance
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/parse_ok.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/parse_bad.cog"
+        -DEXPECT_EXIT=2
+        "-DEXPECT_SUBSTRING=parser error"
+        "-DEXPECT_PATH_SUBSTRING=parse_bad.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_multifile_parser_provenance
+        PROPERTIES LABELS "driver;source;parser;diagnostic;multi-file;invalid")
+
 # --- CogIR core builder/verifier/dump regression. ---
 add_executable(check_cog_ir_core tools/tests/check_cog_ir_core.c)
 target_link_libraries(check_cog_ir_core PRIVATE compiler_core)
@@ -837,6 +867,32 @@ add_host_c_executable_test(
         backend_native_i32_entry native_i32_entry.cog 42
         "backend;backend.c;ir;entrypoint"
 )
+
+add_test(
+        NAME backend_multifile_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_MULTIFILE_MAIN}|${COGLET_MULTIFILE_SUPPORT}"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_multifile_host_c
+        -DEXPECT_EXIT=42
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_multifile_host_c
+        PROPERTIES LABELS "backend;backend.c;source;semantic;multi-file;entrypoint")
+
+add_test(
+        NAME backend_multifile_host_c_module_init_order
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/init_first.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/init_second.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_multifile_host_c_module_init_order
+        -DEXPECT_EXIT=20
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_multifile_host_c_module_init_order
+        PROPERTIES LABELS "backend;backend.c;source;multi-file;module-init")
 add_host_c_failure_test(
         backend_rejects_obsolete_c_int_entry obsolete_c_int_entry.cog 1
         "executable entry point must have signature 'main::() -> i32'"
@@ -1238,6 +1294,45 @@ if(COGLET_HAS_LLVM_BACKEND)
             backend_llvm_stage6_win64_aggregates llvm/stage6_win64_aggregates.cog 86 "win64cc void @coglet_backend_win64_make_large_aggregate"
         )
     endif()
+
+    add_test(
+        NAME backend_llvm_multifile_native
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_MULTIFILE_SUPPORT}|${COGLET_MULTIFILE_MAIN}"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_multifile_native
+        -DEXPECT_EXIT=42
+        -DBACKEND=llvm
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_multifile_native
+        PROPERTIES LABELS "backend;backend.llvm;source;semantic;multi-file;codegen;entrypoint")
+
+    add_test(
+        NAME backend_llvm_multifile_module_init_order
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/init_first.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/multifile/init_second.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_multifile_module_init_order
+        -DEXPECT_EXIT=20
+        -DBACKEND=llvm
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_multifile_module_init_order
+        PROPERTIES LABELS "backend;backend.llvm;source;multi-file;module-init;codegen")
+
+    add_test(
+        NAME backend_llvm_multifile_debug_sources
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_MULTIFILE_MAIN}|${COGLET_MULTIFILE_SUPPORT}"
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_multifile_debug_sources.ll
+        -DEXPECT_FIRST_SOURCE=main.cog
+        -DEXPECT_SECOND_SOURCE=support.cog
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_llvm_ir_test.cmake"
+    )
+    set_tests_properties(backend_llvm_multifile_debug_sources
+        PROPERTIES LABELS "backend;backend.llvm;source;multi-file;debug;stage9")
 
     function(add_llvm_stage7_native_test test_name fixture expected_exit)
         add_test(

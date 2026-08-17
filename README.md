@@ -139,6 +139,7 @@ For the current executable slice:
 
 ```sh
 coglet program.cog -o program
+coglet main.cog math.cog util.cog -o program
 coglet program.cog -o program --backend llvm
 coglet program.cog -o program --backend llvm -O2
 coglet program.cog -o program --backend llvm -O2 -g
@@ -806,7 +807,7 @@ object storage. Ordinary Coglet `bool*` is intentionally not interchangeable wit
 Near-term compiler work is backend-focused:
 
 1. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
-2. Reassess imports, modules, multi-file compilation, and runtime/standard-library facilities as self-hosting needs become concrete.
+2. Build imports/modules and declaration visibility on top of the single-compilation-unit multi-file driver, then define the runtime/standard-library boundary needed for self-hosting.
 3. Continue improving diagnostics, tests, and documentation.
 
 ## License

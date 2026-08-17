@@ -1,0 +1,5 @@
+state = state * 10;
+
+main::() -> i32 {
+    return state;
+}

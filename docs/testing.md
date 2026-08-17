@@ -251,6 +251,12 @@ driver test so the flag cannot be silently ignored. The float suite includes
 NaN/infinity, signed/unsigned range boundaries, and narrowing behavior so LLVM
 conversion instructions are not used before Coglet's checked-cast guards.
 
+Multi-file compilation coverage exercises a shared global namespace through both
+host-C and LLVM with the input order reversed between backend tests, cross-file
+nominal type/function resolution, cross-file duplicate diagnostics, parser-error
+source provenance, and LLVM `-g` metadata containing both physical source files.
+The multi-file tests use `-L multi-file` labels where applicable.
+
 Run only these tests with:
 
 ```bash

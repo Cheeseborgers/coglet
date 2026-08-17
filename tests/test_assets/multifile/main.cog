@@ -1,0 +1,7 @@
+consume::(pair: Pair) -> i32 {
+    return pair.left + pair.right;
+}
+
+main::() -> i32 {
+    return consume(make_pair(40));
+}

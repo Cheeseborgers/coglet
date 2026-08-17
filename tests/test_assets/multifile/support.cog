@@ -1,0 +1,11 @@
+Pair::struct {
+    left: i32;
+    right: i32;
+}
+
+make_pair::(base: i32) -> Pair {
+    return Pair {
+        left = base,
+        right = 2,
+    };
+}

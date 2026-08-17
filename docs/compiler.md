@@ -5,18 +5,38 @@ The compiler driver provides the shared source-file frontend pipeline used by
 
 Its current responsibilities are:
 
-1. read the primary source file;
-2. create the main and scratch arenas;
-3. initialize a compilation-level `SourceManager` and register the primary file;
-4. initialize the parser against that registered source file;
-5. parse the program;
-6. report collected parser diagnostics;
-7. run semantic analysis against the same source manager;
+1. collect one or more source-file inputs in command-line/API order;
+2. read and retain every source buffer for the lifetime of the frontend result;
+3. create the main and scratch arenas;
+4. initialize one compilation-level `SourceManager` and register every input;
+5. parse each physical file independently while accumulating its declarations into one `NODE_PROGRAM` compilation-unit root;
+6. aggregate parser diagnostics across all inputs and report them with their original source provenance;
+7. run semantic analysis once over the combined program/global namespace;
 8. report collected semantic diagnostics and the semantic error summary;
-9. retain frontend state for the caller until explicit destruction.
+9. retain all frontend state for the caller until explicit destruction.
 
 The driver does not perform token or AST snapshot dumping. `dump_tokens` remains
 lexer-only and `dump_ast` remains parser-only.
+
+
+## Multi-file compilation units
+
+The command-line driver accepts multiple physical source files:
+
+```bash
+coglet main.cog math.cog util.cog -o program
+```
+
+They form one compilation unit and one global semantic namespace. Named types
+and function signatures are registered across the complete combined program, so
+functions and nominal types may be referenced across file boundaries regardless
+of input order. Duplicate top-level declarations across files are diagnosed in
+the file containing the conflicting declaration.
+
+This milestone is deliberately **not** a module system: there are no `import`
+declarations, exports/private visibility, packages, or per-file namespaces.
+Program-scope runtime items are appended in input order and therefore retain the
+existing deterministic CogIR module-initialization ordering across files.
 
 
 ## Post-semantic IR boundary
@@ -31,7 +51,7 @@ only the verified `CogIrModule`; they will not retain AST, `Symbol *`, frontend
 
 `CompileResult` owns:
 
-- the primary source buffer;
+- every input source buffer (with `source` remaining a compatibility alias for the first/primary input);
 - the main arena;
 - the scratch arena;
 - compilation-level source-file metadata through `SourceManager`.
@@ -80,11 +100,14 @@ backend emission/link step fails after successful frontend checking.
 ## Source provenance and diagnostics
 
 Source identity is compilation-local and multi-file-capable. `SourceManager`
-registers each source buffer under a stable `SourceFileId`; the current driver
-registers one primary file, while future module/import loading can register
-additional files in the same manager without changing AST or diagnostic
-representation. Source buffers must remain alive while their registered spans
-are in use.
+registers every command-line/API source buffer under a stable `SourceFileId`.
+`compile_parse_and_check_files()` parses those files in supplied order and
+combines their top-level declarations/statements into one semantic compilation
+unit. The first input remains the primary file for compatibility metadata only;
+it has no separate namespace or visibility privilege. Future module/import
+loading can reuse the same source identity model without changing AST or
+diagnostic representation. Source buffers remain alive while their registered
+spans are in use.
 
 Tokens and AST nodes carry `SourceSpan` values containing:
 

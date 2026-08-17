@@ -7720,8 +7720,13 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         }
 
         case NODE_ARRAY_LITERAL:
-            semantic_error(ctx, node,
-                "array literal requires an expected array type");
+            semantic_error(
+                ctx,
+                node,
+                node->as.array_literal.is_zero_initializer
+                    ? "zero initializer requires an expected array type"
+                    : "array literal requires an expected array type"
+            );
             return NULL;
 
         default:
@@ -8810,10 +8815,23 @@ static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *i
     }
 
     if (expected->kind != TYPE_ARRAY) {
-        semantic_error(ctx, initializer,
-            "array literal can only initialize an array type");
+        semantic_error(
+            ctx,
+            initializer,
+            initializer->as.array_literal.is_zero_initializer
+                ? "zero initializer can only initialize an array type"
+                : "array literal can only initialize an array type"
+        );
         return 0;
     }
+
+    /*
+     * `{0}` is one contextual initializer for the entire fixed-size array,
+     * not a one-element array literal and not C partial-initializer syntax.
+     * Lowering maps it to CogIR's existing semantic aggregate-zero constant.
+     */
+    if (initializer->as.array_literal.is_zero_initializer)
+        return 1;
 
     int expected_count = expected->array_size;
     int actual_count   = initializer->as.array_literal.elements.count;

@@ -1,0 +1,40 @@
+Holder::struct {
+    values: i32[3];
+}
+
+global_values: i32[4] = {0};
+
+sum4::(values: i32[4]) -> i32 {
+    return values[0] + values[1] + values[2] + values[3];
+}
+
+make_zero::() -> i32[4] {
+    return {0};
+}
+
+main::() -> i32 {
+    values: i32[4] = {0};
+    values[2] = 9;
+    values = {0};
+
+    if sum4(values) != 0
+        return 1;
+
+    if sum4({0}) != 0
+        return 2;
+
+    holder := Holder {
+        values = {0},
+    };
+    if holder.values[1] != 0
+        return 3;
+
+    made := make_zero();
+    if made[3] != 0
+        return 4;
+
+    if global_values[0] != 0 || global_values[3] != 0
+        return 5;
+
+    return 42;
+}

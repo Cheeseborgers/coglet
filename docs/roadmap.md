@@ -15,7 +15,7 @@ Implemented areas include:
 - canonical primitive numeric and boolean semantic types
 - mutable and readonly raw object pointers with dedicated `null`, fixed arrays, nominal structs, nominal enums, and function types
 - arithmetic, bitwise operations, shifts, comparisons, logic, calls, fields, indexes, casts, and aggregate initializers
-- contextual fixed-array string literals plus direct readonly C-string literal arguments at `#extern(c)` call boundaries
+- contextual fixed-array string literals, fixed-array `{0}` semantic-zero initialization, plus direct readonly C-string literal arguments at `#extern(c)` call boundaries
 - assignment, arithmetic/bitwise/shift compound assignment, and increment/decrement as statement-only
   mutations
 - lvalue/rvalue/no-value tracking with writable/readonly storage access

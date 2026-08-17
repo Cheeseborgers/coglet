@@ -66,6 +66,21 @@ Run it with:
 ctest --test-dir cmake-build-debug -L version --output-on-failure
 ```
 
+## Fixed-array zero-initializer tests
+
+The `{0}` array-initializer coverage checks parser spelling, contextual semantic
+typing, rejection without an expected array type or against scalar storage,
+semantic-info completeness, and executable host-C/LLVM lowering through CogIR's
+typed `zeroinit` constant. The backend fixture exercises local/global
+declarations, whole-array assignment, call arguments, returns, and array-valued
+struct fields.
+
+Run the focused slice with:
+
+```bash
+ctest --test-dir cmake-build-debug -R zero_initializer --output-on-failure
+```
+
 ## CogIR Lowering Tests
 
 CogIR golden dumps cover executable entry identity, structured-CFG, data/address,

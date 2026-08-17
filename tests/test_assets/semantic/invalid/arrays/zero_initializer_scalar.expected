@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/arrays/zero_initializer_scalar.cog:2:18: error: zero initializer can only initialize an array type
+    value: i32 = {0};
+                 ^~~
+1 semantic error generated.

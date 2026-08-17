@@ -1027,6 +1027,12 @@ operations and comparisons, switch labels, inferred numeric storage, array
 indexes/shift counts that require default materialization, null comparisons,
 and supported C literal boundaries.
 
+Contextual aggregate syntax is also resolved before lowering. Ordinary array
+literals and the fixed-array `{0}` initializer receive their expected array type
+in `SemExprInfo`; `{0}` is then lowered directly to CogIR's existing typed
+`zeroinit` constant. It is not modeled as a one-element literal, and backends do
+not interpret the source spelling or reproduce C partial-initializer rules.
+
 Explicit casts are intentionally not represented as contextual conversions:
 their conversion kind and destination already exist explicitly in the
 `NODE_CAST` AST. Likewise, C default argument promotions for already-concrete

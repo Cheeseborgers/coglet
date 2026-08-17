@@ -2067,8 +2067,22 @@ static CogIrValueId lower_array_literal(ExecLowerState *state, Node *node)
     Type *sem_type = effective_semantic_type(state, node);
     CogIrTypeId type = cog_ir_lower_type(state->lower, sem_type);
     const CogIrType *ir_type = cog_ir_get_type(state->lower->module, type);
+    if (!ir_type || ir_type->kind != COG_IR_TYPE_ARRAY) {
+        lower_error(state->lower, node->span, "array initializer has invalid CogIR type");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    if (node->as.array_literal.is_zero_initializer) {
+        CogIrConstId zero = cog_ir_const_zero(state->lower->module, type);
+        if (zero == COG_IR_CONST_INVALID) {
+            lower_error(state->lower, node->span, "failed to lower array zero initializer");
+            return COG_IR_VALUE_INVALID;
+        }
+        return emit_constant_value(state, zero, node->span);
+    }
+
     size_t count = (size_t)node->as.array_literal.elements.count;
-    if (!ir_type || ir_type->kind != COG_IR_TYPE_ARRAY || ir_type->as.array.length != count) {
+    if (ir_type->as.array.length != count) {
         lower_error(state->lower, node->span, "array literal type/count mismatch during CogIR lowering");
         return COG_IR_VALUE_INVALID;
     }

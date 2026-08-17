@@ -371,7 +371,8 @@ struct Node {
         } const_decl;
 
         struct {
-            NodeList elements;   // values: [3]i32 = [1, 2, 3];
+            NodeList elements;   // values: i32[3] = [1, 2, 3];
+            int is_zero_initializer; // contextual `{0}` aggregate-zero spelling
         } array_literal;
 
     } as;
@@ -418,6 +419,7 @@ Node *ast_new_enum_member(Arena *arena, const char *name, int name_length, Sourc
 Node *ast_new_field_init(Arena *arena, const char *name, int name_length, Node *value, SourceSpan span);
 Node *ast_new_const_decl(Arena *arena, Type *type, const char *name, int name_length, Node *value, SourceSpan span);
 Node *ast_new_array_literal(Arena *arena, SourceSpan span);
+Node *ast_new_zero_array_initializer(Arena *arena, SourceSpan span);
 
 Node *ast_clone(Arena *arena, const Node *node);
 

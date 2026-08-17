@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/arrays/zero_initializer_without_context.cog:2:14: error: zero initializer requires an expected array type
+    value := {0};
+             ^~~
+1 semantic error generated.

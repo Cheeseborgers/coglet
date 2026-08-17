@@ -902,7 +902,9 @@ static void print_node(Node *node)
             break;
 
         case NODE_ARRAY_LITERAL:
-            printf("array_literal\n");
+            printf(node->as.array_literal.is_zero_initializer
+                ? "zero_array_initializer\n"
+                : "array_literal\n");
             for (int i = 0; i < node->as.array_literal.elements.count; i++) {
                 print_node(node->as.array_literal.elements.items[i]);
             }
@@ -1479,7 +1481,9 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_ARRAY_LITERAL:
             indent(depth);
-            printf("array_literal\n");
+            printf(node->as.array_literal.is_zero_initializer
+                ? "zero_array_initializer\n"
+                : "array_literal\n");
 
             for (int i = 0; i < node->as.array_literal.elements.count; i++) {
                 print_node_pretty(node->as.array_literal.elements.items[i], depth + 1);

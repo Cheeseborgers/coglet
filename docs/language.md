@@ -1003,6 +1003,48 @@ p := Point {
 
 Array literals are not yet inferred standalone expressions.
 
+## Array Zero Initializer
+
+A fixed-size array may be initialized with the special contextual spelling
+`{0}`:
+
+```c
+values: i32[64] = {0};
+```
+
+This initializes the entire destination array to Coglet semantic zero. The
+spelling is intentionally one indivisible initializer: it is not equivalent to
+a one-element array literal, does not mean "initialize the first element and
+fill the rest", and does not introduce general C aggregate-initializer rules.
+
+The same expected-array contexts as array literals are supported:
+
+```c
+values = {0};
+takes_i32_array({0});
+
+make_values::() -> i32[3] {
+    return {0};
+}
+
+p := Point {
+    values = {0},
+};
+```
+
+`{0}` requires an expected fixed-array type. It cannot infer storage by itself
+and cannot initialize a scalar or struct directly:
+
+```c
+values := {0};      // invalid: no expected array type
+value: i32 = {0};   // invalid: destination is not an array
+```
+
+The frontend records the destination array type on the contextual initializer;
+CogIR then represents the value with its existing typed `zeroinit` constant.
+Backends therefore receive a backend-neutral semantic zero value rather than
+reconstructing source syntax.
+
 Rejected:
 
 ```c

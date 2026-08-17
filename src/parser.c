@@ -52,6 +52,7 @@ static Node *parse_scoped_control_body(Parser *p);
 
 static Node *parse_conversion_expression(Parser *p);
 static Node *parse_array_literal(Parser *p);
+static Node *parse_zero_array_initializer(Parser *p);
 
 static int parse_integer_u64(Token token, uint64_t *out);
 static int parse_float_token(Parser *p, Token token, double *out);
@@ -689,6 +690,10 @@ static Node *parse_primary(Parser *p)
 
     if (match(p, TOK_LBRACKET)) {
         return parse_array_literal(p);
+    }
+
+    if (match(p, TOK_LBRACE)) {
+        return parse_zero_array_initializer(p);
     }
 
     error_at(p, &p->current, "expected expression");
@@ -2554,6 +2559,32 @@ static Node *parse_conversion_expression(Parser *p) {
         target_type,
         expression,
         source_span_join(keyword.span, expression->span)
+    );
+}
+
+static Node *parse_zero_array_initializer(Parser *p) {
+
+    Token open = p->previous;
+
+    if (!match(p, TOK_NUMBER_INT)) {
+        error_at(p, &p->current, "zero initializer must be spelled '{0}'");
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Token zero = p->previous;
+    if (zero.length != 1 || zero.start[0] != '0') {
+        error_at(p, &zero, "zero initializer must be spelled '{0}'");
+    }
+
+    if (!consume(p, TOK_RBRACE)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    return ast_new_zero_array_initializer(
+        p->arena,
+        source_span_join(open.span, p->previous.span)
     );
 }
 

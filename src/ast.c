@@ -353,6 +353,13 @@ Node *ast_new_array_literal(Arena *arena, SourceSpan span) {
     node->as.array_literal.elements.items    = NULL;
     node->as.array_literal.elements.count    = 0;
     node->as.array_literal.elements.capacity = 0;
+    node->as.array_literal.is_zero_initializer = 0;
+    return node;
+}
+
+Node *ast_new_zero_array_initializer(Arena *arena, SourceSpan span) {
+    Node *node = ast_new_array_literal(arena, span);
+    node->as.array_literal.is_zero_initializer = 1;
     return node;
 }
 
@@ -709,6 +716,8 @@ Node *ast_clone(Arena *arena, const Node *node)
                 clone->as.array_literal.elements.items    = NULL;
                 clone->as.array_literal.elements.count    = 0;
                 clone->as.array_literal.elements.capacity = 0;
+                clone->as.array_literal.is_zero_initializer =
+                    node->as.array_literal.is_zero_initializer;
             break;
 
         case NODE_NULL:

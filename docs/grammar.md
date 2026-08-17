@@ -235,6 +235,37 @@ values := [1, 2, 3];
 
 Array literals are not yet general inferred standalone expressions.
 
+## Array Zero Initializer
+
+```ebnf
+array_zero_initializer =
+    "{" "0" "}";
+```
+
+`{0}` is a contextual initializer for a fixed-size array. It denotes semantic
+zero for the complete destination array; it is not a one-element array literal
+and does not enable C partial aggregate initialization.
+
+Supported expected-type contexts match ordinary array literals:
+
+```c
+values: i32[3] = {0};
+values = {0};
+takes_i32_array({0});
+
+make_values::() -> i32[3] {
+    return {0};
+}
+```
+
+Rejected:
+
+```c
+values := {0};   // no expected array type
+value: i32 = {0};
+values: i32[3] = {1};
+```
+
 ## String Literals
 
 ```ebnf
@@ -539,7 +570,7 @@ make_array()[0] = 1;
 ```
 
 The right-hand side is checked as an initializer against the target type. This permits contextual
-string and array literals.
+string literals, array literals, and the fixed-array `{0}` zero initializer.
 
 Assignment is statement-only and does not produce a value.
 

@@ -434,6 +434,7 @@ Supported array behavior includes:
 - indexing
 - assignable indexed elements when the base is assignable
 - contextual array literals
+- contextual fixed-array `{0}` semantic-zero initialization
 - array assignment
 - array arguments
 - array return values

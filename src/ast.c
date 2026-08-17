@@ -619,12 +619,12 @@ Node *ast_clone(Arena *arena, const Node *node)
             if (node->as.func_decl.type_parameters.count > 0) {
                 clone->as.func_decl.type_parameters.items = arena_alloc(
                     arena,
-                    sizeof(StringView) * (size_t)node->as.func_decl.type_parameters.count
+                    sizeof(GenericTypeParameter) * (size_t)node->as.func_decl.type_parameters.count
                 );
                 memcpy(
                     clone->as.func_decl.type_parameters.items,
                     node->as.func_decl.type_parameters.items,
-                    sizeof(StringView) * (size_t)node->as.func_decl.type_parameters.count
+                    sizeof(GenericTypeParameter) * (size_t)node->as.func_decl.type_parameters.count
                 );
             }
             clone->as.func_decl.return_type   = node->as.func_decl.return_type;

@@ -522,10 +522,8 @@ Coglet's first generic facility is deliberately monomorphized and
 function-only. A top-level function may declare type parameters after its `::`:
 
 ```c
-min::<T>(a: T, b: T) -> T {
-    if a < b
-        return a;
-    return b;
+identity::<T>(value: T) -> T {
+    return value;
 }
 ```
 
@@ -536,13 +534,44 @@ arguments. The current semantic checker is bottom-up, so an expected result type
 does not participate in inference. Conflicting argument evidence is rejected, and
 a type parameter that cannot be inferred requires an explicit type argument.
 
-A type parameter does not implicitly support arbitrary operators. Before a
-concrete specialization is accepted, the function body is checked under the
-substitution using the same ordinary semantic rules as non-generic source. Thus
-`a < b` is legal only for concrete types for which Coglet already defines `<`; a
-struct or pointer does not gain comparison/arithmetic capabilities merely because
-it was substituted for `T`. There is no user-visible trait/interface language in
-this milestone.
+A type parameter may also carry one closed compiler-defined constraint:
+
+```c
+min::<T: ordered>(a: T, b: T) -> T {
+    if a < b
+        return a;
+    return b;
+}
+```
+
+The builtin constraints are deliberately small:
+
+- `integer`: any concrete signed or unsigned integer type;
+- `signed_integer`: `i8`, `i16`, `i32`, or `i64`;
+- `unsigned_integer`: `u8`, `u16`, `u32`, or `u64`;
+- `floating`: `f32` or `f64`;
+- `numeric`: any concrete integer or floating-point type;
+- `ordered`: the concrete types accepted by Coglet's ordered comparisons,
+  currently the same integer and floating-point domain as `numeric`.
+
+A constraint is an early admissibility contract, not permission to bypass the
+ordinary type system. Before a concrete specialization is accepted, the function
+body is still checked under substitution using exactly the same operator, call,
+flow, and conversion rules as non-generic source. For example, `T: numeric` does
+not make `%` valid for `f64`; that specialization still fails because ordinary
+Coglet semantics require integer operands for `%`. Unconstrained parameters also
+remain valid and rely solely on specialization-time body checking. There are no
+user-defined constraints, trait/interface declarations, implementations, or
+constraint composition rules. Constraints are checked only after ordinary
+inference has chosen concrete types; they do not steer literal defaulting or pick
+a different satisfying type. For example, an untyped integer literal still
+defaults according to Coglet's normal inference rules even when the parameter is
+`T: unsigned_integer`; callers can use an explicit type argument or cast when a
+specific unsigned type is required.
+
+`ordered` means that Coglet defines `<`, `<=`, `>`, and `>=` for the type; it does
+not promise a mathematical total-order law (floating-point NaN behavior remains
+ordinary IEEE-754 behavior).
 
 Specializations are compile-time entities. Equivalent calls reuse the same
 specialization. Ordinary recursion reuses an in-progress specialization, while a
@@ -589,9 +618,20 @@ This differs from mutation operations:
 Integer and floating-point literals begin as adaptable numeric values:
 
 ```text
-integer literal       -> untyped-int
+integer literal        -> untyped-int
 floating-point literal -> untyped-float
 ```
+
+Floating-point source may use ordinary decimal notation or hexadecimal notation with a mandatory binary `p`/`P` exponent:
+
+```c
+decimal := 3.141592653589793;
+hex     := 0x1.921fb54442d18p+1;
+three   := 0x1.8p1;
+small   := 0x.8p-2;
+```
+
+The hexadecimal significand is base 16 and the exponent is a power of two. `0x1p0` therefore denotes 1, while `0x1.8p1` denotes 3. Hexadecimal floating-point spelling does not introduce a distinct semantic type: it is still an adaptable `untyped-float` constant and follows the same contextual `f32`/`f64` materialization rules as a decimal floating literal. A `p`/`P` exponent is required for hexadecimal floats; without a point or `p` exponent, forms such as `0x1e3` remain hexadecimal integers.
 
 The exact integer value is retained independently of a concrete machine type. Negative values are parsed as unary negation applied to a positive literal:
 
@@ -2096,7 +2136,7 @@ Near-term candidate areas include:
 - a later first-class string type;
 - package manifests and separate-compilation policy on top of the configured stdlib module root;
 - standard library facilities;
-- broader generics (generic nominal types or explicit constraints) only when justified by real use cases;
+- broader generics (generic nominal types or user-defined constraint/trait systems) only when justified by real use cases;
 - self-hosting.
 
 At a future C ABI boundary, opaque pointers should map to C `void*`-style

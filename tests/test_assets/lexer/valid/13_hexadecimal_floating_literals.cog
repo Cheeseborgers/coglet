@@ -1,0 +1,6 @@
+one := 0x1p0;
+three := 0x1.8p1;
+pi := 0x1.921fb54442d18p+1;
+small := 0x.8p-2;
+upper := 0X1.AP+4;
+hex_integer := 0x1e3;

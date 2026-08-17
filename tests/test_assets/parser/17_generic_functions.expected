@@ -1,5 +1,5 @@
 program
-  func min<T> -> T
+  func min<T: ordered> -> T
     params:
       param_decl a: T
       param_decl b: T
@@ -16,7 +16,7 @@ program
                 a
         return
           b
-  func select<T, U> -> T
+  func select<T, U: integer> -> T
     params:
       param_decl left: T
       param_decl right: U

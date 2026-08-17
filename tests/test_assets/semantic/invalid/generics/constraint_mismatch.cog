@@ -1,0 +1,8 @@
+only_unsigned::<T: unsigned_integer>(value: T) -> T {
+    return value;
+}
+
+main::() -> i32 {
+    value := only_unsigned(1);
+    return 0;
+}

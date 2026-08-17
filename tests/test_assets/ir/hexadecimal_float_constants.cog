@@ -1,0 +1,13 @@
+PI :: 0x1.921fb54442d18p+1;
+
+pi32::() -> f32 {
+    return PI;
+}
+
+pi64::() -> f64 {
+    return PI;
+}
+
+main::() -> i32 {
+    return 0;
+}

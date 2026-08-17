@@ -22,10 +22,19 @@ main::() -> i32 {
     if std.math.gcd_u64(42, 0) != 42
         return 7;
 
-    if std.math.pi < 3.1415 || std.math.pi > 3.1416
+    pi32: f32 = std.math.pi;
+    pi64: f64 = std.math.pi;
+    tau32: f32 = std.math.tau;
+    tau64: f64 = std.math.tau;
+
+    if pi32 < 3.1415 || pi32 > 3.1416
         return 8;
-    if std.math.tau != std.math.pi * 2.0
+    if pi64 < 3.1415 || pi64 > 3.1416
         return 9;
+    if tau32 != pi32 * 2.0
+        return 12;
+    if tau64 != pi64 * 2.0
+        return 13;
 
     return 0;
 }

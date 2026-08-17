@@ -34,24 +34,34 @@ import std.math;
 Exports:
 
 ```text
-pi       : f64 constant
-tau      : f64 constant
+pi       : adaptable floating compile-time constant
+tau      : adaptable floating compile-time constant
 abs_i32  : (i32) -> i32
-min<T>   : (T, T) -> T
-max<T>   : (T, T) -> T
+min<T: ordered> : (T, T) -> T
+max<T: ordered> : (T, T) -> T
 gcd_u64  : (u64, u64) -> u64
 ```
+
+`pi` and `tau` are written as exact hexadecimal floating-point source constants and remain adaptable `untyped-float` compile-time values rather than being permanently materialized as `f64`. Normal context selects the concrete precision:
+
+```c
+angle32: f32 = std.math.pi;
+angle64: f64 = std.math.pi;
+defaulted := std.math.pi; // inferred mutable storage defaults to f64
+```
+
+No cast is required at the use site. The same source constant is rounded to the requested `f32` or `f64` representation by ordinary constant materialization.
 
 `abs_i32` uses ordinary checked Coglet negation, so applying it to the minimum
 `i32` value follows the language's normal checked-overflow trap semantics.
 `gcd_u64` uses the Euclidean algorithm and accepts zero operands; `gcd_u64(0, n)`
 and `gcd_u64(n, 0)` return `n`.
 
-`min` and `max` infer `T` from ordinary arguments when inference is
-unambiguous, and callers may spell an explicit specialization such as
-`std.math.min::<u64>(30, 20)`. Their comparison operators are not assumed valid
-for every `T`: each concrete specialization is checked by the ordinary semantic
-rules, so an unsupported type is rejected at instantiation. `abs_i32` and
+`min` and `max` declare `T: ordered`, infer `T` from ordinary arguments when
+inference is unambiguous, and callers may spell an explicit specialization such
+as `std.math.min::<u64>(30, 20)`. The constraint rejects non-numeric type
+arguments before specialization; the concrete body is still checked by ordinary
+semantic rules afterward. `abs_i32` and
 `gcd_u64` remain intentionally concrete; this milestone does not attempt to make
 every standard-library function generic.
 

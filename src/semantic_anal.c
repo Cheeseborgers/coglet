@@ -6231,7 +6231,7 @@ static int generic_type_parameter_index(const Node *func, StringView name)
         return -1;
 
     for (int i = 0; i < func->as.func_decl.type_parameters.count; i++) {
-        if (string_view_equals(func->as.func_decl.type_parameters.items[i], name))
+        if (string_view_equals(func->as.func_decl.type_parameters.items[i].name, name))
             return i;
     }
     return -1;
@@ -6273,6 +6273,121 @@ static int source_type_contains_generic_parameter(const Node *func, const Type *
         default:
             return 0;
     }
+}
+
+typedef enum GenericBuiltinConstraint {
+    GENERIC_CONSTRAINT_NONE,
+    GENERIC_CONSTRAINT_INTEGER,
+    GENERIC_CONSTRAINT_SIGNED_INTEGER,
+    GENERIC_CONSTRAINT_UNSIGNED_INTEGER,
+    GENERIC_CONSTRAINT_FLOATING,
+    GENERIC_CONSTRAINT_NUMERIC,
+    GENERIC_CONSTRAINT_ORDERED,
+    GENERIC_CONSTRAINT_INVALID,
+} GenericBuiltinConstraint;
+
+static GenericBuiltinConstraint generic_builtin_constraint(StringView name)
+{
+    if (string_view_is_empty(name))
+        return GENERIC_CONSTRAINT_NONE;
+    if (string_view_equals_cstr(name, "integer"))
+        return GENERIC_CONSTRAINT_INTEGER;
+    if (string_view_equals_cstr(name, "signed_integer"))
+        return GENERIC_CONSTRAINT_SIGNED_INTEGER;
+    if (string_view_equals_cstr(name, "unsigned_integer"))
+        return GENERIC_CONSTRAINT_UNSIGNED_INTEGER;
+    if (string_view_equals_cstr(name, "floating"))
+        return GENERIC_CONSTRAINT_FLOATING;
+    if (string_view_equals_cstr(name, "numeric"))
+        return GENERIC_CONSTRAINT_NUMERIC;
+    if (string_view_equals_cstr(name, "ordered"))
+        return GENERIC_CONSTRAINT_ORDERED;
+    return GENERIC_CONSTRAINT_INVALID;
+}
+
+static int type_satisfies_generic_constraint(
+    const Type *type,
+    GenericBuiltinConstraint constraint
+) {
+    if (!type)
+        return 0;
+
+    switch (constraint) {
+        case GENERIC_CONSTRAINT_NONE:
+            return 1;
+
+        case GENERIC_CONSTRAINT_INTEGER:
+            return is_concrete_integer_kind(type->kind);
+
+        case GENERIC_CONSTRAINT_SIGNED_INTEGER:
+            return is_signed_integer_kind(type->kind);
+
+        case GENERIC_CONSTRAINT_UNSIGNED_INTEGER:
+            return is_unsigned_integer_kind(type->kind);
+
+        case GENERIC_CONSTRAINT_FLOATING:
+            return is_concrete_float_kind(type->kind);
+
+        case GENERIC_CONSTRAINT_NUMERIC:
+        case GENERIC_CONSTRAINT_ORDERED:
+            /*
+             * Coglet's current arithmetic and ordered-comparison domains are
+             * exactly the concrete integer and floating-point types. Keep the
+             * names distinct so a declaration states its intent without
+             * granting operations that ordinary semantic analysis would reject.
+             */
+            return is_concrete_integer_kind(type->kind) ||
+                   is_concrete_float_kind(type->kind);
+
+        case GENERIC_CONSTRAINT_INVALID:
+            return 0;
+    }
+
+    return 0;
+}
+
+static int check_generic_type_argument_constraints(
+    SemanticContext *ctx,
+    Node *template_decl,
+    Type *const *type_arguments,
+    int type_argument_count,
+    Node *call_site
+) {
+    int parameter_count = template_decl->as.func_decl.type_parameters.count;
+    int count = parameter_count < type_argument_count
+        ? parameter_count
+        : type_argument_count;
+
+    for (int i = 0; i < count; i++) {
+        GenericTypeParameter parameter =
+            template_decl->as.func_decl.type_parameters.items[i];
+        GenericBuiltinConstraint constraint =
+            generic_builtin_constraint(parameter.constraint);
+
+        /* Template declaration checking rejects unknown constraint names. */
+        assert(constraint != GENERIC_CONSTRAINT_INVALID);
+
+        if (type_satisfies_generic_constraint(type_arguments[i], constraint))
+            continue;
+
+        char type_name[192];
+        format_type_name(type_arguments[i], type_name, sizeof(type_name));
+        semantic_error_fmt(
+            ctx,
+            call_site,
+            "cannot instantiate '%.*s': type argument %.*s = %s does not satisfy constraint '%.*s'",
+            (int)template_decl->as.func_decl.name.length,
+            template_decl->as.func_decl.name.data,
+            (int)parameter.name.length,
+            parameter.name.data,
+            type_name,
+            (int)parameter.constraint.length,
+            parameter.constraint.data
+        );
+        return 0;
+    }
+
+    return 1;
 }
 
 static int symbol_is_generic_template(const Symbol *symbol)
@@ -6337,7 +6452,7 @@ static void format_generic_bindings(
     for (int i = 0; i < count; i++) {
         char type_name[192];
         format_type_name(type_arguments[i], type_name, sizeof(type_name));
-        StringView parameter = template_decl->as.func_decl.type_parameters.items[i];
+        StringView parameter = template_decl->as.func_decl.type_parameters.items[i].name;
 
         int written = snprintf(
             buffer + used,
@@ -6446,7 +6561,7 @@ static void define_generic_type_aliases(
     for (int i = 0; i < template_decl->as.func_decl.type_parameters.count; i++) {
         scope_define(
             ctx,
-            template_decl->as.func_decl.type_parameters.items[i],
+            template_decl->as.func_decl.type_parameters.items[i].name,
             SYMBOL_TYPE,
             type_arguments[i]
         );
@@ -6636,7 +6751,7 @@ static int infer_generic_argument_candidate(
             char candidate_name[128];
             format_type_name(inferred[parameter_index], previous_name, sizeof(previous_name));
             format_type_name(candidate, candidate_name, sizeof(candidate_name));
-            StringView parameter = template_decl->as.func_decl.type_parameters.items[parameter_index];
+            StringView parameter = template_decl->as.func_decl.type_parameters.items[parameter_index].name;
             semantic_error_fmt(
                 ctx,
                 argument,
@@ -6770,7 +6885,7 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
 
         for (int i = 0; i < type_parameter_count; i++) {
             if (!type_arguments[i]) {
-                StringView parameter = template_decl->as.func_decl.type_parameters.items[i];
+                StringView parameter = template_decl->as.func_decl.type_parameters.items[i].name;
                 semantic_error_fmt(
                     ctx,
                     call,
@@ -6781,6 +6896,15 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
                 return NULL;
             }
         }
+    }
+
+    if (!check_generic_type_argument_constraints(
+            ctx,
+            template_decl,
+            type_arguments,
+            type_parameter_count,
+            call)) {
+        return NULL;
     }
 
     GenericSpecialization *spec = instantiate_generic_function(
@@ -11743,11 +11867,26 @@ static int declare_generic_function_template(SemanticContext *ctx, Node *node)
     }
 
     for (int i = 0; i < node->as.func_decl.type_parameters.count; i++) {
-        StringView parameter = node->as.func_decl.type_parameters.items[i];
+        GenericTypeParameter type_parameter =
+            node->as.func_decl.type_parameters.items[i];
+        StringView parameter = type_parameter.name;
+
+        if (generic_builtin_constraint(type_parameter.constraint) ==
+            GENERIC_CONSTRAINT_INVALID) {
+            semantic_error_fmt(
+                ctx,
+                node,
+                "unknown generic type constraint '%.*s'; expected one of: integer, signed_integer, unsigned_integer, floating, numeric, ordered",
+                (int)type_parameter.constraint.length,
+                type_parameter.constraint.data
+            );
+            return 0;
+        }
+
         for (int j = 0; j < i; j++) {
             if (string_view_equals(
                     parameter,
-                    node->as.func_decl.type_parameters.items[j])) {
+                    node->as.func_decl.type_parameters.items[j].name)) {
                 semantic_error_fmt(
                     ctx,
                     node,

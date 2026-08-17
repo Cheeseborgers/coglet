@@ -1,0 +1,10 @@
+min::<T: ordered>(a: T, b: T) -> T {
+    if a < b
+        return a;
+    return b;
+}
+
+main::() -> i32 {
+    value := min(true, false);
+    return 0;
+}

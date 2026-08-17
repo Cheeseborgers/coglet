@@ -177,6 +177,33 @@ unary_expression =
     | primary_expression;
 ```
 
+Integer literals may be decimal or use the `0x`/`0X`, `0b`/`0B`, and `0o`/`0O` radix prefixes. Floating-point literals may use decimal notation with an optional `e`/`E` decimal exponent or hexadecimal notation with a mandatory `p`/`P` binary exponent:
+
+```ebnf
+decimal_float =
+      decimal_digits "." decimal_digits [decimal_exponent]
+    | decimal_digits decimal_exponent;
+
+hex_float =
+    ("0x" | "0X")
+    (hex_digits ["." [hex_digits]] | "." hex_digits)
+    ("p" | "P") ["+" | "-"] decimal_digits;
+```
+
+Examples:
+
+```c
+1.25
+1e3
+1.25e-4
+0x1p0
+0x1.8p1
+0x1.921fb54442d18p+1
+0x.8p-2
+```
+
+The hexadecimal significand is base 16, while the `p` exponent scales by a power of two. A hexadecimal point without a `p`/`P` exponent is invalid, which keeps `0x1e3` unambiguously an integer literal. Both decimal and hexadecimal floating-point spellings produce the same adaptable `untyped-float` semantic kind.
+
 For example, `-2147483648` is parsed as unary negation applied to the positive literal `2147483648`. Numeric literals initially have adaptable `untyped-int` or `untyped-float` semantic types. Inferred mutable variables and parameters are concretized to default runtime types, while inferred compile-time constants may remain adaptable.
 
 ## Raw Object Pointers
@@ -411,7 +438,18 @@ coglet_function_declaration =
     block;
 
 generic_type_parameter_list =
-    "<" identifier {"," identifier} ">";
+    "<" generic_type_parameter {"," generic_type_parameter} ">";
+
+generic_type_parameter =
+    identifier [":" generic_builtin_constraint];
+
+generic_builtin_constraint =
+      "integer"
+    | "signed_integer"
+    | "unsigned_integer"
+    | "floating"
+    | "numeric"
+    | "ordered";
 
 extern_c_function_declaration =
     "#" "extern" "(" "c" {"," extern_c_option} ")"
@@ -465,13 +503,13 @@ The first generic facility applies only to ordinary top-level Coglet functions.
 A declaration places type parameters immediately after `::`:
 
 ```c
-min::<T>(a: T, b: T) -> T {
+min::<T: ordered>(a: T, b: T) -> T {
     if a < b
         return a;
     return b;
 }
 
-first::<T, U>(a: T, b: U) -> T {
+first::<T, U: integer>(a: T, b: U) -> T {
     return a;
 }
 ```
@@ -491,9 +529,10 @@ small := min(10, 20);
 ```
 
 Explicit type arguments are all-or-nothing in this first version; partial
-explicit inference is not supported. Generic structs, enums, aliases, nested
-generic functions, generic C ABI declarations, and user-visible trait/constraint
-syntax are not part of this grammar.
+explicit inference is not supported. A type parameter may carry one closed
+compiler-defined constraint. Constraints are not user-declared traits and cannot
+be combined or implemented by user types. Generic structs, enums, aliases, nested
+generic functions, and generic C ABI declarations remain outside this grammar.
 
 C-compatible struct representation uses the same declaration-annotation shape:
 

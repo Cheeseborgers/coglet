@@ -1,0 +1,25 @@
+PI :: 0x1.921fb54442d18p+1;
+TAU :: 0x1.921fb54442d18p+2;
+
+use_f32::(value: f32) -> f32 {
+    return value;
+}
+
+use_f64::(value: f64) -> f64 {
+    return value;
+}
+
+main::() -> i32 {
+    pi32: f32 = PI;
+    pi64: f64 = PI;
+    tau32: f32 = TAU;
+    tau64: f64 = TAU;
+
+    use_f32(PI);
+    use_f64(PI);
+
+    if pi32 <= tau32 && pi64 <= tau64
+        return 0;
+
+    return 1;
+}

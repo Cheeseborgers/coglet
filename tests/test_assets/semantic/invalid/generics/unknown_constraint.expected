@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/unknown_constraint.cog:1:1: error: unknown generic type constraint 'mystery'; expected one of: integer, signed_integer, unsigned_integer, floating, numeric, ordered
+bad::<T: mystery>(value: T) -> T {
+^~~
+1 semantic error generated.

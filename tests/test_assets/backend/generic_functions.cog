@@ -1,10 +1,10 @@
-min::<T>(a: T, b: T) -> T {
+min::<T: ordered>(a: T, b: T) -> T {
     if a < b
         return a;
     return b;
 }
 
-first::<T, U>(a: T, b: U) -> T {
+first::<T, U: integer>(a: T, b: U) -> T {
     return a;
 }
 

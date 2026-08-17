@@ -1,0 +1,7 @@
+bad::<T: mystery>(value: T) -> T {
+    return value;
+}
+
+main::() -> i32 {
+    return 0;
+}

@@ -278,6 +278,10 @@ The previous mixed state of a concrete kind plus an `is_untyped` flag has been r
 Mutable inferred variables and parameters receive concrete default types (`i32`, `i64`, `u64`, or `f64`),
 while inferred compile-time constants may remain adaptable.
 
+### Hexadecimal Floating-Point Literals
+
+Coglet accepts hexadecimal floating-point source literals using a mandatory binary `p`/`P` exponent, for example `0x1.8p1` and `0x1.921fb54442d18p+1`. They produce the same adaptable `TYPE_UNTYPED_FLOAT` semantic kind as decimal floating literals and materialize through the existing contextual `f32`/`f64` rules. The frontend freezes concrete IEEE payloads before CogIR, so neither backend needs hexadecimal-literal handling. `std.math.pi` and `std.math.tau` use this syntax and remain adaptable compile-time constants instead of being pre-cast to `f64`.
+
 ### Semantic-Information Verifier
 
 The standalone verifier now:
@@ -478,7 +482,7 @@ imports do not become runtime dependency edges.
 - diagnostic notes/secondary spans and richer recovery
 - a standard library design
 - closure and capture semantics, only if nested runtime functions require them
-- generics, if justified by real use cases
+- broader generics such as generic nominal types or user-defined constraints, if justified by real use cases
 
 ## Execution Work
 
@@ -578,6 +582,10 @@ The first restricted generic facility is now implemented as frontend-only,
 compile-time monomorphization of top-level Coglet functions. Type parameters can
 be inferred from ordinary arguments or supplied explicitly with `::<...>`; each
 concrete body is rechecked under ordinary semantic rules before CogIR lowering.
-CogIR and both backends remain generic-unaware. Generic nominal types, explicit
-trait/constraint declarations, specialization, dynamic dispatch, and separate
-generic compilation remain future design work.
+A follow-on restricted contract layer now permits one closed builtin constraint
+on each type parameter (`integer`, `signed_integer`, `unsigned_integer`,
+`floating`, `numeric`, or `ordered`). Constraint satisfaction is checked before
+specialization and does not replace ordinary specialization-time body checking.
+CogIR and both backends remain generic-unaware. Generic nominal types, user-defined
+traits/constraints, specialization, dynamic dispatch, and separate generic
+compilation remain future design work.

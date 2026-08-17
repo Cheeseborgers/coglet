@@ -46,6 +46,7 @@ Supported declaration behavior includes:
 - rejection of `void` as a stored value type
 - concrete default types for inferred mutable numeric storage
 - adaptable compile-time numeric constants
+- hexadecimal floating-point literals with binary `p`/`P` exponents
 
 ### Functions
 
@@ -220,10 +221,9 @@ main::() -> i32 {
 }
 ```
 
-`std.math` currently exports typed `f64` constants `pi`/`tau`, concrete integer helpers
-`abs_i32`/`gcd_u64`, and generic `min<T>`/`max<T>` functions whose operations are
-validated for each concrete specialization. See `docs/stdlib.md` for the API,
-installation layout, and stdlib testing workflow.
+`std.math` currently exports adaptable hexadecimal floating-point constants `pi`/`tau`, concrete integer helpers
+`abs_i32`/`gcd_u64`, and generic `min<T: ordered>`/`max<T: ordered>` functions whose operations are
+validated for each concrete specialization. `pi` and `tau` remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, installation layout, and stdlib testing workflow.
 
 For the current executable slice:
 

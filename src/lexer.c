@@ -273,6 +273,153 @@ static Token scan_identifier(Lexer *lx, const char *start, int start_line, int s
 }
 
 /*
+ * Scans a hexadecimal integer or hexadecimal floating-point literal after
+ * the leading zero has already been consumed and x/X is next.
+ *
+ * Integer examples:
+ *
+ *     0xff
+ *     0x1e3
+ *
+ * Floating-point examples:
+ *
+ *     0x1p0
+ *     0x1.8p1
+ *     0x1.921fb54442d18p+1
+ *     0x.8p-2
+ *
+ * A hexadecimal floating-point exponent is mandatory and is introduced by
+ * p/P because its scale is a power of two. At least one hexadecimal
+ * significand digit must appear on either side of the optional point.
+ */
+static Token scan_hex_number(
+    Lexer *lx,
+    const char *start,
+    int start_line,
+    int start_column
+) {
+    /* Consume x/X. */
+    advance(lx);
+
+    int significand_digits = 0;
+
+    while (is_integer_digit_for_radix(peek(lx), 16)) {
+        advance(lx);
+        significand_digits++;
+    }
+
+    int saw_point = 0;
+
+    if (peek(lx) == '.') {
+        saw_point = 1;
+        advance(lx);
+
+        while (is_integer_digit_for_radix(peek(lx), 16)) {
+            advance(lx);
+            significand_digits++;
+        }
+    }
+
+    if (significand_digits == 0) {
+        while (is_alpha(peek(lx)) || is_digit(peek(lx)) || peek(lx) == '.')
+            advance(lx);
+
+        return error_token(
+            lx,
+            start,
+            (int)(lx->current - start),
+            start_line,
+            start_column,
+            "expected hexadecimal digits after prefix"
+        );
+    }
+
+    if (peek(lx) == 'p' || peek(lx) == 'P') {
+        advance(lx);
+
+        if (peek(lx) == '+' || peek(lx) == '-')
+            advance(lx);
+
+        if (!is_digit(peek(lx))) {
+            while (is_alpha(peek(lx)) || is_digit(peek(lx)))
+                advance(lx);
+
+            return error_token(
+                lx,
+                start,
+                (int)(lx->current - start),
+                start_line,
+                start_column,
+                "expected digits after hexadecimal floating-point exponent"
+            );
+        }
+
+        while (is_digit(peek(lx)))
+            advance(lx);
+
+        if (is_alpha(peek(lx)) || is_digit(peek(lx))) {
+            while (is_alpha(peek(lx)) || is_digit(peek(lx)))
+                advance(lx);
+
+            return error_token(
+                lx,
+                start,
+                (int)(lx->current - start),
+                start_line,
+                start_column,
+                "invalid digit in hexadecimal floating-point literal"
+            );
+        }
+
+        return make_token(
+            lx,
+            TOK_NUMBER_FLOAT,
+            start,
+            (int)(lx->current - start),
+            start_line,
+            start_column
+        );
+    }
+
+    if (saw_point) {
+        while (is_alpha(peek(lx)) || is_digit(peek(lx)))
+            advance(lx);
+
+        return error_token(
+            lx,
+            start,
+            (int)(lx->current - start),
+            start_line,
+            start_column,
+            "expected p/P exponent in hexadecimal floating-point literal"
+        );
+    }
+
+    if (is_alpha(peek(lx)) || is_digit(peek(lx))) {
+        while (is_alpha(peek(lx)) || is_digit(peek(lx)))
+            advance(lx);
+
+        return error_token(
+            lx,
+            start,
+            (int)(lx->current - start),
+            start_line,
+            start_column,
+            "invalid digit in hexadecimal integer literal"
+        );
+    }
+
+    return make_token(
+        lx,
+        TOK_NUMBER_INT,
+        start,
+        (int)(lx->current - start),
+        start_line,
+        start_column
+    );
+}
+
+/*
  * Scans an integer literal after its leading zero has already been
  * consumed and the next character is the radix prefix.
  *
@@ -357,8 +504,8 @@ static Token scan_prefixed_integer(
 }
 
 /*
- * Scans decimal integers, prefixed integers, and decimal
- * floating-point literals.
+ * Scans decimal integers, prefixed integers, decimal floating-point
+ * literals, and hexadecimal floating-point literals.
  *
  * Integer forms:
  *
@@ -372,9 +519,11 @@ static Token scan_prefixed_integer(
  *     3.14
  *     1e3
  *     1.25e-4
+ *     0x1.8p1
+ *     0x1.921fb54442d18p+1
  *
- * Only decimal literals may contain a fractional component or
- * exponent.
+ * Decimal exponents use e/E and scale by powers of ten. Hexadecimal
+ * floating-point exponents use p/P and scale by powers of two.
  */
 static Token scan_number(Lexer *lx, const char *start, int start_line, int start_column) {
 
@@ -388,14 +537,11 @@ static Token scan_number(Lexer *lx, const char *start, int start_line, int start
         switch (peek(lx)) {
             case 'x':
             case 'X':
-                return scan_prefixed_integer(
+                return scan_hex_number(
                     lx,
                     start,
                     start_line,
-                    start_column,
-                    16,
-                    "expected hexadecimal digits after prefix",
-                    "invalid digit in hexadecimal integer literal"
+                    start_column
                 );
 
             case 'b':

@@ -106,11 +106,22 @@ typedef struct {
     int capacity;
 } NodeList;
 
+typedef struct GenericTypeParameter {
+    StringView name;
+
+    /*
+     * Optional closed builtin constraint spelling (for example `ordered`).
+     * Empty means unconstrained. Constraints are frontend-only and disappear
+     * before concrete specialization lowering.
+     */
+    StringView constraint;
+} GenericTypeParameter;
+
 typedef struct {
-    StringView *items;
+    GenericTypeParameter *items;
     int count;
     int capacity;
-} StringViewList;
+} GenericTypeParameterList;
 
 typedef struct {
     Type **items;
@@ -314,7 +325,7 @@ struct Node {
 
         struct {
             StringView name;
-            StringViewList type_parameters; /* source generic parameters; empty for ordinary/concrete functions */
+            GenericTypeParameterList type_parameters; /* source generic parameters; empty for ordinary/concrete functions */
             NodeList params;      // list of NODE_FUNC_PARAM_DECL
             Type *return_type;
             Node *body;           // NODE_BLOCK

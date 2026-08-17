@@ -1071,17 +1071,23 @@ one specialization.
 For each new specialization, semantic analysis clones the function AST, binds the
 template type-parameter names to concrete semantic types in a temporary scope,
 resolves the concrete signature, and checks the cloned body with the ordinary
-operator/call/flow/type rules. This is the first-version constraint model: body
-validity under substitution is the requirement, with no separate trait or
-capability type system. Failed specializations retain enough concrete signature
-metadata to suppress caller-side diagnostic cascades, but semantic failure
-prevents CogIR lowering.
+operator/call/flow/type rules. A source type parameter may additionally name one
+closed builtin constraint (`integer`, `signed_integer`, `unsigned_integer`,
+`floating`, `numeric`, or `ordered`). Semantic analysis checks that admissibility
+contract after type-argument inference/resolution and before specialization. A
+satisfied constraint never grants operators: the cloned body is still checked
+under ordinary rules, which remains the final validity requirement. There is no
+trait/interface lookup or user-defined constraint implementation machinery.
+Failed specializations retain enough concrete signature metadata to suppress
+caller-side diagnostic cascades, but semantic failure prevents CogIR lowering.
 
 Generic calls infer type parameters only from ordinary argument types. Untyped
 numeric arguments use Coglet's existing default concretization; recursive pointer,
 array, and function parameter shapes can propagate an inferred concrete type.
 There is no expected-result-type inference in the current bottom-up checker.
-Explicit `::<...>` calls must provide every type argument.
+Builtin constraints are checked after inference and never steer untyped-literal
+defaulting toward a satisfying type. Explicit `::<...>` calls must provide every
+type argument.
 
 An in-progress cache entry permits ordinary recursive calls to the same concrete
 specialization. A changing specialization chain for one template is capped at 32

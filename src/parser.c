@@ -731,11 +731,15 @@ static Node *make_inc_dec(Parser *p, Node *expr, TokenType op, int is_prefix, So
     );
 }
 
-static void string_view_list_push(Arena *arena, StringViewList *list, StringView value)
-{
+static void generic_type_parameter_list_push(
+    Arena *arena,
+    GenericTypeParameterList *list,
+    GenericTypeParameter value
+) {
     if (list->count >= list->capacity) {
         int capacity = list->capacity == 0 ? 4 : list->capacity * 2;
-        StringView *items = arena_alloc(arena, sizeof(*items) * (size_t)capacity);
+        GenericTypeParameter *items =
+            arena_alloc(arena, sizeof(*items) * (size_t)capacity);
         if (list->items && list->count > 0)
             memcpy(items, list->items, sizeof(*items) * (size_t)list->count);
         list->items = items;
@@ -1588,7 +1592,7 @@ static Node *parse_generic_proc_decl_rest(Parser *p, Token name, SourceSpan span
     if (!consume(p, TOK_LESS))
         return ast_new_error(p->arena, p->current);
 
-    StringViewList parameters = {0};
+    GenericTypeParameterList parameters = {0};
     if (check(p, TOK_GREATER)) {
         error_at(p, &p->current, "generic function requires at least one type parameter");
         advance(p);
@@ -1601,10 +1605,25 @@ static Node *parse_generic_proc_decl_rest(Parser *p, Token name, SourceSpan span
             return ast_new_error(p->arena, p->current);
         }
         Token parameter = p->previous;
-        string_view_list_push(
+        GenericTypeParameter type_parameter = {
+            .name = string_view(parameter.start, (size_t)parameter.length),
+            .constraint = string_view_empty(),
+        };
+
+        if (match(p, TOK_COLON)) {
+            if (!consume(p, TOK_IDENT)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
+            }
+            Token constraint = p->previous;
+            type_parameter.constraint =
+                string_view(constraint.start, (size_t)constraint.length);
+        }
+
+        generic_type_parameter_list_push(
             p->arena,
             &parameters,
-            string_view(parameter.start, (size_t)parameter.length)
+            type_parameter
         );
 
         if (!match(p, TOK_COMMA))

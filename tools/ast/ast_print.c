@@ -891,7 +891,13 @@ static void print_node(Node *node)
                 printf("<");
                 for (int i = 0; i < node->as.func_decl.type_parameters.count; i++) {
                     if (i > 0) printf(", ");
-                    print_string_view(node->as.func_decl.type_parameters.items[i]);
+                    GenericTypeParameter parameter =
+                        node->as.func_decl.type_parameters.items[i];
+                    print_string_view(parameter.name);
+                    if (!string_view_is_empty(parameter.constraint)) {
+                        printf(": ");
+                        print_string_view(parameter.constraint);
+                    }
                 }
                 printf(">");
             }
@@ -1511,7 +1517,13 @@ static void print_node_pretty(Node *node, int depth)
                 printf("<");
                 for (int i = 0; i < node->as.func_decl.type_parameters.count; i++) {
                     if (i > 0) printf(", ");
-                    print_string_view(node->as.func_decl.type_parameters.items[i]);
+                    GenericTypeParameter parameter =
+                        node->as.func_decl.type_parameters.items[i];
+                    print_string_view(parameter.name);
+                    if (!string_view_is_empty(parameter.constraint)) {
+                        printf(": ");
+                        print_string_view(parameter.constraint);
+                    }
                 }
                 printf(">");
             }

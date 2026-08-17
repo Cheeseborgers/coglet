@@ -1,0 +1,7 @@
+tests/test_assets/semantic/invalid/generics/constraint_not_permission.cog:2:12: error: '%' requires integer operands
+    return a % b;
+           ^~~~~
+tests/test_assets/semantic/invalid/generics/constraint_not_permission.cog:6:14: error: cannot instantiate 'remainder' with T = f64: generic body is invalid for these concrete types
+    value := remainder(1.5, 2.0);
+             ^~~~~~~~~
+2 semantic errors generated.

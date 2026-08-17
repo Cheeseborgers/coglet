@@ -507,6 +507,7 @@ Constant-oracle tests verify the evaluated values and semantic types of compile-
 They cover behavior including:
 
 * exact integer values;
+* decimal and hexadecimal floating-point literal materialization, including exact `f32`/`f64` CogIR payloads for representative hexadecimal constants;
 * overflow and representability;
 * integer division and remainder diagnostics;
 * checked casts;

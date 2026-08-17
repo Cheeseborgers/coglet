@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/ordered_constraint_mismatch.cog:8:14: error: cannot instantiate 'min': type argument T = bool does not satisfy constraint 'ordered'
+    value := min(true, false);
+             ^~~
+1 semantic error generated.

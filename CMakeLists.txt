@@ -725,6 +725,21 @@ set_tests_properties(
 )
 
 add_test(
+        NAME cog_ir_hexadecimal_float_constants_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/hexadecimal_float_constants.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/hexadecimal_float_constants.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_hexadecimal_float_constants_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;literal;float;hex-float;constant"
+)
+
+add_test(
         NAME cog_ir_generic_functions_lowering_dump
         COMMAND "${CMAKE_COMMAND}"
         -DEXE=$<TARGET_FILE:dump_ir>

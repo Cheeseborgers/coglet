@@ -1,11 +1,31 @@
-min::<T>(a: T, b: T) -> T {
+min::<T: ordered>(a: T, b: T) -> T {
     if a < b
         return a;
     return b;
 }
 
-first::<T, U>(a: T, b: U) -> T {
+first::<T, U: integer>(a: T, b: U) -> T {
     return a;
+}
+
+integer_identity::<T: integer>(value: T) -> T {
+    return value;
+}
+
+signed_identity::<T: signed_integer>(value: T) -> T {
+    return value;
+}
+
+unsigned_identity::<T: unsigned_integer>(value: T) -> T {
+    return value;
+}
+
+floating_identity::<T: floating>(value: T) -> T {
+    return value;
+}
+
+numeric_identity::<T: numeric>(value: T) -> T {
+    return value;
 }
 
 recur::<T>(value: T, depth: i32) -> T {
@@ -20,6 +40,22 @@ main::() -> i32 {
     again: i32 = min(8, 9);
     mixed: i32 = first(inferred, cast(u64, 7));
     recursive: i32 = recur(mixed, 2);
+    constrained_integer: u8 = integer_identity::<u8>(7);
+    constrained_signed: i64 = signed_identity::<i64>(-9);
+    constrained_unsigned: u64 = unsigned_identity::<u64>(11);
+    constrained_float: f64 = floating_identity(1.5);
+    constrained_numeric: i32 = numeric_identity(12);
+
+    if constrained_integer != 7
+        return 4;
+    if constrained_signed != -9
+        return 5;
+    if constrained_unsigned != 11
+        return 6;
+    if constrained_float != 1.5
+        return 7;
+    if constrained_numeric != 12
+        return 8;
 
     if explicit != 30
         return 1;

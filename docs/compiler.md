@@ -222,6 +222,21 @@ fails during generated-C compilation when the selected host architecture cannot
 represent the requested convention; `cdecl` maps to the normal C convention
 outside 32-bit x86. `stdcall` variadics are rejected semantically.
 
+## Compiler version metadata
+
+Coglet's compiler version has one build-system source of truth: the version in
+CMake's top-level `project()` declaration. Configuration generates
+`coglet_version.h`, which exposes `COGLET_VERSION_MAJOR`,
+`COGLET_VERSION_MINOR`, `COGLET_VERSION_PATCH`, and `COGLET_VERSION_STRING`.
+The `coglet --version` driver path prints that generated string without parsing
+or compiling an input file.
+
+The generated header is on `compiler_core`'s public include path deliberately:
+future semantic compatibility/deprecation diagnostics can consume the same
+version metadata instead of growing a second hand-maintained version constant.
+No deprecation schedule or source compatibility promise is implied by the
+initial `0.1.0` version; those policies remain separate language-design work.
+
 The **host-C backend** provides the bootstrap executable lowering path.
 `coglet input.cog -o program` emits a temporary C translation
 unit, invokes the native `cc` driver, and lets that driver resolve normal C

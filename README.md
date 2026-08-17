@@ -123,6 +123,18 @@ boundaries only through raw pointers, while by-value storage, construction,
 dereference/indexing, and field access are rejected. Explicit cross-target ABI
 selection and native Coglet variadics remain future work.
 
+The compiler version is tracked from one CMake project version and is available
+without compiling an input file:
+
+```sh
+coglet --version
+# coglet 0.1.0
+```
+
+The generated public version header exposes the same major/minor/patch/string
+metadata for future compatibility and deprecation diagnostics. Version tracking
+does not yet imply a source compatibility or deprecation policy.
+
 For the current executable slice:
 
 ```sh

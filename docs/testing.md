@@ -53,6 +53,19 @@ ctest \
     --show-only=json-v1
 ```
 
+## Driver version test
+
+`driver_version` runs `coglet --version` without an input file and checks the
+reported version against CMake's configured project version. The test is
+registered in both LLVM-enabled and LLVM-disabled configurations so compiler
+identity does not accidentally depend on an optional backend.
+
+Run it with:
+
+```bash
+ctest --test-dir cmake-build-debug -L version --output-on-failure
+```
+
 ## CogIR Lowering Tests
 
 CogIR golden dumps cover executable entry identity, structured-CFG, data/address,

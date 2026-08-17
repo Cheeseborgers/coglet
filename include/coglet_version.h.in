@@ -1,0 +1,14 @@
+#ifndef COGLET_VERSION_H
+#define COGLET_VERSION_H
+
+/*
+ * Generated from CMake's project version. Keep project(... VERSION ...) as the
+ * single source of truth so the driver and future compatibility diagnostics
+ * cannot drift onto independently maintained version strings.
+ */
+#define COGLET_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define COGLET_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define COGLET_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define COGLET_VERSION_STRING "@PROJECT_VERSION@"
+
+#endif

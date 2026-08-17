@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
-project(coglet C)
+project(coglet VERSION 0.1.0 LANGUAGES C)
+
+set(COGLET_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY "${COGLET_GENERATED_INCLUDE_DIR}")
+configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/coglet_version.h.in"
+        "${COGLET_GENERATED_INCLUDE_DIR}/coglet_version.h"
+        @ONLY
+)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -33,7 +41,10 @@ add_library(compiler_core STATIC
         src/utils/utils.c
         src/utils/arena.c
 )
-target_include_directories(compiler_core PUBLIC include)
+target_include_directories(compiler_core PUBLIC
+        include
+        "${COGLET_GENERATED_INCLUDE_DIR}"
+)
 
 # --- Host-C backend. Backends depend on CogIR/core, never the reverse. ---
 add_library(coglet_backend_c STATIC
@@ -212,6 +223,18 @@ target_link_libraries(dump_ir PRIVATE compiler_core)
 
 # --- Tests ---
 enable_testing()
+
+add_test(
+        NAME driver_version
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DEXPECT_VERSION=${PROJECT_VERSION}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_version_test.cmake"
+)
+set_tests_properties(
+        driver_version
+        PROPERTIES LABELS "driver;version"
+)
 
 add_test(
         NAME cog_ir_executable_lowering_dump

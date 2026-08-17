@@ -8,6 +8,7 @@
 #include "backends/llvm/backend_llvm.h"
 #endif
 #include "compiler_driver.h"
+#include "coglet_version.h"
 #include "cog_ir_lower.h"
 #include "optimization.h"
 
@@ -20,7 +21,9 @@ static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [-O0|-O1|-O2|-O3] [-g] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n",
+        "usage: %s <file> [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [-O0|-O1|-O2|-O3] [-g] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
+        "       %s --version\n",
+        program,
         program
     );
 }
@@ -61,6 +64,11 @@ static int parse_executable_backend(const char *value, ExecutableBackend *backen
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && strcmp(argv[1], "--version") == 0) {
+        printf("coglet %s\n", COGLET_VERSION_STRING);
+        return 0;
+    }
+
     if (argc < 2) {
         print_usage(argv[0]);
         return COMPILE_STATUS_DRIVER_ERROR;

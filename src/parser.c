@@ -61,6 +61,20 @@ static int parse_c_calling_convention_token(
     Parser *p, Token token, CCallingConvention *out
 );
 
+typedef struct {
+    StringView full;
+    StringView prefix;
+    StringView leaf;
+    SourceSpan span;
+    int component_count;
+} ParsedDottedName;
+
+static ParsedDottedName parse_dotted_name_from_first(Parser *p, Token first);
+static int split_dotted_leaf(StringView full, StringView *out_prefix, StringView *out_leaf);
+static Node *finish_struct_init_named(
+    Parser *p, StringView module_name, StringView type_name, SourceSpan span
+);
+
 // postfix helpers
 static Node *finish_call(Parser *p, Node *callee);
 static Node *finish_field(Parser *p, Node *object);
@@ -739,24 +753,26 @@ static Node *parse_postfix_from(Parser *p, Node *expr)
              * Qualified nominal construction:
              *
              *     math.Pair { x = 1, y = 2 }
+             *     std.math.Pair { x = 1, y = 2 }
              *
-             * Keep ordinary runtime field access unchanged. Only the exact
-             * module-name/type-name shape is recognized as a constructor.
+             * Keep ordinary runtime field access unchanged. Pure identifier
+             * chains carry a canonical dotted spelling; the final component
+             * is the type name and every preceding component is the module.
              */
             if (check(p, TOK_LBRACE) &&
                 !p->suppress_struct_init &&
                 expr && expr->type == NODE_FIELD &&
-                expr->as.field.object &&
-                expr->as.field.object->type == NODE_IDENT) {
-                Token type_name = {0};
-                type_name.start = expr->as.field.name.data;
-                type_name.length = (int)expr->as.field.name.length;
-                type_name.span = expr->span;
-
-                Node *init = finish_struct_init(p, type_name);
-                if (init && init->type == NODE_STRUCT_INIT)
-                    init->as.struct_init.module_name = expr->as.field.object->as.ident;
-                expr = init;
+                expr->as.field.dotted_path.length != 0) {
+                StringView module_name = string_view_empty();
+                StringView type_name = string_view_empty();
+                if (split_dotted_leaf(
+                        expr->as.field.dotted_path,
+                        &module_name,
+                        &type_name) &&
+                    module_name.length != 0) {
+                    expr = finish_struct_init_named(
+                        p, module_name, type_name, expr->span);
+                }
             }
             continue;
         }
@@ -1130,28 +1146,17 @@ static Type *parse_type(Parser *p)
         base->kind = TYPE_VOID;
     } else if (match(p, TOK_IDENT)) {
         /*
-         * Parsed named type reference. A single module qualifier is allowed:
+         * Parsed named type reference. Every component before the final type
+         * name is the canonical module qualifier:
          *
          *     Point
          *     math.Point
+         *     std.math.Point
          */
-        Token first = p->previous;
+        ParsedDottedName name = parse_dotted_name_from_first(p, p->previous);
         base->kind = TYPE_NAMED;
-        base->named_module = string_view_empty();
-
-        if (match(p, TOK_DOT)) {
-            base->named_module.data = first.start;
-            base->named_module.length = (size_t)first.length;
-            if (!consume(p, TOK_IDENT)) {
-                base->named_name = string_view_empty();
-                return base;
-            }
-            base->named_name.data = p->previous.start;
-            base->named_name.length = (size_t)p->previous.length;
-        } else {
-            base->named_name.data = first.start;
-            base->named_name.length = (size_t)first.length;
-        }
+        base->named_module = name.prefix;
+        base->named_name = name.leaf;
     } else {
         error_at(p, &p->current, "expected type");
 
@@ -1561,6 +1566,81 @@ static Node *parse_proc_decl_rest(Parser *p, Token name, SourceSpan span) {
     func->as.func_decl.body = parse_block(p);
 
     return func;
+}
+
+static ParsedDottedName parse_dotted_name_from_first(Parser *p, Token first)
+{
+    ParsedDottedName result;
+    memset(&result, 0, sizeof(result));
+
+    result.full.data = first.start;
+    result.full.length = (size_t)first.length;
+    result.leaf = result.full;
+    result.span = first.span;
+    result.component_count = 1;
+
+    Token last = first;
+    while (match(p, TOK_DOT)) {
+        if (!consume(p, TOK_IDENT))
+            break;
+
+        Token part = p->previous;
+        size_t total = result.full.length + 1 + (size_t)part.length;
+        char *joined = arena_alloc(p->arena, total);
+        memcpy(joined, result.full.data, result.full.length);
+        joined[result.full.length] = '.';
+        memcpy(joined + result.full.length + 1, part.start, (size_t)part.length);
+
+        result.full.data = joined;
+        result.full.length = total;
+        result.leaf.data = joined + total - (size_t)part.length;
+        result.leaf.length = (size_t)part.length;
+        result.component_count++;
+        last = part;
+    }
+
+    result.span = source_span_join(first.span, last.span);
+    if (result.component_count > 1) {
+        result.prefix.data = result.full.data;
+        result.prefix.length = result.full.length - result.leaf.length - 1;
+    } else {
+        result.prefix = string_view_empty();
+    }
+
+    return result;
+}
+
+static int split_dotted_leaf(
+    StringView full,
+    StringView *out_prefix,
+    StringView *out_leaf
+) {
+    if (!full.data || full.length == 0)
+        return 0;
+
+    for (size_t i = full.length; i > 0; --i) {
+        if (full.data[i - 1] != '.')
+            continue;
+
+        if (i == 1 || i == full.length)
+            return 0;
+
+        if (out_prefix) {
+            out_prefix->data = full.data;
+            out_prefix->length = i - 1;
+        }
+        if (out_leaf) {
+            out_leaf->data = full.data + i;
+            out_leaf->length = full.length - i;
+        }
+        return 1;
+    }
+
+    if (out_prefix)
+        *out_prefix = string_view_empty();
+    if (out_leaf)
+        *out_leaf = full;
+    return 1;
 }
 
 static int token_text_equals(Token token, const char *text)
@@ -2016,12 +2096,17 @@ static Node *parse_struct_field(Parser *p) {
 }
 
 // Struct initializer: `Point{ x = 5, y = 10 }` (trailing comma allowed).
-// `type_name` is the identifier already consumed by the caller.
-static Node *finish_struct_init(Parser *p, Token type_name)
-{
+static Node *finish_struct_init_named(
+    Parser *p,
+    StringView module_name,
+    StringView type_name,
+    SourceSpan span
+) {
     consume(p, TOK_LBRACE); // known present from caller's check()
 
-    Node *init = ast_new_struct_init(p->arena, type_name.start, type_name.length, type_name.span);
+    Node *init = ast_new_struct_init(
+        p->arena, type_name.data, (int)type_name.length, span);
+    init->as.struct_init.module_name = module_name;
 
     if (!check(p, TOK_RBRACE)) {
         while (1) {
@@ -2055,6 +2140,14 @@ static Node *finish_struct_init(Parser *p, Token type_name)
 
     consume(p, TOK_RBRACE);
     return init;
+}
+
+// `type_name` is the identifier already consumed by the caller.
+static Node *finish_struct_init(Parser *p, Token type_name)
+{
+    StringView name = { type_name.start, (size_t)type_name.length };
+    return finish_struct_init_named(
+        p, string_view_empty(), name, type_name.span);
 }
 
 // ====================== end struct declarations ======================
@@ -2999,17 +3092,18 @@ Node *parse_program(Parser *p) {
             if (!consume(p, TOK_IDENT)) {
                 decl = ast_new_error(p->arena, p->current);
             } else {
-                Token name = p->previous;
+                ParsedDottedName name =
+                    parse_dotted_name_from_first(p, p->previous);
                 if (!consume(p, TOK_SEMICOLON)) {
                     synchronize(p);
                     decl = ast_new_error(p->arena, p->current);
                 } else if (is_module) {
                     decl = ast_new_module_decl(
-                        p->arena, name.start, name.length,
+                        p->arena, name.full.data, (int)name.full.length,
                         source_span_join(keyword.span, name.span));
                 } else {
                     decl = ast_new_import_decl(
-                        p->arena, name.start, name.length,
+                        p->arena, name.full.data, (int)name.full.length,
                         source_span_join(keyword.span, name.span));
                 }
             }

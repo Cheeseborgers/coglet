@@ -1,0 +1,15 @@
+import std.math;
+
+copy :: std.math.answer;
+
+main::() -> i32 {
+    local: std.math.Pair = std.math.Pair { x = 1, y = 2 };
+    if std.math.Mode.One == std.math.Mode.Zero
+        return 1;
+
+    std.math.shared.y = 21;
+    if local.x + local.y != 3
+        return 2;
+
+    return std.math.add(std.math.shared.x, std.math.shared.y) + copy - 36;
+}

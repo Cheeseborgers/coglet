@@ -267,21 +267,20 @@ static void verifier_error(Verifier *verifier,const Node *node,const char *forma
     verifier->error_count++;
 }
 
-static int field_uses_enum_type_qualifier(SemanticContext *sem, Node *field) {
-    if (!field ||
-        field->type != NODE_FIELD ||
-        !field->as.field.object ||
-        field->as.field.object->type != NODE_IDENT) {
+static int field_uses_declaration_qualifier(SemanticContext *sem, Node *field) {
+    if (!field || field->type != NODE_FIELD)
         return 0;
-    }
 
     SemExprInfo *info = semantic_get_expr_info(sem, field);
 
-    return info &&
-           info->symbol &&
-           info->symbol->kind == SYMBOL_TYPE &&
-           info->type &&
-           info->type->kind == TYPE_ENUM;
+    /*
+     * Module-qualified declarations and enum members are represented with the
+     * ordinary field AST shape, but their prefix is namespace/type syntax rather
+     * than a runtime value expression. Semantic analysis therefore records the
+     * resolved declaration on the complete field expression and intentionally
+     * does not create SemExprInfo for intermediate namespace components.
+     */
+    return info && info->symbol;
 }
 
 static void walk_expression(ExpressionWalker *walker, Node *expression);
@@ -377,11 +376,11 @@ static void walk_expression(ExpressionWalker *walker, Node *expression)
 
         case NODE_FIELD:
             /*
-             * In Color.Red, Color is a type qualifier rather than a value
-             * expression. Semantic analysis intentionally records the field
-             * expression but not the qualifier identifier.
+             * Namespace/type qualifiers are not runtime value expressions.
+             * Semantic analysis records the resolved declaration on the full
+             * field expression but not the qualifier path beneath it.
              */
-            if (!field_uses_enum_type_qualifier(
+            if (!field_uses_declaration_qualifier(
                     walker->sem,
                     expression)) {
                 walk_expression(
@@ -1123,7 +1122,7 @@ static int verify_field_access_info(Verifier *verifier, Node *expression, SemExp
     /*
      * Color.Red is an enum member, not runtime storage.
      */
-    if (field_uses_enum_type_qualifier(verifier->sem, expression))
+    if (field_uses_declaration_qualifier(verifier->sem, expression))
         return 1;
 
     Node *object =

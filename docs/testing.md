@@ -271,9 +271,13 @@ rejection of exported interfaces that expose private nominal types. Discovery
 coverage verifies sibling `name.cog` loading, split/joined `-I`, transitive imports,
 import cycles, importer-directory and search-root precedence, explicit-module
 suppression, parser provenance in discovered files, deterministic module-init order,
-and LLVM debug provenance for discovered sources. Use `-L module`, `-L import`,
-`-L discovery`, `-L visibility`, `-L export`, `-L private`, `-L global`, or
-`-L constant` for focused namespace/data/visibility/discovery slices.
+and LLVM debug provenance for discovered sources. Hierarchical-module coverage adds
+dotted module/import parsing, `std.math` -> `std/math.cog` discovery, transitive dotted
+imports, qualified types/constructors/enums/data/functions, longest-visible-prefix
+resolution against ordinary runtime fields, missing-import diagnostics, and LLVM
+optimized/debuggable native output. Use `-L module`, `-L import`, `-L discovery`,
+`-L dotted`, `-L package`, `-L visibility`, `-L export`, `-L private`, `-L global`,
+or `-L constant` for focused namespace/data/visibility/discovery slices.
 
 Run only these tests with:
 

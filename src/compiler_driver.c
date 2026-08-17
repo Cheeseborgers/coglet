@@ -239,8 +239,10 @@ static char *module_candidate_path(
     if (needs_separator)
         path[at++] = '/';
 
-    memcpy(path + at, module_name.data, module_name.length);
-    at += module_name.length;
+    for (size_t i = 0; i < module_name.length; ++i) {
+        char c = module_name.data[i];
+        path[at++] = c == '.' ? '/' : c;
+    }
     memcpy(path + at, ".cog", sizeof(".cog"));
     return path;
 }

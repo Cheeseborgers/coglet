@@ -6,10 +6,10 @@ This document records current user-visible language behavior.
 
 ## Modules and Imports
 
-A physical source file may optionally begin with a named module declaration:
+A physical source file may optionally begin with an absolute dotted module name:
 
 ```c
-module math;
+module std.math;
 
 export tau :: 6.283185307179586;
 export counter: i32 = 0;
@@ -18,41 +18,45 @@ export add::(a: i32, b: i32) -> i32 { return a + b; }
 helper::() -> i32 { return 1; } // private
 ```
 
-Another file imports that namespace explicitly and uses one dot for qualified
-lookup:
+Another file imports that namespace explicitly and uses the same dot syntax for
+qualified lookup:
 
 ```c
-import math;
+import std.math;
 
 main::() -> i32 {
-    math.counter = math.add(20, 22);
-    return math.counter;
+    std.math.counter = std.math.add(20, 22);
+    return std.math.counter;
 }
 ```
 
-Files without `module name;` belong to the root namespace. Multiple physical
-files may contribute declarations to the same named module. Imports are
-file-scoped: importing a module in one file does not make it visible in another
-file automatically.
+Module names may contain any number of identifier components (`math`,
+`std.math`, `vendor.graphics.math`). Files without a module declaration belong
+to the root namespace. Multiple physical files may contribute declarations to
+the same named module. Imports are file-scoped: importing `std.math` in one file
+does not make it visible in another file automatically, and it does not
+implicitly import the parent module `std`.
 
 The command-line compiler automatically discovers a missing imported module using
-one canonical source filename. `import math;` searches for `math.cog` first beside
-the importing file and then under repeated `-I` roots in command-line order:
+one canonical source path. Dots map to path separators, so `import std.math;`
+searches for `std/math.cog` first beside the importing file and then under
+repeated `-I` roots in command-line order:
 
 ```sh
 coglet app/main.cog -I lib -I vendor -o app
 ```
 
 The first existing candidate wins and its imports are discovered transitively.
-Explicit inputs are parsed before discovery; if any explicit source already declares
-`module math;`, no canonical `math.cog` is loaded for that import. Multi-file module
-fragments beyond the canonical discovered file therefore remain explicit inputs.
+Explicit inputs are parsed before discovery; if any explicit source already
+declares `module std.math;`, no canonical `std/math.cog` is loaded for that
+import. Multi-file module fragments beyond the canonical discovered file remain
+explicit inputs until a package/manifest layer exists.
 
 Declarations in a named module are private by default. A top-level contextual
 `export` prefix makes a declaration visible to importing files:
 
 ```c
-module math;
+module std.math;
 
 export Pair::struct { x: i32; y: i32; }
 export answer :: 42;
@@ -60,40 +64,49 @@ export answer :: 42;
 secret :: 7;
 ```
 
-Same-module code may use `secret` normally, including as `math.secret`. A file
-that merely `import math;` may access `math.Pair` and `math.answer` but receives a
-privacy diagnostic for `math.secret`. `export` is rejected in the root namespace.
-Exported declarations are also checked for interface closure: a public function,
-global, constant, or exported struct field may not expose a private nominal type.
+Same-module code may use `secret` normally, including as `std.math.secret`. A
+file that merely `import std.math;` may access `std.math.Pair` and
+`std.math.answer` but receives a privacy diagnostic for `std.math.secret`.
+`export` is rejected in the root namespace. Exported declarations are checked
+for interface closure: a public function, global, constant, or exported struct
+field may not expose a private nominal type.
+
+The single dot is intentionally both the module qualifier and ordinary member
+operator. Semantic analysis chooses the longest module prefix visible in the
+current file. Therefore, if both `pkg` and `pkg.math` are imported,
+`pkg.math.answer` resolves through module `pkg.math`; if only `pkg` is imported,
+the same token shape may validly mean exported value `pkg.math` followed by its
+ordinary `answer` field. A lexical symbol still shadows a module name in
+expression lookup.
 
 Qualified functions and constants are rvalues. Qualified globals retain their
 ordinary storage category, so mutation, address-of, indexing, and field selection
 compose normally:
 
 ```c
-state.counter += 1;
-pointer := &state.counter;
-state.values[0] = 7;
-state.point.x = 9;
+state.data.counter += 1;
+pointer := &state.data.counter;
+state.data.values[0] = 7;
+state.data.point.x = 9;
 ```
 
-Qualified constants retain compile-time constant behavior and may be used wherever
-the corresponding unqualified constant is valid, including other constant
-declarations and switch case expressions. Their dependencies are resolved independently
-of physical input-file order, and cyclic constant definitions are rejected. Function
-bodies likewise see imported global declarations regardless of input-file ordering;
-runtime-bearing top-level initialization itself still executes in physical input order.
-Nominal types and enum members use the
-same dot syntax (`math.Pair`, `math.Mode.Red`). A lexical symbol shadows a module
-name in expression lookup, preserving ordinary `value.field` behavior.
+Qualified constants retain compile-time constant behavior and may be used
+wherever the corresponding unqualified constant is valid, including other
+constant declarations and switch case expressions. Their dependencies are
+resolved independently of physical input-file order, and cyclic constant
+definitions are rejected. Function bodies likewise see imported global
+declarations regardless of input-file ordering; runtime-bearing top-level
+initialization itself still executes in physical input order. Nominal types,
+constructors, and enum members use the same hierarchical spelling
+(`std.math.Pair`, `std.math.Pair { ... }`, `std.math.Mode.Red`).
 
 The current module layer remains compile-time namespace/visibility only. Import
-cycles are allowed, and imports do not define runtime dependency ordering. Explicit
-files retain command-line order; discovered files are appended after them in
-first-discovery order, and that physical order remains the module-initializer order.
-Only a root-namespace `main::() -> i32` is the executable entry. Dotted package
-names, manifests, installed stdlib lookup, and separate compilation remain future
-work.
+cycles are allowed, and imports do not define runtime dependency ordering.
+Explicit files retain command-line order; discovered files are appended after
+them in first-discovery order, and that physical order remains the
+module-initializer order. Only a root-namespace `main::() -> i32` is the
+executable entry. Package manifests, automatic multi-file package membership,
+installed stdlib lookup, and separate compilation remain future work.
 
 ## Values, Storage, and No-Value Expressions
 
@@ -2034,7 +2047,7 @@ Near-term candidate areas include:
 - mutable and readonly slices and byte views;
 - ownership and lifetime rules only when justified by concrete use cases;
 - a later first-class string type;
-- module/package discovery, dotted package names, and separate-compilation policy;
+- package manifests, installed module/stdlib lookup, and separate-compilation policy;
 - standard library facilities;
 - generics, if justified by real use cases;
 - self-hosting.

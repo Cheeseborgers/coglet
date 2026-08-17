@@ -324,6 +324,9 @@ set_tests_properties(driver_modules_private_member_rejected
         PROPERTIES LABELS "driver;semantic;module;import;visibility;private;multi-file;invalid")
 
 set(COGLET_DISCOVERY_DIR "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/discovery")
+set(COGLET_DOTTED_DISCOVERY_DIR "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/discovery/dotted")
+set(COGLET_DOTTED_TRANSITIVE_DIR "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/discovery/dotted_transitive")
+set(COGLET_DOTTED_PREFIX_DIR "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/dotted_prefix")
 
 function(add_module_discovery_host_test test_name inputs expected_exit)
     add_test(
@@ -388,6 +391,24 @@ add_module_discovery_host_test(
     11
     "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/order/lib"
 )
+
+add_module_discovery_host_test(
+    driver_modules_dotted_discovery_search_path
+    "${COGLET_DOTTED_DISCOVERY_DIR}/app/main.cog"
+    42
+    "-DSEARCH_DIRS=${COGLET_DOTTED_DISCOVERY_DIR}/lib"
+)
+set_tests_properties(driver_modules_dotted_discovery_search_path
+    PROPERTIES LABELS "driver;backend;backend.c;module;import;discovery;multi-file;dotted;package")
+
+add_module_discovery_host_test(
+    driver_modules_dotted_discovery_transitive
+    "${COGLET_DOTTED_TRANSITIVE_DIR}/app/main.cog"
+    42
+    "-DSEARCH_DIRS=${COGLET_DOTTED_TRANSITIVE_DIR}/lib"
+)
+set_tests_properties(driver_modules_dotted_discovery_transitive
+    PROPERTIES LABELS "driver;backend;backend.c;module;import;discovery;multi-file;dotted;package")
 
 add_test(
     NAME driver_modules_discovery_wrong_module
@@ -1183,6 +1204,45 @@ add_test(
 )
 set_tests_properties(backend_modules_visibility_host_c
         PROPERTIES LABELS "backend;backend.c;semantic;module;import;visibility;export;private;multi-file")
+
+add_test(
+        NAME backend_modules_dotted_longest_prefix_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_DOTTED_PREFIX_DIR}/main_both.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg_math.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_dotted_longest_prefix_host_c
+        -DEXPECT_EXIT=42
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_dotted_longest_prefix_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;module;import;namespace;multi-file;dotted;package")
+
+add_test(
+        NAME backend_modules_dotted_shorter_visible_prefix_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_DOTTED_PREFIX_DIR}/main_short.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg_math.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_dotted_shorter_visible_prefix_host_c
+        -DEXPECT_EXIT=11
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_dotted_shorter_visible_prefix_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;module;import;namespace;multi-file;dotted;package")
+
+add_test(
+        NAME driver_modules_dotted_requires_import
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_DOTTED_PREFIX_DIR}/main_missing_import.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg_math.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=module 'pkg.math' is not imported in this file"
+        "-DEXPECT_PATH_SUBSTRING=main_missing_import.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_modules_dotted_requires_import
+        PROPERTIES LABELS "driver;semantic;module;import;multi-file;dotted;package;invalid")
 add_host_c_failure_test(
         backend_rejects_obsolete_c_int_entry obsolete_c_int_entry.cog 1
         "executable entry point must have signature 'main::() -> i32'"
@@ -1737,6 +1797,48 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_modules_discovery_debug_source
         PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;debug;stage9")
+
+    add_test(
+        NAME backend_llvm_modules_dotted_discovery_native
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_DOTTED_DISCOVERY_DIR}/app/main.cog"
+        "-DSEARCH_DIRS=${COGLET_DOTTED_DISCOVERY_DIR}/lib"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_dotted_discovery_native
+        -DEXPECT_EXIT=42
+        -DBACKEND=llvm
+        -DOPT_LEVEL=3
+        -DDEBUG_INFO=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_dotted_discovery_native
+        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;dotted;package;codegen;debug;optimization")
+
+    add_test(
+        NAME backend_llvm_modules_dotted_longest_prefix
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_DOTTED_PREFIX_DIR}/pkg_math.cog|${COGLET_DOTTED_PREFIX_DIR}/main_both.cog|${COGLET_DOTTED_PREFIX_DIR}/pkg.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_dotted_longest_prefix
+        -DEXPECT_EXIT=42
+        -DBACKEND=llvm
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_dotted_longest_prefix
+        PROPERTIES LABELS "backend;backend.llvm;semantic;module;import;namespace;multi-file;dotted;package;codegen")
+
+    add_test(
+        NAME backend_llvm_modules_dotted_discovery_debug_source
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${COGLET_DOTTED_DISCOVERY_DIR}/app/main.cog
+        -DSEARCH_DIR=${COGLET_DOTTED_DISCOVERY_DIR}/lib
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_modules_dotted_discovery_debug_source.ll
+        -DEXPECT_SOURCE=math.cog
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_llvm_ir_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_dotted_discovery_debug_source
+        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;dotted;package;debug;stage9")
 
     function(add_llvm_stage7_native_test test_name fixture expected_exit)
         add_test(

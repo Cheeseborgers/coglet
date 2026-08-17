@@ -204,6 +204,17 @@ struct Node {
         struct {
             Node *object;
             StringView name;
+
+            /*
+             * Canonical dotted spelling when this field expression is a pure
+             * identifier chain (for example `std.io.print` or `state.pair.x`).
+             * Empty for general runtime field expressions such as `(*p).x`.
+             *
+             * This is frontend-only syntax metadata used to recognize the
+             * longest visible module prefix without encoding module names in
+             * CogIR or backends.
+             */
+            StringView dotted_path;
         } field;
 
         struct {

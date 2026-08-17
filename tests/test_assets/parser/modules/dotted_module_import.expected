@@ -1,0 +1,22 @@
+program
+  module app.core
+  import std.math
+  var_decl value: std.math.Pair
+    init:
+      struct_init std.math.Pair
+        field_init x
+          1
+        field_init y
+          2
+  func run -> i32
+    body:
+      block
+        return
+          call
+            field .add
+              field .math
+                std
+            field .x
+              value
+            field .y
+              value

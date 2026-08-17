@@ -138,50 +138,59 @@ does not yet imply a source compatibility or deprecation policy.
 ### Modules and Imports
 
 Multiple source files still compile into one CogIR compilation unit, but the
-frontend now supports named semantic namespaces:
+frontend supports hierarchical named semantic namespaces:
 
 ```c
-// math.cog
-module math;
+// lib/std/math.cog
+module std.math;
 export add::(a, b: i32) -> i32 { return a + b; }
 ```
 
 ```c
 // main.cog
-import math;
-main::() -> i32 { return math.add(20, 22); }
+import std.math;
+main::() -> i32 { return std.math.add(20, 22); }
 ```
 
-The command-line compiler now performs deterministic source discovery for imports.
-If no already-loaded source declares `module math;`, `import math;` searches first
-for `math.cog` beside the importing file and then in each repeated `-I` module
-search directory in command-line order. The first existing candidate is loaded,
-its imports are discovered transitively, and the same physical file is not loaded
-twice. Explicit command-line inputs are parsed first and still take precedence: if
-one already contributes to `module math`, no canonical `math.cog` is auto-loaded
-for that import. Additional files for a multi-file module therefore remain explicit
-until package/manifests exist. Files without `module name;` belong to the root
-namespace; multiple files may contribute to the same named module. Imports are
-file-scoped. Declarations in named modules are private by default; the contextual
-top-level `export` prefix exposes a declaration to importing files. Same-module
-code sees private declarations normally, including through explicit current-module
-qualification. Imported files may qualify only exported functions, globals,
-constants, and nominal types,
-including `math.add`, `math.tau`, `state.counter`, `math.Pair`,
-`math.Pair { ... }`, and `math.Mode.Red`. Qualified globals preserve ordinary
-lvalue/addressability semantics, while qualified constants remain compile-time
-values and may be used in constant-expression contexts. Module data declarations
-are visible to function bodies regardless of physical input-file order; compile-time
-constant dependencies are resolved lazily and cycles are diagnosed. Same-module
-references remain unqualified, although explicit qualification by the current module
-name is also valid. Import cycles are allowed because imports currently affect compile-time
-visibility only; top-level runtime initialization remains in input order. Only
-root-namespace `main::() -> i32` is the executable entry. Exported APIs may not
-expose private nominal types through function signatures, globals/constants, or
-exported struct fields. Dotted package/module names, package manifests, an installed standard-library
-root, and separate compilation remain future work. Discovery does not imply runtime
-dependency ordering: explicit inputs retain command-line order and discovered files
-are appended in deterministic first-discovery order to the existing single module
+Module names are absolute dotted identifier paths. The same dot is used for
+module qualification and ordinary member selection: `std.math.add`,
+`std.math.Pair`, `std.math.Mode.Red`, `state.point.x`. Semantic resolution uses
+the longest module prefix visible in the current file, so no second namespace
+operator is required. Importing `std.math` does not implicitly import `std` (or
+vice versa), and a lexical value still shadows a module name in expression
+lookup.
+
+The command-line compiler performs deterministic source discovery for missing
+imports. A module name maps dots to path separators, so `import std.math;`
+searches first for `std/math.cog` beside the importing file and then under each
+repeated `-I` module search root in command-line order. The first existing
+candidate is loaded, its imports are discovered transitively, and the same
+physical file is not loaded twice. Explicit command-line inputs are parsed first
+and still take precedence: if one already contributes to `module std.math`, no
+canonical `std/math.cog` is auto-loaded for that import. Additional files for a
+multi-file module remain explicit until a manifest/package layer exists.
+
+Files without a module declaration belong to the root namespace; multiple files
+may contribute to the same named module. Imports are file-scoped. Declarations
+in named modules are private by default; the contextual top-level `export` prefix
+exposes a declaration to importing files. Same-module code sees private
+declarations normally, including through explicit current-module qualification.
+Imported files may qualify only exported functions, globals, constants, and
+nominal types. Qualified globals preserve ordinary lvalue/addressability
+semantics, while qualified constants remain compile-time values and may be used
+in constant-expression contexts. Module data declarations are visible to
+function bodies regardless of physical input-file order; compile-time constant
+dependencies are resolved lazily and cycles are diagnosed.
+
+Import cycles are allowed because imports currently affect compile-time
+visibility only; top-level runtime initialization remains in physical input
+order. Only root-namespace `main::() -> i32` is the executable entry. Exported
+APIs may not expose private nominal types through function signatures,
+globals/constants, or exported struct fields. Package manifests, automatic
+multi-file package membership, an installed standard-library root, and separate
+compilation remain future work. Discovery does not imply runtime dependency
+ordering: explicit inputs retain command-line order and discovered files are
+appended in deterministic first-discovery order to the existing single module
 initializer.
 
 For the current executable slice:
@@ -208,6 +217,8 @@ coglet program.cog -o program --backend llvm --emit-asm program.s -O2
 `-I` adds a Coglet module source-search root for automatic `import` discovery;
 it is unrelated to native C header search. Both `-I dir` and `-Idir` are accepted,
 and repeated roots are searched left-to-right after the importing file's directory.
+Dotted module names map directly to relative source paths (`std.math` ->
+`std/math.cog`).
 
 `-L` adds a native library search directory and `-l` requests a native library.
 Both joined and split spellings are accepted, both options may be repeated, and
@@ -861,7 +872,7 @@ object storage. Ordinary Coglet `bool*` is intentionally not interchangeable wit
 Near-term compiler work is backend-focused:
 
 1. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
-2. Extend the module/import layer from single-component `-I` discovery to dotted package naming/manifests and an installed standard-library root, then define the runtime/standard-library boundary needed for self-hosting.
+2. Extend the hierarchical module/import layer with package manifests and an installed standard-library root, then define the runtime/standard-library boundary needed for self-hosting.
 3. Continue improving diagnostics, tests, and documentation.
 
 ## License

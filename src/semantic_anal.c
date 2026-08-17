@@ -1055,56 +1055,322 @@ static Symbol *semantic_lookup_visible_qualified_symbol_no_diag(
     return symbol;
 }
 
-static int semantic_qualified_enum_member_no_diag(
+static StringView dotted_first_component(StringView path)
+{
+    StringView first = path;
+    for (size_t i = 0; i < path.length; ++i) {
+        if (path.data[i] == '.') {
+            first.length = i;
+            break;
+        }
+    }
+    return first;
+}
+
+static int dotted_module_suffix(
+    StringView path,
+    StringView module_name,
+    size_t expected_components,
+    StringView *out_first,
+    StringView *out_second
+) {
+    if (path.length <= module_name.length + 1 ||
+        memcmp(path.data, module_name.data, module_name.length) != 0 ||
+        path.data[module_name.length] != '.') {
+        return 0;
+    }
+
+    StringView suffix = {
+        path.data + module_name.length + 1,
+        path.length - module_name.length - 1
+    };
+
+    size_t component_count = 1;
+    size_t first_dot = suffix.length;
+    for (size_t i = 0; i < suffix.length; ++i) {
+        if (suffix.data[i] != '.')
+            continue;
+        if (first_dot == suffix.length)
+            first_dot = i;
+        component_count++;
+    }
+
+    if (component_count != expected_components)
+        return 0;
+
+    if (out_first) {
+        out_first->data = suffix.data;
+        out_first->length = expected_components == 1 ? suffix.length : first_dot;
+    }
+    if (out_second) {
+        if (expected_components == 2) {
+            out_second->data = suffix.data + first_dot + 1;
+            out_second->length = suffix.length - first_dot - 1;
+        } else {
+            *out_second = string_view_empty();
+        }
+    }
+    return 1;
+}
+
+static int semantic_module_is_visible(
+    SemanticContext *ctx,
+    SemanticModule *module
+) {
+    if (!ctx || !module)
+        return 0;
+    if (module == ctx->current_module)
+        return 1;
+
+    SemanticSourceModule *source =
+        semantic_source_module(ctx, ctx->current_source_id);
+    return semantic_source_imports_module(source, module);
+}
+
+static int semantic_dotted_path_shadowed(
+    SemanticContext *ctx,
+    StringView path
+) {
+    StringView first = dotted_first_component(path);
+    return first.length != 0 && scope_lookup(
+        ctx->current_scope, first.data, first.length) != NULL;
+}
+
+static int semantic_has_visible_module_prefix(
+    SemanticContext *ctx,
+    StringView path
+) {
+    if (!ctx || path.length == 0 || semantic_dotted_path_shadowed(ctx, path))
+        return 0;
+
+    for (SemanticModule *module = ctx->modules; module; module = module->next) {
+        if (module->is_root || !semantic_module_is_visible(ctx, module))
+            continue;
+        if (path.length > module->name.length + 1 &&
+            memcmp(path.data, module->name.data, module->name.length) == 0 &&
+            path.data[module->name.length] == '.') {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static SemanticModule *semantic_longest_module_prefix(
+    SemanticContext *ctx,
+    StringView path,
+    size_t suffix_components,
+    int visible_only,
+    StringView *out_first,
+    StringView *out_second
+) {
+    if (!ctx || path.length == 0 || semantic_dotted_path_shadowed(ctx, path))
+        return NULL;
+
+    SemanticModule *best = NULL;
+    for (SemanticModule *module = ctx->modules; module; module = module->next) {
+        if (module->is_root)
+            continue;
+        if (visible_only && !semantic_module_is_visible(ctx, module))
+            continue;
+
+        if (path.length <= module->name.length + 1 ||
+            memcmp(path.data, module->name.data, module->name.length) != 0 ||
+            path.data[module->name.length] != '.') {
+            continue;
+        }
+
+        if (!best || module->name.length > best->name.length)
+            best = module;
+    }
+
+    if (!best)
+        return NULL;
+
+    StringView first = string_view_empty();
+    StringView second = string_view_empty();
+    if (!dotted_module_suffix(
+            path,
+            best->name,
+            suffix_components,
+            &first,
+            &second)) {
+        return NULL;
+    }
+
+    if (out_first)
+        *out_first = first;
+    if (out_second)
+        *out_second = second;
+    return best;
+}
+
+static Symbol *semantic_lookup_qualified_field_symbol(
     SemanticContext *ctx,
     Node *node,
+    int diagnose,
+    SemanticModule **out_module,
+    StringView *out_member,
+    int *out_recognized
+) {
+    if (out_recognized)
+        *out_recognized = 0;
+
+    if (!node || node->type != NODE_FIELD ||
+        node->as.field.dotted_path.length == 0) {
+        return NULL;
+    }
+
+    StringView member_name = string_view_empty();
+    SemanticModule *module = semantic_longest_module_prefix(
+        ctx,
+        node->as.field.dotted_path,
+        1,
+        1,
+        &member_name,
+        NULL
+    );
+
+    /*
+     * Preserve the existing targeted "not imported" diagnostic when the
+     * complete chain names a known module member and there is no shorter
+     * visible module prefix that could make the same dots ordinary fields.
+     */
+    if (!module && diagnose &&
+        !semantic_has_visible_module_prefix(ctx, node->as.field.dotted_path)) {
+        module = semantic_longest_module_prefix(
+            ctx,
+            node->as.field.dotted_path,
+            1,
+            0,
+            &member_name,
+            NULL
+        );
+    }
+
+    if (!module)
+        return NULL;
+
+    if (out_recognized)
+        *out_recognized = 1;
+
+    Symbol *symbol = diagnose
+        ? semantic_lookup_qualified_symbol(ctx, module->name, member_name, node)
+        : semantic_lookup_visible_qualified_symbol_no_diag(
+            ctx, module->name, member_name);
+
+    if (!symbol)
+        return NULL;
+
+    if (out_module)
+        *out_module = module;
+    if (out_member)
+        *out_member = member_name;
+    return symbol;
+}
+
+/*
+ * Returns 1 on success, 0 when the expression is not a module-qualified enum
+ * member shape, and -1 when the shape was recognized but produced a diagnostic.
+ */
+static int semantic_qualified_enum_member(
+    SemanticContext *ctx,
+    Node *node,
+    int diagnose,
     Symbol **out_symbol,
     EnumMember **out_member
 ) {
     if (!node || node->type != NODE_FIELD ||
-        !node->as.field.object ||
-        node->as.field.object->type != NODE_FIELD) {
+        node->as.field.dotted_path.length == 0) {
         return 0;
     }
 
-    Node *type_field = node->as.field.object;
-    if (!type_field->as.field.object ||
-        type_field->as.field.object->type != NODE_IDENT) {
-        return 0;
-    }
-
-    Node *module_ident = type_field->as.field.object;
-    if (scope_lookup(
-            ctx->current_scope,
-            module_ident->as.ident.data,
-            module_ident->as.ident.length
-        )) {
-        return 0;
-    }
-
-    Symbol *symbol = semantic_lookup_visible_qualified_symbol_no_diag(
+    StringView type_name = string_view_empty();
+    StringView member_name = string_view_empty();
+    SemanticModule *module = semantic_longest_module_prefix(
         ctx,
-        module_ident->as.ident,
-        type_field->as.field.name
+        node->as.field.dotted_path,
+        2,
+        1,
+        &type_name,
+        &member_name
     );
-    if (!symbol || symbol->kind != SYMBOL_TYPE ||
-        !symbol->type || symbol->type->kind != TYPE_ENUM) {
+
+    if (!module && diagnose &&
+        !semantic_has_visible_module_prefix(ctx, node->as.field.dotted_path)) {
+        module = semantic_longest_module_prefix(
+            ctx,
+            node->as.field.dotted_path,
+            2,
+            0,
+            &type_name,
+            &member_name
+        );
+    }
+
+    if (!module)
+        return 0;
+
+    Symbol *symbol = diagnose
+        ? semantic_lookup_qualified_symbol(ctx, module->name, type_name, node)
+        : semantic_lookup_visible_qualified_symbol_no_diag(
+            ctx, module->name, type_name);
+    if (!symbol)
+        return diagnose ? -1 : 0;
+
+    /* A global subobject such as `state.pair.x` is not enum qualification. */
+    if (symbol->kind != SYMBOL_TYPE)
+        return 0;
+
+    if (!symbol->type || symbol->type->kind != TYPE_ENUM) {
+        if (diagnose) {
+            semantic_error_fmt(
+                ctx,
+                node,
+                "'%.*s.%.*s' is not an enum type",
+                (int)module->name.length,
+                module->name.data,
+                (int)type_name.length,
+                type_name.data
+            );
+            return -1;
+        }
         return 0;
     }
 
     EnumMember *member = find_enum_member(
         symbol->type,
-        node->as.field.name.data,
-        node->as.field.name.length
+        member_name.data,
+        member_name.length
     );
-    if (!member)
+    if (!member) {
+        if (diagnose) {
+            semantic_error_name(
+                ctx,
+                node,
+                "unknown enum member",
+                member_name.data,
+                member_name.length
+            );
+            return -1;
+        }
         return 0;
+    }
 
     if (out_symbol)
         *out_symbol = symbol;
     if (out_member)
         *out_member = member;
     return 1;
+}
+
+static int semantic_qualified_enum_member_no_diag(
+    SemanticContext *ctx,
+    Node *node,
+    Symbol **out_symbol,
+    EnumMember **out_member
+) {
+    return semantic_qualified_enum_member(
+        ctx, node, 0, out_symbol, out_member) == 1;
 }
 
 /*
@@ -4389,35 +4655,37 @@ static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *ou
                     return 1;
                 }
 
-                /*
-                 * Module qualification is considered only when no lexical
-                 * value/type shadows the qualifier, matching ordinary field
-                 * expression lookup. Constant evaluation happens before the
-                 * normal value checker for constant declarations, so resolve
-                 * imported constants here while semantic scopes are live.
-                 */
-                if (!symbol && semantic_find_module(ctx, object->as.ident)) {
-                    Symbol *member = semantic_lookup_qualified_symbol(
-                        ctx,
-                        object->as.ident,
-                        node->as.field.name,
-                        node
-                    );
-                    if (!member)
+            }
+
+            /*
+             * Module qualification is resolved from the complete canonical
+             * dotted chain so constants in hierarchical modules remain usable
+             * during declaration-time evaluation.
+             */
+            int qualified_recognized = 0;
+            Symbol *qualified = semantic_lookup_qualified_field_symbol(
+                ctx,
+                node,
+                1,
+                NULL,
+                NULL,
+                &qualified_recognized
+            );
+            if (qualified_recognized) {
+                if (!qualified)
+                    return 0;
+
+                if (qualified->kind == SYMBOL_CONSTANT) {
+                    if (!ensure_constant_symbol_checked(ctx, qualified))
                         return 0;
 
-                    if (member->kind == SYMBOL_CONSTANT) {
-                        if (!ensure_constant_symbol_checked(ctx, member))
-                            return 0;
+                    SemDeclInfo *declaration =
+                        sem_find_decl_info_by_id(ctx, qualified->declaration_id);
+                    if (!declaration || !declaration->has_constant_value)
+                        return 0;
 
-                        SemDeclInfo *declaration =
-                            sem_find_decl_info_by_id(ctx, member->declaration_id);
-                        if (!declaration || !declaration->has_constant_value)
-                            return 0;
-
-                        *out = declaration->constant_value;
-                        return 1;
-                    }
+                    *out = declaration->constant_value;
+                    return 1;
                 }
             }
 
@@ -5836,34 +6104,29 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
                 return 1;
             }
 
-            if (!node->as.field.object ||
-                node->as.field.object->type != NODE_IDENT) {
-                return 0;
+            if (node->as.field.object &&
+                node->as.field.object->type == NODE_IDENT) {
+                Node *object_node = node->as.field.object;
+                Symbol *sym = scope_lookup(
+                    ctx->current_scope,
+                    object_node->as.ident.data,
+                    object_node->as.ident.length
+                );
+
+                if (sym) {
+                    return sym->kind == SYMBOL_TYPE &&
+                           sym->type &&
+                           sym->type->kind == TYPE_ENUM &&
+                           find_enum_member(
+                               sym->type,
+                               node->as.field.name.data,
+                               node->as.field.name.length
+                           );
+                }
             }
 
-            Node *object_node = node->as.field.object;
-            Symbol *sym = scope_lookup(
-                ctx->current_scope,
-                object_node->as.ident.data,
-                object_node->as.ident.length
-            );
-
-            if (sym) {
-                return sym->kind == SYMBOL_TYPE &&
-                       sym->type &&
-                       sym->type->kind == TYPE_ENUM &&
-                       find_enum_member(
-                           sym->type,
-                           node->as.field.name.data,
-                           node->as.field.name.length
-                       );
-            }
-
-            Symbol *member = semantic_lookup_visible_qualified_symbol_no_diag(
-                ctx,
-                object_node->as.ident,
-                node->as.field.name
-            );
+            Symbol *member = semantic_lookup_qualified_field_symbol(
+                ctx, node, 0, NULL, NULL, NULL);
             return member && member->kind == SYMBOL_CONSTANT;
         }
 
@@ -7563,79 +7826,30 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_FIELD:
         {
-            /* Qualified enum constant: `math.Mode.Red`. */
-            if (node->as.field.object &&
-                node->as.field.object->type == NODE_FIELD) {
-                Node *type_field = node->as.field.object;
-                if (type_field->as.field.object &&
-                    type_field->as.field.object->type == NODE_IDENT) {
-                    Node *module_ident = type_field->as.field.object;
-                    Symbol *shadow = scope_lookup(
-                        ctx->current_scope,
-                        module_ident->as.ident.data,
-                        module_ident->as.ident.length
-                    );
-                    if (!shadow && semantic_find_module(
-                            ctx, module_ident->as.ident
-                        )) {
-                        Symbol *type_symbol = semantic_lookup_qualified_symbol(
-                            ctx,
-                            module_ident->as.ident,
-                            type_field->as.field.name,
-                            node
-                        );
-                        if (!type_symbol)
-                            return NULL;
-
-                        /*
-                         * Three-part syntax is ambiguous once modules may expose
-                         * globals: `math.Mode.Red` is enum qualification, while
-                         * `state.pair.x` is ordinary field access on the qualified
-                         * global `state.pair`. Only consume this branch when the
-                         * middle component actually resolves to a type.
-                         */
-                        if (type_symbol->kind == SYMBOL_TYPE) {
-                            if (!type_symbol->type ||
-                                type_symbol->type->kind != TYPE_ENUM) {
-                                semantic_error_fmt(
-                                    ctx,
-                                    node,
-                                    "'%.*s.%.*s' is not an enum type",
-                                    (int)module_ident->as.ident.length,
-                                    module_ident->as.ident.data,
-                                    (int)type_field->as.field.name.length,
-                                    type_field->as.field.name.data
-                                );
-                                return NULL;
-                            }
-
-                            EnumMember *member = find_enum_member(
-                                type_symbol->type,
-                                node->as.field.name.data,
-                                node->as.field.name.length
-                            );
-                            if (!member) {
-                                semantic_error_name(
-                                    ctx,
-                                    node,
-                                    "unknown enum member",
-                                    node->as.field.name.data,
-                                    node->as.field.name.length
-                                );
-                                return NULL;
-                            }
-
-                            sem_record_expr_info(
-                                ctx,
-                                node,
-                                type_symbol->type,
-                                type_symbol,
-                                VALUE_CATEGORY_RVALUE
-                            );
-                            return type_symbol->type;
-                        }
-                    }
-                }
+            /*
+             * Module-qualified enum constant. The module prefix may itself be
+             * dotted, for example `std.math.Mode.Red`.
+             */
+            Symbol *qualified_enum = NULL;
+            EnumMember *qualified_enum_member = NULL;
+            int qualified_enum_status = semantic_qualified_enum_member(
+                ctx,
+                node,
+                1,
+                &qualified_enum,
+                &qualified_enum_member
+            );
+            if (qualified_enum_status < 0)
+                return NULL;
+            if (qualified_enum_status > 0) {
+                sem_record_expr_info(
+                    ctx,
+                    node,
+                    qualified_enum->type,
+                    qualified_enum,
+                    VALUE_CATEGORY_RVALUE
+                );
+                return qualified_enum->type;
             }
 
             /* Unqualified enum constant: `Color.Red`. */
@@ -7678,92 +7892,97 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     );
                     return symbol->type;
                 }
+            }
 
-                /*
-                 * A module qualifier is considered only when no lexical symbol
-                 * shadows the same identifier. This keeps ordinary `value.x`
-                 * field access unambiguous even when a module has that name.
-                 */
-                if (!symbol) {
-                    SemanticModule *module = semantic_find_module(
+            /*
+             * Imported/current-module declaration qualification. Pure dotted
+             * identifier chains are matched against the longest visible module
+             * prefix. This permits both `std.io.print` and ordinary runtime
+             * chains such as `state.data.point.x` without backend/name rules.
+             */
+            SemanticModule *qualified_module = NULL;
+            StringView qualified_member_name = string_view_empty();
+            int qualified_recognized = 0;
+            Symbol *qualified_member = semantic_lookup_qualified_field_symbol(
+                ctx,
+                node,
+                1,
+                &qualified_module,
+                &qualified_member_name,
+                &qualified_recognized
+            );
+            if (qualified_recognized) {
+                if (!qualified_member)
+                    return NULL;
+
+                if (qualified_member->kind == SYMBOL_FUNCTION ||
+                    qualified_member->kind == SYMBOL_CONSTANT) {
+                    if (qualified_member->kind == SYMBOL_CONSTANT &&
+                        !qualified_member->type &&
+                        !ensure_constant_symbol_checked(ctx, qualified_member)) {
+                        return NULL;
+                    }
+
+                    sem_record_expr_info(
                         ctx,
-                        object_node->as.ident
+                        node,
+                        qualified_member->type,
+                        qualified_member,
+                        VALUE_CATEGORY_RVALUE
                     );
-                    if (module) {
-                        Symbol *member = semantic_lookup_qualified_symbol(
-                            ctx,
-                            object_node->as.ident,
-                            node->as.field.name,
-                            node
-                        );
-                        if (!member)
-                            return NULL;
+                    return qualified_member->type;
+                }
 
-                        if (member->kind == SYMBOL_FUNCTION ||
-                            member->kind == SYMBOL_CONSTANT) {
-                            if (member->kind == SYMBOL_CONSTANT && !member->type &&
-                                !ensure_constant_symbol_checked(ctx, member)) {
-                                return NULL;
-                            }
-
-                            sem_record_expr_info(
-                                ctx,
-                                node,
-                                member->type,
-                                member,
-                                VALUE_CATEGORY_RVALUE
-                            );
-                            return member->type;
-                        }
-
-                        if (member->kind == SYMBOL_VARIABLE) {
-                            if (!member->type) {
-                                if (ctx->function_depth == 0 ||
-                                    !ensure_global_variable_symbol_checked(ctx, member)) {
-                                    semantic_error_fmt(
-                                        ctx,
-                                        node,
-                                        "global variable '%.*s.%.*s' is used before its declaration",
-                                        (int)object_node->as.ident.length,
-                                        object_node->as.ident.data,
-                                        (int)node->as.field.name.length,
-                                        node->as.field.name.data
-                                    );
-                                    return NULL;
-                                }
-                            }
-
-                            assert(member->variable_storage == VARIABLE_STORAGE_GLOBAL);
-                            sem_record_expr_info(
-                                ctx,
-                                node,
-                                member->type,
-                                member,
-                                VALUE_CATEGORY_LVALUE
-                            );
-                            return member->type;
-                        }
-
-                        if (member->kind == SYMBOL_TYPE) {
+                if (qualified_member->kind == SYMBOL_VARIABLE) {
+                    if (!qualified_member->type) {
+                        if (ctx->function_depth == 0 ||
+                            !ensure_global_variable_symbol_checked(
+                                ctx, qualified_member)) {
                             semantic_error_fmt(
                                 ctx,
                                 node,
-                                "type '%.*s.%.*s' cannot be used as a value",
-                                (int)object_node->as.ident.length,
-                                object_node->as.ident.data,
-                                (int)node->as.field.name.length,
-                                node->as.field.name.data
+                                "global variable '%.*s.%.*s' is used before its declaration",
+                                (int)qualified_module->name.length,
+                                qualified_module->name.data,
+                                (int)qualified_member_name.length,
+                                qualified_member_name.data
                             );
-                        } else {
-                            semantic_error(
-                                ctx,
-                                node,
-                                "module member cannot be used as a value"
-                            );
+                            return NULL;
                         }
-                        return NULL;
                     }
+
+                    assert(
+                        qualified_member->variable_storage ==
+                        VARIABLE_STORAGE_GLOBAL
+                    );
+                    sem_record_expr_info(
+                        ctx,
+                        node,
+                        qualified_member->type,
+                        qualified_member,
+                        VALUE_CATEGORY_LVALUE
+                    );
+                    return qualified_member->type;
                 }
+
+                if (qualified_member->kind == SYMBOL_TYPE) {
+                    semantic_error_fmt(
+                        ctx,
+                        node,
+                        "type '%.*s.%.*s' cannot be used as a value",
+                        (int)qualified_module->name.length,
+                        qualified_module->name.data,
+                        (int)qualified_member_name.length,
+                        qualified_member_name.data
+                    );
+                } else {
+                    semantic_error(
+                        ctx,
+                        node,
+                        "module member cannot be used as a value"
+                    );
+                }
+                return NULL;
             }
 
             /*

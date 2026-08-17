@@ -6,13 +6,14 @@ It is not yet a complete formal grammar.
 
 ## Modules and Imports
 
-The initial module layer uses top-level directives with one identifier component:
+Module and import names are absolute dotted identifier paths:
 
 ```ebnf
-module_declaration = "module" identifier ";";
-import_declaration = "import" identifier ";";
+module_name = identifier {"." identifier};
+module_declaration = "module" module_name ";";
+import_declaration = "import" module_name ";";
 exported_declaration = "export" top_level_declaration;
-qualified_name = identifier "." identifier;
+qualified_name = identifier {"." identifier};
 ```
 
 A physical file may contain at most one `module` declaration, which must precede
@@ -26,34 +27,41 @@ recognized only as a top-level declaration prefix; declarations in named modules
 are private when the prefix is absent. `export` is invalid in the root namespace.
 
 ```c
-module math;
+module std.math;
 export Pair::struct { x: i32; y: i32; }
 export add::(a: i32, b: i32) -> i32 { return a + b; }
 
-helper::() -> i32 { return 1; } // private to module math
+helper::() -> i32 { return 1; } // private to module std.math
 ```
 
 ```c
-import math;
+import std.math;
 main::() -> i32 {
-    pair: math.Pair = math.Pair { x = 20, y = 22 };
-    return math.add(pair.x, pair.y);
+    pair: std.math.Pair = std.math.Pair { x = 20, y = 22 };
+    return std.math.add(pair.x, pair.y);
 }
 ```
 
-Qualified enum members use `module.Enum.Member`. Imported functions, globals,
-constants, and nominal types use the same single-dot qualification syntax:
-`math.add`, `math.tau`, `state.counter`, `math.Pair`, and `math.Mode.Red`.
+The same dot syntax composes module qualification, enum qualification, and
+ordinary runtime field selection: `std.math.add`, `std.math.Mode.Red`, and
+`state.point.x`. Semantic resolution chooses the longest module prefix visible
+in the current file, then resolves the remaining suffix according to declaration
+kind. This permits hierarchical module names without introducing a second
+namespace operator. Importing a child module does not implicitly import any
+parent module, and importing a parent does not implicitly expose its children.
+
 A qualified global remains an lvalue, so further ordinary field/index access such
-as `state.pair.x` or `state.values[0]` composes normally. The semantic resolver
-disambiguates `module.Enum.Member` from `module.global.field` by the resolved kind
-of the middle declaration rather than by syntax. Imported qualification requires
-the selected declaration to be exported; same-module code may use private members.
-An exported declaration may not expose a private nominal type in its public type
-surface. The command-line driver may resolve `import name;` to a canonical
-`name.cog` source beside the importer or under ordered `-I` search roots; this does
-not change the grammar. Packages and dotted module names are deferred. Imports do
-not imply runtime dependency ordering and import cycles are allowed.
+as `state.data.point.x` or `state.data.values[0]` composes normally. Imported
+qualification requires the selected declaration to be exported; same-module code
+may use private members. An exported declaration may not expose a private nominal
+type in its public type surface.
+
+When command-line discovery is enabled, a dotted module name maps directly to a
+relative source path by replacing dots with path separators: `import std.math;`
+searches for `std/math.cog` beside the importing source and then under ordered
+`-I` roots. This path mapping does not change the grammar. Imports do not imply
+runtime dependency ordering and import cycles are allowed. Package manifests,
+installed stdlib roots, and separate compilation remain deferred.
 
 ## Type Syntax
 
@@ -92,7 +100,7 @@ register: volatile i32;
 values: readonly i32[4];
 ```
 
-Named types may be module-qualified as `math.Pair` when `math` is visible through a file import (or is the current module).
+Named types may be module-qualified through any visible hierarchical module path, such as `std.math.Pair` (or through the current module).
 
 Examples of ordinary types:
 

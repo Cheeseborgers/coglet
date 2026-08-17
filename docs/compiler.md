@@ -9,7 +9,7 @@ Its current responsibilities are:
 2. read, parse, and retain every explicit source buffer for the frontend lifetime;
 3. create the main and scratch arenas;
 4. initialize one compilation-level `SourceManager` and register every loaded input;
-5. when import discovery is enabled, resolve missing module sources from the importing file directory and ordered module search roots, recursively loading each physical file at most once;
+5. when import discovery is enabled, map missing dotted module names to canonical relative source paths and resolve them from the importing file directory and ordered module search roots, recursively loading each physical file at most once;
 6. combine explicit files followed by discovered files into one `NODE_PROGRAM` compilation-unit root;
 7. aggregate parser diagnostics across all inputs and report them with their original source provenance;
 8. build root/named module namespaces and file-scoped import visibility, then run semantic analysis once over the combined program;
@@ -30,38 +30,48 @@ coglet main.cog math.cog util.cog -o program
 
 They form one compilation unit and one frozen CogIR module. Files without an
 explicit module declaration contribute to the root namespace. A file may instead
-begin with `module name;`; multiple files with the same module name contribute to
-the same semantic namespace. File-scoped `import name;` directives permit
-qualified access to exported functions, globals, constants, and nominal types
-(`math.add`, `math.tau`, `state.counter`, `math.Pair`, `math.Mode.Red`). Qualified
-globals retain ordinary writable/addressable storage semantics and qualified
-constants retain compile-time constant semantics. Module data names are predeclared
-so function-body lookup is independent of physical input-file order; compile-time
-constant dependencies are resolved lazily with cycle diagnostics. Same-module
-references remain unqualified, with explicit current-module qualification also accepted.
+begin with a dotted module name such as `module std.math;`; multiple files with
+the same canonical name contribute to the same semantic namespace. File-scoped
+imports permit qualified access to exported functions, globals, constants, and
+nominal types (`std.math.add`, `std.math.tau`, `state.data.counter`,
+`std.math.Pair`, `std.math.Mode.Red`). Qualified globals retain ordinary
+writable/addressable storage semantics and qualified constants retain compile-time
+constant semantics. Module data names are predeclared so function-body lookup is
+independent of physical input-file order; compile-time constant dependencies are
+resolved lazily with cycle diagnostics. Same-module references remain unqualified,
+with explicit current-module qualification also accepted.
+
 Named-module declarations are private by default. A top-level contextual `export`
-prefix marks a declaration visible to importing files; root-namespace `export` is
-rejected. Exported API types are checked so private nominal types cannot leak through
-function signatures, values, or exported aggregate fields.
+prefix marks a declaration visible to importing files; root-namespace `export`
+is rejected. Exported API types are checked so private nominal types cannot leak
+through function signatures, values, or exported aggregate fields.
+
+The same dot is used for hierarchical module qualification and ordinary member
+selection. Semantic lookup selects the longest module prefix visible in the
+current file before interpreting the remaining suffix. Parent/child module names
+are independent imports; importing `std.math` does not implicitly import `std`.
+No hierarchical namespace information is needed by CogIR after declaration
+resolution.
 
 The `coglet` command enables import discovery. If no loaded source declares an
-imported module, `import math;` searches `math.cog` beside the importing file and
-then each repeated `-I` directory in command-line order. Search is transitive and
-first-existing-candidate wins. Explicit inputs are all parsed before discovery, so
-an explicitly supplied file contributing to `module math` suppresses automatic
-`math.cog` loading for that import. The library API keeps filesystem discovery
-opt-in through `CompileOptions`; existing parse/check entry points retain explicit-
-input behavior for deterministic embedding and semantic tooling.
+imported module, dots in the canonical module name map to path separators:
+`import std.math;` searches `std/math.cog` beside the importing file and then
+each repeated `-I` directory in command-line order. Search is transitive and
+first-existing-candidate wins. Explicit inputs are all parsed before discovery,
+so an explicitly supplied file contributing to `module std.math` suppresses
+automatic `std/math.cog` loading for that import. The library API keeps filesystem
+discovery opt-in through `CompileOptions`; existing parse/check entry points
+retain explicit-input behavior for deterministic embedding and semantic tooling.
 
-Imports remain compile-time visibility rather than runtime dependency edges. Explicit
-inputs retain command-line/source order; newly discovered files are appended after
-explicit roots in deterministic first-discovery order. That combined physical order
-continues to define program-scope runtime initialization, so imports do not acquire an
-implicit dependency-initialization guarantee. Import cycles remain permitted. Only
-root-namespace `main::() -> i32` is an executable entry; a `main` inside a named
-module is an ordinary function. Dotted package names, package manifests, installed
-stdlib lookup, and separate compilation remain future work.
-
+Imports remain compile-time visibility rather than runtime dependency edges.
+Explicit inputs retain command-line/source order; newly discovered files are
+appended after explicit roots in deterministic first-discovery order. That
+combined physical order continues to define program-scope runtime initialization,
+so imports do not acquire an implicit dependency-initialization guarantee. Import
+cycles remain permitted. Only root-namespace `main::() -> i32` is an executable
+entry; a `main` inside a named module is an ordinary function. Package manifests,
+automatic multi-file package membership, installed stdlib lookup, and separate
+compilation remain future work.
 
 ## Post-semantic IR boundary
 

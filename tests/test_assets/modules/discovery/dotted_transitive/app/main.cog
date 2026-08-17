@@ -1,0 +1,2 @@
+import pkg.first;
+main::() -> i32 { return pkg.first.answer(); }

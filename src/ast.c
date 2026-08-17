@@ -148,6 +148,26 @@ Node *ast_new_field(Arena *arena, Node *object, const char *name, int length, So
     node->as.field.object = object;
     node->as.field.name.data   = name;
     node->as.field.name.length = length;
+    node->as.field.dotted_path = string_view_empty();
+
+    StringView prefix = string_view_empty();
+    if (object && object->type == NODE_IDENT) {
+        prefix = object->as.ident;
+    } else if (object && object->type == NODE_FIELD &&
+               object->as.field.dotted_path.length != 0) {
+        prefix = object->as.field.dotted_path;
+    }
+
+    if (prefix.length != 0 && length > 0) {
+        size_t total = prefix.length + 1 + (size_t)length;
+        char *path = arena_alloc(arena, total);
+        memcpy(path, prefix.data, prefix.length);
+        path[prefix.length] = '.';
+        memcpy(path + prefix.length + 1, name, (size_t)length);
+        node->as.field.dotted_path.data = path;
+        node->as.field.dotted_path.length = total;
+    }
+
     return node;
 }
 Node *ast_new_index(Arena *arena, Node *object, Node *index, SourceSpan span) {
@@ -498,6 +518,7 @@ Node *ast_clone(Arena *arena, const Node *node)
 
             clone->as.field.name.data   = node->as.field.name.data;
             clone->as.field.name.length = node->as.field.name.length;
+            clone->as.field.dotted_path = node->as.field.dotted_path;
             break;
 
         case NODE_INDEX:

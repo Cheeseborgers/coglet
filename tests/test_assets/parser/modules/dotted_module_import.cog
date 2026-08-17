@@ -1,0 +1,4 @@
+module app.core;
+import std.math;
+value: std.math.Pair = std.math.Pair { x = 1, y = 2 };
+run::() -> i32 { return std.math.add(value.x, value.y); }

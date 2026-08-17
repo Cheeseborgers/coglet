@@ -16,8 +16,9 @@ typedef enum CompileStatus {
 
 typedef struct CompileOptions {
     /*
-     * When non-zero, unresolved `import name;` directives may load the
-     * canonical source file `name.cog` before semantic analysis.
+     * When non-zero, unresolved imports may load a canonical source before
+     * semantic analysis. Dotted module names map to path components, so
+     * `import std.io;` resolves a candidate `std/io.cog`.
      */
     int discover_imports;
 
@@ -101,8 +102,8 @@ CompileStatus compile_parse_and_check_files(
 
 /*
  * Options-aware host-target compilation. When discover_imports is enabled,
- * missing `import name;` modules may add canonical `name.cog` sources before
- * semantic analysis.
+ * missing imports may add canonical module sources before semantic analysis;
+ * dotted names map to path components (`std.io` -> `std/io.cog`).
  */
 CompileStatus compile_parse_and_check_files_with_options(
     const char *const *filenames,

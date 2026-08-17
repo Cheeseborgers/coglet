@@ -1,0 +1,20 @@
+module app.core;
+
+export Mode::enum(u8) {
+    Zero,
+    One,
+}
+
+export Pair::struct {
+    x: i32;
+    y: i32;
+}
+
+export answer :: 39;
+
+export run::() -> i32 {
+    pair: app.core.Pair = app.core.Pair { x = 1, y = 2 };
+    if app.core.Mode.One == app.core.Mode.Zero
+        return 0;
+    return pair.x + pair.y + app.core.answer;
+}

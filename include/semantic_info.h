@@ -270,6 +270,14 @@ typedef struct SemDeclInfo {
     int semantic_check_started;
     int semantic_check_complete;
 
+    /*
+     * Source module visibility. Named-module declarations are private by
+     * default and become visible through imports only when explicitly marked
+     * with the top-level `export` prefix. Root-namespace declarations do not
+     * participate in import visibility.
+     */
+    int is_exported;
+
     /* True only for the validated root-namespace `main::() -> i32`. */
     int is_executable_entry;
 

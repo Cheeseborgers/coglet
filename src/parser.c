@@ -2925,6 +2925,35 @@ static Node *parse_expr_statement(Parser *p) {
     return ast_new_expr_stmt(p->arena, expr, source_span_join(span, expr->span));
 }
 
+static int node_is_exportable_declaration(const Node *node)
+{
+    if (!node)
+        return 0;
+
+    switch (node->type) {
+        case NODE_VAR_DECL:
+        case NODE_VAR_DECL_GROUP:
+        case NODE_FUNC_DECL:
+        case NODE_STRUCT_DECL:
+        case NODE_ENUM_DECL:
+        case NODE_CONST_DECL:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+static void mark_exported_declaration(Node *node)
+{
+    assert(node_is_exportable_declaration(node));
+    node->is_exported = 1;
+
+    if (node->type == NODE_VAR_DECL_GROUP) {
+        for (int i = 0; i < node->as.var_decl_group.declarations.count; i++)
+            node->as.var_decl_group.declarations.items[i]->is_exported = 1;
+    }
+}
+
 static Node *parse_if_statement(Parser *p) {
 
     SourceSpan span = p->previous.span;
@@ -2983,6 +3012,24 @@ Node *parse_program(Parser *p) {
                         p->arena, name.start, name.length,
                         source_span_join(keyword.span, name.span));
                 }
+            }
+        } else if (check(p, TOK_IDENT) &&
+                   token_text_equals(p->current, "export") &&
+                   (peek_next_token_type(p) == TOK_IDENT ||
+                    peek_next_token_type(p) == TOK_HASH)) {
+            Token keyword = p->current;
+            advance(p);
+
+            decl = parse_statement(p);
+            if (!node_is_exportable_declaration(decl)) {
+                error_at(
+                    p,
+                    &keyword,
+                    "export must prefix a top-level declaration"
+                );
+            } else {
+                mark_exported_declaration(decl);
+                decl->span = source_span_join(keyword.span, decl->span);
             }
         } else {
             decl = parse_statement(p);

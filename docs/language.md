@@ -11,9 +11,11 @@ A physical source file may optionally begin with a named module declaration:
 ```c
 module math;
 
-tau :: 6.283185307179586;
-counter: i32 = 0;
-add::(a: i32, b: i32) -> i32 { return a + b; }
+export tau :: 6.283185307179586;
+export counter: i32 = 0;
+export add::(a: i32, b: i32) -> i32 { return a + b; }
+
+helper::() -> i32 { return 1; } // private
 ```
 
 Another file imports that namespace explicitly and uses one dot for qualified
@@ -33,6 +35,24 @@ files may contribute declarations to the same named module. Imports are
 file-scoped: importing a module in one file does not make it visible in another
 file automatically. All physical source files must still be supplied to the
 compiler; imports do not perform file discovery yet.
+
+Declarations in a named module are private by default. A top-level contextual
+`export` prefix makes a declaration visible to importing files:
+
+```c
+module math;
+
+export Pair::struct { x: i32; y: i32; }
+export answer :: 42;
+
+secret :: 7;
+```
+
+Same-module code may use `secret` normally, including as `math.secret`. A file
+that merely `import math;` may access `math.Pair` and `math.answer` but receives a
+privacy diagnostic for `math.secret`. `export` is rejected in the root namespace.
+Exported declarations are also checked for interface closure: a public function,
+global, constant, or exported struct field may not expose a private nominal type.
 
 Qualified functions and constants are rvalues. Qualified globals retain their
 ordinary storage category, so mutation, address-of, indexing, and field selection
@@ -57,8 +77,8 @@ name in expression lookup, preserving ordinary `value.field` behavior.
 
 The current module layer is compile-time namespace/visibility only. Import cycles
 are allowed, and imports do not reorder top-level runtime initialization. Only a
-root-namespace `main::() -> i32` is the executable entry. Export/private visibility,
-automatic module discovery, search paths, dotted package names, and separate
+root-namespace `main::() -> i32` is the executable entry. Automatic module
+discovery, search paths, dotted package names, and separate
 compilation remain future work.
 
 ## Values, Storage, and No-Value Expressions
@@ -2000,7 +2020,6 @@ Near-term candidate areas include:
 - mutable and readonly slices and byte views;
 - ownership and lifetime rules only when justified by concrete use cases;
 - a later first-class string type;
-- export/private declaration visibility for the existing module/import layer;
 - module/package discovery, dotted package names, and separate-compilation policy;
 - standard library facilities;
 - generics, if justified by real use cases;

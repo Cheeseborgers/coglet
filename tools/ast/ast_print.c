@@ -466,6 +466,10 @@ static void print_type(Type *t)
 
 static void print_node(Node *node)
 {
+    int wrap_export = node && node->is_exported;
+    if (wrap_export)
+        printf("(export ");
+
     switch (node->type)
     {
         case NODE_NUMBER:
@@ -943,6 +947,9 @@ static void print_node(Node *node)
         default:
             UNREACHABLE("unknown ast node");
     }
+
+    if (wrap_export)
+        printf(")");
 }
 
 void ast_print(Node *node)
@@ -1155,6 +1162,8 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_VAR_DECL:
             indent(depth);
 
+            if (node->is_exported)
+                printf("export ");
             printf("var_decl ");
             print_string_view(node->as.var_decl.name);
             printf(": ");
@@ -1177,6 +1186,8 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_VAR_DECL_GROUP:
             indent(depth);
+            if (node->is_exported)
+                printf("export ");
             printf("var_decl_group\n");
             for (int i = 0; i < node->as.var_decl_group.declarations.count; i++)
                 print_node_pretty(node->as.var_decl_group.declarations.items[i], depth + 1);
@@ -1241,6 +1252,8 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_ENUM_DECL:
             indent(depth);
 
+            if (node->is_exported)
+                printf("export ");
             if (node->as.enum_decl.is_repr_c)
                 printf("#repr(c) ");
             printf(
@@ -1316,6 +1329,8 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_CONST_DECL:
             indent(depth);
 
+            if (node->is_exported)
+                printf("export ");
             printf("const_decl ");
             print_string_view(node->as.const_decl.name);
             printf(": ");
@@ -1438,6 +1453,8 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_FUNC_DECL:
             indent(depth);
 
+            if (node->is_exported)
+                printf("export ");
             if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C) {
                 const char *call = c_calling_convention_name(node->as.func_decl.c_call_conv);
                 if (string_view_is_empty(node->as.func_decl.external_name) && !call) {
@@ -1506,6 +1523,8 @@ static void print_node_pretty(Node *node, int depth)
         case NODE_STRUCT_DECL:
             indent(depth);
 
+            if (node->is_exported)
+                printf("export ");
             if (node->as.struct_decl.is_repr_c) {
                 printf("#repr(c");
                 if (node->as.struct_decl.repr_c_packed)

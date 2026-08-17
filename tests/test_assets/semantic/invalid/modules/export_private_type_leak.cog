@@ -1,0 +1,9 @@
+module leak;
+
+Hidden::struct {
+    value: i32;
+}
+
+export make::() -> Hidden {
+    return Hidden { value = 1 };
+}

@@ -1,21 +1,21 @@
 module data;
 
-answer :: 40;
-step :: 2;
+export answer :: 40;
+export step :: 2;
 
-counter: i32 = 1;
-values: i32[3] = [2, 3, 4];
+export counter: i32 = 1;
+export values: i32[3] = [2, 3, 4];
 
-Pair::struct {
+export Pair::struct {
     x: i32;
     y: i32;
 }
 
-pair: Pair = Pair {
+export pair: Pair = Pair {
     x = 5,
     y = 6,
 };
 
-bump::() -> void {
+export bump::() -> void {
     data.counter += 1;
 }

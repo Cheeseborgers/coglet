@@ -189,6 +189,7 @@ static SemDeclInfo *sem_get_or_create_decl_info(SemanticContext *ctx, Node *node
 
     info->id = ctx->next_declaration_id++;
     info->node = node;
+    info->is_exported = node->is_exported;
     info->next = ctx->decl_infos;
     ctx->decl_infos = info;
 
@@ -993,6 +994,22 @@ static Symbol *semantic_lookup_qualified_symbol(
         return NULL;
     }
 
+    if (module != ctx->current_module) {
+        SemDeclInfo *info = sem_find_decl_info_by_id(ctx, symbol->declaration_id);
+        if (!info || !info->is_exported) {
+            semantic_error_fmt(
+                ctx,
+                use_node,
+                "module '%.*s' member '%.*s' is private",
+                (int)module_name.length,
+                module_name.data,
+                (int)member_name.length,
+                member_name.data
+            );
+            return NULL;
+        }
+    }
+
     return symbol;
 }
 
@@ -1020,7 +1037,22 @@ static Symbol *semantic_lookup_visible_qualified_symbol_no_diag(
     SemanticModule *module = semantic_visible_module_qualifier(ctx, module_name);
     if (!module)
         return NULL;
-    return scope_find_local(module->scope, member_name.data, member_name.length);
+
+    Symbol *symbol = scope_find_local(
+        module->scope,
+        member_name.data,
+        member_name.length
+    );
+    if (!symbol)
+        return NULL;
+
+    if (module != ctx->current_module) {
+        SemDeclInfo *info = sem_find_decl_info_by_id(ctx, symbol->declaration_id);
+        if (!info || !info->is_exported)
+            return NULL;
+    }
+
+    return symbol;
 }
 
 static int semantic_qualified_enum_member_no_diag(
@@ -9921,6 +9953,220 @@ static void validate_source_entry_signature(SemanticContext *ctx, Node *node)
     info->is_executable_entry = 1;
 }
 
+static SemDeclInfo *semantic_find_nominal_decl_for_type(
+    SemanticContext *ctx,
+    const Type *type
+)
+{
+    if (!ctx || !type ||
+        (type->kind != TYPE_STRUCT && type->kind != TYPE_ENUM)) {
+        return NULL;
+    }
+
+    for (SemDeclInfo *info = ctx->decl_infos; info; info = info->next) {
+        if (info->type != type || !info->node)
+            continue;
+        if (info->node->type == NODE_STRUCT_DECL ||
+            info->node->type == NODE_ENUM_DECL) {
+            return info;
+        }
+    }
+
+    return NULL;
+}
+
+static int semantic_export_type_is_public(
+    SemanticContext *ctx,
+    const Type *type,
+    Node *export_node,
+    StringView export_name
+)
+{
+    if (!type)
+        return 1;
+
+    switch (type->kind) {
+        case TYPE_VOID:
+        case TYPE_BOOL:
+        case TYPE_I8:
+        case TYPE_I16:
+        case TYPE_I32:
+        case TYPE_I64:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+        case TYPE_F32:
+        case TYPE_F64:
+        case TYPE_OPAQUE_POINTER:
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
+        case TYPE_NULL:
+            return 1;
+
+        case TYPE_POINTER:
+        case TYPE_ARRAY:
+            return semantic_export_type_is_public(
+                ctx,
+                type->element,
+                export_node,
+                export_name
+            );
+
+        case TYPE_FUNCTION:
+            for (int i = 0; i < type->parameter_count; i++) {
+                if (!semantic_export_type_is_public(
+                        ctx,
+                        type->parameters[i],
+                        export_node,
+                        export_name
+                    )) {
+                    return 0;
+                }
+            }
+            return semantic_export_type_is_public(
+                ctx,
+                type->return_type,
+                export_node,
+                export_name
+            );
+
+        case TYPE_STRUCT:
+        case TYPE_ENUM:
+        {
+            SemDeclInfo *nominal = semantic_find_nominal_decl_for_type(ctx, type);
+            if (!nominal || nominal->is_exported)
+                return 1;
+
+            StringView private_name = type->kind == TYPE_STRUCT
+                ? type->struct_name
+                : type->enum_name;
+
+            semantic_error_fmt(
+                ctx,
+                export_node,
+                "exported declaration '%.*s' exposes private type '%.*s'",
+                (int)export_name.length,
+                export_name.data,
+                (int)private_name.length,
+                private_name.data
+            );
+            return 0;
+        }
+
+        case TYPE_NAMED:
+            assert(!"resolved exported interface contains TYPE_NAMED");
+            return 0;
+    }
+
+    assert(!"unhandled TypeKind in semantic_export_type_is_public");
+    return 0;
+}
+
+static StringView semantic_declaration_name(Node *node)
+{
+    if (!node)
+        return string_view_empty();
+
+    switch (node->type) {
+        case NODE_VAR_DECL:
+            return node->as.var_decl.name;
+        case NODE_FUNC_DECL:
+            return node->as.func_decl.name;
+        case NODE_STRUCT_DECL:
+            return node->as.struct_decl.name;
+        case NODE_ENUM_DECL:
+            return node->as.enum_decl.name;
+        case NODE_CONST_DECL:
+            return node->as.const_decl.name;
+        default:
+            return string_view_empty();
+    }
+}
+
+static void validate_one_exported_declaration(
+    SemanticContext *ctx,
+    Node *node
+)
+{
+    if (!node || !node->is_exported)
+        return;
+
+    SemanticSourceModule *source = semantic_source_module(ctx, node->span.file_id);
+    if (!source || !source->module)
+        return;
+
+    StringView name = semantic_declaration_name(node);
+
+    if (source->module->is_root) {
+        semantic_error(
+            ctx,
+            node,
+            "export is valid only for declarations in a named module"
+        );
+        return;
+    }
+
+    SemDeclInfo *info = sem_find_decl_info(ctx, node);
+    if (!info || !info->type)
+        return;
+
+    if (node->type == NODE_STRUCT_DECL) {
+        Type *type = info->type;
+        if (type->kind != TYPE_STRUCT)
+            return;
+
+        for (int i = 0; i < type->field_count; i++) {
+            if (!semantic_export_type_is_public(
+                    ctx,
+                    type->fields[i].type,
+                    node,
+                    name
+                )) {
+                return;
+            }
+        }
+        return;
+    }
+
+    semantic_export_type_is_public(ctx, info->type, node, name);
+}
+
+static void validate_program_exports(SemanticContext *ctx, Node *program)
+{
+    NodeList *stmts = &program->as.program.statements;
+
+    for (int i = 0; i < stmts->count; i++) {
+        Node *stmt = stmts->items[i];
+        if (!stmt)
+            continue;
+
+        if (stmt->type == NODE_VAR_DECL_GROUP) {
+            if (stmt->is_exported) {
+                SemanticSourceModule *source =
+                    semantic_source_module(ctx, stmt->span.file_id);
+                if (source && source->module && source->module->is_root) {
+                    semantic_error(
+                        ctx,
+                        stmt,
+                        "export is valid only for declarations in a named module"
+                    );
+                    continue;
+                }
+            }
+
+            for (int j = 0; j < stmt->as.var_decl_group.declarations.count; j++)
+                validate_one_exported_declaration(
+                    ctx,
+                    stmt->as.var_decl_group.declarations.items[j]
+                );
+            continue;
+        }
+
+        validate_one_exported_declaration(ctx, stmt);
+    }
+}
+
 static void check_program(SemanticContext *ctx, Node *node)
 {
     NodeList *stmts = &node->as.program.statements;
@@ -10050,6 +10296,8 @@ static void check_program(SemanticContext *ctx, Node *node)
 
         check_node(ctx, stmt);
     }
+
+    validate_program_exports(ctx, node);
 
     ctx->current_module = ctx->root_module;
     ctx->current_scope = ctx->root_module->scope;

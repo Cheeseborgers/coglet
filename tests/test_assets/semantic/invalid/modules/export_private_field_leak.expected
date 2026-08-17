@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/modules/export_private_field_leak.cog:7:1: error: exported declaration 'Public' exposes private type 'Hidden'
+export Public::struct {
+^~~~~~~~~~~~~
+1 semantic error generated.

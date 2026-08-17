@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/modules/export_private_type_leak.cog:7:1: error: exported declaration 'make' exposes private type 'Hidden'
+export make::() -> Hidden {
+^~~~~~~~~~~
+1 semantic error generated.

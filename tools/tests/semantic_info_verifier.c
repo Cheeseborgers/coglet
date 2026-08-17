@@ -2030,6 +2030,11 @@ static void verify_declaration_info(Verifier *verifier, Node *declaration) {
             "declaration ID does not resolve back to the same SemDeclInfo");
     }
 
+    if (info->is_exported != declaration->is_exported) {
+        verifier_error(verifier, declaration,
+            "declaration export visibility differs from SemDeclInfo");
+    }
+
     int declaration_must_have_constant =
         declaration->type == NODE_CONST_DECL ||
         declaration->type == NODE_ENUM_MEMBER;

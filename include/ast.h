@@ -110,6 +110,13 @@ struct Node {
     NodeType type;
 
     /*
+     * Top-level module visibility marker set by the contextual `export`
+     * declaration prefix. It is meaningful only for source declarations;
+     * semantic analysis rejects exported declarations in the root namespace.
+     */
+    int is_exported;
+
+    /*
      * Canonical source provenance for diagnostics and later IR lowering.
      * `line` is retained temporarily as a compatibility cache while existing
      * debug/backend code migrates to SourceSpan.

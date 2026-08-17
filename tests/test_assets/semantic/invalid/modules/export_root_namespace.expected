@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/modules/export_root_namespace.cog:1:1: error: export is valid only for declarations in a named module
+export answer :: 42;
+^~~~~~~~~~~~~
+1 semantic error generated.

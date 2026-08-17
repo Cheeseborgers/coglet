@@ -143,7 +143,7 @@ frontend now supports named semantic namespaces:
 ```c
 // math.cog
 module math;
-add::(a, b: i32) -> i32 { return a + b; }
+export add::(a, b: i32) -> i32 { return a + b; }
 ```
 
 ```c
@@ -155,7 +155,11 @@ main::() -> i32 { return math.add(20, 22); }
 Builds remain explicit: `coglet math.cog main.cog -o program`. An import does
 not search for or load a file. Files without `module name;` belong to the root
 namespace; multiple files may contribute to the same named module. Imports are
-file-scoped and permit qualified functions, globals, constants, and nominal types,
+file-scoped. Declarations in named modules are private by default; the contextual
+top-level `export` prefix exposes a declaration to importing files. Same-module
+code sees private declarations normally, including through explicit current-module
+qualification. Imported files may qualify only exported functions, globals,
+constants, and nominal types,
 including `math.add`, `math.tau`, `state.counter`, `math.Pair`,
 `math.Pair { ... }`, and `math.Mode.Red`. Qualified globals preserve ordinary
 lvalue/addressability semantics, while qualified constants remain compile-time
@@ -165,8 +169,10 @@ constant dependencies are resolved lazily and cycles are diagnosed. Same-module
 references remain unqualified, although explicit qualification by the current module
 name is also valid. Import cycles are allowed because imports currently affect compile-time
 visibility only; top-level runtime initialization remains in input order. Only
-root-namespace `main::() -> i32` is the executable entry. Export/private visibility,
-package naming/search paths, and automatic module discovery remain future work.
+root-namespace `main::() -> i32` is the executable entry. Exported APIs may not
+expose private nominal types through function signatures, globals/constants, or
+exported struct fields. Package naming/search paths and automatic module discovery
+remain future work.
 
 For the current executable slice:
 
@@ -840,7 +846,7 @@ object storage. Ordinary Coglet `bool*` is intentionally not interchangeable wit
 Near-term compiler work is backend-focused:
 
 1. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
-2. Extend the initial module/import namespace layer with declaration visibility/exports and module file discovery, then define the runtime/standard-library boundary needed for self-hosting.
+2. Extend the module/import layer with module file discovery/search paths and package naming, then define the runtime/standard-library boundary needed for self-hosting.
 3. Continue improving diagnostics, tests, and documentation.
 
 ## License

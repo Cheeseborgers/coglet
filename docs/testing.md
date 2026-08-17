@@ -264,9 +264,12 @@ array/struct subobjects, qualified constants in compile-time contexts, input-ord
 independence for module data used by function bodies, constant-cycle diagnostics, and
 same-name global/constant isolation between modules. It also covers file-scoped
 imports, unknown and duplicate namespace diagnostics, permitted compile-time import
-cycles, and root-only executable entry selection when a named module also declares
-`main`. Use `-L module`, `-L import`, `-L global`, or `-L constant` for focused
-namespace/data slices.
+cycles, root-only executable entry selection when a named module also declares
+`main`, private-by-default imported declarations, explicit exported functions/data/
+nominal types, same-module private access, root-namespace export rejection, and
+rejection of exported interfaces that expose private nominal types. Use `-L module`,
+`-L import`, `-L visibility`, `-L export`, `-L private`, `-L global`, or `-L constant`
+for focused namespace/data/visibility slices.
 
 Run only these tests with:
 

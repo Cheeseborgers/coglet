@@ -1,0 +1,9 @@
+module api;
+
+Hidden::struct {
+    value: i32;
+}
+
+export Public::struct {
+    hidden: Hidden;
+}

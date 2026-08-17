@@ -11,6 +11,7 @@ The initial module layer uses top-level directives with one identifier component
 ```ebnf
 module_declaration = "module" identifier ";";
 import_declaration = "import" identifier ";";
+exported_declaration = "export" top_level_declaration;
 qualified_name = identifier "." identifier;
 ```
 
@@ -20,10 +21,16 @@ and must precede ordinary top-level declarations/statements. Files without a
 module declaration belong to the root namespace. Multiple files may contribute
 to one named module.
 
+`export` is contextual rather than a globally reserved lexer keyword. It is
+recognized only as a top-level declaration prefix; declarations in named modules
+are private when the prefix is absent. `export` is invalid in the root namespace.
+
 ```c
 module math;
-Pair::struct { x: i32; y: i32; }
-add::(a: i32, b: i32) -> i32 { return a + b; }
+export Pair::struct { x: i32; y: i32; }
+export add::(a: i32, b: i32) -> i32 { return a + b; }
+
+helper::() -> i32 { return 1; } // private to module math
 ```
 
 ```c
@@ -40,8 +47,11 @@ constants, and nominal types use the same single-dot qualification syntax:
 A qualified global remains an lvalue, so further ordinary field/index access such
 as `state.pair.x` or `state.values[0]` composes normally. The semantic resolver
 disambiguates `module.Enum.Member` from `module.global.field` by the resolved kind
-of the middle declaration rather than by syntax. Exports, packages, dotted module
-names, and automatic file discovery are deferred. Imports do not imply runtime
+of the middle declaration rather than by syntax. Imported qualification requires
+the selected declaration to be exported; same-module code may use private members.
+An exported declaration may not expose a private nominal type in its public type
+surface. Packages, dotted module names, and automatic file discovery are deferred.
+Imports do not imply runtime
 dependency ordering and import cycles are allowed.
 
 ## Type Syntax

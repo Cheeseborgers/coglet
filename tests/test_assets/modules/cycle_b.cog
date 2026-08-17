@@ -1,4 +1,4 @@
 module cycle_b;
 import cycle_a;
-value::() -> i32 { return 42; }
+export value::() -> i32 { return 42; }
 from_a::() -> i32 { return cycle_a.from_b(); }

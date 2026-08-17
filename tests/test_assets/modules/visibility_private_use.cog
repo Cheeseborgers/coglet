@@ -1,0 +1,5 @@
+import visibility;
+
+main::() -> i32 {
+    return visibility.secret;
+}

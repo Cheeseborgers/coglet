@@ -1,11 +1,11 @@
 module math;
 
-Mode::enum(u8) {
+export Mode::enum(u8) {
     Zero,
     One,
 }
 
-Pair::struct {
+export Pair::struct {
     x: i32;
     y: i32;
 }

@@ -38,7 +38,6 @@ Likely requirements include:
 * explicit target ABI lowering for interoperability surfaces that C currently classifies for the compiler
 * basic runtime calls and file I/O
 * arena or general allocation facilities available to Coglet programs
-* declaration visibility/exports on top of the current module/import layer
 * module file discovery/search paths and a stable compilation-unit/library model
 * a stable runtime / standard-library boundary
 * stable diagnostics for large projects
@@ -71,4 +70,4 @@ The frontend now performs:
 * unified reachability analysis
 * switch exhaustiveness analysis
 
-At this stage, the remaining path toward self-hosting is primarily runtime/library, toolchain, and compilation-unit engineering rather than another major semantic-analysis subsystem. The host-C backend and LLVM Stage 9 optimized/debuggable native path both consume frozen CogIR; major remaining gaps include module visibility/discovery policy, allocation and I/O facilities, a standard-library boundary, and production-grade target/cross-toolchain policy.
+At this stage, the remaining path toward self-hosting is primarily runtime/library, toolchain, and compilation-unit engineering rather than another major semantic-analysis subsystem. The host-C backend and LLVM Stage 9 optimized/debuggable native path both consume frozen CogIR; named-module visibility is now private-by-default with explicit exports, while major remaining gaps include module discovery/search policy, allocation and I/O facilities, a standard-library boundary, and production-grade target/cross-toolchain policy.

@@ -7,6 +7,7 @@
 
 static Node *new_node(Arena *arena, NodeType type, SourceSpan span) {
     Node *node = arena_alloc(arena, sizeof(Node));
+    node->is_exported = 0;
     node->span = span;
     node->line = (int)span.line;
     node->type = type;
@@ -392,8 +393,9 @@ Node *ast_clone(Arena *arena, const Node *node)
         return NULL;
 
     Node *clone = new_node(arena, node->type, node->span);
+    clone->is_exported = node->is_exported;
 
-        switch (node->type)
+    switch (node->type)
     {
         case NODE_NUMBER:
             clone->as.number = node->as.number;

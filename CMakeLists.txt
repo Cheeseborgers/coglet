@@ -310,6 +310,19 @@ add_test(
 set_tests_properties(driver_modules_qualified_constant_cycle
         PROPERTIES LABELS "driver;semantic;module;import;constant;cycle;multi-file;invalid")
 
+add_test(
+        NAME driver_modules_private_member_rejected
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/visibility_api.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/visibility_private_use.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=module 'visibility' member 'secret' is private"
+        "-DEXPECT_PATH_SUBSTRING=visibility_private_use.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_modules_private_member_rejected
+        PROPERTIES LABELS "driver;semantic;module;import;visibility;private;multi-file;invalid")
+
 # --- CogIR core builder/verifier/dump regression. ---
 add_executable(check_cog_ir_core tools/tests/check_cog_ir_core.c)
 target_link_libraries(check_cog_ir_core PRIVATE compiler_core)
@@ -1051,6 +1064,19 @@ add_test(
 )
 set_tests_properties(backend_modules_qualified_data_namespace_host_c
         PROPERTIES LABELS "backend;backend.c;semantic;module;namespace;global;constant;multi-file")
+
+add_test(
+        NAME backend_modules_visibility_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/visibility_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/visibility_api.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_visibility_host_c
+        -DEXPECT_EXIT=42
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_visibility_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;module;import;visibility;export;private;multi-file")
 add_host_c_failure_test(
         backend_rejects_obsolete_c_int_entry obsolete_c_int_entry.cog 1
         "executable entry point must have signature 'main::() -> i32'"
@@ -1547,6 +1573,21 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_modules_qualified_data_namespace
         PROPERTIES LABELS "backend;backend.llvm;semantic;module;namespace;global;constant;multi-file;codegen")
+
+    add_test(
+        NAME backend_llvm_modules_visibility
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/visibility_api.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/visibility_main.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_visibility
+        -DEXPECT_EXIT=42
+        -DBACKEND=llvm
+        -DOPT_LEVEL=3
+        -DDEBUG_INFO=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_visibility
+        PROPERTIES LABELS "backend;backend.llvm;semantic;module;import;visibility;export;private;multi-file;codegen;debug;optimization")
 
     function(add_llvm_stage7_native_test test_name fixture expected_exit)
         add_test(

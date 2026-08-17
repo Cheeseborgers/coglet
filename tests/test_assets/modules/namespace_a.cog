@@ -1,2 +1,2 @@
 module left;
-value::() -> i32 { return 10; }
+export value::() -> i32 { return 10; }

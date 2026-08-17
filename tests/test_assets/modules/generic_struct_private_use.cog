@@ -1,0 +1,6 @@
+import generic_struct_api;
+
+main::() -> s32 {
+    value: generic_struct_api.private_box::<s32>;
+    return 0;
+}

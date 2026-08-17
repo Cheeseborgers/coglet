@@ -1,0 +1,6 @@
+main::() -> s32 {
+    Local::<T> struct {
+        value: T;
+    }
+    return 0;
+}

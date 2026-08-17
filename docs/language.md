@@ -518,10 +518,14 @@ Nested functions may still refer to visible global variables, compile-time const
 Closure environments and captured runtime storage remain future language-design work.
 
 
-## Generic Functions
+## Generic Functions and Structs
 
-Coglet's first generic facility is deliberately monomorphized and
-function-only. A top-level function may declare type parameters after its `::`:
+Coglet generics are deliberately frontend-only and compile-time monomorphized.
+The current language supports ordinary top-level generic functions and ordinary
+top-level generic structs. Both use the same `::<...>` declaration marker and
+closed builtin constraints.
+
+Generic function example:
 
 ```c
 identity::<T>(value: T) -> T {
@@ -529,20 +533,61 @@ identity::<T>(value: T) -> T {
 }
 ```
 
-Generic type parameters are placeholders only while the source function is a
-frontend template. A call either supplies all concrete type arguments explicitly
-(`min::<s64>(a, b)`) or omits the list and infers them from ordinary function
-arguments. The current semantic checker is bottom-up, so an expected result type
-does not participate in inference. Conflicting argument evidence is rejected, and
-a type parameter that cannot be inferred requires an explicit type argument.
+Generic struct example:
 
-A type parameter may also carry one closed compiler-defined constraint:
+```c
+Pair::<T, U> struct {
+    first: T;
+    second: U;
+}
+
+Vec2::<T: numeric> struct {
+    x: T;
+    y: T;
+}
+```
+
+A concrete generic struct type always supplies all type arguments explicitly:
+
+```c
+pair: Pair::<s32, f32> = Pair::<s32, f32> {
+    first = 7,
+    second = 2.5
+};
+
+point := Vec2::<f32> { x = 1.0, y = 2.0 };
+```
+
+Nested applications use the same type syntax, including adjacent closing `>`
+delimiters:
+
+```c
+box: Box::<Pair::<s32, f32>>;
+```
+
+Generic struct type arguments are not inferred from an initializer or expected
+type in this first version. A bare use of a generic struct template is an error.
+Generic functions retain their existing argument-based inference: a call either
+supplies all concrete type arguments explicitly (`min::<s64>(a, b)`) or omits the
+list and infers them from ordinary function arguments. The bottom-up checker does
+not use an expected result type for inference. Generic-function inference also
+propagates through concrete generic-struct shapes, so a parameter such as
+`Pair::<T, U>` can infer `T` and `U` from an argument of type
+`Pair::<s32, f32>`, including when the template is defined in an imported module.
+
+A type parameter may carry one closed compiler-defined constraint:
 
 ```c
 min::<T: ordered>(a: T, b: T) -> T {
     if a < b
         return a;
     return b;
+}
+
+Vec3::<T: floating> struct {
+    x: T;
+    y: T;
+    z: T;
 }
 ```
 
@@ -557,33 +602,41 @@ The builtin constraints are deliberately small:
   currently the same integer and floating-point domain as `numeric`.
 
 A constraint is an early admissibility contract, not permission to bypass the
-ordinary type system. Before a concrete specialization is accepted, the function
-body is still checked under substitution using exactly the same operator, call,
-flow, and conversion rules as non-generic source. For example, `T: numeric` does
-not make `%` valid for `f64`; that specialization still fails because ordinary
-Coglet semantics require integer operands for `%`. Unconstrained parameters also
-remain valid and rely solely on specialization-time body checking. There are no
-user-defined constraints, trait/interface declarations, implementations, or
-constraint composition rules. Constraints are checked only after ordinary
-inference has chosen concrete types; they do not steer literal defaulting or pick
-a different satisfying type. For example, an untyped integer literal still
-defaults according to Coglet's normal inference rules even when the parameter is
-`T: unsigned_integer`; callers can use an explicit type argument or cast when a
-specific unsigned type is required.
+ordinary type system. Generic function bodies are still checked under concrete
+substitution using the ordinary operator/call/flow/conversion rules, and generic
+struct fields are resolved using ordinary concrete type rules. Constraints do not
+steer literal defaulting or invent a satisfying type. There are no user-defined
+constraints, trait/interface declarations, implementations, or constraint
+composition rules. `ordered` means Coglet defines `<`, `<=`, `>`, and `>=` for
+the type; it does not promise a mathematical total-order law.
 
-`ordered` means that Coglet defines `<`, `<=`, `>`, and `>=` for the type; it does
-not promise a mathematical total-order law (floating-point NaN behavior remains
-ordinary IEEE-754 behavior).
+Each specialization is identified by the generic template's stable semantic
+declaration ID plus the structural concrete type-argument list. Generated display
+names such as `Pair<s32, f32>` are diagnostic/debug names only and are not cache
+keys. Repeated equivalent requests reuse one concrete semantic specialization.
 
-Specializations are compile-time entities. Equivalent calls reuse the same
-specialization. Ordinary recursion reuses an in-progress specialization, while a
-generic recursion that keeps producing new concrete type arguments is bounded and
-diagnosed instead of specializing indefinitely. Generic templates obey ordinary
-module visibility and export rules.
+Recursive generic structs are supported when the concrete layout is finite. A
+self-reference behind a pointer is valid:
 
-Generic structs, enums, aliases, nested generic functions, specialization,
-dynamic dispatch, type erasure, and separate generic compilation remain outside
-this first facility.
+```c
+Node::<T> struct {
+    value: T;
+    next: Node::<T>*;
+}
+```
+
+A by-value recursive layout is rejected, and a recursion that continually creates
+new concrete type arguments is bounded and diagnosed instead of specializing
+forever. Generic structs obey the same module/export visibility model as ordinary
+nominal types; exported interfaces may not expose private generic templates or
+private concrete type arguments.
+
+Generic templates never reach CogIR. Generic functions lower only as concrete
+ordinary functions, and generic structs lower only as concrete ordinary nominal
+struct layouts. Generic enums, generic unions, generic aliases, generic
+`#repr(c)` aggregates, nested generic declarations, methods/associated functions,
+specialization, dynamic dispatch, type erasure, user-defined traits, and separate
+generic compilation remain outside this first aggregate-generic facility.
 
 ## Void-Returning Calls
 

@@ -2,6 +2,7 @@
 #define COGLET_TYPES_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #include "utils/string_view.h"
 
@@ -113,6 +114,9 @@ struct Type {
 
     StringView named_module; // TYPE_NAMED optional module qualifier
     StringView named_name;   // TYPE_NAMED
+    Type **type_arguments;    // TYPE_NAMED explicit generic arguments
+    int type_argument_count;  // TYPE_NAMED
+
 
     StringView struct_name;  // TYPE_STRUCT
     StructField *fields;
@@ -122,6 +126,11 @@ struct Type {
     int struct_repr_c_align;
     int struct_is_union;
     int struct_is_incomplete;
+
+    /* Frontend-only origin metadata for concrete generic struct specializations. */
+    size_t struct_generic_template_id;
+    Type **struct_type_arguments;
+    int struct_type_argument_count;
 
     Type **parameters;       // TYPE_FUNCTION
     int parameter_count;

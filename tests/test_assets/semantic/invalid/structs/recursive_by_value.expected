@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/structs/recursive_by_value.cog:2:5: error: by-value field 'child' creates a recursive struct layout in 'Bad'
+    child: Bad;
+    ^~~~~
+1 semantic error generated.

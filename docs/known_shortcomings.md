@@ -88,13 +88,21 @@ should not be forgotten.
 
 ## Generics and aggregate types
 
-- **Generic structs/enums are not implemented.** Generic functions are
-  monomorphized before CogIR, but reusable aggregate containers such as
-  `Vec3<T>`, owned/growable containers, `Optional<T>`, and `Result<T, E>` still need a coherent
-  aggregate-instantiation design.
+- **Generic structs are intentionally restricted.** Ordinary top-level Coglet
+  structs may be generic, but generic enums, unions, aliases, nested generic
+  declarations, and generic `#repr(c)` aggregates are not implemented.
+- **Generic struct type arguments are explicit.** The compiler does not infer
+  `Vec2::<f32>` from an initializer or expected destination type, and there are no
+  default/partial type arguments. This keeps nominal construction predictable but
+  may become verbose for container-heavy code.
+- **Recursive generic specialization uses a compiler termination guard.** Finite
+  pointer recursion is supported and by-value recursive layouts are rejected, but
+  a chain that continually changes concrete type arguments is currently stopped at
+  32 active instantiations rather than by a more general well-foundedness proof.
 - **No methods/associated functions or operator overloading.** These should be
-  designed after generic aggregates so vector/matrix code can drive the language
-  design rather than adding special compiler magic for game-math types.
+  designed now that generic aggregates exist, using vector/matrix and container
+  code to drive the language design rather than adding compiler magic for specific
+  game-math types.
 - **Builtin generic constraints are closed.** The current constraint set is a
   small compiler-defined vocabulary, not a user-extensible trait/interface
   system. Do not grow it into an accidental trait system one special case at a

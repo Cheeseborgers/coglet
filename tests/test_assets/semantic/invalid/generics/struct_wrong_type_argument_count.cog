@@ -1,0 +1,9 @@
+Pair::<T, U> struct {
+    first: T;
+    second: U;
+}
+
+main::() -> s32 {
+    value: Pair::<s32>;
+    return 0;
+}

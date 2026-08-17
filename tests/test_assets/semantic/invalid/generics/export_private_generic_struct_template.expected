@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/export_private_generic_struct_template.cog:7:1: error: exported declaration 'Outer' exposes private type 'PrivateBox'
+export Outer::<T> struct {
+^~~~~~~~~~~~
+1 semantic error generated.

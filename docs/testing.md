@@ -148,6 +148,25 @@ Run the focused slice with:
 ctest --test-dir cmake-build-debug -R zero_initializer --output-on-failure
 ```
 
+## Generic Function and Struct Tests
+
+Generic coverage spans parser snapshots, valid semantic/semantic-info fixtures,
+focused invalid diagnostics, CogIR golden dumps, host-C execution, module/export
+visibility, and conditional LLVM-native execution. The generic-struct fixture
+checks repeated specialization reuse, nested applications such as
+`Box::<Pair::<s32, f32>>`, builtin constraints, pointer-recursive layouts,
+generic-function inference through `Pair::<T, U>`, and the rule that no generic
+template reaches CogIR. Invalid fixtures cover missing/wrong type arguments,
+constraints, generic application to an ordinary struct, private export leakage,
+by-value recursive layouts, nested generic declarations, and non-terminating
+changing specialization chains.
+
+Run the focused generic slice with:
+
+```bash
+ctest --test-dir cmake-build-debug -L generic --output-on-failure
+```
+
 ## CogIR Lowering Tests
 
 CogIR golden dumps cover executable entry identity, structured-CFG, data/address,

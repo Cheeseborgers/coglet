@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/nested_generic_struct.cog:2:5: error: generic struct declarations must be top level in the initial implementation
+    Local::<T> struct {
+    ^~~~~
+1 semantic error generated.

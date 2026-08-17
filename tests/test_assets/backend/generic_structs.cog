@@ -1,0 +1,32 @@
+Pair::<T, U> struct {
+    first: T;
+    second: U;
+}
+
+Vec2::<T: numeric> struct {
+    x: T;
+    y: T;
+}
+
+Node::<T> struct {
+    value: T;
+    next: Node::<T>*;
+}
+
+first::<T, U>(pair: Pair::<T, U>) -> T {
+    return pair.first;
+}
+
+main::() -> s32 {
+    pair: Pair::<s32, f32> = Pair::<s32, f32> { first = 40, second = 2.5 };
+    same: Pair::<s32, f32> = Pair::<s32, f32> { first = 2, second = 3.5 };
+    point: Vec2::<f32> = Vec2::<f32> { x = 1.0, y = 2.0 };
+    node: Node::<s32> = Node::<s32> { value = 9, next = null };
+
+    if point.x + point.y != 3.0
+        return 1;
+    if node.next != null
+        return 2;
+
+    return first(pair) + same.first;
+}

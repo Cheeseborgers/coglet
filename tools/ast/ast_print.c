@@ -424,6 +424,14 @@ static void print_type(Type *t)
                 printf(".");
             }
             print_string_view(t->named_name);
+            if (t->type_argument_count > 0) {
+                printf("::<");
+                for (int i = 0; i < t->type_argument_count; i++) {
+                    if (i > 0) printf(", ");
+                    print_type(t->type_arguments[i]);
+                }
+                printf(">");
+            }
             break;
 
         case TYPE_STRUCT:
@@ -739,6 +747,14 @@ static void print_node(Node *node)
                 printf(".");
             }
             print_string_view(node->as.struct_init.name);
+            if (node->as.struct_init.type_arguments.count > 0) {
+                printf("::<");
+                for (int i = 0; i < node->as.struct_init.type_arguments.count; i++) {
+                    if (i > 0) printf(", ");
+                    print_type(node->as.struct_init.type_arguments.items[i]);
+                }
+                printf(">");
+            }
 
             for (int i = 0;
                  i < node->as.struct_init.fields.count;
@@ -941,6 +957,20 @@ static void print_node(Node *node)
                 printf(") ");
             }
             print_string_view(node->as.struct_decl.name);
+            if (node->as.struct_decl.type_parameters.count > 0) {
+                printf("<");
+                for (int i = 0; i < node->as.struct_decl.type_parameters.count; i++) {
+                    if (i > 0) printf(", ");
+                    GenericTypeParameter parameter =
+                        node->as.struct_decl.type_parameters.items[i];
+                    print_string_view(parameter.name);
+                    if (!string_view_is_empty(parameter.constraint)) {
+                        printf(": ");
+                        print_string_view(parameter.constraint);
+                    }
+                }
+                printf(">");
+            }
             if (node->as.struct_decl.is_incomplete)
                 printf(" incomplete");
             printf(" ");
@@ -1271,7 +1301,16 @@ static void print_node_pretty(Node *node, int depth)
                 print_string_view(node->as.struct_init.module_name);
                 printf(".");
             }
-            print_string_view_ln(node->as.struct_init.name);
+            print_string_view(node->as.struct_init.name);
+            if (node->as.struct_init.type_arguments.count > 0) {
+                printf("::<");
+                for (int i = 0; i < node->as.struct_init.type_arguments.count; i++) {
+                    if (i > 0) printf(", ");
+                    print_type(node->as.struct_init.type_arguments.items[i]);
+                }
+                printf(">");
+            }
+            printf("\n");
 
             for (int i = 0; i < node->as.struct_init.fields.count; i++)
             {
@@ -1583,6 +1622,20 @@ static void print_node_pretty(Node *node, int depth)
             }
             printf(node->as.struct_decl.is_union ? "union " : "struct ");
             print_string_view(node->as.struct_decl.name);
+            if (node->as.struct_decl.type_parameters.count > 0) {
+                printf("<");
+                for (int i = 0; i < node->as.struct_decl.type_parameters.count; i++) {
+                    if (i > 0) printf(", ");
+                    GenericTypeParameter parameter =
+                        node->as.struct_decl.type_parameters.items[i];
+                    print_string_view(parameter.name);
+                    if (!string_view_is_empty(parameter.constraint)) {
+                        printf(": ");
+                        print_string_view(parameter.constraint);
+                    }
+                }
+                printf(">");
+            }
             if (node->as.struct_decl.is_incomplete)
                 printf(" incomplete");
             printf("\n");

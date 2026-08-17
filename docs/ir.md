@@ -71,10 +71,15 @@ CogIR does not perform name lookup, overload resolution, type inference,
 contextual-conversion selection, constant-expression legality checking, or
 control-flow legality checking. Those are frontend responsibilities.
 
-Generic function templates are likewise a frontend-only concept. Semantic
-analysis monomorphizes a successfully requested specialization before lowering,
-and CogIR receives only ordinary concrete functions. A template and its frontend
-type-parameter bindings are never retained by CogIR or reconstructed by a backend.
+Generic function and generic struct templates are likewise frontend-only
+concepts. Semantic analysis monomorphizes every successfully requested function or
+nominal-struct specialization before lowering. CogIR therefore receives only
+ordinary concrete functions and ordinary concrete nominal struct layouts. Template
+declaration objects, generic bindings, specialization caches, and frontend type
+objects are never retained by CogIR or reconstructed by a backend. Concrete generic
+struct display names may be copied as frozen diagnostic/debug text, but identity in
+CogIR remains the ordinary concrete nominal type ID rather than generated-name
+lookup.
 
 ## Compilation unit and module initialization
 

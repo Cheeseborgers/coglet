@@ -25,6 +25,7 @@ static Node *parse_binary_from(Parser *p, Node *left, int min_prec);
 static Node *parse_assignment(Parser *p);
 static Node *parse_assignment_from(Parser *p, Node *left);
 static Type *parse_type(Parser *p);
+static int parse_explicit_type_arguments(Parser *p, TypeList *out, const char *subject);
 static Type *make_void_type(Arena *arena);
 
 static Node *parse_decl_or_expr_statement(Parser *p);
@@ -33,6 +34,7 @@ static Node *finish_inferred_const_decl(Parser *p, Token name);
 static Node *finish_inferred_var_decl(Parser *p, Token name);
 static Node *parse_decl_after_name(Parser *p, Token name);
 static Node *parse_proc_decl_rest(Parser *p, Token name, SourceSpan span);
+static Node *parse_generic_decl_rest(Parser *p, Token name, SourceSpan span);
 static Node *parse_attribute_decl(Parser *p);
 
 static Node *parse_struct_decl_rest(Parser *p, Token name, SourceSpan span);
@@ -83,6 +85,7 @@ static Node *finish_index(Parser *p, Node *object);
 
 static int is_assignable(Node *n);
 
+static void error_at(Parser *p, Token *tok, const char *msg);
 static void add_diagnostic(Parser *p, Token token, const char *message);
 
 // ===================== precedence =====================
@@ -187,6 +190,42 @@ static int match(Parser *p, TokenType type) {
     if (!check(p, type)) return 0;
     advance(p);
     return 1;
+}
+
+static int match_generic_greater(Parser *p) {
+    if (match(p, TOK_GREATER))
+        return 1;
+
+    /*
+     * The lexer correctly tokenizes `>>` as a shift operator for expressions.
+     * Inside nested generic argument lists, the same bytes are two closing
+     * delimiters. Consume the first `>` now and leave a synthetic second
+     * `>` as the current token for the enclosing generic list.
+     */
+    if (check(p, TOK_SHIFT_RIGHT)) {
+        Token pair = p->current;
+        Token first = pair;
+        first.type = TOK_GREATER;
+        first.length = 1;
+
+        Token second = pair;
+        second.type = TOK_GREATER;
+        second.start = pair.start + 1;
+        second.length = 1;
+
+        p->previous = first;
+        p->current = second;
+        return 1;
+    }
+
+    return 0;
+}
+
+static int consume_generic_greater(Parser *p, const char *message) {
+    if (match_generic_greater(p))
+        return 1;
+    error_at(p, &p->current, message);
+    return 0;
 }
 
 static void synchronize(Parser *p)
@@ -1194,6 +1233,14 @@ static Type *parse_type(Parser *p)
         base->kind = TYPE_NAMED;
         base->named_module = name.prefix;
         base->named_name = name.leaf;
+
+        if (match(p, TOK_COLON_COLON)) {
+            TypeList arguments = {0};
+            if (parse_explicit_type_arguments(p, &arguments, "generic type")) {
+                base->type_arguments = arguments.items;
+                base->type_argument_count = arguments.count;
+            }
+        }
     } else {
         error_at(p, &p->current, "expected type");
 
@@ -1612,22 +1659,26 @@ static Node *parse_function_signature_rest(Parser *p, Token name, SourceSpan spa
     return func;
 }
 
-static Node *parse_generic_proc_decl_rest(Parser *p, Token name, SourceSpan span)
-{
-    if (!consume(p, TOK_LESS))
-        return ast_new_error(p->arena, p->current);
+static int parse_generic_type_parameter_list_after_less(
+    Parser *p,
+    GenericTypeParameterList *out,
+    const char *subject
+) {
+    assert(out);
+    *out = (GenericTypeParameterList){0};
 
-    GenericTypeParameterList parameters = {0};
     if (check(p, TOK_GREATER)) {
-        error_at(p, &p->current, "generic function requires at least one type parameter");
+        char message[128];
+        snprintf(message, sizeof(message), "%s requires at least one type parameter", subject);
+        error_at(p, &p->current, message);
         advance(p);
-        return ast_new_error(p->arena, p->previous);
+        return 0;
     }
 
     for (;;) {
         if (!consume(p, TOK_IDENT)) {
             synchronize(p);
-            return ast_new_error(p->arena, p->current);
+            return 0;
         }
         Token parameter = p->previous;
         GenericTypeParameter type_parameter = {
@@ -1638,41 +1689,67 @@ static Node *parse_generic_proc_decl_rest(Parser *p, Token name, SourceSpan span
         if (match(p, TOK_COLON)) {
             if (!consume(p, TOK_IDENT)) {
                 synchronize(p);
-                return ast_new_error(p->arena, p->current);
+                return 0;
             }
             Token constraint = p->previous;
             type_parameter.constraint =
                 string_view(constraint.start, (size_t)constraint.length);
         }
 
-        generic_type_parameter_list_push(
-            p->arena,
-            &parameters,
-            type_parameter
-        );
-
+        generic_type_parameter_list_push(p->arena, out, type_parameter);
         if (!match(p, TOK_COMMA))
             break;
     }
 
-    if (!consume(p, TOK_GREATER)) {
+    if (!consume_generic_greater(p, "expected '>' after generic type parameters")) {
         synchronize(p);
+        return 0;
+    }
+    return 1;
+}
+
+static Node *parse_generic_decl_rest(Parser *p, Token name, SourceSpan span)
+{
+    if (!consume(p, TOK_LESS))
         return ast_new_error(p->arena, p->current);
+
+    GenericTypeParameterList parameters = {0};
+    if (!parse_generic_type_parameter_list_after_less(
+            p, &parameters, "generic declaration")) {
+        return ast_new_error(p->arena, p->previous);
     }
 
-    Node *func = parse_function_signature_rest(p, name, span);
-    if (!func || func->type == NODE_ERROR)
+    if (check(p, TOK_LPAREN)) {
+        Node *func = parse_function_signature_rest(p, name, span);
+        if (!func || func->type == NODE_ERROR)
+            return func;
+
+        func->as.func_decl.type_parameters = parameters;
+        if (!check(p, TOK_LBRACE)) {
+            error_at(p, &p->current, "expected function body");
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+        func->as.func_decl.body = parse_block(p);
         return func;
+    }
 
-    func->as.func_decl.type_parameters = parameters;
+    if (check(p, TOK_STRUCT)) {
+        Node *decl = parse_struct_decl_rest(p, name, span);
+        if (decl && decl->type == NODE_STRUCT_DECL)
+            decl->as.struct_decl.type_parameters = parameters;
+        return decl;
+    }
 
-    if (!check(p, TOK_LBRACE)) {
-        error_at(p, &p->current, "expected function body");
+    if (check(p, TOK_UNION)) {
+        error_at(p, &p->current, "generic unions are not supported");
         synchronize(p);
         return ast_new_error(p->arena, p->current);
     }
-    func->as.func_decl.body = parse_block(p);
-    return func;
+
+    error_at(p, &p->current, "generic declaration must be a function or struct");
+    synchronize(p);
+    return ast_new_error(p->arena, p->current);
 }
 
 static Node *parse_proc_decl_rest(Parser *p, Token name, SourceSpan span) {
@@ -2501,7 +2578,7 @@ static Node *parse_decl_after_name(Parser *p, Token name) {
 
     SourceSpan span = name.span;
 
-    if (check(p, TOK_LESS))  return parse_generic_proc_decl_rest(p, name, span);
+    if (check(p, TOK_LESS))  return parse_generic_decl_rest(p, name, span);
     if (check(p, TOK_LPAREN)) return parse_proc_decl_rest(p, name, span);
     if (check(p, TOK_STRUCT) || check(p, TOK_UNION))
         return parse_struct_decl_rest(p, name, span);
@@ -3106,36 +3183,84 @@ static Node *finish_call(Parser *p, Node *callee) {
     return call;
 }
 
-static Node *finish_generic_call(Parser *p, Node *callee)
+static int parse_explicit_type_arguments(Parser *p, TypeList *out, const char *subject)
 {
+    assert(out);
+    *out = (TypeList){0};
+
     if (!consume(p, TOK_LESS)) {
-        error_at(p, &p->current, "expected '<' after '::' in generic call");
-        return ast_new_error(p->arena, p->current);
+        char message[128];
+        snprintf(message, sizeof(message), "expected '<' after '::' in %s", subject);
+        error_at(p, &p->current, message);
+        return 0;
     }
 
-    TypeList arguments = {0};
     if (check(p, TOK_GREATER)) {
-        error_at(p, &p->current, "explicit generic call requires at least one type argument");
+        char message[128];
+        snprintf(message, sizeof(message), "%s requires at least one type argument", subject);
+        error_at(p, &p->current, message);
         advance(p);
-        return ast_new_error(p->arena, p->previous);
+        return 0;
     }
 
     for (;;) {
-        type_list_push(p->arena, &arguments, parse_type(p));
+        type_list_push(p->arena, out, parse_type(p));
         if (!match(p, TOK_COMMA))
             break;
     }
 
-    if (!consume(p, TOK_GREATER))
-        return ast_new_error(p->arena, p->current);
-    if (!consume(p, TOK_LPAREN)) {
-        error_at(p, &p->current, "generic type arguments must be followed by a call");
-        return ast_new_error(p->arena, p->current);
+    return consume_generic_greater(p, "expected '>' after generic type arguments");
+}
+
+static int generic_callee_dotted_name(
+    Node *callee,
+    StringView *out_module,
+    StringView *out_name
+) {
+    if (!callee || !out_module || !out_name)
+        return 0;
+
+    if (callee->type == NODE_IDENT) {
+        *out_module = string_view_empty();
+        *out_name = string_view(callee->as.ident.data, callee->as.ident.length);
+        return 1;
     }
 
-    Node *call = finish_call(p, callee);
-    call->as.call.type_arguments = arguments;
-    return call;
+    if (callee->type == NODE_FIELD && callee->as.field.dotted_path.length != 0)
+        return split_dotted_leaf(callee->as.field.dotted_path, out_module, out_name);
+
+    return 0;
+}
+
+static Node *finish_generic_call(Parser *p, Node *callee)
+{
+    TypeList arguments = {0};
+    if (!parse_explicit_type_arguments(p, &arguments, "generic application"))
+        return ast_new_error(p->arena, p->current);
+
+    if (match(p, TOK_LPAREN)) {
+        Node *call = finish_call(p, callee);
+        call->as.call.type_arguments = arguments;
+        return call;
+    }
+
+    if (check(p, TOK_LBRACE) && !p->suppress_struct_init) {
+        StringView module_name = string_view_empty();
+        StringView type_name = string_view_empty();
+        if (generic_callee_dotted_name(callee, &module_name, &type_name)) {
+            Node *init = finish_struct_init_named(
+                p, module_name, type_name, callee->span);
+            init->as.struct_init.type_arguments = arguments;
+            return init;
+        }
+    }
+
+    error_at(
+        p,
+        &p->current,
+        "generic type arguments must be followed by a call or struct initializer"
+    );
+    return ast_new_error(p->arena, p->current);
 }
 
 static Node *finish_field(Parser *p, Node *object) {

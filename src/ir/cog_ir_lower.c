@@ -561,6 +561,8 @@ static int define_nominal_types(CogIrLowerContext *ctx)
     for (SemDeclId id = 0; id < ctx->decl_binding_count; ++id) {
         SemDeclInfo *info = semantic_get_decl_info_by_id(sem, id);
         if (!info || !info->node) return 0;
+        if (info->is_generic_template)
+            continue;
         if (info->node->type == NODE_STRUCT_DECL) { if (!define_aggregate(ctx, info)) return 0; }
         else if (info->node->type == NODE_ENUM_DECL) { if (!define_enum(ctx, info)) return 0; }
     }

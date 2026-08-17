@@ -1,0 +1,27 @@
+Pair::<T, U> struct {
+    first: T;
+    second: U;
+}
+
+Vec2::<T: numeric> struct {
+    x: T;
+    y: T;
+}
+
+Box::<T> struct {
+    value: T;
+}
+
+main::() -> s32 {
+    pair: Pair::<s32, f32> = Pair::<s32, f32> {
+        first = 7,
+        second = 2.5
+    };
+
+    nested: Box::<Pair::<s32, f32>> = Box::<Pair::<s32, f32>> {
+        value = pair
+    };
+
+    point := Vec2::<f32> { x = 1.0, y = 2.0 };
+    return nested.value.first + cast(s32, point.x);
+}

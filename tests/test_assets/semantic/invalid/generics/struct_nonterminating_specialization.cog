@@ -1,0 +1,8 @@
+Grow::<T> struct {
+    next: Grow::<T[]>*;
+}
+
+main::() -> s32 {
+    value: Grow::<s32>;
+    return 0;
+}

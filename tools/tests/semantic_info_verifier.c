@@ -500,6 +500,13 @@ static void walk_node(ExpressionWalker *walker, Node *node)
             break;
 
         case NODE_STRUCT_DECL:
+            /*
+             * Generic struct templates likewise have no concrete field
+             * declarations until specialization. Walk synthesized concrete
+             * layouts separately below.
+             */
+            if (node->as.struct_decl.type_parameters.count > 0)
+                break;
             walk_node_list(
                 walker,
                 &node->as.struct_decl.fields
@@ -2081,10 +2088,16 @@ static void verify_declaration_info(Verifier *verifier, Node *declaration) {
     }
 
     if (info->is_generic_template) {
-        if (declaration->type != NODE_FUNC_DECL ||
-            declaration->as.func_decl.type_parameters.count == 0) {
+        int is_generic_function =
+            declaration->type == NODE_FUNC_DECL &&
+            declaration->as.func_decl.type_parameters.count > 0;
+        int is_generic_struct =
+            declaration->type == NODE_STRUCT_DECL &&
+            declaration->as.struct_decl.type_parameters.count > 0;
+
+        if (!is_generic_function && !is_generic_struct) {
             verifier_error(verifier, declaration,
-                "generic-template marker is attached to a non-generic function");
+                "generic-template marker is attached to a non-generic declaration");
         }
         if (info->type || !info->symbol || info->symbol->type ||
             info->abi_kind != SEM_DECL_ABI_NONE) {
@@ -2488,8 +2501,9 @@ int semantic_info_verify_program(
      * semantic side-table invariants before CogIR lowering.
      */
     for (SemDeclInfo *info = sem->decl_infos; info; info = info->next) {
-        if (info->is_generic_specialization &&
-            info->node && info->node->type == NODE_FUNC_DECL) {
+        if (info->is_generic_specialization && info->node &&
+            (info->node->type == NODE_FUNC_DECL ||
+             info->node->type == NODE_STRUCT_DECL)) {
             walk_node(&walker, info->node);
         }
     }

@@ -1,0 +1,9 @@
+Vec2::<T: numeric> struct {
+    x: T;
+    y: T;
+}
+
+main::() -> s32 {
+    value: Vec2::<bool>;
+    return 0;
+}

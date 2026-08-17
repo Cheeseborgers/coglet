@@ -493,7 +493,7 @@ imports do not become runtime dependency edges.
 - diagnostic notes/secondary spans and richer recovery
 - a standard library design
 - closure and capture semantics, only if nested runtime functions require them
-- broader generics such as generic nominal types or user-defined constraints, if justified by real use cases
+- broader generics such as generic enums/aliases or user-defined constraints, if justified by real use cases
 
 ## Execution Work
 
@@ -587,16 +587,26 @@ provide executable feedback without defining Coglet semantics by C behavior.
 
 Self-hosting remains a long-term objective rather than the next milestone. The language still needs runtime and file I/O facilities, allocation support, diagnostics suitable for larger programs, and a stable module/standard-library discovery boundary before self-hosting becomes practical.
 
-## First generic-function milestone
+## Generic monomorphization milestones
 
-The first restricted generic facility is now implemented as frontend-only,
-compile-time monomorphization of top-level Coglet functions. Type parameters can
-be inferred from ordinary arguments or supplied explicitly with `::<...>`; each
-concrete body is rechecked under ordinary semantic rules before CogIR lowering.
-A follow-on restricted contract layer now permits one closed builtin constraint
-on each type parameter (`integer`, `signed_integer`, `unsigned_integer`,
-`floating`, `numeric`, or `ordered`). Constraint satisfaction is checked before
-specialization and does not replace ordinary specialization-time body checking.
-CogIR and both backends remain generic-unaware. Generic nominal types, user-defined
-traits/constraints, specialization, dynamic dispatch, and separate generic
-compilation remain future design work.
+The first restricted generic-function facility is implemented as frontend-only,
+compile-time monomorphization. Type parameters can be inferred from ordinary
+arguments or supplied explicitly with `::<...>`; each concrete body is rechecked
+under ordinary semantic rules before CogIR lowering. A restricted contract layer
+permits one closed builtin constraint on each type parameter (`integer`,
+`signed_integer`, `unsigned_integer`, `floating`, `numeric`, or `ordered`).
+Constraint satisfaction is checked before specialization and does not replace
+ordinary specialization-time semantic checking.
+
+The first generic nominal-type milestone is also implemented for ordinary
+top-level Coglet structs. `Pair::<T, U> struct { ... }` templates specialize to
+ordinary concrete nominal layouts before CogIR. Concrete applications require
+explicit type arguments, reuse a cache keyed by template declaration identity plus
+structural concrete arguments, support finite pointer recursion, reject recursive
+by-value layouts, obey module/export visibility, and participate in generic-function
+inference through parameter shapes. CogIR and both backends remain generic-unaware.
+
+Remaining generic design work includes generic enums/aliases, generic represented-C
+aggregates if justified, methods/associated functions, user-defined
+traits/constraints, specialization, dynamic dispatch, type erasure, and separate
+generic compilation.

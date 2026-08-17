@@ -1083,7 +1083,7 @@ semantic_get_decl_info_by_id(ctx, id);
 The declaration IDs are deterministic for a given semantic traversal but are
 compiler-internal identities, not persistent source/module IDs.
 
-## Generic-Function Specialization
+## Generic Specialization
 
 Generic function declarations are frontend templates, not runtime declarations.
 The template receives a stable `SemDeclId`, but it has no concrete function type
@@ -1123,11 +1123,31 @@ formed from the source function name plus concrete types in parameter order, for
 example `min<s32>` or `first<s32, u64>`. The name is descriptive only; stable
 specialization identity remains `SemDeclId + structural type arguments`.
 
+Generic structs use the same frontend-only specialization boundary. A generic
+struct template receives a stable declaration ID but no concrete runtime layout.
+A concrete application is cached by `template SemDeclId + structural concrete
+type arguments`, clones the source struct declaration, binds the template type
+parameters in the template's source-module scope, resolves each field, and creates
+an ordinary concrete nominal semantic struct. The concrete semantic type records
+only frontend specialization-origin metadata needed for inference/export checks;
+that metadata is consumed before CogIR freeze. Generic-function inference can
+match a source parameter shape such as `Pair::<T, U>` against the corresponding
+concrete generic struct and infer its type arguments.
+
+An in-progress generic-struct cache entry permits finite pointer recursion such as
+`Node::<T>*`. After semantic checking, concrete ordinary Coglet struct layouts are
+validated as an acyclic by-value graph, so `Bad::<T> { child: Bad::<T>; }` is
+rejected while pointer recursion is accepted. Changing specialization chains are
+bounded with the same 32-active-instantiation termination policy used for generic
+functions. Export closure checks use the generic template's visibility and recurse
+through all concrete type arguments, preventing a public specialization from
+hiding a private nominal type argument.
+
 Generic templates are skipped during CogIR metadata/executable lowering. Only
-the fully checked concrete specialization declarations receive normal frozen
-CogIR functions, so neither host-C nor LLVM contains generic-specific runtime or
-name-recovery logic. Frontend template/type objects therefore do not cross the
-CogIR lifetime boundary.
+fully checked concrete specialization declarations receive normal frozen CogIR
+functions or nominal struct types, so neither host-C nor LLVM contains
+generic-specific runtime or name-recovery logic. Frontend template/type objects
+therefore do not cross the CogIR lifetime boundary.
 
 ## Contextual Conversion Metadata
 

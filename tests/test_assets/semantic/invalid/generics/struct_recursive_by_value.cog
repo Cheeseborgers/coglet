@@ -1,0 +1,8 @@
+Bad::<T> struct {
+    child: Bad::<T>;
+}
+
+main::() -> s32 {
+    value: Bad::<s32>;
+    return 0;
+}

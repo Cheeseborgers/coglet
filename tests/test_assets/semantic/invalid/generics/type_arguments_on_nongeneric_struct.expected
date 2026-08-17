@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/type_arguments_on_nongeneric_struct.cog:6:5: error: type 'Point' is not generic
+    value: Point::<s32>;
+    ^~~~~
+1 semantic error generated.

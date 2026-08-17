@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/struct_wrong_type_argument_count.cog:7:5: error: wrong number of generic type arguments for 'Pair': expected 2, got 1
+    value: Pair::<s32>;
+    ^~~~~
+1 semantic error generated.

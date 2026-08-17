@@ -286,6 +286,7 @@ struct Node {
         struct {
             StringView module_name; // empty for unqualified construction
             StringView name;
+            TypeList type_arguments; // explicit generic type arguments, empty for ordinary structs
             NodeList fields;   // list of NODE_FIELD_INIT
         } struct_init;
 
@@ -360,6 +361,7 @@ struct Node {
 
         struct {
             StringView name;
+            GenericTypeParameterList type_parameters; /* source generic parameters; empty for ordinary/concrete structs */
             NodeList fields;      // list of NODE_STRUCT_FIELD_DECL
 
             /*

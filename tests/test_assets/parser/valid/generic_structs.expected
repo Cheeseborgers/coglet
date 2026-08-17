@@ -1,0 +1,42 @@
+program
+  struct Pair<T, U>
+    struct_field_decl first: T
+    struct_field_decl second: U
+  struct Vec2<T: numeric>
+    struct_field_decl x: T
+    struct_field_decl y: T
+  struct Box<T>
+    struct_field_decl value: T
+  func main -> s32
+    body:
+      block
+        var_decl pair: Pair::<s32, f32>
+          init:
+            struct_init Pair::<s32, f32>
+              field_init first
+                7
+              field_init second
+                2.5
+        var_decl nested: Box::<Pair::<s32, f32>>
+          init:
+            struct_init Box::<Pair::<s32, f32>>
+              field_init value
+                pair
+        var_decl point: <inferred>
+          init:
+            struct_init Vec2::<f32>
+              field_init x
+                1
+              field_init y
+                2
+        return
+          (+)
+            field .first
+              field .value
+                nested
+            cast
+              target type:
+                s32
+              expression:
+                field .x
+                  point

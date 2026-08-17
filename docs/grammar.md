@@ -414,14 +414,12 @@ p := Person {
 };
 ```
 
-Rejected:
+Standalone string literals are ordinary readonly byte-slice expressions:
 
 ```c
-name := "hello";
-"hello";
+name := "hello";        // readonly u8[]
+"hello";                // valid discarded expression
 ```
-
-String literals are not yet general inferred standalone expressions.
 
 ## Function Declarations and Calls
 
@@ -499,10 +497,10 @@ A trailing `...` is available only for the C ABI; ordinary Coglet function
 definitions remain non-variadic. C-variadic declarations require at least one
 fixed parameter.
 
-### Generic functions
+### Generic functions and structs
 
-The first generic facility applies only to ordinary top-level Coglet functions.
-A declaration places type parameters immediately after `::`:
+Ordinary top-level Coglet functions and structs may declare type parameters
+immediately after `::`:
 
 ```c
 min::<T: ordered>(a: T, b: T) -> T {
@@ -511,30 +509,56 @@ min::<T: ordered>(a: T, b: T) -> T {
     return b;
 }
 
-first::<T, U: integer>(a: T, b: U) -> T {
-    return a;
+Pair::<T, U> struct {
+    first: T;
+    second: U;
 }
 ```
 
-A call may supply all type arguments explicitly using the same `::<...>` marker:
+Conceptually, the generic-struct addition is:
+
+```ebnf
+generic_struct_declaration =
+    identifier "::" generic_type_parameter_list
+    "struct" "{" {struct_field_decl} "}";
+
+generic_type_application =
+    named_type "::" "<" type {"," type} ">";
+```
+
+Concrete generic struct types and constructors use explicit arguments:
+
+```c
+pair: Pair::<s32, f32> = Pair::<s32, f32> {
+    first = 1,
+    second = 2.5
+};
+```
+
+Nested type applications may close with adjacent `>` characters, for example
+`Box::<Pair::<s32, f32>>`. In generic-list context the parser interprets lexical
+`>>` as two closing delimiters; expression syntax continues to interpret `>>` as
+the shift operator.
+
+A generic function call may supply all type arguments explicitly using the same
+`::<...>` marker:
 
 ```c
 small := min::<s64>(10, 20);
 value := first::<s32, u64>(1, 2);
 ```
 
-When ordinary arguments determine every type parameter unambiguously, the call
-uses the ordinary call spelling and semantic analysis infers the type arguments:
+When ordinary arguments determine every function type parameter unambiguously,
+the call uses ordinary call spelling and semantic analysis infers the arguments.
+Inference can recurse through pointer/array/slice/function shapes and through a
+concrete generic-struct shape such as `Pair::<T, U>`. Generic struct type uses and
+constructors do not infer their own type arguments in this first version.
 
-```c
-small := min(10, 20);
-```
-
-Explicit type arguments are all-or-nothing in this first version; partial
-explicit inference is not supported. A type parameter may carry one closed
+Explicit arguments are all-or-nothing. A type parameter may carry one closed
 compiler-defined constraint. Constraints are not user-declared traits and cannot
-be combined or implemented by user types. Generic structs, enums, aliases, nested
-generic functions, and generic C ABI declarations remain outside this grammar.
+be combined or implemented by user types. Generic enums, unions, aliases,
+`#repr(c)` aggregates, nested generic declarations, and generic C ABI
+declarations remain outside this grammar.
 
 C-compatible struct representation uses the same declaration-annotation shape:
 

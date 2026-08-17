@@ -1,0 +1,7 @@
+import generic_struct_api;
+
+main::() -> s32 {
+    pair: generic_struct_api.Pair::<s32, f32> =
+        generic_struct_api.Pair::<s32, f32> { first = 42, second = 2.5 };
+    return generic_struct_api.first(pair);
+}

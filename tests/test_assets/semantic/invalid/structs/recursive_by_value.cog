@@ -1,0 +1,8 @@
+Bad::struct {
+    child: Bad;
+}
+
+main::() -> s32 {
+    value: Bad;
+    return 0;
+}

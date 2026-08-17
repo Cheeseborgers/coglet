@@ -1,0 +1,7 @@
+tests/test_assets/semantic/invalid/generics/struct_nonterminating_specialization.cog:2:5: error: generic struct 'Grow' appears to instantiate recursively with ever-changing type arguments
+    next: Grow::<T[]>*;
+    ^~~~
+tests/test_assets/semantic/invalid/generics/struct_nonterminating_specialization.cog:6:5: error: cannot instantiate 'Grow' with T = s32: generic struct is invalid for these concrete types
+    value: Grow::<s32>;
+    ^~~~~
+2 semantic errors generated.

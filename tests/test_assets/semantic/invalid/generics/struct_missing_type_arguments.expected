@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/struct_missing_type_arguments.cog:7:5: error: generic struct 'Pair' requires 2 type arguments
+    value: Pair;
+    ^~~~~
+1 semantic error generated.

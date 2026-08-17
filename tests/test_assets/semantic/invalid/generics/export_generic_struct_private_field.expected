@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/export_generic_struct_private_field.cog:7:1: error: exported declaration 'Box' exposes private type 'Hidden'
+export Box::<T> struct {
+^~~~~~~~~~
+1 semantic error generated.

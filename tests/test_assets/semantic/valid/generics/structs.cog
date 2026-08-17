@@ -1,0 +1,54 @@
+Pair::<T, U> struct {
+    first: T;
+    second: U;
+}
+
+Vec2::<T: numeric> struct {
+    x: T;
+    y: T;
+}
+
+Box::<T> struct {
+    value: T;
+}
+
+Node::<T> struct {
+    value: T;
+    next: Node::<T>*;
+}
+
+first::<T, U>(pair: Pair::<T, U>) -> T {
+    return pair.first;
+}
+
+main::() -> s32 {
+    pair: Pair::<s32, f32> = Pair::<s32, f32> {
+        first = 40,
+        second = 2.5
+    };
+
+    repeated: Pair::<s32, f32> = Pair::<s32, f32> {
+        first = 2,
+        second = 3.5
+    };
+
+    nested: Box::<Pair::<s32, f32>> = Box::<Pair::<s32, f32>> {
+        value = pair
+    };
+
+    point: Vec2::<f32> = Vec2::<f32> { x = 1.0, y = 2.0 };
+    node: Node::<s32> = Node::<s32> { value = 9, next = null };
+
+    if first(pair) != 40
+        return 1;
+    if repeated.first != 2
+        return 2;
+    if nested.value.second != 2.5
+        return 3;
+    if point.y != 2.0
+        return 4;
+    if node.value != 9
+        return 5;
+
+    return 0;
+}

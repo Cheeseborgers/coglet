@@ -327,6 +327,9 @@ Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, Sourc
     Node *node = new_node(arena, NODE_STRUCT_DECL, span);
     node->as.struct_decl.name.data   = name;
     node->as.struct_decl.name.length = name_length;
+    node->as.struct_decl.type_parameters.items = NULL;
+    node->as.struct_decl.type_parameters.count = 0;
+    node->as.struct_decl.type_parameters.capacity = 0;
     node->as.struct_decl.is_repr_c       = 0;
     node->as.struct_decl.repr_c_packed    = 0;
     node->as.struct_decl.repr_c_align     = 0;
@@ -346,6 +349,9 @@ Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, Sourc
     node->as.struct_init.module_name = string_view_empty();
     node->as.struct_init.name.data   = name;
     node->as.struct_init.name.length = name_length;
+    node->as.struct_init.type_arguments.items = NULL;
+    node->as.struct_init.type_arguments.count = 0;
+    node->as.struct_init.type_arguments.capacity = 0;
 
     node->as.struct_init.fields.items    = NULL;
     node->as.struct_init.fields.count    = 0;
@@ -654,6 +660,7 @@ Node *ast_clone(Arena *arena, const Node *node)
         case NODE_STRUCT_DECL:
             clone->as.struct_decl.name.data   = node->as.struct_decl.name.data;
             clone->as.struct_decl.name.length = node->as.struct_decl.name.length;
+            clone->as.struct_decl.type_parameters = node->as.struct_decl.type_parameters;
             clone->as.struct_decl.is_repr_c       = node->as.struct_decl.is_repr_c;
             clone->as.struct_decl.repr_c_packed    = node->as.struct_decl.repr_c_packed;
             clone->as.struct_decl.repr_c_align     = node->as.struct_decl.repr_c_align;
@@ -678,6 +685,7 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.struct_init.module_name = node->as.struct_init.module_name;
             clone->as.struct_init.name.data   = node->as.struct_init.name.data;
             clone->as.struct_init.name.length = node->as.struct_init.name.length;
+            clone->as.struct_init.type_arguments = node->as.struct_init.type_arguments;
 
             clone->as.struct_init.fields.items    = NULL;
             clone->as.struct_init.fields.count    = 0;

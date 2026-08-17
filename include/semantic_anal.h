@@ -98,6 +98,7 @@ typedef struct Scope {
 
 typedef struct SemanticModule SemanticModule;
 typedef struct GenericSpecialization GenericSpecialization;
+typedef struct GenericStructSpecialization GenericStructSpecialization;
 typedef struct SliceTypeIntern SliceTypeIntern;
 
 typedef struct SemanticSourceModule {
@@ -195,6 +196,8 @@ typedef struct {
     /* Frontend-only monomorphization cache/state. */
     GenericSpecialization *generic_specializations;
     GenericSpecialization *active_generic_specialization;
+    GenericStructSpecialization *generic_struct_specializations;
+    GenericStructSpecialization *active_generic_struct_specialization;
 
     /* Canonical structural slice types, frontend-only. */
     SliceTypeIntern *slice_types;

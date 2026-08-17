@@ -1,0 +1,19 @@
+Pair::<T, U> struct {
+    first: T;
+    second: U;
+}
+
+Box::<T> struct {
+    value: T;
+}
+
+main::() -> s32 {
+    left: Pair::<s32, f32> = Pair::<s32, f32> { first = 40, second = 1.5 };
+    right: Pair::<s32, f32> = Pair::<s32, f32> { first = 2, second = 2.5 };
+    wide: Pair::<u64, u64> = Pair::<u64, u64> { first = 7, second = 9 };
+    nested: Box::<Pair::<s32, f32>> = Box::<Pair::<s32, f32>> { value = left };
+
+    if wide.second != 9
+        return 1;
+    return nested.value.first + right.first;
+}

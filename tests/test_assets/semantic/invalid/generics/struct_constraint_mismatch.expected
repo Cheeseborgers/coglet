@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/struct_constraint_mismatch.cog:7:5: error: cannot instantiate 'Vec2': type argument T = bool does not satisfy constraint 'numeric'
+    value: Vec2::<bool>;
+    ^~~~~
+1 semantic error generated.

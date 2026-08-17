@@ -366,11 +366,19 @@ Compound and declared types:
 - mutable and readonly opaque raw pointers
 - fixed-size arrays
 - mutable `T[]` and readonly `readonly T[]` slices
-- nominal structs
+- nominal structs, including monomorphized generic structs
 - nominal enums
 - function types
 
 `void` is valid as a function return type, but not as a variable, constant, parameter, struct field, pointer element, or array element type in the current language.
+
+Top-level ordinary Coglet functions and structs may declare compile-time type
+parameters with the shared `::<...>` syntax. Generic functions support
+argument-based inference; generic struct types are explicit, for example
+`Pair::<s32, f32>` or `Vec2::<f32>`. Both may use the closed builtin constraints
+(`integer`, `signed_integer`, `unsigned_integer`, `floating`, `numeric`,
+`ordered`). Every specialization is resolved and checked before CogIR, so both
+backends see only ordinary concrete functions and nominal struct layouts.
 
 ### Expressions
 

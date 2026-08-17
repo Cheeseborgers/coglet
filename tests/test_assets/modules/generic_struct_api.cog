@@ -1,0 +1,14 @@
+module generic_struct_api;
+
+export Pair::<T, U> struct {
+    first: T;
+    second: U;
+}
+
+private_box::<T> struct {
+    value: T;
+}
+
+export first::<T, U>(pair: Pair::<T, U>) -> T {
+    return pair.first;
+}

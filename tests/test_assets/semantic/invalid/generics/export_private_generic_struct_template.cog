@@ -1,0 +1,9 @@
+module generic_struct_visibility;
+
+PrivateBox::<T> struct {
+    value: T;
+}
+
+export Outer::<T> struct {
+    inner: PrivateBox::<T>;
+}

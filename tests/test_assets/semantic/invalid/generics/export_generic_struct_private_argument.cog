@@ -1,0 +1,13 @@
+module generic_struct_visibility;
+
+Hidden::struct {
+    value: s32;
+}
+
+export Box::<T> struct {
+    value: T;
+}
+
+export leak::() -> Box::<Hidden> {
+    return Box::<Hidden> { value = Hidden { value = 1 } };
+}

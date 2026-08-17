@@ -1,0 +1,51 @@
+module target(pointer=64)
+type %t0 "Pair<s32, f32>" = struct {first: s32, second: f32}
+type %t1 "Pair<u64, u64>" = struct {first: u64, second: u64}
+type %t2 "Box<Pair<s32, f32>>" = struct {value: %t0}
+entry @f0 "main"() -> s32 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : %t0 "left"
+    $s1 : %t0 "right"
+    $s2 : %t1 "wide"
+    $s3 : %t2 "nested"
+  bb0 "entry"():
+    %0 = local_addr $s0
+    %1 = const s32 @c0(0x28)
+    %2 = const f32 @c1(f32bits(0x3fc00000))
+    %3 = make_struct (%1, %2)
+    store %0, %3
+    %4 = local_addr $s1
+    %5 = const s32 @c2(0x2)
+    %6 = const f32 @c3(f32bits(0x40200000))
+    %7 = make_struct (%5, %6)
+    store %4, %7
+    %8 = local_addr $s2
+    %9 = const u64 @c4(0x7)
+    %10 = const u64 @c5(0x9)
+    %11 = make_struct (%9, %10)
+    store %8, %11
+    %12 = local_addr $s3
+    %13 = local_addr $s0
+    %14 = load %13
+    %15 = make_struct (%14)
+    store %12, %15
+    %16 = local_addr $s2
+    %17 = field_addr %16, field 1
+    %18 = load %17
+    %19 = const u64 @c5(0x9)
+    %20 = icmp.ne %18, %19
+    cond_br %20, bb1(), bb2()
+  bb1 "if.then"():
+    %21 = const s32 @c6(0x1)
+    ret %21
+  bb2 "if.end"():
+    %22 = local_addr $s3
+    %23 = field_addr %22, field 0
+    %24 = field_addr %23, field 0
+    %25 = load %24
+    %26 = local_addr $s1
+    %27 = field_addr %26, field 0
+    %28 = load %27
+    %29 = iadd.checked %25, %28
+    ret %29
+}

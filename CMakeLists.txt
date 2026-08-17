@@ -1488,4 +1488,69 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_stage6_rejects_native_bool_as_c_bool_pointer
         PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;interop;abi;pointer;bool;stage6")
+
+    set(COGLET_ASSEMBLY_ROUNDTRIP_ARGS)
+    if(UNIX)
+        list(APPEND COGLET_ASSEMBLY_ROUNDTRIP_ARGS
+            -DASSEMBLED_OUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_O0_pic_global
+            -DCC=${CMAKE_C_COMPILER}
+        )
+    endif()
+
+    add_test(
+        NAME backend_llvm_emit_asm_O0_pic_global
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage7_pic_global.cog
+        -DOUTPUT_ASM=${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_O0_pic_global.s
+        ${COGLET_ASSEMBLY_ROUNDTRIP_ARGS}
+        -DOPT_LEVEL=0
+        -DEXPECT_EXIT=9
+        "-DEXPECT_ASM_SUBSTRING=cog.global.0"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_assembly_test.cmake"
+    )
+    set_tests_properties(backend_llvm_emit_asm_O0_pic_global
+        PROPERTIES LABELS "backend;backend.llvm;llvm;codegen;assembly;O0")
+
+    add_test(
+        NAME backend_llvm_emit_asm_O3_debug
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_info.cog
+        -DOUTPUT_ASM=${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_O3_debug.s
+        -DOPT_LEVEL=3
+        -DDEBUG_INFO=ON
+        "-DEXPECT_ASM_SUBSTRING=stage9_debug_info.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_assembly_test.cmake"
+    )
+    set_tests_properties(backend_llvm_emit_asm_O3_debug
+        PROPERTIES LABELS "backend;backend.llvm;llvm;codegen;assembly;optimization;debug;O3")
+
+    add_test(
+        NAME backend_llvm_emit_asm_with_native_executable
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DOUTPUT_ASM=${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_with_native_executable.s
+        -DEXECUTABLE_OUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_with_native_executable
+        -DOPT_LEVEL=2
+        -DEXPECT_EXIT=42
+        "-DEXPECT_ASM_SUBSTRING=main"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_assembly_test.cmake"
+    )
+    set_tests_properties(backend_llvm_emit_asm_with_native_executable
+        PROPERTIES LABELS "backend;backend.llvm;llvm;codegen;assembly;object;linker;optimization;O2")
+else()
+    add_test(
+        NAME backend_llvm_emit_asm_unavailable
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DEXPECT_EXIT=3
+        "-DEXPECT_SUBSTRING=LLVM backend is not available in this build"
+        "-DARGS=--emit-asm;${CMAKE_BINARY_DIR}/backend_llvm_emit_asm_unavailable.s"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
+    )
+    set_tests_properties(backend_llvm_emit_asm_unavailable
+        PROPERTIES LABELS "driver;backend;backend.llvm;assembly;invalid")
 endif()

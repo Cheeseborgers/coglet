@@ -42,6 +42,18 @@ LlvmBackendStatus llvm_backend_emit_ir_file(
 
 /*
  * Lowers and verifies the same frozen CogIR module, then asks LLVM's native
+ * TargetMachine to emit textual target assembly. Assembly output uses PIC
+ * relocation so it matches the native executable path and remains suitable for
+ * host toolchains that default to PIE.
+ */
+LlvmBackendStatus llvm_backend_emit_assembly_file(
+    const char *output_path,
+    const CogIrModule *module,
+    const LlvmBackendOptions *options
+);
+
+/*
+ * Lowers and verifies the same frozen CogIR module, then asks LLVM's native
  * TargetMachine to emit a target object file. No external compiler process is
  * involved in object generation.
  */

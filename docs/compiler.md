@@ -420,6 +420,19 @@ likewise inherits LLVM's normal behavior: optimization may fold, move, or elimin
 source variables and instructions. Host-C executable requests reject `-g` rather
 than silently claiming equivalent debug-information support.
 
+LLVM target assembly is also available through
+`coglet input.cog --emit-asm output.s`. This is a backend/tooling output, not a
+CogIR feature: after the same lowering, debug construction, verification, and
+optional optimization path, the backend calls `LLVMTargetMachineEmitToFile` with
+`LLVMAssemblyFile`. The existing native asm-printer initialization is shared with
+object generation, and no external assembler or shell command is involved.
+Assembly output uses the PIC relocation model so an `-O0` program with mutable
+globals does not recreate the default-PIE relocation mismatch fixed in the
+native executable path. `-O0` through `-O3` and `-g` apply normally, and
+`--emit-asm` may be combined with `--backend llvm -o` when both an executable and
+a retained assembly file are desired. The standalone object API continues to use
+LLVM's default relocation model.
+
 Volatile whole-aggregate accesses and non-x86-64 represented aggregate
 classification remain explicitly deferred.
 

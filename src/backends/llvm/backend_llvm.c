@@ -588,15 +588,17 @@ cleanup:
     return status;
 }
 
-static LlvmBackendStatus emit_object_file_with_relocation(
+static LlvmBackendStatus emit_codegen_file_with_relocation(
     const char *output_path,
     const CogIrModule *module,
     const LlvmBackendOptions *options,
-    LLVMRelocMode relocation_mode
+    LLVMRelocMode relocation_mode,
+    LLVMCodeGenFileType file_type,
+    const char *output_kind
 )
 {
     if (!output_path) {
-        fprintf(stderr, "LLVM backend error: missing object output path\n");
+        fprintf(stderr, "LLVM backend error: missing %s output path\n", output_kind);
         return LLVM_BACKEND_STATUS_IO_ERROR;
     }
 
@@ -613,7 +615,11 @@ static LlvmBackendStatus emit_object_file_with_relocation(
     size_t path_length = strlen(output_path);
     char *mutable_path = malloc(path_length + 1);
     if (!mutable_path) {
-        fprintf(stderr, "LLVM backend error: out of memory copying object output path\n");
+        fprintf(
+            stderr,
+            "LLVM backend error: out of memory copying %s output path\n",
+            output_kind
+        );
         status = LLVM_BACKEND_STATUS_CODEGEN_ERROR;
         goto cleanup;
     }
@@ -624,11 +630,12 @@ static LlvmBackendStatus emit_object_file_with_relocation(
             backend.target_machine,
             backend.module,
             mutable_path,
-            LLVMObjectFile,
+            file_type,
             &emit_error)) {
         fprintf(
             stderr,
-            "LLVM backend error: could not emit native object '%s': %s\n",
+            "LLVM backend error: could not emit native %s '%s': %s\n",
+            output_kind,
             output_path,
             emit_error ? emit_error : "unknown target code-generation error"
         );
@@ -648,14 +655,36 @@ cleanup:
     return status;
 }
 
+LlvmBackendStatus llvm_backend_emit_assembly_file(
+    const char *output_path,
+    const CogIrModule *module,
+    const LlvmBackendOptions *options
+)
+{
+    return emit_codegen_file_with_relocation(
+        output_path,
+        module,
+        options,
+        LLVMRelocPIC,
+        LLVMAssemblyFile,
+        "assembly"
+    );
+}
+
 LlvmBackendStatus llvm_backend_emit_object_file(
     const char *output_path,
     const CogIrModule *module,
     const LlvmBackendOptions *options
 )
 {
-    return emit_object_file_with_relocation(
-        output_path, module, options, LLVMRelocDefault);
+    return emit_codegen_file_with_relocation(
+        output_path,
+        module,
+        options,
+        LLVMRelocDefault,
+        LLVMObjectFile,
+        "object"
+    );
 }
 
 LlvmBackendStatus llvm_backend_emit_position_independent_object_file(
@@ -664,6 +693,12 @@ LlvmBackendStatus llvm_backend_emit_position_independent_object_file(
     const LlvmBackendOptions *options
 )
 {
-    return emit_object_file_with_relocation(
-        output_path, module, options, LLVMRelocPIC);
+    return emit_codegen_file_with_relocation(
+        output_path,
+        module,
+        options,
+        LLVMRelocPIC,
+        LLVMObjectFile,
+        "object"
+    );
 }

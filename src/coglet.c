@@ -21,7 +21,7 @@ static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [-O0|-O1|-O2|-O3] [-g] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
+        "usage: %s <file> [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [--emit-asm <file>] [-O0|-O1|-O2|-O3] [-g] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
         "       %s --version\n",
         program,
         program
@@ -78,6 +78,7 @@ int main(int argc, char **argv)
     const char *output_path = NULL;
     const char *emit_c_path = NULL;
     const char *emit_llvm_path = NULL;
+    const char *emit_asm_path = NULL;
     ExecutableBackend executable_backend = EXECUTABLE_BACKEND_HOST_C;
     int executable_backend_explicit = 0;
     CogOptimizationLevel optimization_level = COG_OPTIMIZATION_LEVEL_0;
@@ -114,6 +115,15 @@ int main(int argc, char **argv)
                 return COMPILE_STATUS_DRIVER_ERROR;
             }
             emit_llvm_path = argv[++i];
+            continue;
+        }
+
+        if (strcmp(argv[i], "--emit-asm") == 0) {
+            if (i + 1 >= argc || emit_asm_path) {
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+            }
+            emit_asm_path = argv[++i];
             continue;
         }
 
@@ -203,10 +213,11 @@ int main(int argc, char **argv)
         return COMPILE_STATUS_DRIVER_ERROR;
     }
     if (optimization_level != COG_OPTIMIZATION_LEVEL_0 &&
-        !emit_llvm_path && (!output_path || executable_backend != EXECUTABLE_BACKEND_LLVM)) {
+        !emit_llvm_path && !emit_asm_path &&
+        (!output_path || executable_backend != EXECUTABLE_BACKEND_LLVM)) {
         fprintf(
             stderr,
-            "error: -O1/-O2/-O3 currently require LLVM output via --emit-llvm or --backend llvm -o\n"
+            "error: -O1/-O2/-O3 currently require LLVM output via --emit-llvm, --emit-asm, or --backend llvm -o\n"
         );
         return COMPILE_STATUS_DRIVER_ERROR;
     }
@@ -218,10 +229,11 @@ int main(int argc, char **argv)
         return COMPILE_STATUS_DRIVER_ERROR;
     }
     if (debug_info &&
-        !emit_llvm_path && (!output_path || executable_backend != EXECUTABLE_BACKEND_LLVM)) {
+        !emit_llvm_path && !emit_asm_path &&
+        (!output_path || executable_backend != EXECUTABLE_BACKEND_LLVM)) {
         fprintf(
             stderr,
-            "error: -g currently requires LLVM output via --emit-llvm or --backend llvm -o\n"
+            "error: -g currently requires LLVM output via --emit-llvm, --emit-asm, or --backend llvm -o\n"
         );
         return COMPILE_STATUS_DRIVER_ERROR;
     }
@@ -237,7 +249,7 @@ int main(int argc, char **argv)
 
     int exit_code = 0;
 
-    if (!emit_c_path && !emit_llvm_path && !output_path) {
+    if (!emit_c_path && !emit_llvm_path && !emit_asm_path && !output_path) {
         compile_result_destroy(&result);
         return 0;
     }
@@ -306,6 +318,28 @@ int main(int argc, char **argv)
         };
         LlvmBackendStatus backend_status = llvm_backend_emit_ir_file(
             emit_llvm_path,
+            &ir,
+            &backend_options
+        );
+        if (backend_status != LLVM_BACKEND_STATUS_OK)
+            exit_code = 3;
+#else
+        fprintf(
+            stderr,
+            "error: LLVM backend is not available in this build; configure with COGLET_LLVM=ON and LLVM_DIR\n"
+        );
+        exit_code = 3;
+#endif
+    }
+
+    if (exit_code == 0 && emit_asm_path) {
+#ifdef COGLET_HAS_LLVM_BACKEND
+        LlvmBackendOptions backend_options = {
+            .optimization_level = optimization_level,
+            .debug_info = debug_info,
+        };
+        LlvmBackendStatus backend_status = llvm_backend_emit_assembly_file(
+            emit_asm_path,
             &ir,
             &backend_options
         );

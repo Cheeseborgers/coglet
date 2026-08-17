@@ -226,7 +226,13 @@ harness additionally checks that the linked executable contains the expected sou
 filename, so merely accepting `-g` cannot satisfy the regression. Negative driver
 coverage rejects host-C executable debug requests and `-g` requests with no LLVM
 output. Compiler-generated storage slots and the synthetic process-entry adapter are
-checked not to masquerade as Coglet source variables/code. The float suite includes
+checked not to masquerade as Coglet source variables/code. Assembly-emission
+coverage adds three LLVM-enabled cases: an `-O0` mutable-global program whose PIC
+assembly is assembled/linked by the configured host C compiler and executed, an
+`-O3 -g` output check that retains the Coglet source filename, and a combined
+`--emit-asm` plus `--backend llvm -o` build that verifies both outputs in one
+driver invocation. LLVM-disabled configurations register a negative assembly
+driver test so the flag cannot be silently ignored. The float suite includes
 NaN/infinity, signed/unsigned range boundaries, and narrowing behavior so LLVM
 conversion instructions are not used before Coglet's checked-cast guards.
 
@@ -234,6 +240,12 @@ Run only these tests with:
 
 ```bash
 ctest --test-dir cmake-build-debug -L backend.llvm --output-on-failure
+```
+
+Run the assembly-emission slice with:
+
+```bash
+ctest --test-dir cmake-build-debug -L assembly --output-on-failure
 ```
 
 ## Parser-Invalid Tests

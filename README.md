@@ -148,6 +148,10 @@ coglet program.cog --emit-c program.c
 coglet program.cog --emit-llvm program.ll
 coglet program.cog --emit-llvm optimized.ll -O2
 coglet program.cog --emit-llvm debug.ll -g
+coglet program.cog --emit-asm program.s
+coglet program.cog --emit-asm optimized.s -O3
+coglet program.cog --emit-asm debug.s -O2 -g
+coglet program.cog -o program --backend llvm --emit-asm program.s -O2
 ```
 
 `-L` adds a native library search directory and `-l` requests a native library.
@@ -159,11 +163,17 @@ support is enabled, `--backend llvm` lowers and verifies LLVM IR, emits a
 position-independent native object through LLVM's `TargetMachine`, then invokes
 the host `cc` driver only for the final platform link/CRT step. Executable-object
 PIC is backend/toolchain policy so hosts whose compiler driver defaults to PIE do
-not require optimization or linker-specific `-no-pie` workarounds. Textual LLVM IR remains available through
-`--emit-llvm`. LLVM output accepts `-O0`, `-O1`, `-O2`, and `-O3`; `-O0` is the
-default and preserves the unoptimized LLVM-IR path, while `-O1` through `-O3`
-run LLVM's corresponding default new-pass-manager pipeline before IR/object
-emission and select the matching target code-generation optimization level.
+not require optimization or linker-specific `-no-pie` workarounds. Textual LLVM IR
+remains available through `--emit-llvm`, and `--emit-asm` asks the same
+verified/optimized target-machine pipeline to write native target assembly without
+invoking an external assembler. Assembly output uses LLVM's PIC relocation model,
+matching the native executable path and remaining suitable for host toolchains that
+default to PIE. It may be requested on its own or alongside `--backend llvm -o` to
+retain an assembly view while also producing the executable. LLVM output accepts
+`-O0`, `-O1`, `-O2`, and `-O3`; `-O0` is the default and preserves the unoptimized
+LLVM-IR path, while `-O1` through `-O3` run LLVM's corresponding default
+new-pass-manager pipeline before IR/assembly/object emission and select the matching
+target code-generation optimization level.
 Nonzero optimization levels are currently rejected for host-C executable output
 rather than being silently ignored. LLVM output also accepts `-g`, which emits
 source-level debug metadata from frozen CogIR source provenance for source
@@ -768,9 +778,11 @@ built as a separate backend library beneath the frontend/semantic/CogIR core.
 This keeps C implementation details out of the language boundary. An optional
 LLVM Stage 9 backend now consumes the same frozen module through its own backend
 library. It emits verifier-checked LLVM IR with an explicit native target triple
-and data layout, can emit a native object with LLVM target APIs, and can link that
-object into an executable through a separate host linker-driver boundary. It can
-also run LLVM's target-aware default `O1`/`O2`/`O3` optimization pipelines after
+and data layout, can emit native assembly or an object with LLVM target APIs, and
+can link the object into an executable through a separate host linker-driver
+boundary. Assembly emission is a direct TargetMachine output and can be retained
+alongside an executable build. It can also run LLVM's target-aware default
+`O1`/`O2`/`O3` optimization pipelines after
 initial verification and verifies the transformed module again before output. With
 `-g`, it derives LLVM source-level debug metadata only from frozen CogIR-owned
 source files, spans, declaration/type metadata, exact C ABI spelling where storage

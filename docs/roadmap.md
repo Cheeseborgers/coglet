@@ -546,8 +546,12 @@ same level. Stage 9 adds `-g` without changing CogIR into an LLVM-metadata
 container: source files/spans and explicit source-local/parameter slot provenance
 are frozen in CogIR, while DI construction stays backend-owned. Compiler temporary
 slots and the synthetic process-entry adapter are not presented as Coglet source
-variables/code. General-purpose optimization remains LLVM-owned; aggregate
-classification for additional targets waits for explicit cross-target support.
+variables/code. The LLVM tooling path can now also emit native target assembly
+directly from the same verified/optimized `TargetMachine` pipeline; assembly uses
+PIC relocation to match executable code generation and may be retained alongside
+a normal LLVM executable build. General-purpose optimization remains LLVM-owned;
+aggregate classification for additional targets waits for explicit cross-target
+support.
 
 Longer-term additions remain possible, including a custom native backend or an
 interpreter for tooling and compile-time execution. The host-C path continues to

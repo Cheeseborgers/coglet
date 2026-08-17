@@ -856,6 +856,225 @@ static Symbol *scope_lookup(Scope *scope, const char *name, size_t length) {
     return NULL;
 }
 
+
+static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
+
+static SemanticSourceModule *semantic_source_module(
+    SemanticContext *ctx,
+    SourceFileId source_id
+) {
+    if (!ctx || source_id == SOURCE_FILE_ID_INVALID)
+        return NULL;
+
+    for (size_t i = 0; i < ctx->source_module_count; i++)
+        if (ctx->source_modules[i].source_id == source_id)
+            return &ctx->source_modules[i];
+
+    return NULL;
+}
+
+static SemanticModule *semantic_find_module(
+    SemanticContext *ctx,
+    StringView name
+) {
+    if (!ctx || name.length == 0)
+        return NULL;
+
+    for (SemanticModule *module = ctx->modules; module; module = module->next)
+        if (!module->is_root && string_view_equals(module->name, name))
+            return module;
+
+    return NULL;
+}
+
+static SemanticModule *semantic_create_module(
+    SemanticContext *ctx,
+    StringView name,
+    int is_root
+) {
+    SemanticModule *module = arena_new(ctx->arena, SemanticModule);
+    module->name = name;
+    module->is_root = is_root;
+    module->scope = scope_new(ctx, ctx->builtin_scope);
+    module->next = ctx->modules;
+    ctx->modules = module;
+    return module;
+}
+
+static void semantic_select_source_module(
+    SemanticContext *ctx,
+    SourceFileId source_id
+) {
+    SemanticSourceModule *source = semantic_source_module(ctx, source_id);
+    assert(source && source->module);
+    ctx->current_source_id = source_id;
+    ctx->current_module = source->module;
+    ctx->current_scope = source->module->scope;
+}
+
+static int semantic_source_imports_module(
+    const SemanticSourceModule *source,
+    const SemanticModule *module
+) {
+    if (!source || !module)
+        return 0;
+
+    for (size_t i = 0; i < source->import_count; i++)
+        if (source->imports[i] == module)
+            return 1;
+
+    return 0;
+}
+
+static SemanticModule *semantic_resolve_module_qualifier(
+    SemanticContext *ctx,
+    StringView name,
+    Node *use_node
+) {
+    SemanticModule *module = semantic_find_module(ctx, name);
+    if (!module) {
+        semantic_error_fmt(
+            ctx,
+            use_node,
+            "unknown module '%.*s'",
+            (int)name.length,
+            name.data
+        );
+        return NULL;
+    }
+
+    if (module == ctx->current_module)
+        return module;
+
+    SemanticSourceModule *source =
+        semantic_source_module(ctx, ctx->current_source_id);
+
+    if (!semantic_source_imports_module(source, module)) {
+        semantic_error_fmt(
+            ctx,
+            use_node,
+            "module '%.*s' is not imported in this file",
+            (int)name.length,
+            name.data
+        );
+        return NULL;
+    }
+
+    return module;
+}
+
+static Symbol *semantic_lookup_qualified_symbol(
+    SemanticContext *ctx,
+    StringView module_name,
+    StringView member_name,
+    Node *use_node
+) {
+    SemanticModule *module =
+        semantic_resolve_module_qualifier(ctx, module_name, use_node);
+    if (!module)
+        return NULL;
+
+    Symbol *symbol = scope_find_local(
+        module->scope,
+        member_name.data,
+        member_name.length
+    );
+
+    if (!symbol) {
+        semantic_error_fmt(
+            ctx,
+            use_node,
+            "module '%.*s' has no member '%.*s'",
+            (int)module_name.length,
+            module_name.data,
+            (int)member_name.length,
+            member_name.data
+        );
+        return NULL;
+    }
+
+    return symbol;
+}
+
+static SemanticModule *semantic_visible_module_qualifier(
+    SemanticContext *ctx,
+    StringView name
+) {
+    SemanticModule *module = semantic_find_module(ctx, name);
+    if (!module)
+        return NULL;
+
+    if (module == ctx->current_module)
+        return module;
+
+    SemanticSourceModule *source =
+        semantic_source_module(ctx, ctx->current_source_id);
+    return semantic_source_imports_module(source, module) ? module : NULL;
+}
+
+static Symbol *semantic_lookup_visible_qualified_symbol_no_diag(
+    SemanticContext *ctx,
+    StringView module_name,
+    StringView member_name
+) {
+    SemanticModule *module = semantic_visible_module_qualifier(ctx, module_name);
+    if (!module)
+        return NULL;
+    return scope_find_local(module->scope, member_name.data, member_name.length);
+}
+
+static int semantic_qualified_enum_member_no_diag(
+    SemanticContext *ctx,
+    Node *node,
+    Symbol **out_symbol,
+    EnumMember **out_member
+) {
+    if (!node || node->type != NODE_FIELD ||
+        !node->as.field.object ||
+        node->as.field.object->type != NODE_FIELD) {
+        return 0;
+    }
+
+    Node *type_field = node->as.field.object;
+    if (!type_field->as.field.object ||
+        type_field->as.field.object->type != NODE_IDENT) {
+        return 0;
+    }
+
+    Node *module_ident = type_field->as.field.object;
+    if (scope_lookup(
+            ctx->current_scope,
+            module_ident->as.ident.data,
+            module_ident->as.ident.length
+        )) {
+        return 0;
+    }
+
+    Symbol *symbol = semantic_lookup_visible_qualified_symbol_no_diag(
+        ctx,
+        module_ident->as.ident,
+        type_field->as.field.name
+    );
+    if (!symbol || symbol->kind != SYMBOL_TYPE ||
+        !symbol->type || symbol->type->kind != TYPE_ENUM) {
+        return 0;
+    }
+
+    EnumMember *member = find_enum_member(
+        symbol->type,
+        node->as.field.name.data,
+        node->as.field.name.length
+    );
+    if (!member)
+        return 0;
+
+    if (out_symbol)
+        *out_symbol = symbol;
+    if (out_member)
+        *out_member = member;
+    return 1;
+}
+
 /*
  * Internal symbol constructor.
  *
@@ -1174,12 +1393,37 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
         return canonical;
 
     if (type->kind == TYPE_NAMED) {
-        Type *resolved =
-            lookup_type(
+        if (type->named_module.length != 0) {
+            Symbol *symbol = semantic_lookup_qualified_symbol(
                 ctx,
-                type->named_name.data,
-                type->named_name.length
+                type->named_module,
+                type->named_name,
+                error_node
             );
+            if (!symbol)
+                return NULL;
+
+            if (symbol->kind != SYMBOL_TYPE) {
+                semantic_error_fmt(
+                    ctx,
+                    error_node,
+                    "'%.*s.%.*s' is not a type",
+                    (int)type->named_module.length,
+                    type->named_module.data,
+                    (int)type->named_name.length,
+                    type->named_name.data
+                );
+                return NULL;
+            }
+
+            return symbol->type;
+        }
+
+        Type *resolved = lookup_type(
+            ctx,
+            type->named_name.data,
+            type->named_name.length
+        );
 
         if (!resolved) {
             semantic_error_name(
@@ -1189,7 +1433,6 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
                 type->named_name.data,
                 type->named_name.length
             );
-
             return NULL;
         }
 
@@ -1285,7 +1528,8 @@ static Type *resolve_type(SemanticContext *ctx, Type *type, Node *error_node) {
 
 static SemCScalarKind native_c_scalar_kind(const Type *source_type)
 {
-    if (!source_type || source_type->kind != TYPE_NAMED)
+    if (!source_type || source_type->kind != TYPE_NAMED ||
+        source_type->named_module.length != 0)
         return SEM_C_SCALAR_NONE;
 
     StringView name = source_type->named_name;
@@ -1599,13 +1843,25 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size) {
         case TYPE_UNTYPED_FLOAT: snprintf(buffer, buffer_size, "untyped-float"); return;
 
         case TYPE_NAMED:
-            snprintf(
-                buffer,
-                buffer_size,
-                "%.*s",
-                (int)type->named_name.length,
-                type->named_name.data
-            );
+            if (type->named_module.length != 0) {
+                snprintf(
+                    buffer,
+                    buffer_size,
+                    "%.*s.%.*s",
+                    (int)type->named_module.length,
+                    type->named_module.data,
+                    (int)type->named_name.length,
+                    type->named_name.data
+                );
+            } else {
+                snprintf(
+                    buffer,
+                    buffer_size,
+                    "%.*s",
+                    (int)type->named_name.length,
+                    type->named_name.data
+                );
+            }
             return;
 
         case TYPE_STRUCT:
@@ -1825,11 +2081,17 @@ static int type_equal(const Type *a, const Type *b) {
          */
         case TYPE_NAMED:
             return names_equal(
-                a->named_name.data,
-                a->named_name.length,
-                b->named_name.data,
-                b->named_name.length
-            );
+                       a->named_module.data,
+                       a->named_module.length,
+                       b->named_module.data,
+                       b->named_module.length
+                   ) &&
+                   names_equal(
+                       a->named_name.data,
+                       a->named_name.length,
+                       b->named_name.data,
+                       b->named_name.length
+                   );
 
         /*
          * Structs and enums are nominal.
@@ -4022,6 +4284,20 @@ static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *ou
 
         case NODE_FIELD:
         {
+            Symbol *qualified_enum = NULL;
+            EnumMember *qualified_member = NULL;
+            if (semantic_qualified_enum_member_no_diag(
+                    ctx,
+                    node,
+                    &qualified_enum,
+                    &qualified_member
+                )) {
+                out->kind = CONST_VALUE_INT;
+                out->as.integer = qualified_member->value;
+                out->type = qualified_enum->type;
+                return 1;
+            }
+
             if (node->as.field.object &&
                 node->as.field.object->type == NODE_IDENT) {
                 Node *object = node->as.field.object;
@@ -4050,21 +4326,18 @@ static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *ou
                             node->as.field.name.data,
                             node->as.field.name.length
                         );
-
                         return 0;
                     }
 
                     out->kind = CONST_VALUE_INT;
                     out->as.integer = member->value;
                     out->type = symbol->type;
-
                     return 1;
                 }
             }
 
             semantic_error(ctx, node,
                 "expression is not a compile-time constant");
-
             return 0;
         }
 
@@ -5471,25 +5744,24 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
 
         case NODE_FIELD:
         {
-            /*
-             * Only enum members are compile-time constant fields for now:
-             *
-             *     SomeEnum.Member
-             */
+            /* Both `SomeEnum.Member` and `module.SomeEnum.Member`. */
+            if (semantic_qualified_enum_member_no_diag(
+                    ctx, node, NULL, NULL
+                )) {
+                return 1;
+            }
+
             if (!node->as.field.object ||
                 node->as.field.object->type != NODE_IDENT) {
                 return 0;
             }
 
-            Node *object_node =
-                node->as.field.object;
-
-            Symbol *sym =
-                scope_lookup(
-                    ctx->current_scope,
-                    object_node->as.ident.data,
-                    object_node->as.ident.length
-                );
+            Node *object_node = node->as.field.object;
+            Symbol *sym = scope_lookup(
+                ctx->current_scope,
+                object_node->as.ident.data,
+                object_node->as.ident.length
+            );
 
             return sym &&
                    sym->kind == SYMBOL_TYPE &&
@@ -7173,37 +7445,91 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_FIELD:
         {
-            /*
-             * Special case:
-             *
-             *     Color.Red
-             *
-             * The object side names an enum type rather than a runtime
-             * value expression.
-             */
+            /* Qualified enum constant: `math.Mode.Red`. */
             if (node->as.field.object &&
-                node->as.field.object->type ==
-                    NODE_IDENT) {
-                Node *object_node =
-                    node->as.field.object;
-
-                Symbol *symbol =
-                    scope_lookup(
+                node->as.field.object->type == NODE_FIELD) {
+                Node *type_field = node->as.field.object;
+                if (type_field->as.field.object &&
+                    type_field->as.field.object->type == NODE_IDENT) {
+                    Node *module_ident = type_field->as.field.object;
+                    Symbol *shadow = scope_lookup(
                         ctx->current_scope,
-                        object_node->as.ident.data,
-                        object_node->as.ident.length
+                        module_ident->as.ident.data,
+                        module_ident->as.ident.length
                     );
+                    if (!shadow && semantic_find_module(
+                            ctx, module_ident->as.ident
+                        )) {
+                        Symbol *type_symbol = semantic_lookup_qualified_symbol(
+                            ctx,
+                            module_ident->as.ident,
+                            type_field->as.field.name,
+                            node
+                        );
+                        if (!type_symbol)
+                            return NULL;
+                        if (type_symbol->kind != SYMBOL_TYPE ||
+                            !type_symbol->type ||
+                            type_symbol->type->kind != TYPE_ENUM) {
+                            semantic_error_fmt(
+                                ctx,
+                                node,
+                                "'%.*s.%.*s' is not an enum type",
+                                (int)module_ident->as.ident.length,
+                                module_ident->as.ident.data,
+                                (int)type_field->as.field.name.length,
+                                type_field->as.field.name.data
+                            );
+                            return NULL;
+                        }
+
+                        EnumMember *member = find_enum_member(
+                            type_symbol->type,
+                            node->as.field.name.data,
+                            node->as.field.name.length
+                        );
+                        if (!member) {
+                            semantic_error_name(
+                                ctx,
+                                node,
+                                "unknown enum member",
+                                node->as.field.name.data,
+                                node->as.field.name.length
+                            );
+                            return NULL;
+                        }
+
+                        sem_record_expr_info(
+                            ctx,
+                            node,
+                            type_symbol->type,
+                            type_symbol,
+                            VALUE_CATEGORY_RVALUE
+                        );
+                        return type_symbol->type;
+                    }
+                }
+            }
+
+            /* Unqualified enum constant: `Color.Red`. */
+            if (node->as.field.object &&
+                node->as.field.object->type == NODE_IDENT) {
+                Node *object_node = node->as.field.object;
+                Symbol *symbol = scope_lookup(
+                    ctx->current_scope,
+                    object_node->as.ident.data,
+                    object_node->as.ident.length
+                );
 
                 if (symbol &&
                     symbol->kind == SYMBOL_TYPE &&
                     symbol->type &&
                     symbol->type->kind == TYPE_ENUM) {
-                    EnumMember *member =
-                        find_enum_member(
-                            symbol->type,
-                            node->as.field.name.data,
-                            node->as.field.name.length
-                        );
+                    EnumMember *member = find_enum_member(
+                        symbol->type,
+                        node->as.field.name.data,
+                        node->as.field.name.length
+                    );
 
                     if (!member) {
                         semantic_error_name(
@@ -7213,7 +7539,6 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                             node->as.field.name.data,
                             node->as.field.name.length
                         );
-
                         return NULL;
                     }
 
@@ -7224,8 +7549,66 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         symbol,
                         VALUE_CATEGORY_RVALUE
                     );
-
                     return symbol->type;
+                }
+
+                /*
+                 * A module qualifier is considered only when no lexical symbol
+                 * shadows the same identifier. This keeps ordinary `value.x`
+                 * field access unambiguous even when a module has that name.
+                 */
+                if (!symbol) {
+                    SemanticModule *module = semantic_find_module(
+                        ctx,
+                        object_node->as.ident
+                    );
+                    if (module) {
+                        Symbol *member = semantic_lookup_qualified_symbol(
+                            ctx,
+                            object_node->as.ident,
+                            node->as.field.name,
+                            node
+                        );
+                        if (!member)
+                            return NULL;
+
+                        if (member->kind == SYMBOL_FUNCTION) {
+                            sem_record_expr_info(
+                                ctx,
+                                node,
+                                member->type,
+                                member,
+                                VALUE_CATEGORY_RVALUE
+                            );
+                            return member->type;
+                        }
+
+                        if (member->kind == SYMBOL_TYPE) {
+                            semantic_error_fmt(
+                                ctx,
+                                node,
+                                "type '%.*s.%.*s' cannot be used as a value",
+                                (int)object_node->as.ident.length,
+                                object_node->as.ident.data,
+                                (int)node->as.field.name.length,
+                                node->as.field.name.data
+                            );
+                        } else if (member->kind == SYMBOL_VARIABLE ||
+                                   member->kind == SYMBOL_CONSTANT) {
+                            semantic_error(
+                                ctx,
+                                node,
+                                "module-qualified variables and constants are not supported yet"
+                            );
+                        } else {
+                            semantic_error(
+                                ctx,
+                                node,
+                                "module member cannot be used as a value"
+                            );
+                        }
+                        return NULL;
+                    }
                 }
             }
 
@@ -7561,22 +7944,49 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_STRUCT_INIT:
         {
-            Type *type = lookup_type(
-                ctx,
-                node->as.struct_init.name.data,
-                node->as.struct_init.name.length
-            );
+            Type *type = NULL;
 
-            if (!type || type->kind != TYPE_STRUCT) {
-                semantic_error_name(
+            if (node->as.struct_init.module_name.length != 0) {
+                Symbol *symbol = semantic_lookup_qualified_symbol(
                     ctx,
-                    node,
-                    "unknown struct type",
+                    node->as.struct_init.module_name,
+                    node->as.struct_init.name,
+                    node
+                );
+                if (!symbol)
+                    return NULL;
+
+                if (symbol->kind != SYMBOL_TYPE ||
+                    !symbol->type || symbol->type->kind != TYPE_STRUCT) {
+                    semantic_error_fmt(
+                        ctx,
+                        node,
+                        "'%.*s.%.*s' is not a struct type",
+                        (int)node->as.struct_init.module_name.length,
+                        node->as.struct_init.module_name.data,
+                        (int)node->as.struct_init.name.length,
+                        node->as.struct_init.name.data
+                    );
+                    return NULL;
+                }
+                type = symbol->type;
+            } else {
+                type = lookup_type(
+                    ctx,
                     node->as.struct_init.name.data,
                     node->as.struct_init.name.length
                 );
 
-                return NULL;
+                if (!type || type->kind != TYPE_STRUCT) {
+                    semantic_error_name(
+                        ctx,
+                        node,
+                        "unknown struct type",
+                        node->as.struct_init.name.data,
+                        node->as.struct_init.name.length
+                    );
+                    return NULL;
+                }
             }
 
             if (type->struct_is_incomplete) {
@@ -8532,6 +8942,7 @@ static int source_type_is_readonly_c_char_pointer(const Type *type) {
            !type->pointer_is_volatile &&
            type->element &&
            type->element->kind == TYPE_NAMED &&
+           type->element->named_module.length == 0 &&
            names_equal(
                type->element->named_name.data,
                type->element->named_name.length,
@@ -9075,9 +9486,136 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
     flow_register_variable(ctx, symbol, 1);
 }
 
+static void semantic_append_import(
+    SemanticContext *ctx,
+    SemanticSourceModule *source,
+    SemanticModule *module
+) {
+    if (source->import_count >= source->import_capacity) {
+        size_t new_capacity = source->import_capacity ? source->import_capacity * 2 : 4;
+        SemanticModule **grown = arena_alloc(
+            ctx->arena,
+            new_capacity * sizeof(*grown)
+        );
+        if (source->imports && source->import_count) {
+            memcpy(
+                grown,
+                source->imports,
+                source->import_count * sizeof(*grown)
+            );
+        }
+        source->imports = grown;
+        source->import_capacity = new_capacity;
+    }
+
+    source->imports[source->import_count++] = module;
+}
+
+static void prepare_program_modules(SemanticContext *ctx, Node *program)
+{
+    NodeList *stmts = &program->as.program.statements;
+
+    /* First discover each physical file's declared module. */
+    for (int i = 0; i < stmts->count; i++) {
+        Node *stmt = stmts->items[i];
+        SemanticSourceModule *source =
+            semantic_source_module(ctx, stmt->span.file_id);
+        if (!source)
+            continue;
+
+        if (stmt->type == NODE_MODULE_DECL) {
+            if (source->module_decl) {
+                semantic_error(ctx, stmt, "duplicate module declaration in source file");
+                continue;
+            }
+
+            if (source->saw_import_directive) {
+                semantic_error(ctx, stmt, "module declaration must precede imports");
+            }
+            if (source->saw_non_directive) {
+                semantic_error(ctx, stmt, "module declaration must precede other top-level declarations/statements");
+            }
+
+            SemanticModule *module =
+                semantic_find_module(ctx, stmt->as.module_decl.name);
+            if (!module) {
+                module = semantic_create_module(
+                    ctx,
+                    stmt->as.module_decl.name,
+                    0
+                );
+            }
+
+            source->module = module;
+            source->module_decl = stmt;
+            continue;
+        }
+
+        if (stmt->type == NODE_IMPORT_DECL) {
+            source->saw_import_directive = 1;
+            if (source->saw_non_directive) {
+                semantic_error(ctx, stmt, "import declarations must precede other top-level declarations/statements");
+            }
+            continue;
+        }
+
+        source->saw_non_directive = 1;
+    }
+
+    /* Resolve file-scoped imports only after all module names are known. */
+    for (int i = 0; i < stmts->count; i++) {
+        Node *stmt = stmts->items[i];
+        if (stmt->type != NODE_IMPORT_DECL)
+            continue;
+
+        SemanticSourceModule *source =
+            semantic_source_module(ctx, stmt->span.file_id);
+        if (!source)
+            continue;
+
+        SemanticModule *module =
+            semantic_find_module(ctx, stmt->as.import_decl.name);
+        if (!module) {
+            semantic_error_fmt(
+                ctx,
+                stmt,
+                "unknown module '%.*s'",
+                (int)stmt->as.import_decl.name.length,
+                stmt->as.import_decl.name.data
+            );
+            continue;
+        }
+
+        if (module == source->module) {
+            semantic_error_fmt(
+                ctx,
+                stmt,
+                "module '%.*s' cannot import itself",
+                (int)module->name.length,
+                module->name.data
+            );
+            continue;
+        }
+
+        if (semantic_source_imports_module(source, module)) {
+            semantic_error_fmt(
+                ctx,
+                stmt,
+                "duplicate import of module '%.*s'",
+                (int)module->name.length,
+                module->name.data
+            );
+            continue;
+        }
+
+        semantic_append_import(ctx, source, module);
+    }
+}
+
 static void validate_source_entry_signature(SemanticContext *ctx, Node *node)
 {
     if (!node || node->type != NODE_FUNC_DECL ||
+        !ctx->current_module || !ctx->current_module->is_root ||
         !names_equal(node->as.func_decl.name.data, node->as.func_decl.name.length, "main", 4) ||
         !node->as.func_decl.resolved_type) {
         return;
@@ -9097,74 +9635,69 @@ static void validate_source_entry_signature(SemanticContext *ctx, Node *node)
             node,
             "executable entry point must have signature 'main::() -> i32'"
         );
+        return;
     }
+
+    SemDeclInfo *info = sem_find_decl_info(ctx, node);
+    assert(info);
+    info->is_executable_entry = 1;
 }
 
 static void check_program(SemanticContext *ctx, Node *node)
 {
     NodeList *stmts = &node->as.program.statements;
+    prepare_program_modules(ctx, node);
 
-    /*
-     * Pass 1:
-     * Register all named types first.
-     *
-     * This lets structs, enums, and functions refer to types declared
-     * later in the file.
-     */
+    /* Pass 1: register nominal type shells in each module namespace. */
     for (int i = 0; i < stmts->count; i++) {
-
         Node *stmt = stmts->items[i];
+        if (stmt->type == NODE_MODULE_DECL || stmt->type == NODE_IMPORT_DECL)
+            continue;
+
+        semantic_select_source_module(ctx, stmt->span.file_id);
 
         if (stmt->type == NODE_STRUCT_DECL)
             declare_struct_shell(ctx, stmt);
-
         if (stmt->type == NODE_ENUM_DECL)
             declare_enum_shell(ctx, stmt);
     }
 
-    /*
-     * Pass 2:
-     * Fill in type bodies now that all type names are visible.
-     */
+    /* Pass 2: fill type bodies after every module's shells exist. */
     for (int i = 0; i < stmts->count; i++) {
         Node *stmt = stmts->items[i];
+        if (stmt->type == NODE_MODULE_DECL || stmt->type == NODE_IMPORT_DECL)
+            continue;
+
+        semantic_select_source_module(ctx, stmt->span.file_id);
 
         if (stmt->type == NODE_STRUCT_DECL)
             fill_struct_fields(ctx, stmt);
-
         if (stmt->type == NODE_ENUM_DECL)
             fill_enum_members(ctx, stmt);
     }
 
-    /*
-     * C-represented structs may contain other #repr(c) structs by value,
-     * but such inline layout dependencies must remain acyclic.
-     */
     validate_repr_c_struct_layouts(ctx, node);
 
-    /*
-     * Pass 3:
-     * Register function signatures.
-     */
+    /* Pass 3: register all function signatures in their module namespaces. */
     for (int i = 0; i < stmts->count; i++) {
         Node *stmt = stmts->items[i];
+        if (stmt->type != NODE_FUNC_DECL)
+            continue;
 
-        if (stmt->type == NODE_FUNC_DECL) {
-            declare_function_signature(ctx, stmt);
-            validate_source_entry_signature(ctx, stmt);
-        }
+        semantic_select_source_module(ctx, stmt->span.file_id);
+        declare_function_signature(ctx, stmt);
+        validate_source_entry_signature(ctx, stmt);
     }
 
-    /*
-     * Pass 4:
-     * Check function bodies and other top-level statements.
-     */
+    /* Pass 4: check bodies and runtime-bearing top-level syntax in source order. */
     for (int i = 0; i < stmts->count; i++) {
         Node *stmt = stmts->items[i];
-
-        if (stmt->type == NODE_STRUCT_DECL || stmt->type == NODE_ENUM_DECL) {
+        if (stmt->type == NODE_MODULE_DECL || stmt->type == NODE_IMPORT_DECL ||
+            stmt->type == NODE_STRUCT_DECL || stmt->type == NODE_ENUM_DECL) {
             continue;
         }
+
+        semantic_select_source_module(ctx, stmt->span.file_id);
 
         if (stmt->type == NODE_FUNC_DECL) {
             check_function_body(ctx, stmt);
@@ -9173,6 +9706,9 @@ static void check_program(SemanticContext *ctx, Node *node)
 
         check_node(ctx, stmt);
     }
+
+    ctx->current_module = ctx->root_module;
+    ctx->current_scope = ctx->root_module->scope;
 }
 
 static void check_if_statement(SemanticContext *ctx, Node *node) {
@@ -10231,7 +10767,8 @@ static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value
 
 static int repr_c_enum_backing_type_syntax_supported(const Type *type)
 {
-    if (!type || type->kind != TYPE_NAMED)
+    if (!type || type->kind != TYPE_NAMED ||
+        type->named_module.length != 0)
         return 0;
 
     StringView name = type->named_name;
@@ -10819,13 +11356,52 @@ void semantic_check(
     ctx->type_void = new_type(ctx, TYPE_VOID);
     ctx->type_null = new_type(ctx, TYPE_NULL);
 
-    ctx->current_scope = scope_new(ctx, NULL);
+    /*
+     * Builtins live in a parent scope shared by every source module. Module
+     * namespaces themselves are siblings, so declarations never leak merely
+     * because their physical files participate in the same compilation unit.
+     */
+    ctx->builtin_scope = scope_new(ctx, NULL);
+    ctx->current_scope = ctx->builtin_scope;
+    ctx->modules = NULL;
+    ctx->root_module = NULL;
+    ctx->current_module = NULL;
+    ctx->source_modules = NULL;
+    ctx->source_module_count = 0;
+    ctx->current_source_id = SOURCE_FILE_ID_INVALID;
     ctx->decl_infos = NULL;
     ctx->expr_infos = NULL;
 
     register_builtin_symbols(ctx);
 
-    check_node(ctx,  program);
+    ctx->root_module = semantic_create_module(ctx, string_view_empty(), 1);
+    ctx->current_module = ctx->root_module;
+    ctx->current_scope = ctx->root_module->scope;
+
+    if (sources->count > 0) {
+        ctx->source_modules = arena_alloc(
+            ctx->arena,
+            sources->count * sizeof(*ctx->source_modules)
+        );
+        memset(
+            ctx->source_modules,
+            0,
+            sources->count * sizeof(*ctx->source_modules)
+        );
+
+        size_t source_index = 0;
+        for (const SourceFile *source = sources->first;
+             source;
+             source = source->next) {
+            assert(source_index < sources->count);
+            ctx->source_modules[source_index].source_id = source->id;
+            ctx->source_modules[source_index].module = ctx->root_module;
+            source_index++;
+        }
+        ctx->source_module_count = source_index;
+    }
+
+    check_node(ctx, program);
 }
 
 SemDeclInfo *semantic_get_decl_info(SemanticContext *ctx, Node *node) {

@@ -63,7 +63,9 @@ typedef enum {
     NODE_FIELD,
     NODE_INDEX,
 
-    NODE_PROGRAM,      // the whole file: a list of statements
+    NODE_PROGRAM,      // the whole compilation unit: a list of statements
+    NODE_MODULE_DECL,  // top-level `module name;` file metadata
+    NODE_IMPORT_DECL,  // top-level `import name;` file metadata
 
     NODE_VAR_DECL,
     NODE_VAR_DECL_GROUP,
@@ -211,6 +213,14 @@ struct Node {
         } program;
 
         struct {
+            StringView name;
+        } module_decl;
+
+        struct {
+            StringView name;
+        } import_decl;
+
+        struct {
             Type *var_type;
             StringView name;
             Node *initializer;   // NULL if none
@@ -232,6 +242,7 @@ struct Node {
         } struct_field_decl;
 
         struct {
+            StringView module_name; // empty for unqualified construction
             StringView name;
             NodeList fields;   // list of NODE_FIELD_INIT
         } struct_init;
@@ -406,6 +417,8 @@ Node *ast_new_field(Arena *arena, Node *object, const char *name, int length, So
 Node *ast_new_index(Arena *arena,Node *object, Node *index, SourceSpan span);
 Node *ast_new_error(Arena *arena, Token token);
 Node *ast_new_program(Arena *arena, SourceSpan span);
+Node *ast_new_module_decl(Arena *arena, const char *name, int length, SourceSpan span);
+Node *ast_new_import_decl(Arena *arena, const char *name, int length, SourceSpan span);
 Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, SourceSpan span);
 Node *ast_new_var_decl_group(Arena *arena, SourceSpan span);
 Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, SourceSpan span);

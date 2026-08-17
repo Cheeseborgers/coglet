@@ -1,0 +1,17 @@
+import math;
+
+main::() -> i32 {
+    if math.main() != 99
+        return 2;
+
+    pair: math.Pair = math.Pair { x = 19, y = 20 };
+    made := math.make_pair(pair.x, pair.y);
+
+    switch math.Mode.One {
+        case math.Mode.Zero:
+            return 1;
+        case math.Mode.One: {}
+    }
+
+    return math.sum_pair(made) + 3;
+}

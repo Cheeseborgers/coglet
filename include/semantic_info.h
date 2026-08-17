@@ -261,6 +261,9 @@ typedef struct SemDeclInfo {
     int has_constant_value;
     ConstValue constant_value;
 
+    /* True only for the validated root-namespace `main::() -> i32`. */
+    int is_executable_entry;
+
     struct SemDeclInfo *next;
 } SemDeclInfo;
 

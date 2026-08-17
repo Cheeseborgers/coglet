@@ -1,0 +1,1 @@
+uses_math_without_import::() -> i32 { return math.sum_pair(math.Pair { x = 3, y = 4 }); }

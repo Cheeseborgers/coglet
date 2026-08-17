@@ -1,0 +1,4 @@
+module app;
+import math;
+value: math.Pair = math.Pair { x = 1, y = 2 };
+run::() -> i32 { return math.add(value.x, value.y); }

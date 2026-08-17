@@ -1,0 +1,2 @@
+module duplicate;
+Thing::struct { x: i32; }

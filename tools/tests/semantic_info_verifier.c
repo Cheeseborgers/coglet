@@ -76,6 +76,8 @@ static const char *node_type_name(NodeType type)
         case NODE_FIELD:             return "field";
         case NODE_INDEX:             return "index";
         case NODE_PROGRAM:           return "program";
+        case NODE_MODULE_DECL:       return "module_decl";
+        case NODE_IMPORT_DECL:       return "import_decl";
         case NODE_VAR_DECL:          return "var_decl";
         case NODE_VAR_DECL_GROUP:    return "var_decl_group";
         case NODE_FUNC_DECL:         return "func_decl";
@@ -447,6 +449,11 @@ static void walk_node(ExpressionWalker *walker, Node *node)
                 walker,
                 &node->as.program.statements
             );
+            break;
+
+        case NODE_MODULE_DECL:
+        case NODE_IMPORT_DECL:
+            /* Compile-time namespace metadata has no semantic expression info. */
             break;
 
         case NODE_BLOCK:
@@ -1573,7 +1580,8 @@ static void verify_expression_info(Verifier *verifier, Node *expression) {
 
 static SemCScalarKind expected_c_scalar_kind(const Type *source_type)
 {
-    if (!source_type || source_type->kind != TYPE_NAMED)
+    if (!source_type || source_type->kind != TYPE_NAMED ||
+        source_type->named_module.length != 0)
         return SEM_C_SCALAR_NONE;
 
 #define EXPECT_C_SCALAR(text, kind) \

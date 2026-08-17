@@ -1,0 +1,13 @@
+module math;
+
+make_pair::(x: i32, y: i32) -> Pair {
+    return Pair { x = x, y = y };
+}
+
+sum_pair::(pair: Pair) -> i32 {
+    return pair.x + pair.y;
+}
+
+main::() -> i32 {
+    return 99;
+}

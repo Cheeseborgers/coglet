@@ -1,0 +1,3 @@
+import left;
+import right;
+main::() -> i32 { return left.value() + right.value(); }

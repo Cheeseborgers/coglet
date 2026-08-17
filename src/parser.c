@@ -734,6 +734,30 @@ static Node *parse_postfix_from(Parser *p, Node *expr)
         // field access: a.b
         if (match(p, TOK_DOT)) {
             expr = finish_field(p, expr);
+
+            /*
+             * Qualified nominal construction:
+             *
+             *     math.Pair { x = 1, y = 2 }
+             *
+             * Keep ordinary runtime field access unchanged. Only the exact
+             * module-name/type-name shape is recognized as a constructor.
+             */
+            if (check(p, TOK_LBRACE) &&
+                !p->suppress_struct_init &&
+                expr && expr->type == NODE_FIELD &&
+                expr->as.field.object &&
+                expr->as.field.object->type == NODE_IDENT) {
+                Token type_name = {0};
+                type_name.start = expr->as.field.name.data;
+                type_name.length = (int)expr->as.field.name.length;
+                type_name.span = expr->span;
+
+                Node *init = finish_struct_init(p, type_name);
+                if (init && init->type == NODE_STRUCT_INIT)
+                    init->as.struct_init.module_name = expr->as.field.object->as.ident;
+                expr = init;
+            }
             continue;
         }
 
@@ -1106,19 +1130,28 @@ static Type *parse_type(Parser *p)
         base->kind = TYPE_VOID;
     } else if (match(p, TOK_IDENT)) {
         /*
-         * Parsed named type reference.
+         * Parsed named type reference. A single module qualifier is allowed:
          *
-         * Examples:
          *     Point
-         *     Color
-         *     TokenKind
-         *
-         * Semantic analysis later resolves this to TYPE_STRUCT,
-         * TYPE_ENUM, or future named type kinds.
+         *     math.Point
          */
+        Token first = p->previous;
         base->kind = TYPE_NAMED;
-        base->named_name.data = p->previous.start;
-        base->named_name.length = p->previous.length;
+        base->named_module = string_view_empty();
+
+        if (match(p, TOK_DOT)) {
+            base->named_module.data = first.start;
+            base->named_module.length = (size_t)first.length;
+            if (!consume(p, TOK_IDENT)) {
+                base->named_name = string_view_empty();
+                return base;
+            }
+            base->named_name.data = p->previous.start;
+            base->named_name.length = (size_t)p->previous.length;
+        } else {
+            base->named_name.data = first.start;
+            base->named_name.length = (size_t)first.length;
+        }
     } else {
         error_at(p, &p->current, "expected type");
 
@@ -2919,7 +2952,42 @@ Node *parse_program(Parser *p) {
     Node *program = ast_new_program(p->arena, p->current.span);
 
     while (!check(p, TOK_EOF)) {
-        Node *decl = parse_statement(p);
+        Node *decl = NULL;
+
+        /*
+         * `module` and `import` remain ordinary identifiers outside this
+         * top-level directive shape. This avoids consuming useful names as
+         * global lexer keywords.
+         */
+        if (check(p, TOK_IDENT) &&
+            (token_text_equals(p->current, "module") ||
+             token_text_equals(p->current, "import")) &&
+            peek_next_token_type(p) == TOK_IDENT) {
+            Token keyword = p->current;
+            int is_module = token_text_equals(keyword, "module");
+            advance(p);
+
+            if (!consume(p, TOK_IDENT)) {
+                decl = ast_new_error(p->arena, p->current);
+            } else {
+                Token name = p->previous;
+                if (!consume(p, TOK_SEMICOLON)) {
+                    synchronize(p);
+                    decl = ast_new_error(p->arena, p->current);
+                } else if (is_module) {
+                    decl = ast_new_module_decl(
+                        p->arena, name.start, name.length,
+                        source_span_join(keyword.span, name.span));
+                } else {
+                    decl = ast_new_import_decl(
+                        p->arena, name.start, name.length,
+                        source_span_join(keyword.span, name.span));
+                }
+            }
+        } else {
+            decl = parse_statement(p);
+        }
+
         nodelist_push(p->arena, &program->as.program.statements, decl);
     }
 

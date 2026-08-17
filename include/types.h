@@ -109,6 +109,7 @@ struct Type {
     int pointer_is_volatile;
     int array_size; /* -1 if unspecified */
 
+    StringView named_module; // TYPE_NAMED optional module qualifier
     StringView named_name;   // TYPE_NAMED
 
     StringView struct_name;  // TYPE_STRUCT

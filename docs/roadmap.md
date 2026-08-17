@@ -453,16 +453,17 @@ encoding, and C-interoperability rules are clearer.
 
 ## Later Frontend Work
 
-Source provenance and the compilation driver are now multi-file-capable: one
-command can parse multiple physical `.cog` inputs into a single ordered program,
-one semantic/global namespace, and one frozen CogIR module. Tokens/AST nodes
-retain per-file `SourceFileId` + byte spans, parser diagnostics aggregate across
-inputs, and LLVM debug metadata can name each original source file. This is a
-single compilation unit, not yet a module/package system.
+Source provenance and the compilation driver are multi-file-capable, and the
+initial module/import namespace layer is now present. Files may declare a named
+module, multiple files may contribute to one module namespace, and file-scoped
+imports permit qualified function/nominal-type access while preserving one frozen
+CogIR compilation unit. Imports do not perform file discovery or runtime ordering;
+all physical inputs remain explicit and top-level runtime execution remains in
+input order.
 
-- imports and modules
 - declaration visibility / exports across modules
-- package and visibility rules
+- module search paths/file discovery and package naming
+- stable declaration identity for future separate compilation
 - stable declaration identity across files
 - diagnostic notes/secondary spans and richer recovery
 - a standard library design
@@ -559,4 +560,4 @@ provide executable feedback without defining Coglet semantics by C behavior.
 
 ## Self-Hosting Direction
 
-Self-hosting remains a long-term objective rather than the next milestone. The language still needs runtime and file I/O facilities, allocation support, diagnostics suitable for larger programs, and some form of multi-file compilation before self-hosting becomes practical.
+Self-hosting remains a long-term objective rather than the next milestone. The language still needs runtime and file I/O facilities, allocation support, diagnostics suitable for larger programs, and a stable module/standard-library discovery boundary before self-hosting becomes practical.

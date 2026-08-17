@@ -96,6 +96,26 @@ typedef struct Scope {
     struct Scope *parent;
 } Scope;
 
+typedef struct SemanticModule SemanticModule;
+
+typedef struct SemanticSourceModule {
+    SourceFileId source_id;
+    SemanticModule *module;
+    SemanticModule **imports;
+    size_t import_count;
+    size_t import_capacity;
+    Node *module_decl;
+    int saw_import_directive;
+    int saw_non_directive;
+} SemanticSourceModule;
+
+struct SemanticModule {
+    StringView name; /* empty for the root namespace */
+    Scope *scope;
+    int is_root;
+    SemanticModule *next;
+};
+
 typedef struct {
     /*
      * Identifies the function whose local-variable slots are stored
@@ -123,6 +143,15 @@ typedef struct {
     int error_count;
 
     Scope *current_scope;
+
+    /* Frontend-only module/import state. Modules are erased before CogIR. */
+    Scope *builtin_scope;
+    SemanticModule *modules;
+    SemanticModule *root_module;
+    SemanticModule *current_module;
+    SemanticSourceModule *source_modules;
+    size_t source_module_count;
+    SourceFileId current_source_id;
 
     int loop_depth;
     LoopFlowContext *current_loop;

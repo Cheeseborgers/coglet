@@ -4,6 +4,41 @@ This document records intended surface syntax and current semantic restrictions 
 
 It is not yet a complete formal grammar.
 
+## Modules and Imports
+
+The initial module layer uses top-level directives with one identifier component:
+
+```ebnf
+module_declaration = "module" identifier ";";
+import_declaration = "import" identifier ";";
+qualified_name = identifier "." identifier;
+```
+
+A physical file may contain at most one `module` declaration, which must precede
+imports and ordinary top-level declarations/statements. Imports are file-scoped
+and must precede ordinary top-level declarations/statements. Files without a
+module declaration belong to the root namespace. Multiple files may contribute
+to one named module.
+
+```c
+module math;
+Pair::struct { x: i32; y: i32; }
+add::(a: i32, b: i32) -> i32 { return a + b; }
+```
+
+```c
+import math;
+main::() -> i32 {
+    pair: math.Pair = math.Pair { x = 20, y = 22 };
+    return math.add(pair.x, pair.y);
+}
+```
+
+Qualified enum members use `module.Enum.Member`. Imports currently expose
+functions and nominal types through qualification; globals/constants, exports,
+packages, dotted module names, and automatic file discovery are deferred. Imports
+do not imply runtime dependency ordering and import cycles are allowed.
+
 ## Type Syntax
 
 A simplified type grammar is:
@@ -40,6 +75,8 @@ value: readonly i32;
 register: volatile i32;
 values: readonly i32[4];
 ```
+
+Named types may be module-qualified as `math.Pair` when `math` is visible through a file import (or is the current module).
 
 Examples of ordinary types:
 

@@ -257,6 +257,13 @@ nominal type/function resolution, cross-file duplicate diagnostics, parser-error
 source provenance, and LLVM `-g` metadata containing both physical source files.
 The multi-file tests use `-L multi-file` labels where applicable.
 
+Module/import coverage builds named modules from multiple physical files and
+checks qualified functions, structs, and enum members through host-C and LLVM.
+It also covers same-name isolation between modules, file-scoped imports, unknown
+and duplicate namespace diagnostics, permitted compile-time import cycles, and
+root-only executable entry selection when a named module also declares `main`.
+Use `-L module` or `-L import` for the focused namespace slices.
+
 Run only these tests with:
 
 ```bash

@@ -507,18 +507,6 @@ static int define_nominal_types(CogIrLowerContext *ctx)
     return 1;
 }
 
-static int source_function_is_top_level(const CogIrLowerContext *ctx, const Node *function)
-{
-    const Node *program = ctx && ctx->frontend ? ctx->frontend->program : NULL;
-    if (!program || program->type != NODE_PROGRAM || !function)
-        return 0;
-
-    for (int i = 0; i < program->as.program.statements.count; ++i)
-        if (program->as.program.statements.items[i] == function)
-            return 1;
-    return 0;
-}
-
 static int lower_function_declaration(CogIrLowerContext *ctx, SemDeclInfo *info)
 {
     Node *node = info->node; CogIrTypeId function_type = cog_ir_lower_type(ctx, info->type);
@@ -552,8 +540,7 @@ static int lower_function_declaration(CogIrLowerContext *ctx, SemDeclInfo *info)
     CogIrLowerDeclBinding *binding = get_decl_binding_mut(ctx, info->id);
     binding->kind = COG_IR_LOWER_DECL_FUNCTION; binding->type = function_type; binding->as.function = function;
 
-    if (source_function_is_top_level(ctx, node) &&
-        string_view_equals_cstr(node->as.func_decl.name, "main") &&
+    if (info->is_executable_entry &&
         !cog_ir_set_entry_function(ctx->module, function)) {
         lower_error(ctx, node->span, "failed to record CogIR source entry function");
         return 0;
@@ -980,6 +967,32 @@ static CogIrLowerDeclBinding *binding_for_expr_ident(CogIrLowerContext *ctx, Nod
     if (!expr || !expr->symbol || expr->symbol->declaration_id == INVALID_SEM_DECL_ID)
         return NULL;
     return get_decl_binding_mut(ctx, expr->symbol->declaration_id);
+}
+
+static CogIrValueId emit_function_reference(
+    ExecLowerState *state,
+    const CogIrLowerDeclBinding *binding,
+    SourceSpan span
+) {
+    if (!binding || binding->kind != COG_IR_LOWER_DECL_FUNCTION)
+        return COG_IR_VALUE_INVALID;
+    CogIrInstruction instruction = {
+        .op = COG_IR_OP_FUNCTION_REF,
+        .result_type = binding->type,
+        .span = span,
+        .as.function_ref = { .function = binding->as.function },
+    };
+    CogIrValueId value = emit_instruction_value(state, instruction);
+    if (value == COG_IR_VALUE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrAbiTypeId abi_type = function_value_abi_type(
+        state, binding->as.function, span);
+    if (abi_type != COG_IR_ABI_TYPE_INVALID &&
+        !annotate_value_abi(state, value, abi_type, span)) {
+        return COG_IR_VALUE_INVALID;
+    }
+    return value;
 }
 
 static CogIrValueId lower_expression(ExecLowerState *state, Node *node);
@@ -2393,6 +2406,16 @@ static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
         case NODE_FIELD:
         case NODE_INDEX: {
             SemExprInfo *expr = semantic_get_expr_info(sem, node);
+            if (node->type == NODE_FIELD && expr && expr->symbol &&
+                expr->symbol->kind == SYMBOL_FUNCTION) {
+                CogIrLowerDeclBinding *binding = binding_for_expr_ident(state->lower, node);
+                if (!binding || binding->kind != COG_IR_LOWER_DECL_FUNCTION) {
+                    lower_error(state->lower, node->span,
+                                "qualified function has no CogIR declaration binding");
+                    return COG_IR_VALUE_INVALID;
+                }
+                return emit_function_reference(state, binding, node->span);
+            }
             if (node->type == NODE_FIELD && expr && expr->symbol && expr->symbol->kind == SYMBOL_TYPE &&
                 expr->type && expr->type->kind == TYPE_ENUM) {
                 int member = semantic_enum_member_index(expr->type, node->as.field.name);
@@ -2438,23 +2461,8 @@ static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
                 lower_error(state->lower, node->span, "unbound identifier during CogIR executable lowering");
                 return COG_IR_VALUE_INVALID;
             }
-            if (binding->kind == COG_IR_LOWER_DECL_FUNCTION) {
-                CogIrInstruction instruction = {
-                    .op = COG_IR_OP_FUNCTION_REF,
-                    .result_type = binding->type,
-                    .span = node->span,
-                    .as.function_ref = { .function = binding->as.function },
-                };
-                CogIrValueId value = emit_instruction_value(state, instruction);
-                if (value == COG_IR_VALUE_INVALID)
-                    return COG_IR_VALUE_INVALID;
-                CogIrAbiTypeId abi_type = function_value_abi_type(
-                    state, binding->as.function, node->span);
-                if (abi_type != COG_IR_ABI_TYPE_INVALID &&
-                    !annotate_value_abi(state, value, abi_type, node->span))
-                    return COG_IR_VALUE_INVALID;
-                return value;
-            }
+            if (binding->kind == COG_IR_LOWER_DECL_FUNCTION)
+                return emit_function_reference(state, binding, node->span);
             if (binding->kind == COG_IR_LOWER_DECL_CONSTANT || binding->kind == COG_IR_LOWER_DECL_ENUM_MEMBER) {
                 CogIrConstId constant = binding->kind == COG_IR_LOWER_DECL_CONSTANT
                     ? binding->as.constant : binding->as.enum_member.constant;

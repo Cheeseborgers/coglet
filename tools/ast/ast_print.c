@@ -417,6 +417,10 @@ static void print_type(Type *t)
             break;
 
         case TYPE_NAMED:
+            if (t->named_module.length != 0) {
+                print_string_view(t->named_module);
+                printf(".");
+            }
             print_string_view(t->named_name);
             break;
 
@@ -643,6 +647,18 @@ static void print_node(Node *node)
 
             break;
 
+        case NODE_MODULE_DECL:
+            printf("(module ");
+            print_string_view(node->as.module_decl.name);
+            printf(")");
+            break;
+
+        case NODE_IMPORT_DECL:
+            printf("(import ");
+            print_string_view(node->as.import_decl.name);
+            printf(")");
+            break;
+
         case NODE_VAR_DECL:
             printf("(var_decl ");
 
@@ -703,6 +719,10 @@ static void print_node(Node *node)
 
         case NODE_STRUCT_INIT:
             printf("(struct_init ");
+            if (node->as.struct_init.module_name.length != 0) {
+                print_string_view(node->as.struct_init.module_name);
+                printf(".");
+            }
             print_string_view(node->as.struct_init.name);
 
             for (int i = 0;
@@ -1120,6 +1140,18 @@ static void print_node_pretty(Node *node, int depth)
                 print_node_pretty(node->as.program.statements.items[i], depth + 1);
             break;
 
+        case NODE_MODULE_DECL:
+            indent(depth);
+            printf("module ");
+            print_string_view_ln(node->as.module_decl.name);
+            break;
+
+        case NODE_IMPORT_DECL:
+            indent(depth);
+            printf("import ");
+            print_string_view_ln(node->as.import_decl.name);
+            break;
+
         case NODE_VAR_DECL:
             indent(depth);
 
@@ -1190,6 +1222,10 @@ static void print_node_pretty(Node *node, int depth)
             indent(depth);
 
             printf("struct_init ");
+            if (node->as.struct_init.module_name.length != 0) {
+                print_string_view(node->as.struct_init.module_name);
+                printf(".");
+            }
             print_string_view_ln(node->as.struct_init.name);
 
             for (int i = 0; i < node->as.struct_init.fields.count; i++)

@@ -217,6 +217,60 @@ add_test(
 set_tests_properties(driver_multifile_parser_provenance
         PROPERTIES LABELS "driver;source;parser;diagnostic;multi-file;invalid")
 
+set(COGLET_MODULE_MATH_TYPES "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/math_types.cog")
+set(COGLET_MODULE_MATH_OPS "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/math_ops.cog")
+set(COGLET_MODULE_MAIN "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/main.cog")
+
+add_test(
+        NAME driver_modules_unknown_import
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/unknown_import.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=unknown module 'missing'"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_modules_unknown_import
+        PROPERTIES LABELS "driver;semantic;module;import;multi-file;invalid")
+
+add_test(
+        NAME driver_modules_file_scoped_import
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_MODULE_MATH_TYPES}|${COGLET_MODULE_MATH_OPS}|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/file_import_yes.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/file_import_no.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=module 'math' is not imported in this file"
+        "-DEXPECT_PATH_SUBSTRING=file_import_no.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_modules_file_scoped_import
+        PROPERTIES LABELS "driver;semantic;module;import;multi-file;invalid")
+
+add_test(
+        NAME driver_modules_duplicate_import
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_MODULE_MATH_TYPES}|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/duplicate_import.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=duplicate import of module 'math'"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_modules_duplicate_import
+        PROPERTIES LABELS "driver;semantic;module;import;multi-file;invalid")
+
+add_test(
+        NAME driver_modules_duplicate_same_namespace
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/duplicate_a.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/duplicate_b.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=duplicate declaration 'Thing'"
+        "-DEXPECT_PATH_SUBSTRING=duplicate_b.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_modules_duplicate_same_namespace
+        PROPERTIES LABELS "driver;semantic;module;namespace;multi-file;invalid")
+
 # --- CogIR core builder/verifier/dump regression. ---
 add_executable(check_cog_ir_core tools/tests/check_cog_ir_core.c)
 target_link_libraries(check_cog_ir_core PRIVATE compiler_core)
@@ -893,6 +947,45 @@ add_test(
 )
 set_tests_properties(backend_multifile_host_c_module_init_order
         PROPERTIES LABELS "backend;backend.c;source;multi-file;module-init")
+
+add_test(
+        NAME backend_modules_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_MODULE_MAIN}|${COGLET_MODULE_MATH_OPS}|${COGLET_MODULE_MATH_TYPES}"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_host_c
+        -DEXPECT_EXIT=42
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;module;import;multi-file;entrypoint")
+
+add_test(
+        NAME backend_modules_namespace_isolation_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/namespace_a.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/namespace_b.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/namespace_main.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_namespace_isolation_host_c
+        -DEXPECT_EXIT=30
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_namespace_isolation_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;module;namespace;multi-file")
+
+add_test(
+        NAME backend_modules_import_cycle_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_a.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_b.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_main.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_import_cycle_host_c
+        -DEXPECT_EXIT=42
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_import_cycle_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;module;import;cycle;multi-file")
 add_host_c_failure_test(
         backend_rejects_obsolete_c_int_entry obsolete_c_int_entry.cog 1
         "executable entry point must have signature 'main::() -> i32'"
@@ -1333,6 +1426,34 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_multifile_debug_sources
         PROPERTIES LABELS "backend;backend.llvm;source;multi-file;debug;stage9")
+
+    add_test(
+        NAME backend_llvm_modules_native
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_MODULE_MATH_OPS}|${COGLET_MODULE_MAIN}|${COGLET_MODULE_MATH_TYPES}"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_native
+        -DEXPECT_EXIT=42
+        -DBACKEND=llvm
+        -DOPT_LEVEL=2
+        -DDEBUG_INFO=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_native
+        PROPERTIES LABELS "backend;backend.llvm;semantic;module;import;multi-file;codegen;debug;optimization;entrypoint")
+
+    add_test(
+        NAME backend_llvm_modules_import_cycle
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_b.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_a.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_main.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_import_cycle
+        -DEXPECT_EXIT=42
+        -DBACKEND=llvm
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_import_cycle
+        PROPERTIES LABELS "backend;backend.llvm;semantic;module;import;cycle;multi-file;codegen")
 
     function(add_llvm_stage7_native_test test_name fixture expected_exit)
         add_test(

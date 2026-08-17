@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/modules/self_import.cog:2:1: error: module 'local' cannot import itself
+import local;
+^~~~~~~~~~~~
+1 semantic error generated.

@@ -74,10 +74,12 @@ control-flow legality checking. Those are frontend responsibilities.
 ## Compilation unit and module initialization
 
 A `CogIrModule` represents one Coglet compilation unit, not necessarily exactly
-one physical source file. The driver can now parse multiple physical inputs into
-one frontend program and CogIR copies every registered source file into its own
-frozen source table. Backends therefore resolve diagnostics/debug locations for
-all input files without frontend lifetime dependencies.
+one physical source file or one source-level namespace. The frontend may divide
+physical files into root/named module namespaces and resolve file-scoped imports,
+but those namespace/import relationships are compile-time lookup information and
+are erased during lowering. CogIR copies every registered source file into its
+frozen source table and retains declaration identities/types/CFGs only. Backends
+therefore do not perform module lookup or import resolution.
 
 Coglet currently permits runtime-bearing program-scope code, including global
 initializers that call functions, top-level expression/mutation statements, and
@@ -120,11 +122,12 @@ A module may carry an optional resolved source executable entry:
 module.entry_function : function
 ```
 
-For the current language this is set only by lowering a source-top-level declaration
-named `main`. Source semantics require that declaration to be an ordinary Coglet
-`main::() -> i32`; the source spelling is validated before C aliases are
-canonicalized. The IR stores declaration identity, not a backend name lookup or a
-C-specific spelling marker. Nested non-capturing functions are still flattened
+For the current language this is set only from the semantic declaration identity
+of root-namespace `main::() -> i32`. A `main` declared inside a named source module
+is an ordinary function and is never an executable entry. The source signature is
+validated before C aliases are canonicalized. The IR stores declaration identity,
+not a backend name/module lookup or a C-specific spelling marker. Nested
+non-capturing functions are still flattened
 into the module function table, but a nested function named `main` is therefore
 never mistaken for the process entry after frontend destruction. The verifier
 requires the resolved entry to be an internal Coglet `() -> i32` definition.
@@ -153,9 +156,10 @@ Source `return` at program scope remains a semantic error.
 
 For an executable, the runtime/backend contract is that module initialization
 runs exactly once before the Coglet program entry point. A trap during module
-initialization prevents entry execution. Future multi-module/import work will
-specify dependency ordering between separate module initializers; CogIR v1 only
-requires deterministic ordering inside one compilation unit.
+initialization prevents entry execution. The current module/import layer does not create separate runtime modules: all
+runtime-bearing top-level items remain in one deterministic input-order initializer.
+A future separate-compilation/runtime-module design would require a new explicit
+dependency-ordering contract rather than inferring one from imports.
 
 The host-C, LLVM, and future native backends must all honor this same initializer
 CFG. Startup integration is a backend/link-driver concern; initialization

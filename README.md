@@ -135,6 +135,34 @@ The generated public version header exposes the same major/minor/patch/string
 metadata for future compatibility and deprecation diagnostics. Version tracking
 does not yet imply a source compatibility or deprecation policy.
 
+### Modules and Imports
+
+Multiple source files still compile into one CogIR compilation unit, but the
+frontend now supports named semantic namespaces:
+
+```c
+// math.cog
+module math;
+add::(a, b: i32) -> i32 { return a + b; }
+```
+
+```c
+// main.cog
+import math;
+main::() -> i32 { return math.add(20, 22); }
+```
+
+Builds remain explicit: `coglet math.cog main.cog -o program`. An import does
+not search for or load a file. Files without `module name;` belong to the root
+namespace; multiple files may contribute to the same named module. Imports are
+file-scoped and permit qualified functions and nominal types, including
+`math.Pair`, `math.Pair { ... }`, and `math.Mode.Red`. Same-module references
+remain unqualified. Import cycles are allowed because imports currently affect
+compile-time visibility only; top-level runtime initialization remains in input
+order. Only root-namespace `main::() -> i32` is the executable entry. Export/private
+visibility, package naming/search paths, automatic module discovery, and
+module-qualified globals/constants remain future work.
+
 For the current executable slice:
 
 ```sh
@@ -807,7 +835,7 @@ object storage. Ordinary Coglet `bool*` is intentionally not interchangeable wit
 Near-term compiler work is backend-focused:
 
 1. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
-2. Build imports/modules and declaration visibility on top of the single-compilation-unit multi-file driver, then define the runtime/standard-library boundary needed for self-hosting.
+2. Extend the initial module/import namespace layer with declaration visibility/exports and module file discovery, then define the runtime/standard-library boundary needed for self-hosting.
 3. Continue improving diagnostics, tests, and documentation.
 
 ## License

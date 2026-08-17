@@ -1,0 +1,11 @@
+module math;
+
+Mode::enum(u8) {
+    Zero,
+    One,
+}
+
+Pair::struct {
+    x: i32;
+    y: i32;
+}

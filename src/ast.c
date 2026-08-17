@@ -174,6 +174,20 @@ Node *ast_new_program(Arena *arena, SourceSpan span) {
     return node;
 }
 
+Node *ast_new_module_decl(Arena *arena, const char *name, int length, SourceSpan span) {
+    Node *node = new_node(arena, NODE_MODULE_DECL, span);
+    node->as.module_decl.name.data = name;
+    node->as.module_decl.name.length = (size_t)length;
+    return node;
+}
+
+Node *ast_new_import_decl(Arena *arena, const char *name, int length, SourceSpan span) {
+    Node *node = new_node(arena, NODE_IMPORT_DECL, span);
+    node->as.import_decl.name.data = name;
+    node->as.import_decl.name.length = (size_t)length;
+    return node;
+}
+
 Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, Node *initializer, SourceSpan span) {
     Node *node = new_node(arena, NODE_VAR_DECL, span);
     node->as.var_decl.var_type    = type;
@@ -301,6 +315,7 @@ Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, Sourc
 
 Node *ast_new_struct_init(Arena *arena, const char *name, int name_length, SourceSpan span) {
     Node *node = new_node(arena, NODE_STRUCT_INIT, span);
+    node->as.struct_init.module_name = string_view_empty();
     node->as.struct_init.name.data   = name;
     node->as.struct_init.name.length = name_length;
 
@@ -502,6 +517,14 @@ Node *ast_clone(Arena *arena, const Node *node)
             }
             break;
 
+        case NODE_MODULE_DECL:
+            clone->as.module_decl.name = node->as.module_decl.name;
+            break;
+
+        case NODE_IMPORT_DECL:
+            clone->as.import_decl.name = node->as.import_decl.name;
+            break;
+
         case NODE_VAR_DECL:
             clone->as.var_decl.var_type    = node->as.var_decl.var_type;
             clone->as.var_decl.name.data   = node->as.var_decl.name.data;
@@ -593,6 +616,7 @@ Node *ast_clone(Arena *arena, const Node *node)
             break;
 
         case NODE_STRUCT_INIT:
+            clone->as.struct_init.module_name = node->as.struct_init.module_name;
             clone->as.struct_init.name.data   = node->as.struct_init.name.data;
             clone->as.struct_init.name.length = node->as.struct_init.name.length;
 

@@ -11,7 +11,7 @@ Its current responsibilities are:
 4. initialize one compilation-level `SourceManager` and register every input;
 5. parse each physical file independently while accumulating its declarations into one `NODE_PROGRAM` compilation-unit root;
 6. aggregate parser diagnostics across all inputs and report them with their original source provenance;
-7. run semantic analysis once over the combined program/global namespace;
+7. build root/named module namespaces and file-scoped import visibility, then run semantic analysis once over the combined program;
 8. report collected semantic diagnostics and the semantic error summary;
 9. retain all frontend state for the caller until explicit destruction.
 
@@ -27,16 +27,21 @@ The command-line driver accepts multiple physical source files:
 coglet main.cog math.cog util.cog -o program
 ```
 
-They form one compilation unit and one global semantic namespace. Named types
-and function signatures are registered across the complete combined program, so
-functions and nominal types may be referenced across file boundaries regardless
-of input order. Duplicate top-level declarations across files are diagnosed in
-the file containing the conflicting declaration.
+They form one compilation unit and one frozen CogIR module. Files without an
+explicit module declaration contribute to the root namespace. A file may instead
+begin with `module name;`; multiple files with the same module name contribute to
+the same semantic namespace. File-scoped `import name;` directives permit
+qualified access to imported functions and nominal types (`math.add`,
+`math.Pair`, `math.Mode.Red`). Same-module references remain unqualified.
 
-This milestone is deliberately **not** a module system: there are no `import`
-declarations, exports/private visibility, packages, or per-file namespaces.
-Program-scope runtime items are appended in input order and therefore retain the
-existing deterministic CogIR module-initialization ordering across files.
+Imports are compile-time visibility only: they do not load files, create separate
+CogIR modules, or reorder program-scope runtime initialization. Every physical
+source file must still be supplied to the driver, and runtime-bearing top-level
+items retain command-line/source order. Import cycles are therefore permitted in
+this initial layer. Only root-namespace `main::() -> i32` is an executable entry;
+a `main` inside a named module is an ordinary function. Export/private rules,
+module search paths, package names, and module-qualified globals/constants remain
+future work.
 
 
 ## Post-semantic IR boundary

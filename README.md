@@ -221,9 +221,7 @@ main::() -> i32 {
 }
 ```
 
-`std.math` currently exports adaptable hexadecimal floating-point constants `pi`/`tau`, concrete integer helpers
-`abs_i32`/`gcd_u64`, and generic `min<T: ordered>`/`max<T: ordered>` functions whose operations are
-validated for each concrete specialization. `pi` and `tau` remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, installation layout, and stdlib testing workflow.
+`std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_i32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; and an initial floating game/application math slice with `clamp01`, `lerp`, `inverse_lerp`, `remap`, `smoothstep`, `to_radians`, and `to_degrees`. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow.
 
 For the current executable slice:
 

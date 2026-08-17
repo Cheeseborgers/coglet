@@ -1,7 +1,16 @@
 module std.math;
 
-export pi :: 0x1.921fb54442d18p+1;
-export tau :: 0x1.921fb54442d18p+2;
+// Adaptable floating-point constants. Context chooses f32 or f64.
+export pi         :: 0x1.921fb54442d18p+1;
+export tau        :: 0x1.921fb54442d18p+2;
+export e          :: 0x1.5bf0a8b145769p+1;
+export half_pi    :: 0x1.921fb54442d18p+0;
+export quarter_pi :: 0x1.921fb54442d18p-1;
+export inv_pi     :: 0x1.45f306dc9c883p-2;
+export inv_tau    :: 0x1.45f306dc9c883p-3;
+export sqrt_2     :: 0x1.6a09e667f3bcdp+0;
+export deg_to_rad :: 0x1.1df46a2529d39p-6;
+export rad_to_deg :: 0x1.ca5dc1a63c1f8p+5;
 
 export abs_i32::(value: i32) -> i32 {
     if value < 0
@@ -22,6 +31,57 @@ export max::<T: ordered>(a: T, b: T) -> T {
         return a;
 
     return b;
+}
+
+// Requires low <= high.
+export clamp::<T: ordered>(value: T, low: T, high: T) -> T {
+    if value < low
+        return low;
+
+    if value > high
+        return high;
+
+    return value;
+}
+
+export clamp01::<T: floating>(value: T) -> T {
+    if value < 0.0
+        return 0.0;
+
+    if value > 1.0
+        return 1.0;
+
+    return value;
+}
+
+// Linear interpolation. t is not clamped, so values outside [0, 1] extrapolate.
+export lerp::<T: floating>(a: T, b: T, t: T) -> T {
+    return a + (b - a) * t;
+}
+
+// Requires a != b.
+export inverse_lerp::<T: floating>(a: T, b: T, value: T) -> T {
+    return (value - a) / (b - a);
+}
+
+// Requires in_min != in_max. The result is not clamped to the output range.
+export remap::<T: floating>(in_min: T, in_max: T, out_min: T, out_max: T, value: T) -> T {
+    t := inverse_lerp(in_min, in_max, value);
+    return lerp(out_min, out_max, t);
+}
+
+// Cubic Hermite interpolation from 0 to 1. Requires edge0 < edge1.
+export smoothstep::<T: floating>(edge0: T, edge1: T, value: T) -> T {
+    t := clamp01((value - edge0) / (edge1 - edge0));
+    return t * t * (3.0 - 2.0 * t);
+}
+
+export to_radians::<T: floating>(degrees: T) -> T {
+    return degrees * deg_to_rad;
+}
+
+export to_degrees::<T: floating>(radians: T) -> T {
+    return radians * rad_to_deg;
 }
 
 export gcd_u64::(a: u64, b: u64) -> u64 {

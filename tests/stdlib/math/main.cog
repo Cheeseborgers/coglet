@@ -11,30 +11,100 @@ main::() -> i32 {
     if std.math.max(10, 20) != 20
         return 4;
     if std.math.min::<u64>(30, 20) != 20
-        return 10;
+        return 5;
     if std.math.max::<i64>(-30, -20) != -20
+        return 6;
+
+    if std.math.clamp(5, 0, 10) != 5
+        return 7;
+    if std.math.clamp(-5, 0, 10) != 0
+        return 8;
+    if std.math.clamp(15, 0, 10) != 10
+        return 9;
+    if std.math.clamp01(-0.5) != 0.0
+        return 10;
+    if std.math.clamp01(1.5) != 1.0
         return 11;
 
+    if std.math.lerp(10.0, 20.0, 0.25) != 12.5
+        return 12;
+    if std.math.lerp(10.0, 20.0, 1.5) != 25.0
+        return 13;
+    if std.math.inverse_lerp(10.0, 20.0, 12.5) != 0.25
+        return 14;
+    if std.math.remap(0.0, 10.0, 0.0, 100.0, 2.5) != 25.0
+        return 15;
+    if std.math.smoothstep(0.0, 1.0, 0.0) != 0.0
+        return 16;
+    if std.math.smoothstep(0.0, 1.0, 0.5) != 0.5
+        return 17;
+    if std.math.smoothstep(0.0, 1.0, 1.0) != 1.0
+        return 18;
+
+    if std.math.to_radians(180.0) != std.math.pi
+        return 19;
+    if std.math.to_degrees(std.math.pi) != 180.0
+        return 20;
+
     if std.math.gcd_u64(84, 30) != 6
-        return 5;
+        return 21;
     if std.math.gcd_u64(0, 42) != 42
-        return 6;
+        return 22;
     if std.math.gcd_u64(42, 0) != 42
-        return 7;
+        return 23;
 
     pi32: f32 = std.math.pi;
     pi64: f64 = std.math.pi;
     tau32: f32 = std.math.tau;
     tau64: f64 = std.math.tau;
+    e64: f64 = std.math.e;
+    half_pi64: f64 = std.math.half_pi;
+    quarter_pi64: f64 = std.math.quarter_pi;
+    inv_pi64: f64 = std.math.inv_pi;
+    inv_tau64: f64 = std.math.inv_tau;
+    sqrt_2_64: f64 = std.math.sqrt_2;
+    deg_to_rad64: f64 = std.math.deg_to_rad;
+    rad_to_deg64: f64 = std.math.rad_to_deg;
+
+    a32: f32 = 10.0;
+    b32: f32 = 20.0;
+    t32: f32 = 0.25;
+    degrees32: f32 = 180.0;
+    zero32: f32 = 0.0;
+    one32: f32 = 1.0;
+    half32: f32 = 0.5;
+
+    if std.math.lerp(a32, b32, t32) != 12.5
+        return 36;
+    if std.math.smoothstep(zero32, one32, half32) != half32
+        return 37;
+    if std.math.to_radians(degrees32) != pi32
+        return 38;
 
     if pi32 < 3.1415 || pi32 > 3.1416
-        return 8;
-    if pi64 < 3.1415 || pi64 > 3.1416
-        return 9;
+        return 24;
+    if pi64 != 0x1.921fb54442d18p+1
+        return 25;
     if tau32 != pi32 * 2.0
-        return 12;
-    if tau64 != pi64 * 2.0
-        return 13;
+        return 26;
+    if tau64 != 0x1.921fb54442d18p+2
+        return 27;
+    if e64 != 0x1.5bf0a8b145769p+1
+        return 28;
+    if half_pi64 != 0x1.921fb54442d18p+0
+        return 29;
+    if quarter_pi64 != 0x1.921fb54442d18p-1
+        return 30;
+    if inv_pi64 != 0x1.45f306dc9c883p-2
+        return 31;
+    if inv_tau64 != 0x1.45f306dc9c883p-3
+        return 32;
+    if sqrt_2_64 != 0x1.6a09e667f3bcdp+0
+        return 33;
+    if deg_to_rad64 != 0x1.1df46a2529d39p-6
+        return 34;
+    if rad_to_deg64 != 0x1.ca5dc1a63c1f8p+5
+        return 35;
 
     return 0;
 }

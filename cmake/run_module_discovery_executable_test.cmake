@@ -51,6 +51,16 @@ if(NOT compile_result EQUAL 0)
     )
 endif()
 
+if(DEFINED FORBID_COMPILE_WARNINGS AND FORBID_COMPILE_WARNINGS)
+    string(TOLOWER "${compile_stderr}" compile_stderr_lower)
+    if(compile_stderr_lower MATCHES "warning")
+        message(FATAL_ERROR
+            "module discovery ${BACKEND} compilation produced a warning\n"
+            "command: ${command}\nstdout:\n${compile_stdout}\nstderr:\n${compile_stderr}"
+        )
+    endif()
+endif()
+
 execute_process(
     COMMAND "${OUTPUT}"
     RESULT_VARIABLE run_result
@@ -62,4 +72,20 @@ if(NOT run_result MATCHES "^[0-9]+$" OR NOT run_result EQUAL EXPECT_EXIT)
         "module discovery executable exited ${run_result}, expected ${EXPECT_EXIT}\n"
         "stdout:\n${run_stdout}\nstderr:\n${run_stderr}"
     )
+endif()
+
+if(DEFINED EXPECT_STDOUT_FILE AND NOT "${EXPECT_STDOUT_FILE}" STREQUAL "")
+    file(READ "${EXPECT_STDOUT_FILE}" expected_stdout)
+    # Native Windows text streams use CRLF while source-controlled expected
+    # output uses LF. Compare logical lines rather than platform newline bytes.
+    string(REPLACE "\r\n" "\n" normalized_stdout "${run_stdout}")
+    string(REPLACE "\r\n" "\n" normalized_expected_stdout "${expected_stdout}")
+    if(NOT normalized_stdout STREQUAL normalized_expected_stdout)
+        message(FATAL_ERROR
+            "module discovery executable stdout mismatch\n"
+            "expected file: ${EXPECT_STDOUT_FILE}\n"
+            "expected:\n${expected_stdout}\nactual:\n${run_stdout}\n"
+            "stderr:\n${run_stderr}"
+        )
+    endif()
 endif()

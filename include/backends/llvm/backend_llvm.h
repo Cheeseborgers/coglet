@@ -20,6 +20,8 @@ typedef struct LlvmBackendOptions {
 } LlvmBackendOptions;
 
 typedef struct LlvmBackendLinkOptions {
+    const char *runtime_source;
+
     const char *const *library_dirs;
     int library_dir_count;
 

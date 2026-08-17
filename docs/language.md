@@ -50,7 +50,9 @@ If no candidate has been found and the canonical module name is `std` or starts
 with `std.`, the compiler consults its configured standard-library module root as
 a final fallback. The root contains the top-level `std` directory, so a normal
 installation with root `<prefix>/lib/coglet` resolves `std.math` as
-`<prefix>/lib/coglet/std/math.cog`. `--stdlib-root <dir>` replaces this fallback
+`<prefix>/lib/coglet/std/math.cog`. Runtime-backed modules such as `std.io` use
+the same root and expect their implementation beneath `<stdlib-root>/runtime/`.
+`--stdlib-root <dir>` replaces this fallback
 for one compiler invocation and `--print-stdlib-root` reports the configured
 default. Local/importer files and `-I` roots intentionally win over the installed
 stdlib; module names outside `std` never consult the stdlib root.
@@ -1970,7 +1972,9 @@ pointers, explicit `#repr(c)` enums, native C function pointers, and direct
 string literals. Aggregate struct/array values, ordinary Coglet function values,
 and bare `null` are rejected in the variadic tail.
 
-The host-C backend intentionally delegates the standard C default argument
+The host-C backend emits portable identifier-safe external C symbols without GNU
+symbol-label extensions; arbitrary non-identifier linker names remain a GNU/Clang
+host-C extension. The host-C backend intentionally delegates the standard C default argument
 promotions to the native C compiler. Thus Coglet `bool` and narrow integer
 values are promoted according to the host C integer-promotion rules, and `f32`
 is passed as C `double`. Untyped floating literals are already emitted as C

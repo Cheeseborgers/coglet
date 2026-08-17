@@ -199,10 +199,10 @@ Import cycles are allowed because imports currently affect compile-time
 visibility only; top-level runtime initialization remains in physical input
 order. Only root-namespace `main::() -> s32` is the executable entry. Exported
 APIs may not expose private nominal types through function signatures,
-globals/constants, or exported struct fields. Package manifests, automatic multi-file package membership, additional runtime-facing standard-library modules, and
-separate compilation remain future work. Coglet now ships an initial pure-Coglet
-`std.math` module from `stdlib/std/math.cog`; installed builds copy the `std`
-source tree beneath the configured standard-library root. Discovery does not imply runtime
+globals/constants, or exported struct fields. Package manifests, automatic multi-file package membership, richer runtime-facing standard-library modules, and
+separate compilation remain future work. Coglet ships ordinary-source `std.math` and
+`std.io` modules beneath `stdlib/std/`; installed builds copy the `std` source tree and
+the small runtime implementation beneath the configured standard-library root. Discovery does not imply runtime
 dependency ordering: explicit inputs retain command-line order and discovered
 files are appended in deterministic first-discovery order to the existing single
 module initializer.
@@ -222,6 +222,52 @@ main::() -> s32 {
 ```
 
 `std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_s32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; and an initial floating game/application math slice with `clamp01`, `lerp`, `inverse_lerp`, `remap`, `smoothstep`, `to_radians`, and `to_degrees`. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow.
+
+`std.io` is the first runtime-backed standard module. It provides `print`/`println`
+for direct C-string literals or pointers, `newline`, `flush`, Boolean printing,
+and explicit scalar printers for every fixed-width integer plus `f32`/`f64`.
+The public module is ordinary Coglet source; its reserved `coglet_rt_*` extern
+symbols are supplied by `<stdlib-root>/runtime/coglet_runtime.c` only when the
+frozen CogIR actually references them.
+
+```c
+import std.io;
+
+main::() -> s32 {
+    std.io.println("hello from Coglet");
+    std.io.print_s32(42);
+    std.io.newline();
+    return 0;
+}
+```
+
+### Build and run from a source checkout
+
+Configure once with the native C toolchain you want Coglet executables to reuse:
+
+```sh
+cmake -S . -B cmake-build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build cmake-build-debug
+```
+
+On Linux this normally means GCC or Clang. On Windows, run CMake from an
+environment where the selected MSVC/Clang/GNU native toolchain is available; an
+MSVC C frontend must provide C11 mode. The configured compiler path is baked into
+Coglet's native executable toolchain layer, so a later `coglet ... -o ...` does
+not guess which compiler driver to execute.
+
+When developing from the source tree, pass the source stdlib root explicitly:
+
+```sh
+./cmake-build-debug/coglet main.cog --stdlib-root ./stdlib -o program
+./program
+```
+
+On Windows the executable normally has the platform `.exe` suffix. Installed
+builds use the configured stdlib root automatically; `coglet --print-stdlib-root`
+shows it. Runtime-backed modules such as `std.io` require the matching
+`runtime/coglet_runtime.c` beneath that root, while pure programs that do not
+reference reserved runtime symbols do not acquire a runtime link dependency.
 
 For the current executable slice:
 
@@ -259,10 +305,18 @@ current invocation; it does not alter ordinary package lookup or C linker paths.
 Both joined and split spellings are accepted, both options may be repeated, and
 they are valid only when `-o` requests an executable link step. They are passed
 directly to the selected backend's native linker/compiler driver without invoking
-a shell. Executable output defaults to the host-C bootstrap backend. When LLVM
-support is enabled, `--backend llvm` lowers and verifies LLVM IR, emits a
-position-independent native object through LLVM's `TargetMachine`, then invokes
-the host `cc` driver only for the final platform link/CRT step. Executable-object
+a shell. CMake records the native C compiler used to build Coglet, and both
+executable backends reuse that configured toolchain rather than assuming a Unix
+`cc` command. Native Linux builds spawn it with the POSIX process API; native
+Windows builds use the CRT process API and MSVC-style arguments when CMake selected
+an MSVC-compatible frontend. The current target model remains host-only: this is
+intended for native Linux and Windows builds on x86-64 and AArch64, not a cross-
+compilation CLI.
+
+Executable output defaults to the host-C bootstrap backend. When LLVM support is
+enabled, `--backend llvm` lowers and verifies LLVM IR, emits a position-independent
+native object through LLVM's `TargetMachine`, then invokes the configured host C
+driver only for the final platform link/CRT step. Executable-object
 PIC is backend/toolchain policy so hosts whose compiler driver defaults to PIE do
 not require optimization or linker-specific `-no-pie` workarounds. Textual LLVM IR
 remains available through `--emit-llvm`, and `--emit-asm` asks the same

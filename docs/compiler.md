@@ -80,11 +80,11 @@ appended after explicit roots in deterministic first-discovery order. That
 combined physical order continues to define program-scope runtime initialization,
 so imports do not acquire an implicit dependency-initialization guarantee. Import
 cycles remain permitted. Only root-namespace `main::() -> s32` is an executable
-entry; a `main` inside a named module is an ordinary function. Coglet now ships
-`stdlib/std/math.cog` as the first ordinary-source `std.math` module and installs
-the `stdlib/std` tree beneath the configured root. Package manifests, automatic
-multi-file package membership, runtime-facing stdlib modules, and separate
-compilation remain future work.
+entry; a `main` inside a named module is an ordinary function. Coglet ships ordinary-source `std.math` and `std.io` modules and installs the
+`stdlib/std` tree beneath the configured root. Runtime-backed modules bind a small
+reserved C ABI whose implementation is installed under `runtime/` beside `std/`.
+Package manifests, automatic multi-file package membership, richer runtime
+services, and separate compilation remain future work.
 
 ## Post-semantic IR boundary
 
@@ -312,11 +312,18 @@ No deprecation schedule or source compatibility promise is implied by the
 initial `0.1.0` version; those policies remain separate language-design work.
 
 The **host-C backend** provides the bootstrap executable lowering path.
-`coglet input.cog -o program` emits a temporary C translation
-unit, invokes the native `cc` driver, and lets that driver resolve normal C
-runtime/libc symbols. External declarations are emitted under generated C
-identifiers with `__asm__("symbol")` labels, so `name="..."` overrides affect
-the actual linker symbol without requiring that symbol to be a safe C identifier.
+`coglet input.cog -o program` emits a temporary C translation unit and hands it
+to the shared native-toolchain layer. CMake records the C compiler that built
+Coglet; native Linux builds execute that driver through POSIX process APIs, while
+native Windows builds use the CRT spawn API and select MSVC-style arguments when
+CMake identified an MSVC-compatible frontend. No shell command is constructed.
+
+External declarations whose linker symbols are portable C identifiers are emitted
+as ordinary declarations under the actual symbol name, with generated backend
+names aliased in the translation unit. This path works with GNU/Clang and MSVC and
+covers the reserved runtime ABI. Non-identifier external linker names retain the
+GNU/Clang `__asm__("symbol")` extension; MSVC diagnoses that narrower extension
+in generated C because it has no equivalent source spelling.
 
 The backend now consumes CogIR only and has explicit emission for every current
 `CogIrOp`. The build mirrors that dependency direction: `compiler_core` contains
@@ -366,11 +373,26 @@ both conventional forms:
 -lfoo              -l foo
 ```
 
-The driver preserves library order, places explicit libraries after the
-generated C source in the native compiler invocation, and passes every argument
-directly through `execvp()` rather than constructing a shell command. `-L` and
-`-l` are rejected unless `-o` requests an executable link step. `--emit-c`
-remains independent of linker options.
+The driver preserves library order and delegates process syntax to the shared
+native-toolchain layer. GNU/Clang-style drivers receive `-L`/`-l`; MSVC-style
+drivers receive `.lib` inputs plus `/LIBPATH:`. Arguments are passed as an argv
+vector, never through a shell. `-L` and `-l` are rejected unless `-o` requests an
+executable link step. `--emit-c` remains independent of linker options.
+
+The same layer owns temporary native files and the final link for LLVM-emitted
+objects, removing the previous duplicated Unix-only `fork`/`execvp`/`/tmp` logic.
+Temporary roots use `TMPDIR` on Unix and `TEMP`/`TMP` on Windows. The current model
+is still native-host compilation: Linux/Windows x86-64 and AArch64 are supported
+through their native CMake-selected toolchains; selecting an arbitrary cross
+target/toolchain from the Coglet CLI remains deferred.
+
+`std.io` establishes runtime ABI v0. Its public Coglet declarations name reserved
+`coglet_rt_*` C symbols. Once semantic state has been lowered and destroyed, the
+driver inspects only frozen CogIR external-symbol metadata; if any reserved runtime
+symbol is referenced it adds `<stdlib-root>/runtime/coglet_runtime.c` to the same
+native link. Programs without such references do not gain a runtime dependency.
+Both host-C and LLVM therefore call the exact same runtime ABI with no frontend or
+standard-library object retained by CogIR.
 
 The frontend now has an explicit target model. `compile_parse_and_check()`
 constructs a host `TargetInfo` for compatibility, while

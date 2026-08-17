@@ -14,6 +14,17 @@ endif()
 file(TO_CMAKE_PATH "${COGLET_CONFIGURED_STDLIB_ROOT}" COGLET_CONFIGURED_STDLIB_ROOT)
 string(REPLACE "\"" "\\\"" COGLET_CONFIGURED_STDLIB_ROOT_C "${COGLET_CONFIGURED_STDLIB_ROOT}")
 
+# Executable backends invoke the same native C compiler that built Coglet.
+# This avoids assuming a Unix `cc` command and gives native Windows builds a
+# concrete toolchain path as well.
+file(TO_CMAKE_PATH "${CMAKE_C_COMPILER}" COGLET_CONFIGURED_NATIVE_C_COMPILER)
+string(REPLACE "\"" "\\\"" COGLET_CONFIGURED_NATIVE_C_COMPILER_C "${COGLET_CONFIGURED_NATIVE_C_COMPILER}")
+if(MSVC OR CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    set(COGLET_CONFIGURED_NATIVE_C_COMPILER_MSVC_STYLE 1)
+else()
+    set(COGLET_CONFIGURED_NATIVE_C_COMPILER_MSVC_STYLE 0)
+endif()
+
 # Generated CTest outputs belong under one build-tree directory instead of
 # cluttering the build root with backend executables, LLVM IR, and assembly.
 set(COGLET_TEST_ARTIFACT_DIR "${CMAKE_BINARY_DIR}/test-artifacts")
@@ -35,7 +46,11 @@ configure_file(
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-add_compile_options(-Wall -Wextra)
+if(MSVC OR CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra)
+endif()
 
 set(COMMON_SOURCES tools/ast/ast_print.c)
 
@@ -69,12 +84,21 @@ target_include_directories(compiler_core PUBLIC
         "${COGLET_GENERATED_INCLUDE_DIR}"
 )
 
+# --- Native compiler/linker process boundary shared by executable backends. ---
+add_library(coglet_native_toolchain STATIC
+        src/toolchain/native_toolchain.c
+)
+target_include_directories(coglet_native_toolchain PUBLIC
+        include
+        "${COGLET_GENERATED_INCLUDE_DIR}"
+)
+
 # --- Host-C backend. Backends depend on CogIR/core, never the reverse. ---
 add_library(coglet_backend_c STATIC
         src/backends/backend_c/backend_c.c
 )
 target_include_directories(coglet_backend_c PUBLIC include)
-target_link_libraries(coglet_backend_c PRIVATE compiler_core)
+target_link_libraries(coglet_backend_c PRIVATE compiler_core coglet_native_toolchain)
 
 # --- Optional LLVM backend. ---
 set(COGLET_LLVM "AUTO" CACHE STRING "LLVM backend mode: AUTO, ON, or OFF")
@@ -149,7 +173,7 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
         )
         target_compile_options(coglet_backend_llvm PRIVATE ${COGLET_LLVM_DEFINITIONS})
         target_compile_definitions(coglet_backend_llvm PRIVATE COGLET_LLVM_VERSION_MAJOR=${LLVM_VERSION_MAJOR})
-        target_link_libraries(coglet_backend_llvm PRIVATE compiler_core ${COGLET_LLVM_LIBS})
+        target_link_libraries(coglet_backend_llvm PRIVATE compiler_core coglet_native_toolchain ${COGLET_LLVM_LIBS})
 
         add_executable(check_llvm_stage4_trap tools/tests/check_llvm_stage4_trap.c)
         target_link_libraries(check_llvm_stage4_trap PRIVATE compiler_core coglet_backend_llvm)
@@ -170,6 +194,9 @@ add_executable(coglet src/coglet.c ${COMMON_SOURCES})
 target_link_libraries(coglet PRIVATE compiler_core coglet_backend_c)
 install(TARGETS coglet RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(DIRECTORY "${CMAKE_SOURCE_DIR}/stdlib/std"
+        DESTINATION "${COGLET_STDLIB_INSTALL_DIR}"
+)
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/stdlib/runtime"
         DESTINATION "${COGLET_STDLIB_INSTALL_DIR}"
 )
 if(COGLET_HAS_LLVM_BACKEND)
@@ -1528,6 +1555,10 @@ add_host_c_library_test(
 # --- Shipped standard-library integration tests. ---
 set(COGLET_STDLIB_SOURCE_ROOT "${CMAKE_SOURCE_DIR}/stdlib")
 set(COGLET_STDLIB_MATH_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/math/main.cog")
+set(COGLET_STDLIB_IO_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.cog")
+set(COGLET_STDLIB_IO_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.stdout")
+set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/math_import/main.cog")
+set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/math_import/main.stdout")
 
 add_test(
         NAME stdlib_math_host_c
@@ -1542,6 +1573,51 @@ add_test(
 )
 set_tests_properties(stdlib_math_host_c
         PROPERTIES LABELS "stdlib;stdlib.source;std.math;backend;backend.c;module;import;discovery")
+
+add_test(
+        NAME stdlib_io_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_IO_TEST_MAIN}"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_io_host_c${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -DBACKEND=host-c
+        "-DEXPECT_STDOUT_FILE=${COGLET_STDLIB_IO_TEST_STDOUT}"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+)
+set_tests_properties(stdlib_io_host_c
+        PROPERTIES LABELS "stdlib;stdlib.source;std.io;runtime;backend;backend.c;module;import;discovery")
+
+add_test(
+        NAME stdlib_io_math_import_host_c_warning_free
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_IO_MATH_IMPORT_TEST_MAIN}"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_io_math_import_host_c${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -DBACKEND=host-c
+        -DFORBID_COMPILE_WARNINGS=ON
+        "-DEXPECT_STDOUT_FILE=${COGLET_STDLIB_IO_MATH_IMPORT_TEST_STDOUT}"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+)
+set_tests_properties(stdlib_io_math_import_host_c_warning_free
+        PROPERTIES LABELS "stdlib;stdlib.source;std.io;std.math;runtime;backend;backend.c;module;import;discovery;warning-free")
+
+add_test(
+        NAME stdlib_io_missing_runtime
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DMAIN=${COGLET_STDLIB_IO_TEST_MAIN}"
+        "-DIO_MODULE=${CMAKE_SOURCE_DIR}/stdlib/std/io.cog"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/root"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_io_missing_runtime${CMAKE_EXECUTABLE_SUFFIX}
+        "-DEXPECT_SUBSTRING=program requires Coglet runtime support"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_missing_runtime_test.cmake"
+)
+set_tests_properties(stdlib_io_missing_runtime
+        PROPERTIES LABELS "stdlib;stdlib.source;std.io;runtime;driver;invalid")
 
 add_custom_target(check_stdlib
         COMMAND "${CMAKE_CTEST_COMMAND}"
@@ -1573,6 +1649,22 @@ if(COGLET_HAS_LLVM_BACKEND)
         )
         set_tests_properties(stdlib_math_llvm_O${stdlib_opt_level}
             PROPERTIES LABELS "stdlib;stdlib.source;std.math;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
+
+        add_test(
+            NAME stdlib_io_llvm_O${stdlib_opt_level}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            "-DINPUTS=${COGLET_STDLIB_IO_TEST_MAIN}"
+            "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_io_llvm_O${stdlib_opt_level}${CMAKE_EXECUTABLE_SUFFIX}
+            -DEXPECT_EXIT=0
+            -DBACKEND=llvm
+            -DOPT_LEVEL=${stdlib_opt_level}
+            "-DEXPECT_STDOUT_FILE=${COGLET_STDLIB_IO_TEST_STDOUT}"
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+        )
+        set_tests_properties(stdlib_io_llvm_O${stdlib_opt_level}
+            PROPERTIES LABELS "stdlib;stdlib.source;std.io;runtime;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
     endforeach()
 
     add_test(

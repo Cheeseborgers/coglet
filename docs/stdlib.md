@@ -6,11 +6,14 @@ installed layout:
 
 ```text
 stdlib/
-└── std/
-    └── math.cog
+├── std/
+│   ├── io.cog
+│   └── math.cog
+└── runtime/
+    └── coglet_runtime.c
 ```
 
-A normal installation places that tree beneath `COGLET_STDLIB_INSTALL_DIR`, so
+A normal installation places both trees beneath `COGLET_STDLIB_INSTALL_DIR`, so
 `stdlib/std/math.cog` becomes `<stdlib-root>/std/math.cog` and is discovered by:
 
 ```c
@@ -99,16 +102,73 @@ should be added only after Coglet has a deliberate portable math-runtime or
 intrinsic boundary shared by host-C and LLVM, rather than by embedding backend-
 specific behavior in `std.math`.
 
+## `std.io`
+
+`std.io` is the first runtime-backed standard module. The public API remains
+ordinary Coglet source in `stdlib/std/io.cog`; it declares a small reserved C ABI
+implemented by `stdlib/runtime/coglet_runtime.c`. User code imports only the
+module:
+
+```c
+import std.io;
+
+main::() -> s32 {
+    std.io.println("score:");
+    std.io.print_s32(42);
+    std.io.newline();
+    std.io.flush();
+    return 0;
+}
+```
+
+Initial exports are:
+
+```text
+print(readonly c_char*)
+println(readonly c_char*)
+newline()
+flush()
+print_bool(bool)
+print_s8/s16/s32/s64
+print_u8/u16/u32/u64
+print_f32/f64
+```
+
+`print` and `println` intentionally accept the current direct C-string boundary,
+not a general Coglet string value. String/slice types and formatting remain later
+language/library work. The scalar printers are explicit rather than variadic so
+the first I/O API does not require variadic generics or runtime type descriptors.
+`print_f32` uses enough significant decimal digits to round-trip a binary32 value;
+`print_f64` does the corresponding binary64 formatting.
+
+The implementation symbols use the reserved `coglet_rt_` prefix. After frontend
+state is destroyed, the driver scans frozen CogIR C-ABI symbol metadata; only a
+module that actually references that prefix causes
+`<stdlib-root>/runtime/coglet_runtime.c` to be compiled/linked. CogIR contains no
+`std.io` or runtime-module special case, and both host-C and LLVM executables link
+the same runtime source through the shared native-toolchain layer. `--emit-c`
+continues to emit the translation unit without embedding the runtime implementation.
+
+The v0 runtime ABI deliberately uses ISO C scalar/pointer types and stdio. The
+native-host support target is Linux and Windows on x86-64 and AArch64. Coglet does
+not yet expose a cross-target compiler/toolchain CLI: the runtime and executable
+link step use the platform/architecture selected by the CMake toolchain that built
+Coglet. Windows builds use the configured MSVC-style or GNU/Clang-style C compiler;
+Linux builds use the configured GNU/Clang-style driver. Platform-specific OS APIs
+should remain behind this runtime boundary as the library grows.
+
 ## Source-tree testing
 
-The integration program for the module lives at:
+The shipped integration consumers live at:
 
 ```text
 tests/stdlib/math/main.cog
+tests/stdlib/io/main.cog
 ```
 
-It imports `std.math` through the normal standard-library discovery mechanism and
-checks the public API as an ordinary user program. Run the shipped stdlib slice
+They import the modules through normal standard-library discovery. The I/O test
+also compares exact stdout while exercising every v0 scalar printer. Run the
+shipped stdlib slice
 with:
 
 ```sh
@@ -167,8 +227,10 @@ A new shipped standard module should:
 4. use ordinary Coglet semantics rather than backend-specific behavior;
 5. have an integration consumer under `tests/stdlib/`;
 6. run through host-C and LLVM where the LLVM backend is enabled;
-7. be installable with the existing `stdlib/std` installation rule.
+7. be installable beneath the configured stdlib root;
+8. if it needs OS/libc services, bind only the reserved runtime ABI rather than
+   embedding backend/platform behavior in the source module.
 
-Platform/runtime-facing modules such as I/O and allocation should wait for an
-explicit runtime boundary rather than embedding host assumptions in otherwise
-portable standard modules.
+Runtime implementations live under `stdlib/runtime/` and must preserve the frozen
+CogIR/backend boundary. New runtime families should be added deliberately rather
+than letting standard modules call unrelated host APIs ad hoc.

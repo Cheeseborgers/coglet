@@ -2067,12 +2067,29 @@ static CogIrValueId lower_string_literal(ExecLowerState *state, Node *node)
         free(elements); free(bytes);
         if (initializer == COG_IR_CONST_INVALID)
             return COG_IR_VALUE_INVALID;
+
+        /*
+         * Direct #extern(c) string literals are semantically contextualized as
+         * readonly c_char*. Preserve that exact C object spelling on the
+         * compiler-generated backing array so native call lowering can pass a
+         * `const char *` without signed-char pointer warnings.
+         */
+        CogIrAbiTypeId char_abi = cog_ir_abi_type_c_scalar(
+            state->lower->module, element_type, COG_IR_C_SCALAR_CHAR);
+        CogIrAbiTypeId array_abi = char_abi == COG_IR_ABI_TYPE_INVALID
+            ? COG_IR_ABI_TYPE_INVALID
+            : cog_ir_abi_type_array(state->lower->module, array_type, char_abi);
+        if (array_abi == COG_IR_ABI_TYPE_INVALID) {
+            lower_error(state->lower, node->span, "failed to preserve C string ABI spelling");
+            return COG_IR_VALUE_INVALID;
+        }
+
         CogIrGlobalId global = cog_ir_add_global(
             state->lower->module,
             string_view_from_cstr(".str"),
             node->span,
             array_type,
-            COG_IR_ABI_TYPE_INVALID,
+            array_abi,
             COG_IR_LINKAGE_INTERNAL,
             1,
             1,

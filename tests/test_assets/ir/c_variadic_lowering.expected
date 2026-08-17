@@ -1,6 +1,6 @@
 module target(pointer=64)
 type %t0 "Tiny" = enum(u8) {Zero=0x0, High=0xc8}
-global @g0 ".str" : [3]s8 = @c8([@c5, @c6, @c7])
+global @g0 ".str" : [3]s8 abi=@a5 = @c8([@c5, @c6, @c7])
 declare @f0 "sink"(%0: s32, ...) -> s32 [abi=c, linkage=external]
 func @f1 "forward"(%0: fn(s32, ...) -> s32, %1: s16, %2: u16, %3: f32, %4: %t0, %5: s64, %6: f64, %7: opaque_ptr) -> s32 [abi=coglet, linkage=internal] {
   slots:

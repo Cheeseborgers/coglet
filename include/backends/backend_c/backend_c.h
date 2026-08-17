@@ -11,6 +11,8 @@ typedef enum CBackendStatus {
 } CBackendStatus;
 
 typedef struct CBackendLinkOptions {
+    const char *runtime_source;
+
     const char *const *library_dirs;
     int library_dir_count;
 

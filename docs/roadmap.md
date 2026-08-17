@@ -379,11 +379,20 @@ This provides declaration-only top-level C-linkage functions, ordinary Coglet
 call resolution, scalar/raw-pointer signature validation, and opaque-pointer
 participation without C-style implicit `void*` conversions.
 
-The first executable host-C slice is also implemented. The compiler can emit C,
-invoke native `cc`, resolve default C runtime/libc symbols, and honor
-`name="..."` through linker symbol labels. Integration tests execute both default
-and overridden external symbols. The backend deliberately rejects language
-constructs whose runtime semantics have not been lowered correctly yet.
+The executable host-C slice is implemented. The compiler can emit C, invoke the
+CMake-configured native C compiler through the shared Linux/Windows toolchain
+layer, resolve default C runtime/libc symbols, and honor `name="..."` overrides.
+Portable C-identifier symbols no longer require GNU symbol-label syntax; arbitrary
+non-identifier linker names retain that GNU/Clang-only extension. Integration
+tests execute both default and overridden external symbols.
+
+The first runtime/platform boundary is also implemented. `std.io` binds a reserved
+`coglet_rt_*` ABI supplied by `stdlib/runtime/coglet_runtime.c`; host-C and LLVM
+link the same implementation only when frozen CogIR references runtime symbols.
+The initial native-host matrix is Linux and Windows on x86-64 and AArch64. The
+next runtime-facing standard-library work should reuse this boundary for
+transcendental math, allocation, time, and filesystem/platform services rather
+than adding backend-specific calls.
 
 The native C scalar aliases are also implemented: `c_char`, `c_schar`,
 `c_uchar`, `c_short`, `c_ushort`, `c_int`, `c_uint`, `c_long`, `c_ulong`,

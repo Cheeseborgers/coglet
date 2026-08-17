@@ -103,10 +103,15 @@ ctest --test-dir cmake-build-debug -L stdlib --output-on-failure
 
 ## Shipped standard-library source tests
 
-The actual shipped standard-library source lives under `stdlib/`. The first
-module, `stdlib/std/math.cog`, has an ordinary consumer program at
-`tests/stdlib/math/main.cog`. These tests use the `stdlib.source` label so they
-are distinct from the lower-level stdlib-root/discovery-policy fixtures.
+The actual shipped standard-library source lives under `stdlib/`. `std.math` and
+`std.io` have ordinary consumer programs under `tests/stdlib/`. These tests use
+the `stdlib.source` label so they are distinct from the lower-level stdlib-root/
+discovery-policy fixtures. The `std.io` integration test links the runtime through
+the same executable path users invoke and compares its complete stdout, covering
+string output, Boolean output, every fixed-width integer printer, `f32`, `f64`,
+newline, and flush. A separate failure-path test verifies that a runtime-backed
+executable reports a clear error when the selected stdlib root contains `std.io`
+but omits `runtime/coglet_runtime.c`.
 
 Run them with:
 
@@ -120,9 +125,9 @@ or through the build target:
 cmake --build cmake-build-debug --target check_stdlib
 ```
 
-LLVM-enabled configurations compile and execute the same consumer through
-host-C, LLVM `-O0`, and LLVM `-O3`. LLVM-disabled configurations retain the
-host-C test. Generated executables are placed under `test-artifacts/`.
+LLVM-enabled configurations compile and execute each consumer through host-C,
+LLVM `-O0`, and LLVM `-O3`. LLVM-disabled configurations retain the host-C tests.
+Generated executables are placed under `test-artifacts/`.
 
 See `docs/stdlib.md` for the public API and manual source-tree commands.
 

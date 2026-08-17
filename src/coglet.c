@@ -52,6 +52,68 @@ static int parse_optimization_level(const char *value, CogOptimizationLevel *lev
     return 0;
 }
 
+
+static int cog_string_view_starts_with_cstr(StringView value, const char *prefix)
+{
+    size_t prefix_length = strlen(prefix);
+    return value.length >= prefix_length &&
+           memcmp(value.data, prefix, prefix_length) == 0;
+}
+
+static int cog_ir_requires_runtime(const CogIrModule *module)
+{
+    if (!module)
+        return 0;
+
+    for (size_t i = 0; i < module->function_count; ++i) {
+        const CogIrFunction *function = &module->functions[i];
+        if (function->linkage != COG_IR_LINKAGE_EXTERNAL ||
+            function->abi.abi != COG_IR_ABI_C) {
+            continue;
+        }
+        if (cog_string_view_starts_with_cstr(function->abi.external_symbol, "coglet_rt_"))
+            return 1;
+    }
+    return 0;
+}
+
+static int resolve_runtime_source(
+    const char *stdlib_root,
+    char *buffer,
+    size_t buffer_size
+) {
+    if (!stdlib_root || !stdlib_root[0]) {
+        fprintf(stderr, "error: Coglet runtime support requires a standard-library root\n");
+        return 0;
+    }
+
+    size_t length = strlen(stdlib_root);
+    int separator = stdlib_root[length - 1] != '/' && stdlib_root[length - 1] != '\\';
+    int written = snprintf(
+        buffer,
+        buffer_size,
+        "%s%sruntime/coglet_runtime.c",
+        stdlib_root,
+        separator ? "/" : ""
+    );
+    if (written < 0 || (size_t)written >= buffer_size) {
+        fprintf(stderr, "error: Coglet runtime support path is too long\n");
+        return 0;
+    }
+
+    FILE *file = fopen(buffer, "rb");
+    if (!file) {
+        fprintf(
+            stderr,
+            "error: program requires Coglet runtime support, but '%s' could not be opened\n",
+            buffer
+        );
+        return 0;
+    }
+    fclose(file);
+    return 1;
+}
+
 static int parse_executable_backend(const char *value, ExecutableBackend *backend)
 {
     if (strcmp(value, "host-c") == 0) {
@@ -371,6 +433,17 @@ int main(int argc, char **argv)
         return 3;
     }
 
+    char runtime_source_path[4096];
+    const char *runtime_source = NULL;
+    if (output_path && cog_ir_requires_runtime(&ir)) {
+        if (!resolve_runtime_source(stdlib_root, runtime_source_path, sizeof(runtime_source_path))) {
+            cog_ir_module_destroy(&ir);
+            arena_destroy(ir_diag_arena);
+            return 3;
+        }
+        runtime_source = runtime_source_path;
+    }
+
     if (emit_c_path) {
         CBackendStatus backend_status = c_backend_emit_file(
             emit_c_path,
@@ -428,6 +501,7 @@ int main(int argc, char **argv)
     if (exit_code == 0 && output_path) {
         if (executable_backend == EXECUTABLE_BACKEND_HOST_C) {
             CBackendLinkOptions link_options = {
+                .runtime_source = runtime_source,
                 .library_dirs = library_dirs,
                 .library_dir_count = library_dir_count,
                 .libraries = libraries,
@@ -449,6 +523,7 @@ int main(int argc, char **argv)
                 .debug_info = debug_info,
             };
             LlvmBackendLinkOptions link_options = {
+                .runtime_source = runtime_source,
                 .library_dirs = library_dirs,
                 .library_dir_count = library_dir_count,
                 .libraries = libraries,

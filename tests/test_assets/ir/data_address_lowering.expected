@@ -1,6 +1,6 @@
 module target(pointer=64)
 type %t0 "Point" = struct {x: s32, y: s32}
-global @g0 ".str" : [6]s8 = @c20([@c15, @c16, @c17, @c17, @c18, @c19])
+global @g0 ".str" : [6]s8 abi=@a4 = @c20([@c15, @c16, @c17, @c17, @c18, @c19])
 declare @f0 "puts"(%0: readonly ptr<s8>) -> s32 [abi=c, linkage=external]
 func @f1 "consume_array"(%0: [3]s32) -> [3]s32 [abi=coglet, linkage=internal] {
   slots:

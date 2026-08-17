@@ -1,0 +1,50 @@
+module std.io;
+
+// Minimal bootstrap I/O. String arguments are currently direct C-string
+// literals/pointers because Coglet does not yet have a general string/slice
+// runtime type.
+
+export #extern(c, name="coglet_rt_io_print")
+print::(text: readonly c_char*) -> void;
+
+export #extern(c, name="coglet_rt_io_println")
+println::(text: readonly c_char*) -> void;
+
+export #extern(c, name="coglet_rt_io_newline")
+newline::() -> void;
+
+export #extern(c, name="coglet_rt_io_flush")
+flush::() -> void;
+
+export #extern(c, name="coglet_rt_io_print_bool")
+print_bool::(value: bool) -> void;
+
+export #extern(c, name="coglet_rt_io_print_s8")
+print_s8::(value: s8) -> void;
+
+export #extern(c, name="coglet_rt_io_print_s16")
+print_s16::(value: s16) -> void;
+
+export #extern(c, name="coglet_rt_io_print_s32")
+print_s32::(value: s32) -> void;
+
+export #extern(c, name="coglet_rt_io_print_s64")
+print_s64::(value: s64) -> void;
+
+export #extern(c, name="coglet_rt_io_print_u8")
+print_u8::(value: u8) -> void;
+
+export #extern(c, name="coglet_rt_io_print_u16")
+print_u16::(value: u16) -> void;
+
+export #extern(c, name="coglet_rt_io_print_u32")
+print_u32::(value: u32) -> void;
+
+export #extern(c, name="coglet_rt_io_print_u64")
+print_u64::(value: u64) -> void;
+
+export #extern(c, name="coglet_rt_io_print_f32")
+print_f32::(value: f32) -> void;
+
+export #extern(c, name="coglet_rt_io_print_f64")
+print_f64::(value: f64) -> void;

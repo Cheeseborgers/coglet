@@ -10,11 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(__unix__) || defined(__APPLE__)
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#endif
+#include "toolchain/native_toolchain.h"
 
 #define C_BACKEND_NAME_SIZE 48
 
@@ -746,6 +742,52 @@ static const char *value_type_name(
     return runtime_type_name(backend, value->type, span);
 }
 
+static int c_identifier_is_start(unsigned char ch)
+{
+    return (ch >= 'a' && ch <= 'z') ||
+        (ch >= 'A' && ch <= 'Z') ||
+        ch == '_';
+}
+
+static int c_identifier_is_continue(unsigned char ch)
+{
+    return c_identifier_is_start(ch) || (ch >= '0' && ch <= '9');
+}
+
+static int c_identifier_is_keyword(StringView value)
+{
+    static const char *const keywords[] = {
+        "auto", "break", "case", "char", "const", "continue", "default", "do",
+        "double", "else", "enum", "extern", "float", "for", "goto", "if", "inline",
+        "int", "long", "register", "restrict", "return", "short", "signed", "sizeof",
+        "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile",
+        "while", "_Alignas", "_Alignof", "_Atomic", "_Bool", "_Complex", "_Generic",
+        "_Imaginary", "_Noreturn", "_Static_assert", "_Thread_local"
+    };
+
+    for (size_t i = 0; i < sizeof(keywords) / sizeof(keywords[0]); ++i) {
+        if (string_view_equals_cstr(value, keywords[i]))
+            return 1;
+    }
+    return 0;
+}
+
+static int c_identifier_is_portable(StringView value)
+{
+    if (value.length == 0 || !c_identifier_is_start((unsigned char)value.data[0]))
+        return 0;
+    for (size_t i = 1; i < value.length; ++i) {
+        if (!c_identifier_is_continue((unsigned char)value.data[i]))
+            return 0;
+    }
+    return !c_identifier_is_keyword(value);
+}
+
+static void emit_c_identifier(FILE *out, StringView value)
+{
+    fprintf(out, "%.*s", (int)value.length, value.data);
+}
+
 static void emit_c_string_literal(FILE *out, StringView value)
 {
     fputc('"', out);
@@ -784,6 +826,21 @@ static int uses_calling_convention(const CBackend *backend, CogIrCallingConventi
             return 1;
     }
     return 0;
+}
+
+static void emit_maybe_unused_support(CBackend *backend)
+{
+    fputs(
+        "#if defined(_MSC_VER)\n"
+        "#pragma warning(disable: 4505) /* unreferenced local function removed */\n"
+        "#define COGLET_MAYBE_UNUSED\n"
+        "#elif defined(__GNUC__) || defined(__clang__)\n"
+        "#define COGLET_MAYBE_UNUSED __attribute__((unused))\n"
+        "#else\n"
+        "#define COGLET_MAYBE_UNUSED\n"
+        "#endif\n\n",
+        backend->out
+    );
 }
 
 static void emit_c_calling_convention_support(CBackend *backend)
@@ -1307,14 +1364,36 @@ static int emit_function_declarations(CBackend *backend)
         const char *macro = c_call_macro_name(function->abi.calling_convention);
         const char *sep = function->abi.calling_convention == COG_IR_CALL_DEFAULT ? "" : " ";
         if (function->linkage == COG_IR_LINKAGE_EXTERNAL) {
-            fprintf(backend->out, "extern %s%s%s %s(", result, sep, macro, backend->function_names[i]);
-            emit_function_parameter_list(backend, function, 0);
-            if (backend->had_error) return 0;
-            fputs(") __asm__(", backend->out);
-            emit_c_string_literal(backend->out, function->abi.external_symbol);
-            fputs(");\n", backend->out);
+            StringView external_symbol = function->abi.external_symbol;
+            if (c_identifier_is_portable(external_symbol)) {
+                fprintf(backend->out, "extern %s%s%s ", result, sep, macro);
+                emit_c_identifier(backend->out, external_symbol);
+                fputc('(', backend->out);
+                emit_function_parameter_list(backend, function, 0);
+                if (backend->had_error) return 0;
+                fputs(");\n#define ", backend->out);
+                fputs(backend->function_names[i], backend->out);
+                fputc(' ', backend->out);
+                emit_c_identifier(backend->out, external_symbol);
+                fputc('\n', backend->out);
+            } else {
+                /*
+                 * GNU-style symbol labels preserve arbitrary external linker
+                 * names. MSVC has no equivalent source-level spelling, so a
+                 * non-identifier external name remains a GNU/Clang-only host-C
+                 * extension. Portable C identifiers, including the Coglet
+                 * runtime ABI, take the path above on every supported host.
+                 */
+                fputs("#if defined(_MSC_VER)\n#error \"host-C cannot name this non-identifier external C symbol with MSVC\"\n#else\n", backend->out);
+                fprintf(backend->out, "extern %s%s%s %s(", result, sep, macro, backend->function_names[i]);
+                emit_function_parameter_list(backend, function, 0);
+                if (backend->had_error) return 0;
+                fputs(") __asm__(", backend->out);
+                emit_c_string_literal(backend->out, external_symbol);
+                fputs(");\n#endif\n", backend->out);
+            }
         } else {
-            fprintf(backend->out, "static %s%s%s %s(", result, sep, macro, backend->function_names[i]);
+            fprintf(backend->out, "static COGLET_MAYBE_UNUSED %s%s%s %s(", result, sep, macro, backend->function_names[i]);
             emit_function_parameter_list(backend, function, 0);
             if (backend->had_error) return 0;
             fputs(");\n", backend->out);
@@ -3058,8 +3137,9 @@ static int emit_instruction(
                 : NULL;
             if (!callee || !callee_type || callee_type->kind != COG_IR_TYPE_FUNCTION)
                 goto missing_operand;
+            const CogIrAbiType *callee_abi = NULL;
             if (callee_type->as.function.abi == COG_IR_ABI_C) {
-                const CogIrAbiType *callee_abi = callee_value->abi_type != COG_IR_ABI_TYPE_INVALID
+                callee_abi = callee_value->abi_type != COG_IR_ABI_TYPE_INVALID
                     ? cog_ir_get_abi_type(backend->module, callee_value->abi_type)
                     : NULL;
                 if (!callee_abi || callee_abi->kind != COG_IR_ABI_TYPE_FUNCTION) {
@@ -3078,10 +3158,35 @@ static int emit_instruction(
                 fprintf(backend->out, "    %s(", callee);
             }
             for (size_t a = 0; a < instruction->as.call.argument_count; ++a) {
-                const char *argument = value_expr(exprs, value_count, instruction->as.call.arguments[a]);
+                CogIrValueId argument_id = instruction->as.call.arguments[a];
+                const char *argument = value_expr(exprs, value_count, argument_id);
                 if (!argument)
                     goto missing_operand;
-                fprintf(backend->out, "%s%s", a ? ", " : "", argument);
+
+                const char *argument_cast = NULL;
+                if (callee_type->as.function.abi == COG_IR_ABI_C &&
+                    a < callee_type->as.function.parameter_count) {
+                    const CogIrValue *argument_value = cog_ir_get_value(function, argument_id);
+                    CogIrAbiTypeId expected_abi_id =
+                        a < callee_abi->parameter_count
+                            ? callee_abi->parameter_types[a]
+                            : COG_IR_ABI_TYPE_INVALID;
+                    const CogIrAbiType *expected_abi =
+                        cog_ir_get_abi_type(backend->module, expected_abi_id);
+                    if (argument_value && expected_abi &&
+                        expected_abi->kind == COG_IR_ABI_TYPE_POINTER &&
+                        argument_value->abi_type == expected_abi_id) {
+                        argument_cast = abi_type_name(
+                            backend, expected_abi_id, instruction->span);
+                        if (!argument_cast)
+                            return 0;
+                    }
+                }
+
+                if (argument_cast)
+                    fprintf(backend->out, "%s((%s)(%s))", a ? ", " : "", argument_cast, argument);
+                else
+                    fprintf(backend->out, "%s%s", a ? ", " : "", argument);
             }
             fputs(");\n", backend->out);
             if (instruction->result_type != COG_IR_TYPE_INVALID &&
@@ -3438,7 +3543,7 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
     const char *sep = function->abi.calling_convention == COG_IR_CALL_DEFAULT ? "" : " ";
     fprintf(
         backend->out,
-        "static %s%s%s %s(",
+        "static COGLET_MAYBE_UNUSED %s%s%s %s(",
         result, sep, macro, backend->function_names[function->id]
     );
     emit_function_parameter_list(backend, function, 1);
@@ -3602,6 +3707,7 @@ static CBackendStatus c_backend_emit_stream(FILE *out, const CogIrModule *module
     );
     emit_repr_c_layout_support(&backend);
     emit_c_calling_convention_support(&backend);
+    emit_maybe_unused_support(&backend);
     emit_runtime_forward_declarations(&backend);
 
     if (!emit_enum_definitions(&backend) || !prepare_type_aliases(&backend))
@@ -3672,101 +3778,37 @@ CBackendStatus c_backend_build_executable(
     const CogIrModule *module,
     const CBackendLinkOptions *link_options
 ) {
-#if defined(__unix__) || defined(__APPLE__)
     if (!output_path) {
         fprintf(stderr, "error: no executable output path provided\n");
         return C_BACKEND_STATUS_IO_ERROR;
     }
 
-    char temp_path[] = "/tmp/coglet-c-XXXXXX";
-    int fd = mkstemp(temp_path);
-    if (fd < 0) {
-        fprintf(stderr, "error: could not create temporary C file: %s\n", strerror(errno));
+    char temp_path[4096];
+    if (!cog_native_create_temp_file(
+            temp_path, sizeof(temp_path), "coglet-c", ".c")) {
         return C_BACKEND_STATUS_IO_ERROR;
     }
 
-    FILE *out = fdopen(fd, "wb");
-    if (!out) {
-        fprintf(stderr, "error: could not open temporary C stream: %s\n", strerror(errno));
-        close(fd);
-        unlink(temp_path);
-        return C_BACKEND_STATUS_IO_ERROR;
-    }
-
-    CBackendStatus emit_status = c_backend_emit_stream(out, module);
-    if (fclose(out) != 0 && emit_status == C_BACKEND_STATUS_OK) {
-        fprintf(stderr, "error: could not close temporary C output: %s\n", strerror(errno));
-        unlink(temp_path);
-        return C_BACKEND_STATUS_IO_ERROR;
-    }
+    CBackendStatus emit_status = c_backend_emit_file(temp_path, module);
     if (emit_status != C_BACKEND_STATUS_OK) {
-        unlink(temp_path);
+        cog_native_remove_file(temp_path);
         return emit_status;
     }
 
-    int library_dir_count = link_options ? link_options->library_dir_count : 0;
-    int library_count = link_options ? link_options->library_count : 0;
-    int cc_arg_count = 9 + (library_dir_count * 2) + (library_count * 2);
-    char **cc_argv = calloc((size_t)cc_arg_count + 1, sizeof(*cc_argv));
-    if (!cc_argv) {
-        fprintf(stderr, "error: could not allocate native C compiler arguments\n");
-        unlink(temp_path);
-        return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
-    }
-
-    int arg = 0;
-    cc_argv[arg++] = "cc";
-    cc_argv[arg++] = "-std=c99";
-    cc_argv[arg++] = "-Wall";
-    cc_argv[arg++] = "-Wextra";
-    cc_argv[arg++] = "-x";
-    cc_argv[arg++] = "c";
-    cc_argv[arg++] = temp_path;
-    cc_argv[arg++] = "-o";
-    cc_argv[arg++] = (char *)output_path;
-    for (int i = 0; i < library_dir_count; ++i) {
-        cc_argv[arg++] = "-L";
-        cc_argv[arg++] = (char *)link_options->library_dirs[i];
-    }
-    for (int i = 0; i < library_count; ++i) {
-        cc_argv[arg++] = "-l";
-        cc_argv[arg++] = (char *)link_options->libraries[i];
-    }
-    cc_argv[arg] = NULL;
-
-    pid_t child = fork();
-    if (child < 0) {
-        fprintf(stderr, "error: could not start native C compiler: %s\n", strerror(errno));
-        free(cc_argv);
-        unlink(temp_path);
-        return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
-    }
-    if (child == 0) {
-        execvp("cc", cc_argv);
-        fprintf(stderr, "error: could not execute native C compiler 'cc': %s\n", strerror(errno));
-        _exit(127);
-    }
-
-    int wait_status = 0;
-    if (waitpid(child, &wait_status, 0) < 0) {
-        fprintf(stderr, "error: failed waiting for native C compiler: %s\n", strerror(errno));
-        free(cc_argv);
-        unlink(temp_path);
-        return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
-    }
-
-    free(cc_argv);
-    unlink(temp_path);
-    if (!WIFEXITED(wait_status) || WEXITSTATUS(wait_status) != 0) {
-        fprintf(stderr, "error: native C compiler/linker failed\n");
-        return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
-    }
-    return C_BACKEND_STATUS_OK;
-#else
-    (void)output_path;
-    (void)module;
-    (void)link_options;
-    fprintf(stderr, "error: executable host-C backend is not implemented on this host platform\n");
-    return C_BACKEND_STATUS_TOOLCHAIN_ERROR;
-#endif
+    CogNativeToolchainLinkOptions native_options = {
+        .runtime_source = link_options ? link_options->runtime_source : NULL,
+        .library_dirs = link_options ? link_options->library_dirs : NULL,
+        .library_dir_count = link_options ? link_options->library_dir_count : 0,
+        .libraries = link_options ? link_options->libraries : NULL,
+        .library_count = link_options ? link_options->library_count : 0,
+    };
+    CogNativeToolchainStatus status = cog_native_build_c_executable(
+        output_path,
+        temp_path,
+        &native_options
+    );
+    cog_native_remove_file(temp_path);
+    return status == COG_NATIVE_TOOLCHAIN_OK
+        ? C_BACKEND_STATUS_OK
+        : C_BACKEND_STATUS_TOOLCHAIN_ERROR;
 }

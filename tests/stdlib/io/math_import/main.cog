@@ -1,0 +1,13 @@
+import std.io;
+import std.math;
+
+main::() -> s32 {
+    angle: f32 = std.math.pi;
+
+    std.io.println("Coglet running.");
+    std.io.print("pi = ");
+    std.io.print_f32(angle);
+    std.io.newline();
+
+    return 0;
+}

@@ -1,0 +1,39 @@
+import std.io;
+
+main::() -> s32 {
+    std.io.print("text");
+    std.io.println(" + line");
+
+    std.io.print_bool(true);
+    std.io.print(" ");
+    std.io.print_bool(false);
+    std.io.newline();
+
+    std.io.print_s8(-8);
+    std.io.print(" ");
+    std.io.print_s16(-1600);
+    std.io.print(" ");
+    std.io.print_s32(-320000);
+    std.io.print(" ");
+    std.io.print_s64(-6400000000);
+    std.io.newline();
+
+    std.io.print_u8(8);
+    std.io.print(" ");
+    std.io.print_u16(1600);
+    std.io.print(" ");
+    std.io.print_u32(320000);
+    std.io.print(" ");
+    std.io.print_u64(6400000000);
+    std.io.newline();
+
+    value32: f32 = 1.5;
+    value64: f64 = -2.25;
+    std.io.print_f32(value32);
+    std.io.print(" ");
+    std.io.print_f64(value64);
+    std.io.newline();
+    std.io.flush();
+
+    return 0;
+}

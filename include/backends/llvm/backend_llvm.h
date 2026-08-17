@@ -1,7 +1,7 @@
 #ifndef COGLET_BACKENDS_LLVM_BACKEND_LLVM_H
 #define COGLET_BACKENDS_LLVM_BACKEND_LLVM_H
 
-#include "cog_ir.h"
+#include "ir/cog_ir.h"
 #include "optimization.h"
 
 typedef enum LlvmBackendStatus {

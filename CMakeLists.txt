@@ -52,10 +52,10 @@ add_library(compiler_core STATIC
         src/target_info.c
         src/string_decode.c
         src/compiler_driver.c
-        src/cog_ir.c
-        src/cog_ir_verify.c
-        src/cog_ir_dump.c
-        src/cog_ir_lower.c
+        src/ir/cog_ir.c
+        src/ir/cog_ir_verify.c
+        src/ir/cog_ir_dump.c
+        src/ir/cog_ir_lower.c
         src/utils/utils.c
         src/utils/arena.c
 )
@@ -66,7 +66,7 @@ target_include_directories(compiler_core PUBLIC
 
 # --- Host-C backend. Backends depend on CogIR/core, never the reverse. ---
 add_library(coglet_backend_c STATIC
-        src/backend_c.c
+        src/backends/backend_c/backend_c.c
 )
 target_include_directories(coglet_backend_c PUBLIC include)
 target_link_libraries(coglet_backend_c PRIVATE compiler_core)

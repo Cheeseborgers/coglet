@@ -1,4 +1,4 @@
-#include "cog_ir_lower.h"
+#include "ir/cog_ir_lower.h"
 #include "string_decode.h"
 
 #include <stdlib.h>

@@ -3,14 +3,14 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "backend_c.h"
+#include "../include/backends/backend_c/backend_c.h"
 #ifdef COGLET_HAS_LLVM_BACKEND
 #include "backends/llvm/backend_llvm.h"
 #endif
 #include "compiler_driver.h"
 #include "coglet_version.h"
 #include "coglet_paths.h"
-#include "cog_ir_lower.h"
+#include "ir/cog_ir_lower.h"
 #include "optimization.h"
 
 typedef enum ExecutableBackend {

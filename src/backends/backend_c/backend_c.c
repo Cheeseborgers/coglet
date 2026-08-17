@@ -1,6 +1,6 @@
 //#define _POSIX_C_SOURCE 200809L
 
-#include "backend_c.h"
+#include "backends/backend_c/backend_c.h"
 
 #include <assert.h>
 #include <errno.h>

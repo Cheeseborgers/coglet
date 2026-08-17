@@ -1,4 +1,4 @@
-#include "cog_ir_lower.h"
+#include "ir/cog_ir_lower.h"
 
 #include <stdio.h>
 #include <string.h>

@@ -1,7 +1,7 @@
 #ifndef COGLET_BACKEND_C_H
 #define COGLET_BACKEND_C_H
 
-#include "cog_ir.h"
+#include "ir/cog_ir.h"
 
 typedef enum CBackendStatus {
     C_BACKEND_STATUS_OK = 0,

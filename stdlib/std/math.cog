@@ -84,6 +84,298 @@ export to_degrees::<T: floating>(radians: T) -> T {
     return radians * rad_to_deg;
 }
 
+// Generic game-oriented vectors. These are ordinary Coglet structs with no
+// backend or SIMD special cases. Operations follow the scalar semantics of T.
+
+export Vec2::<T: numeric> struct {
+    x: T;
+    y: T;
+
+    new::(x: T, y: T) -> Self {
+        return Self { x = x, y = y };
+    }
+
+    zero::() -> Self {
+        return Self { x = 0, y = 0 };
+    }
+
+    one::() -> Self {
+        return Self { x = 1, y = 1 };
+    }
+
+    splat::(value: T) -> Self {
+        return Self { x = value, y = value };
+    }
+
+    add::(self: Self, other: Self) -> Self {
+        return Self {
+            x = self.x + other.x,
+            y = self.y + other.y
+        };
+    }
+
+    sub::(self: Self, other: Self) -> Self {
+        return Self {
+            x = self.x - other.x,
+            y = self.y - other.y
+        };
+    }
+
+    mul::(self: Self, other: Self) -> Self {
+        return Self {
+            x = self.x * other.x,
+            y = self.y * other.y
+        };
+    }
+
+    scale::(self: Self, scalar: T) -> Self {
+        return Self {
+            x = self.x * scalar,
+            y = self.y * scalar
+        };
+    }
+
+    dot::(self: Self, other: Self) -> T {
+        return self.x * other.x + self.y * other.y;
+    }
+
+    length_squared::(self: Self) -> T {
+        return self.x * self.x + self.y * self.y;
+    }
+
+    distance_squared::(self: Self, other: Self) -> T {
+        dx := self.x - other.x;
+        dy := self.y - other.y;
+        return dx * dx + dy * dy;
+    }
+
+    min::(self: Self, other: Self) -> Self {
+        return Self {
+            x = min(self.x, other.x),
+            y = min(self.y, other.y)
+        };
+    }
+
+    max::(self: Self, other: Self) -> Self {
+        return Self {
+            x = max(self.x, other.x),
+            y = max(self.y, other.y)
+        };
+    }
+
+    clamp::(self: Self, low: Self, high: Self) -> Self {
+        return Self {
+            x = clamp(self.x, low.x, high.x),
+            y = clamp(self.y, low.y, high.y)
+        };
+    }
+}
+
+export Vec3::<T: numeric> struct {
+    x: T;
+    y: T;
+    z: T;
+
+    new::(x: T, y: T, z: T) -> Self {
+        return Self { x = x, y = y, z = z };
+    }
+
+    zero::() -> Self {
+        return Self { x = 0, y = 0, z = 0 };
+    }
+
+    one::() -> Self {
+        return Self { x = 1, y = 1, z = 1 };
+    }
+
+    splat::(value: T) -> Self {
+        return Self { x = value, y = value, z = value };
+    }
+
+    add::(self: Self, other: Self) -> Self {
+        return Self {
+            x = self.x + other.x,
+            y = self.y + other.y,
+            z = self.z + other.z
+        };
+    }
+
+    sub::(self: Self, other: Self) -> Self {
+        return Self {
+            x = self.x - other.x,
+            y = self.y - other.y,
+            z = self.z - other.z
+        };
+    }
+
+    mul::(self: Self, other: Self) -> Self {
+        return Self {
+            x = self.x * other.x,
+            y = self.y * other.y,
+            z = self.z * other.z
+        };
+    }
+
+    scale::(self: Self, scalar: T) -> Self {
+        return Self {
+            x = self.x * scalar,
+            y = self.y * scalar,
+            z = self.z * scalar
+        };
+    }
+
+    dot::(self: Self, other: Self) -> T {
+        return self.x * other.x + self.y * other.y + self.z * other.z;
+    }
+
+    cross::(self: Self, other: Self) -> Self {
+        return Self {
+            x = self.y * other.z - self.z * other.y,
+            y = self.z * other.x - self.x * other.z,
+            z = self.x * other.y - self.y * other.x
+        };
+    }
+
+    length_squared::(self: Self) -> T {
+        return self.x * self.x + self.y * self.y + self.z * self.z;
+    }
+
+    distance_squared::(self: Self, other: Self) -> T {
+        dx := self.x - other.x;
+        dy := self.y - other.y;
+        dz := self.z - other.z;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    min::(self: Self, other: Self) -> Self {
+        return Self {
+            x = min(self.x, other.x),
+            y = min(self.y, other.y),
+            z = min(self.z, other.z)
+        };
+    }
+
+    max::(self: Self, other: Self) -> Self {
+        return Self {
+            x = max(self.x, other.x),
+            y = max(self.y, other.y),
+            z = max(self.z, other.z)
+        };
+    }
+
+    clamp::(self: Self, low: Self, high: Self) -> Self {
+        return Self {
+            x = clamp(self.x, low.x, high.x),
+            y = clamp(self.y, low.y, high.y),
+            z = clamp(self.z, low.z, high.z)
+        };
+    }
+}
+
+export Vec4::<T: numeric> struct {
+    x: T;
+    y: T;
+    z: T;
+    w: T;
+
+    new::(x: T, y: T, z: T, w: T) -> Self {
+        return Self { x = x, y = y, z = z, w = w };
+    }
+
+    zero::() -> Self {
+        return Self { x = 0, y = 0, z = 0, w = 0 };
+    }
+
+    one::() -> Self {
+        return Self { x = 1, y = 1, z = 1, w = 1 };
+    }
+
+    splat::(value: T) -> Self {
+        return Self { x = value, y = value, z = value, w = value };
+    }
+
+    add::(self: Self, other: Self) -> Self {
+        return Self {
+            x = self.x + other.x,
+            y = self.y + other.y,
+            z = self.z + other.z,
+            w = self.w + other.w
+        };
+    }
+
+    sub::(self: Self, other: Self) -> Self {
+        return Self {
+            x = self.x - other.x,
+            y = self.y - other.y,
+            z = self.z - other.z,
+            w = self.w - other.w
+        };
+    }
+
+    mul::(self: Self, other: Self) -> Self {
+        return Self {
+            x = self.x * other.x,
+            y = self.y * other.y,
+            z = self.z * other.z,
+            w = self.w * other.w
+        };
+    }
+
+    scale::(self: Self, scalar: T) -> Self {
+        return Self {
+            x = self.x * scalar,
+            y = self.y * scalar,
+            z = self.z * scalar,
+            w = self.w * scalar
+        };
+    }
+
+    dot::(self: Self, other: Self) -> T {
+        return self.x * other.x + self.y * other.y +
+               self.z * other.z + self.w * other.w;
+    }
+
+    length_squared::(self: Self) -> T {
+        return self.x * self.x + self.y * self.y +
+               self.z * self.z + self.w * self.w;
+    }
+
+    distance_squared::(self: Self, other: Self) -> T {
+        dx := self.x - other.x;
+        dy := self.y - other.y;
+        dz := self.z - other.z;
+        dw := self.w - other.w;
+        return dx * dx + dy * dy + dz * dz + dw * dw;
+    }
+
+    min::(self: Self, other: Self) -> Self {
+        return Self {
+            x = min(self.x, other.x),
+            y = min(self.y, other.y),
+            z = min(self.z, other.z),
+            w = min(self.w, other.w)
+        };
+    }
+
+    max::(self: Self, other: Self) -> Self {
+        return Self {
+            x = max(self.x, other.x),
+            y = max(self.y, other.y),
+            z = max(self.z, other.z),
+            w = max(self.w, other.w)
+        };
+    }
+
+    clamp::(self: Self, low: Self, high: Self) -> Self {
+        return Self {
+            x = clamp(self.x, low.x, high.x),
+            y = clamp(self.y, low.y, high.y),
+            z = clamp(self.z, low.z, high.z),
+            w = clamp(self.w, low.w, high.w)
+        };
+    }
+}
+
 // Runtime-backed floating-point math. Coglet does not yet have overloads or
 // compile-time type dispatch, so the initial public API names the precision
 // explicitly. Both precisions use the same backend-neutral runtime ABI.

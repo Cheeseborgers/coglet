@@ -1,0 +1,56 @@
+import std.math;
+
+main::() -> s32 {
+    a := std.math.Vec2::<s32>.new(3, 4);
+    b := std.math.Vec2::<s32>.one();
+    chained := a.add(b).scale(2);
+    if chained.x != 8 || chained.y != 10
+        return 1;
+
+    if a.dot(a) != 25
+        return 2;
+    if a.length_squared() != 25
+        return 3;
+    if a.distance_squared(std.math.Vec2::<s32>.zero()) != 25
+        return 4;
+
+    component := a.mul(std.math.Vec2::<s32>.new(2, 3));
+    if component.x != 6 || component.y != 12
+        return 5;
+
+    low := std.math.Vec2::<s32>.new(0, 5);
+    high := std.math.Vec2::<s32>.new(2, 8);
+    bounded := a.clamp(low, high);
+    if bounded.x != 2 || bounded.y != 5
+        return 6;
+
+    lower := a.min(std.math.Vec2::<s32>.new(10, 2));
+    if lower.x != 3 || lower.y != 2
+        return 7;
+
+    upper := a.max(std.math.Vec2::<s32>.new(10, 2));
+    if upper.x != 10 || upper.y != 4
+        return 8;
+
+    x_axis := std.math.Vec3::<s32>.new(1, 0, 0);
+    y_axis := std.math.Vec3::<s32>.new(0, 1, 0);
+    z_axis := x_axis.cross(y_axis);
+    if z_axis.x != 0 || z_axis.y != 0 || z_axis.z != 1
+        return 9;
+
+    f := std.math.Vec3::<f32>.new(1.0, 2.0, 2.0);
+    if f.length_squared() != 9.0
+        return 10;
+
+    color := std.math.Vec4::<f32>.splat(0.5);
+    if color.dot(color) != 1.0
+        return 11;
+
+    ones := std.math.Vec4::<u64>.one();
+    zeros := std.math.Vec4::<u64>.zero();
+    sum := zeros.add(ones);
+    if sum.x != 1 || sum.y != 1 || sum.z != 1 || sum.w != 1
+        return 12;
+
+    return 0;
+}

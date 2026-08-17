@@ -676,12 +676,13 @@ receiver type must be `Self`, `Self*`, or a qualified pointer to `Self`. A membe
 without a `self` parameter is an associated function. A parameter named `self` in
 any later position is rejected.
 
-Calls use ordinary member spelling:
+Calls use ordinary member spelling, and value-returning calls may be chained:
 
 ```c
 point := Vec3::<f32>.new(1.0, 2.0, 3.0);
 length2 := point.length_squared();
 point.set_x(5.0);
+scaled := point.add(offset).scale(0.5);
 ```
 
 For a pointer receiver, calling through an addressable struct value implicitly

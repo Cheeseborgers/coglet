@@ -1654,6 +1654,7 @@ add_host_c_library_test(
 # --- Shipped standard-library integration tests. ---
 set(COGLET_STDLIB_SOURCE_ROOT "${CMAKE_SOURCE_DIR}/stdlib")
 set(COGLET_STDLIB_MATH_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/math/main.cog")
+set(COGLET_STDLIB_MATH_VECTORS_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/math/vectors/main.cog")
 set(COGLET_STDLIB_IO_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.cog")
 set(COGLET_STDLIB_IO_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.stdout")
 set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/math_import/main.cog")
@@ -1673,6 +1674,21 @@ add_test(
 )
 set_tests_properties(stdlib_math_host_c
         PROPERTIES LABELS "stdlib;stdlib.source;std.math;runtime;backend;backend.c;module;import;discovery;warning-free")
+
+add_test(
+        NAME stdlib_math_vectors_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_MATH_VECTORS_TEST_MAIN}"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_math_vectors_host_c${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -DBACKEND=host-c
+        -DFORBID_COMPILE_WARNINGS=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+)
+set_tests_properties(stdlib_math_vectors_host_c
+        PROPERTIES LABELS "stdlib;stdlib.source;std.math;vector;generic;method;backend;backend.c;module;import;discovery;warning-free")
 
 add_test(
         NAME stdlib_io_host_c
@@ -1763,6 +1779,21 @@ if(COGLET_HAS_LLVM_BACKEND)
         )
         set_tests_properties(stdlib_math_llvm_O${stdlib_opt_level}
             PROPERTIES LABELS "stdlib;stdlib.source;std.math;runtime;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
+
+        add_test(
+            NAME stdlib_math_vectors_llvm_O${stdlib_opt_level}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            "-DINPUTS=${COGLET_STDLIB_MATH_VECTORS_TEST_MAIN}"
+            "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_math_vectors_llvm_O${stdlib_opt_level}${CMAKE_EXECUTABLE_SUFFIX}
+            -DEXPECT_EXIT=0
+            -DBACKEND=llvm
+            -DOPT_LEVEL=${stdlib_opt_level}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+        )
+        set_tests_properties(stdlib_math_vectors_llvm_O${stdlib_opt_level}
+            PROPERTIES LABELS "stdlib;stdlib.source;std.math;vector;generic;method;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
 
         add_test(
             NAME stdlib_io_llvm_O${stdlib_opt_level}

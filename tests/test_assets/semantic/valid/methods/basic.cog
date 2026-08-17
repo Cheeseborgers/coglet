@@ -25,6 +25,14 @@ Counter::struct {
     get::(self: Self) -> s32 {
         return self.value;
     }
+
+    add::(self: Self, amount: s32) -> Self {
+        return Self { value = self.value + amount };
+    }
+
+    scale::(self: Self, factor: s32) -> Self {
+        return Self { value = self.value * factor };
+    }
 }
 
 main::() -> s32 {
@@ -32,6 +40,6 @@ main::() -> s32 {
     pair.replace_first(42);
     first := pair.get_first();
 
-    counter := Counter.zero();
+    counter := Counter.zero().add(10).scale(2);
     return first + counter.get();
 }

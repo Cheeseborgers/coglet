@@ -108,9 +108,13 @@ The actual shipped standard-library source lives under `stdlib/`. `std.math` and
 the `stdlib.source` label so they are distinct from the lower-level stdlib-root/
 discovery-policy fixtures. The `std.io` integration test links the runtime through
 the same executable path users invoke and compares its complete stdout, covering
-readonly byte-slice string output, Boolean output, every fixed-width integer printer, `f32`, `f64`, newline, and flush. The `std.math` integration test exercises both precisions of
+readonly byte-slice string output, Boolean output, every fixed-width integer printer, `f32`, `f64`, newline, and flush. The main `std.math` integration test exercises both precisions of
 the runtime-backed square-root, trigonometric, inverse-trigonometric, rounding,
-and floating-remainder functions. Transcendental comparisons use tolerances;
+and floating-remainder functions. A dedicated vector consumer instantiates
+`Vec2`, `Vec3`, and `Vec4` with signed, unsigned, and floating scalar types and
+checks fluent method chaining, component arithmetic, dot/cross products, squared
+length/distance, and component min/max/clamp. LLVM-enabled configurations run the
+same vector consumer at `-O0` and `-O3`. Transcendental comparisons use tolerances;
 rounding/remainder cases use exact expected values. Separate failure-path tests
 verify that runtime-backed `std.io` and `std.math` executables diagnose a selected
 stdlib root that omits `runtime/coglet_runtime.c`.

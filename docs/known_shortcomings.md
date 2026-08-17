@@ -50,6 +50,34 @@ should not be forgotten.
   `f64` and conflicted. The stdlib currently avoids the pattern instead of adding
   ad-hoc inference rules.
 
+## Vector math
+
+- **Generic vectors cannot yet expose clean `length`/`distance`/normalization methods.**
+  `Vec2<T>`, `Vec3<T>`, and `Vec4<T>` currently provide squared length/distance,
+  but generic code cannot select `sqrt_f32` versus `sqrt_f64` without overload
+  resolution or compile-time type dispatch. Do not solve this with hidden casts or
+  stdlib-only compiler magic; the same future mechanism should improve the public
+  runtime-math API generally.
+- **Struct constraints apply to the whole method set.** The vectors use
+  `T: numeric` so integer grid vectors and floating gameplay vectors share one type
+  family. There is no way yet to attach a `floating` requirement only to methods
+  such as normalization or interpolation. Method-specific constraints should be
+  considered together with the future generic-method/constraint design.
+- **Vector arithmetic is scalar arithmetic, not SIMD or special backend IR.** The
+  current vectors are ordinary Coglet structs. They have no guaranteed packed/SIMD
+  ABI, no shader-vector ABI promise, and no automatic vector instruction mapping.
+  Optimize only after profiling and after a target/ABI policy is designed.
+- **No vector operators or swizzles yet.** Explicit methods (`add`, `sub`, `mul`,
+  `scale`, `dot`, `cross`) keep semantics clear while operator overloading remains
+  undesigned. Swizzles such as `.xy`/`.xyz` are also deferred rather than added as
+  compiler magic.
+- **Unsigned vector subtraction/cross products retain ordinary checked scalar
+  semantics.** `numeric` includes unsigned integers, so operations that mathematically
+  require a negative component can trigger the same checked underflow behavior as
+  equivalent scalar Coglet code. A future richer constraint vocabulary may allow
+  APIs to distinguish signed-or-floating vector operations without inventing one-off
+  vector rules.
+
 ## Compiler/build hygiene
 
 - **Clang currently reports repeated typedef-redefinition warnings in existing

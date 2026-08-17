@@ -11279,9 +11279,24 @@ static int check_argument_against_parameter(SemanticContext *ctx, Type *expected
     if (argument->type == NODE_ARRAY_LITERAL || argument->type == NODE_STRING)
         return check_initializer_against_type(ctx, expected, argument);
 
-    Type *actual = check_value_expression(ctx, argument);
+    /*
+     * Method-call rewriting can prepend an expression that was already
+     * semantically checked while resolving the receiver. Reuse that frozen
+     * expression fact rather than re-walking a rewritten synthetic callee.
+     * Ordinary source AST nodes are still checked on first use.
+     */
+    SemExprInfo *existing_info = sem_find_expr_info(ctx, argument);
+    Type *actual = existing_info ? existing_info->type
+                                 : check_value_expression(ctx, argument);
 
-    if (!actual) return 0;
+    if (!actual ||
+        (existing_info &&
+         (actual->kind == TYPE_VOID ||
+          existing_info->value_category == VALUE_CATEGORY_NONE))) {
+        if (existing_info)
+            semantic_error(ctx, argument, "expression does not produce a value");
+        return 0;
+    }
 
     if (!initializer_compatible(expected, actual)) {
         if (is_integer_zero_to_pointer(expected, argument)) {

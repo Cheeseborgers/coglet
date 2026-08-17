@@ -62,6 +62,10 @@ to_radians<T: floating>       : (T) -> T
 to_degrees<T: floating>       : (T) -> T
 gcd_u64                       : (u64, u64) -> u64
 
+Vec2<T: numeric>
+Vec3<T: numeric>
+Vec4<T: numeric>
+
 sqrt_f32/sqrt_f64
 sin_f32/sin_f64
 cos_f32/cos_f64
@@ -110,6 +114,51 @@ system.
 `s32` value follows the language's normal checked-overflow trap semantics.
 `gcd_u64` uses the Euclidean algorithm and accepts zero operands; `gcd_u64(0, n)`
 and `gcd_u64(n, 0)` return `n`.
+
+### Numeric vectors
+
+`std.math` exports `Vec2<T>`, `Vec3<T>`, and `Vec4<T>` as ordinary generic
+Coglet structs constrained to `numeric`. They are not compiler intrinsics and do
+not have backend-specific or SIMD semantics. The scalar type therefore controls
+all arithmetic, overflow, precision, and conversion behavior.
+
+```c
+position := std.math.Vec3::<f32>.new(10.0, 5.0, 2.0);
+velocity := std.math.Vec3::<f32>.new(1.0, 0.0, -2.0);
+next := position.add(velocity).scale(0.5);
+
+tile := std.math.Vec2::<s32>.new(12, 7);
+```
+
+Each vector provides `new`, `zero`, `one`, and `splat` constructors plus these
+common operations:
+
+```text
+add(other)              component addition
+sub(other)              component subtraction
+mul(other)              component-wise multiplication
+scale(scalar)           scalar multiplication
+dot(other)              dot product
+length_squared()         squared Euclidean length
+distance_squared(other) squared Euclidean distance
+min(other)              component-wise minimum
+max(other)              component-wise maximum
+clamp(low, high)         component-wise clamp
+```
+
+`Vec3<T>` additionally provides `cross(other)`. Because the vectors admit every
+`numeric` type, integer and unsigned arithmetic follows the normal Coglet scalar
+rules; for example, an unsigned subtraction or cross-product component can still
+hit the language's ordinary checked underflow behavior.
+
+The first vector slice intentionally exposes squared length/distance rather than
+`length`, `distance`, or normalization. Those require selecting the concrete
+`f32` or `f64` runtime square-root entry point from generic code, while the
+current generic system has neither overload resolution nor compile-time type
+dispatch and struct constraints currently apply to the entire attached method
+set. The stdlib does not hide that gap behind lossy casts or approximation code.
+Likewise, operator overloading is not yet present; the method spelling is the
+stable explicit API until that language design is addressed.
 
 The runtime-backed functions use precision-explicit names because Coglet does not
 yet have overload resolution or compile-time type dispatch. For example,

@@ -610,7 +610,15 @@ Struct methods and associated functions are now implemented for ordinary complet
 Coglet structs, including generic struct specializations. They are declared in the
 struct body, use `Self` for the concrete owner, support value and pointer receivers,
 and desugar to ordinary function calls before CogIR. The initial facility avoids a
-separate implementation-block language and does not add dispatch machinery.
+separate implementation-block language and does not add dispatch machinery. Method
+receiver expressions that have already been checked are reused during call rewriting,
+so fluent value-call chains such as `v.add(other).scale(0.5)` remain valid.
+
+`std.math` now uses these facilities for ordinary-source `Vec2<T>`, `Vec3<T>`, and
+`Vec4<T>` numeric vectors. The first slice includes constructors, component arithmetic,
+dot products, `Vec3.cross`, squared length/distance, and component min/max/clamp.
+Square-root-dependent length/normalization operations remain deferred until generic
+code has principled type-directed access to the precision-specific runtime math API.
 
 Remaining generic/type-system design work includes generic enums/aliases, generic
 represented-C aggregates if justified, generic methods, user-defined

@@ -1,0 +1,6 @@
+import first;
+import second;
+
+main::() -> i32 {
+    return first.value;
+}

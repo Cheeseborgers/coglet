@@ -152,8 +152,15 @@ import math;
 main::() -> i32 { return math.add(20, 22); }
 ```
 
-Builds remain explicit: `coglet math.cog main.cog -o program`. An import does
-not search for or load a file. Files without `module name;` belong to the root
+The command-line compiler now performs deterministic source discovery for imports.
+If no already-loaded source declares `module math;`, `import math;` searches first
+for `math.cog` beside the importing file and then in each repeated `-I` module
+search directory in command-line order. The first existing candidate is loaded,
+its imports are discovered transitively, and the same physical file is not loaded
+twice. Explicit command-line inputs are parsed first and still take precedence: if
+one already contributes to `module math`, no canonical `math.cog` is auto-loaded
+for that import. Additional files for a multi-file module therefore remain explicit
+until package/manifests exist. Files without `module name;` belong to the root
 namespace; multiple files may contribute to the same named module. Imports are
 file-scoped. Declarations in named modules are private by default; the contextual
 top-level `export` prefix exposes a declaration to importing files. Same-module
@@ -171,14 +178,18 @@ name is also valid. Import cycles are allowed because imports currently affect c
 visibility only; top-level runtime initialization remains in input order. Only
 root-namespace `main::() -> i32` is the executable entry. Exported APIs may not
 expose private nominal types through function signatures, globals/constants, or
-exported struct fields. Package naming/search paths and automatic module discovery
-remain future work.
+exported struct fields. Dotted package/module names, package manifests, an installed standard-library
+root, and separate compilation remain future work. Discovery does not imply runtime
+dependency ordering: explicit inputs retain command-line order and discovered files
+are appended in deterministic first-discovery order to the existing single module
+initializer.
 
 For the current executable slice:
 
 ```sh
 coglet program.cog -o program
 coglet main.cog math.cog util.cog -o program
+coglet main.cog -I lib -o program
 coglet program.cog -o program --backend llvm
 coglet program.cog -o program --backend llvm -O2
 coglet program.cog -o program --backend llvm -O2 -g
@@ -193,6 +204,10 @@ coglet program.cog --emit-asm optimized.s -O3
 coglet program.cog --emit-asm debug.s -O2 -g
 coglet program.cog -o program --backend llvm --emit-asm program.s -O2
 ```
+
+`-I` adds a Coglet module source-search root for automatic `import` discovery;
+it is unrelated to native C header search. Both `-I dir` and `-Idir` are accepted,
+and repeated roots are searched left-to-right after the importing file's directory.
 
 `-L` adds a native library search directory and `-l` requests a native library.
 Both joined and split spellings are accepted, both options may be repeated, and
@@ -846,7 +861,7 @@ object storage. Ordinary Coglet `bool*` is intentionally not interchangeable wit
 Near-term compiler work is backend-focused:
 
 1. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
-2. Extend the module/import layer with module file discovery/search paths and package naming, then define the runtime/standard-library boundary needed for self-hosting.
+2. Extend the module/import layer from single-component `-I` discovery to dotted package naming/manifests and an installed standard-library root, then define the runtime/standard-library boundary needed for self-hosting.
 3. Continue improving diagnostics, tests, and documentation.
 
 ## License

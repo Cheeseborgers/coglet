@@ -1,0 +1,2 @@
+import first;
+main::() -> i32 { return first.answer(); }

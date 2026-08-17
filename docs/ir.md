@@ -161,10 +161,12 @@ Source `return` at program scope remains a semantic error.
 
 For an executable, the runtime/backend contract is that module initialization
 runs exactly once before the Coglet program entry point. A trap during module
-initialization prevents entry execution. The current module/import layer does not create separate runtime modules: all
-runtime-bearing top-level items remain in one deterministic input-order initializer.
-A future separate-compilation/runtime-module design would require a new explicit
-dependency-ordering contract rather than inferring one from imports.
+initialization prevents entry execution. The current module/import layer does not create separate runtime modules. Explicit
+inputs retain command-line order and automatically discovered sources are appended
+in deterministic first-discovery order; all runtime-bearing top-level items then
+remain in that one combined physical-order initializer. Imports are not runtime
+dependency edges. A future separate-compilation/runtime-module design would require
+a new explicit dependency-ordering contract rather than inferring one from imports.
 
 The host-C, LLVM, and future native backends must all honor this same initializer
 CFG. Startup integration is a backend/link-driver concern; initialization

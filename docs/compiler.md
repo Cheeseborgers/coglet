@@ -5,15 +5,16 @@ The compiler driver provides the shared source-file frontend pipeline used by
 
 Its current responsibilities are:
 
-1. collect one or more source-file inputs in command-line/API order;
-2. read and retain every source buffer for the lifetime of the frontend result;
+1. collect one or more explicit source-file roots in command-line/API order;
+2. read, parse, and retain every explicit source buffer for the frontend lifetime;
 3. create the main and scratch arenas;
-4. initialize one compilation-level `SourceManager` and register every input;
-5. parse each physical file independently while accumulating its declarations into one `NODE_PROGRAM` compilation-unit root;
-6. aggregate parser diagnostics across all inputs and report them with their original source provenance;
-7. build root/named module namespaces and file-scoped import visibility, then run semantic analysis once over the combined program;
-8. report collected semantic diagnostics and the semantic error summary;
-9. retain all frontend state for the caller until explicit destruction.
+4. initialize one compilation-level `SourceManager` and register every loaded input;
+5. when import discovery is enabled, resolve missing module sources from the importing file directory and ordered module search roots, recursively loading each physical file at most once;
+6. combine explicit files followed by discovered files into one `NODE_PROGRAM` compilation-unit root;
+7. aggregate parser diagnostics across all inputs and report them with their original source provenance;
+8. build root/named module namespaces and file-scoped import visibility, then run semantic analysis once over the combined program;
+9. report collected semantic diagnostics and the semantic error summary;
+10. retain all frontend state for the caller until explicit destruction.
 
 The driver does not perform token or AST snapshot dumping. `dump_tokens` remains
 lexer-only and `dump_ast` remains parser-only.
@@ -43,13 +44,23 @@ prefix marks a declaration visible to importing files; root-namespace `export` i
 rejected. Exported API types are checked so private nominal types cannot leak through
 function signatures, values, or exported aggregate fields.
 
-Imports are compile-time visibility only: they do not load files, create separate
-CogIR modules, or reorder program-scope runtime initialization. Every physical
-source file must still be supplied to the driver, and runtime-bearing top-level
-items retain command-line/source order. Import cycles are therefore permitted in
-this initial layer. Only root-namespace `main::() -> i32` is an executable entry;
-a `main` inside a named module is an ordinary function. Module search paths,
-automatic file discovery, package names, and separate compilation remain future work.
+The `coglet` command enables import discovery. If no loaded source declares an
+imported module, `import math;` searches `math.cog` beside the importing file and
+then each repeated `-I` directory in command-line order. Search is transitive and
+first-existing-candidate wins. Explicit inputs are all parsed before discovery, so
+an explicitly supplied file contributing to `module math` suppresses automatic
+`math.cog` loading for that import. The library API keeps filesystem discovery
+opt-in through `CompileOptions`; existing parse/check entry points retain explicit-
+input behavior for deterministic embedding and semantic tooling.
+
+Imports remain compile-time visibility rather than runtime dependency edges. Explicit
+inputs retain command-line/source order; newly discovered files are appended after
+explicit roots in deterministic first-discovery order. That combined physical order
+continues to define program-scope runtime initialization, so imports do not acquire an
+implicit dependency-initialization guarantee. Import cycles remain permitted. Only
+root-namespace `main::() -> i32` is an executable entry; a `main` inside a named
+module is an ordinary function. Dotted package names, package manifests, installed
+stdlib lookup, and separate compilation remain future work.
 
 
 ## Post-semantic IR boundary
@@ -64,7 +75,7 @@ only the verified `CogIrModule`; they will not retain AST, `Symbol *`, frontend
 
 `CompileResult` owns:
 
-- every input source buffer (with `source` remaining a compatibility alias for the first/primary input);
+- every explicit or discovered source buffer (with `source` remaining a compatibility alias for the first/primary explicit input);
 - the main arena;
 - the scratch arena;
 - compilation-level source-file metadata through `SourceManager`.
@@ -114,13 +125,12 @@ backend emission/link step fails after successful frontend checking.
 
 Source identity is compilation-local and multi-file-capable. `SourceManager`
 registers every command-line/API source buffer under a stable `SourceFileId`.
-`compile_parse_and_check_files()` parses those files in supplied order and
-combines their top-level declarations/statements into one semantic compilation
-unit. The first input remains the primary file for compatibility metadata only;
-it has no separate namespace or visibility privilege. Future module/import
-loading can reuse the same source identity model without changing AST or
-diagnostic representation. Source buffers remain alive while their registered
-spans are in use.
+`compile_parse_and_check_files()` preserves explicit-only behavior. The options-
+aware entry point can additionally discover imported module sources and registers
+those files in the same `SourceManager` before semantic analysis. The first explicit
+input remains the primary file for compatibility metadata only; it has no separate
+namespace or visibility privilege. Source buffers remain alive while their
+registered spans are in use.
 
 Tokens and AST nodes carry `SourceSpan` values containing:
 

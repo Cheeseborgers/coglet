@@ -1,0 +1,32 @@
+foreach(required_var IN ITEMS COMPILER INPUT EXPECT_EXIT EXPECT_SUBSTRING)
+    if(NOT DEFINED ${required_var})
+        message(FATAL_ERROR "run_module_discovery_failure_test.cmake requires ${required_var}")
+    endif()
+endforeach()
+
+set(command "${COMPILER}" "${INPUT}")
+if(DEFINED SEARCH_DIRS AND NOT "${SEARCH_DIRS}" STREQUAL "")
+    string(REPLACE "|" ";" search_dir_list "${SEARCH_DIRS}")
+    foreach(search_dir IN LISTS search_dir_list)
+        list(APPEND command -I "${search_dir}")
+    endforeach()
+endif()
+execute_process(
+    COMMAND ${command}
+    RESULT_VARIABLE result
+    OUTPUT_VARIABLE stdout
+    ERROR_VARIABLE stderr
+)
+if(NOT result EQUAL EXPECT_EXIT)
+    message(FATAL_ERROR "discovery failure exited ${result}, expected ${EXPECT_EXIT}\n${stderr}")
+endif()
+string(FIND "${stderr}" "${EXPECT_SUBSTRING}" found)
+if(found EQUAL -1)
+    message(FATAL_ERROR "stderr missing '${EXPECT_SUBSTRING}'\n${stderr}")
+endif()
+if(DEFINED EXPECT_PATH_SUBSTRING AND NOT "${EXPECT_PATH_SUBSTRING}" STREQUAL "")
+    string(FIND "${stderr}" "${EXPECT_PATH_SUBSTRING}" path_found)
+    if(path_found EQUAL -1)
+        message(FATAL_ERROR "stderr missing path '${EXPECT_PATH_SUBSTRING}'\n${stderr}")
+    endif()
+endif()

@@ -50,9 +50,10 @@ disambiguates `module.Enum.Member` from `module.global.field` by the resolved ki
 of the middle declaration rather than by syntax. Imported qualification requires
 the selected declaration to be exported; same-module code may use private members.
 An exported declaration may not expose a private nominal type in its public type
-surface. Packages, dotted module names, and automatic file discovery are deferred.
-Imports do not imply runtime
-dependency ordering and import cycles are allowed.
+surface. The command-line driver may resolve `import name;` to a canonical
+`name.cog` source beside the importer or under ordered `-I` search roots; this does
+not change the grammar. Packages and dotted module names are deferred. Imports do
+not imply runtime dependency ordering and import cycles are allowed.
 
 ## Type Syntax
 

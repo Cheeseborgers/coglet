@@ -267,9 +267,13 @@ imports, unknown and duplicate namespace diagnostics, permitted compile-time imp
 cycles, root-only executable entry selection when a named module also declares
 `main`, private-by-default imported declarations, explicit exported functions/data/
 nominal types, same-module private access, root-namespace export rejection, and
-rejection of exported interfaces that expose private nominal types. Use `-L module`,
-`-L import`, `-L visibility`, `-L export`, `-L private`, `-L global`, or `-L constant`
-for focused namespace/data/visibility slices.
+rejection of exported interfaces that expose private nominal types. Discovery
+coverage verifies sibling `name.cog` loading, split/joined `-I`, transitive imports,
+import cycles, importer-directory and search-root precedence, explicit-module
+suppression, parser provenance in discovered files, deterministic module-init order,
+and LLVM debug provenance for discovered sources. Use `-L module`, `-L import`,
+`-L discovery`, `-L visibility`, `-L export`, `-L private`, `-L global`, or
+`-L constant` for focused namespace/data/visibility/discovery slices.
 
 Run only these tests with:
 

@@ -21,7 +21,7 @@ static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [<file> ...] [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [--emit-asm <file>] [-O0|-O1|-O2|-O3] [-g] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
+        "usage: %s <file> [<file> ...] [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [--emit-asm <file>] [-O0|-O1|-O2|-O3] [-g] [-I <dir>|-I<dir>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
         "       %s --version\n",
         program,
         program
@@ -86,8 +86,10 @@ int main(int argc, char **argv)
     int debug_info = 0;
 
     /* argc is an upper bound for each repeated option category. */
+    const char *module_search_dirs[argc];
     const char *library_dirs[argc];
     const char *libraries[argc];
+    size_t module_search_dir_count = 0;
     int library_dir_count = 0;
     int library_count = 0;
 
@@ -159,6 +161,21 @@ int main(int argc, char **argv)
 
         if (strcmp(argv[i], "-g") == 0) {
             debug_info = 1;
+            continue;
+        }
+
+        if (strcmp(argv[i], "-I") == 0) {
+            if (i + 1 >= argc || argv[i + 1][0] == '\0') {
+                fprintf(stderr, "error: -I requires a non-empty module search directory\n");
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+            }
+            module_search_dirs[module_search_dir_count++] = argv[++i];
+            continue;
+        }
+
+        if (strncmp(argv[i], "-I", 2) == 0 && argv[i][2] != '\0') {
+            module_search_dirs[module_search_dir_count++] = argv[i] + 2;
             continue;
         }
 
@@ -250,8 +267,18 @@ int main(int argc, char **argv)
         return COMPILE_STATUS_DRIVER_ERROR;
     }
 
+    CompileOptions compile_options = compile_options_default();
+    compile_options.discover_imports = 1;
+    compile_options.module_search_dirs = module_search_dirs;
+    compile_options.module_search_dir_count = module_search_dir_count;
+
     CompileResult result;
-    CompileStatus status = compile_parse_and_check_files(input_paths, input_path_count, &result);
+    CompileStatus status = compile_parse_and_check_files_with_options(
+        input_paths,
+        input_path_count,
+        &compile_options,
+        &result
+    );
 
     if (status != COMPILE_STATUS_OK) {
         int exit_code = status_to_exit_code(status);

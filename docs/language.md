@@ -33,8 +33,20 @@ main::() -> i32 {
 Files without `module name;` belong to the root namespace. Multiple physical
 files may contribute declarations to the same named module. Imports are
 file-scoped: importing a module in one file does not make it visible in another
-file automatically. All physical source files must still be supplied to the
-compiler; imports do not perform file discovery yet.
+file automatically.
+
+The command-line compiler automatically discovers a missing imported module using
+one canonical source filename. `import math;` searches for `math.cog` first beside
+the importing file and then under repeated `-I` roots in command-line order:
+
+```sh
+coglet app/main.cog -I lib -I vendor -o app
+```
+
+The first existing candidate wins and its imports are discovered transitively.
+Explicit inputs are parsed before discovery; if any explicit source already declares
+`module math;`, no canonical `math.cog` is loaded for that import. Multi-file module
+fragments beyond the canonical discovered file therefore remain explicit inputs.
 
 Declarations in a named module are private by default. A top-level contextual
 `export` prefix makes a declaration visible to importing files:
@@ -75,11 +87,13 @@ Nominal types and enum members use the
 same dot syntax (`math.Pair`, `math.Mode.Red`). A lexical symbol shadows a module
 name in expression lookup, preserving ordinary `value.field` behavior.
 
-The current module layer is compile-time namespace/visibility only. Import cycles
-are allowed, and imports do not reorder top-level runtime initialization. Only a
-root-namespace `main::() -> i32` is the executable entry. Automatic module
-discovery, search paths, dotted package names, and separate
-compilation remain future work.
+The current module layer remains compile-time namespace/visibility only. Import
+cycles are allowed, and imports do not define runtime dependency ordering. Explicit
+files retain command-line order; discovered files are appended after them in
+first-discovery order, and that physical order remains the module-initializer order.
+Only a root-namespace `main::() -> i32` is the executable entry. Dotted package
+names, manifests, installed stdlib lookup, and separate compilation remain future
+work.
 
 ## Values, Storage, and No-Value Expressions
 

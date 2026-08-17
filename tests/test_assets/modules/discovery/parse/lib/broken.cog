@@ -1,0 +1,2 @@
+module broken;
+export value: i32 = ;

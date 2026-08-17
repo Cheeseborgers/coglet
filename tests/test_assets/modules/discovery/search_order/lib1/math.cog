@@ -1,0 +1,2 @@
+module math;
+export answer::() -> i32 { return 44; }

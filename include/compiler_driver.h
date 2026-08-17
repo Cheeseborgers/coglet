@@ -14,13 +14,30 @@ typedef enum CompileStatus {
     COMPILE_STATUS_DRIVER_ERROR,
 } CompileStatus;
 
+typedef struct CompileOptions {
+    /*
+     * When non-zero, unresolved `import name;` directives may load the
+     * canonical source file `name.cog` before semantic analysis.
+     */
+    int discover_imports;
+
+    /*
+     * Additional module search roots, consulted after the importing file's
+     * directory and in the supplied order. Paths are borrowed for the call.
+     */
+    const char *const *module_search_dirs;
+    size_t module_search_dir_count;
+} CompileOptions;
+
+CompileOptions compile_options_default(void);
+
 typedef struct CompileResult {
     CompileStatus status;
 
     const char *filename;
     char *source;
 
-    /* Owned source buffers in command-line/input order; source aliases [0]. */
+    /* Owned source buffers in explicit-then-discovered order; source aliases [0]. */
     char **source_buffers;
     size_t source_buffer_count;
 
@@ -71,14 +88,26 @@ typedef struct CompileResult {
 CompileStatus compile_parse_and_check(const char *filename, CompileResult *out);
 
 /*
- * Parses and checks one compilation unit assembled from multiple source files.
- * Files are parsed in the supplied order into one NODE_PROGRAM and share one
- * semantic/global namespace. `filenames` is borrowed; source contents are
- * owned by `out` until compile_result_destroy().
+ * Parses and checks one compilation unit assembled from explicit source files.
+ * These compatibility entry points do not perform filesystem import discovery;
+ * use the options-aware forms when discovery is desired. `filenames` is
+ * borrowed; source contents are owned by `out` until compile_result_destroy().
  */
 CompileStatus compile_parse_and_check_files(
     const char *const *filenames,
     size_t filename_count,
+    CompileResult *out
+);
+
+/*
+ * Options-aware host-target compilation. When discover_imports is enabled,
+ * missing `import name;` modules may add canonical `name.cog` sources before
+ * semantic analysis.
+ */
+CompileStatus compile_parse_and_check_files_with_options(
+    const char *const *filenames,
+    size_t filename_count,
+    const CompileOptions *options,
     CompileResult *out
 );
 
@@ -96,6 +125,14 @@ CompileStatus compile_parse_and_check_files_for_target(
     const char *const *filenames,
     size_t filename_count,
     const TargetInfo *target,
+    CompileResult *out
+);
+
+CompileStatus compile_parse_and_check_files_for_target_with_options(
+    const char *const *filenames,
+    size_t filename_count,
+    const TargetInfo *target,
+    const CompileOptions *options,
     CompileResult *out
 );
 

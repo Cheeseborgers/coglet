@@ -1,0 +1,2 @@
+module first;
+export value: i32 = 1;

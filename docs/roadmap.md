@@ -461,11 +461,13 @@ preserving one frozen CogIR compilation unit. Qualified globals retain ordinary
 storage semantics and qualified constants retain compile-time value semantics.
 Named-module declarations are private by default and explicit `export` marks the
 public import surface; exported APIs are checked against private nominal-type leaks.
-Imports do not perform file discovery or runtime ordering;
-all physical inputs remain explicit and top-level runtime execution remains in
-input order.
+The command-line driver now resolves missing single-component imports from a canonical
+`name.cog` beside the importer or under repeated `-I` roots, including transitive
+imports and import cycles. Discovery is source ingestion only: explicit roots retain
+command-line order, discovered files follow in first-discovery order, and imports do
+not become runtime dependency edges.
 
-- module search paths/file discovery and package naming
+- dotted package naming, manifests, and installed stdlib search roots
 - stable declaration identity for future separate compilation
 - stable declaration identity across files
 - diagnostic notes/secondary spans and richer recovery

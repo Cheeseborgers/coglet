@@ -1,0 +1,2 @@
+module second;
+export value::() -> i32 { return 41; }

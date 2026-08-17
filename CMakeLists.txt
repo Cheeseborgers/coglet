@@ -323,6 +323,112 @@ add_test(
 set_tests_properties(driver_modules_private_member_rejected
         PROPERTIES LABELS "driver;semantic;module;import;visibility;private;multi-file;invalid")
 
+set(COGLET_DISCOVERY_DIR "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/discovery")
+
+function(add_module_discovery_host_test test_name inputs expected_exit)
+    add_test(
+        NAME ${test_name}
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${inputs}"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+        -DEXPECT_EXIT=${expected_exit}
+        -DBACKEND=host-c
+        ${ARGN}
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+    )
+    set_tests_properties(${test_name}
+        PROPERTIES LABELS "driver;backend;backend.c;module;import;discovery;multi-file")
+endfunction()
+
+add_module_discovery_host_test(
+    driver_modules_discovery_sibling
+    "${COGLET_DISCOVERY_DIR}/sibling/main.cog"
+    41
+)
+add_module_discovery_host_test(
+    driver_modules_discovery_search_path
+    "${COGLET_DISCOVERY_DIR}/search/app/main.cog"
+    42
+    "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/search/lib"
+)
+add_module_discovery_host_test(
+    driver_modules_discovery_transitive
+    "${COGLET_DISCOVERY_DIR}/transitive/app/main.cog"
+    42
+    "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/transitive/lib"
+)
+add_module_discovery_host_test(
+    driver_modules_discovery_importer_precedence
+    "${COGLET_DISCOVERY_DIR}/precedence/app/main.cog"
+    43
+    "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/precedence/lib"
+)
+add_module_discovery_host_test(
+    driver_modules_discovery_search_order
+    "${COGLET_DISCOVERY_DIR}/search_order/app/main.cog"
+    44
+    "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/search_order/lib1|${COGLET_DISCOVERY_DIR}/search_order/lib2"
+    -DSEARCH_STYLE=joined
+)
+add_module_discovery_host_test(
+    driver_modules_discovery_explicit_module_wins
+    "${COGLET_DISCOVERY_DIR}/explicit/app/main.cog|${COGLET_DISCOVERY_DIR}/explicit/lib/custom.cog"
+    45
+    "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/explicit/lib"
+)
+add_module_discovery_host_test(
+    driver_modules_discovery_import_cycle
+    "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/cycle_main.cog"
+    42
+)
+add_module_discovery_host_test(
+    driver_modules_discovery_module_init_order
+    "${COGLET_DISCOVERY_DIR}/order/app/main.cog"
+    11
+    "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/order/lib"
+)
+
+add_test(
+    NAME driver_modules_discovery_wrong_module
+    COMMAND "${CMAKE_COMMAND}"
+    -DCOMPILER=$<TARGET_FILE:coglet>
+    -DINPUT=${COGLET_DISCOVERY_DIR}/wrong/app/main.cog
+    "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/wrong/lib"
+    -DEXPECT_EXIT=1
+    "-DEXPECT_SUBSTRING=unknown module 'math'"
+    -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_failure_test.cmake"
+)
+set_tests_properties(driver_modules_discovery_wrong_module
+    PROPERTIES LABELS "driver;semantic;module;import;discovery;invalid")
+
+add_test(
+    NAME driver_modules_discovery_parser_provenance
+    COMMAND "${CMAKE_COMMAND}"
+    -DCOMPILER=$<TARGET_FILE:coglet>
+    -DINPUT=${COGLET_DISCOVERY_DIR}/parse/app/main.cog
+    "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/parse/lib"
+    -DEXPECT_EXIT=2
+    "-DEXPECT_SUBSTRING=parser error"
+    "-DEXPECT_PATH_SUBSTRING=broken.cog"
+    -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_failure_test.cmake"
+)
+set_tests_properties(driver_modules_discovery_parser_provenance
+    PROPERTIES LABELS "driver;parser;diagnostic;module;import;discovery;invalid")
+
+add_test(
+    NAME driver_modules_discovery_rejects_empty_search_path
+    COMMAND "${CMAKE_COMMAND}"
+    -DCOMPILER=$<TARGET_FILE:coglet>
+    -DINPUT=${COGLET_DISCOVERY_DIR}/search/app/main.cog
+    -DEXPECT_EXIT=3
+    "-DEXPECT_SUBSTRING=-I requires a non-empty module search directory"
+    "-DARGS=-I;"
+    -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
+)
+set_tests_properties(driver_modules_discovery_rejects_empty_search_path
+    PROPERTIES LABELS "driver;module;import;discovery;invalid")
+
 # --- CogIR core builder/verifier/dump regression. ---
 add_executable(check_cog_ir_core tools/tests/check_cog_ir_core.c)
 target_link_libraries(check_cog_ir_core PRIVATE compiler_core)
@@ -1588,6 +1694,49 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_modules_visibility
         PROPERTIES LABELS "backend;backend.llvm;semantic;module;import;visibility;export;private;multi-file;codegen;debug;optimization")
+
+    add_test(
+        NAME backend_llvm_modules_discovery_native
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_DISCOVERY_DIR}/transitive/app/main.cog"
+        "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/transitive/lib"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_discovery_native
+        -DEXPECT_EXIT=42
+        -DBACKEND=llvm
+        -DOPT_LEVEL=3
+        -DDEBUG_INFO=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_discovery_native
+        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;codegen;debug;optimization")
+
+    add_test(
+        NAME backend_llvm_modules_discovery_module_init_order
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_DISCOVERY_DIR}/order/app/main.cog"
+        "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/order/lib"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_discovery_module_init_order
+        -DEXPECT_EXIT=11
+        -DBACKEND=llvm
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_discovery_module_init_order
+        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;module-init;codegen")
+
+    add_test(
+        NAME backend_llvm_modules_discovery_debug_source
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${COGLET_DISCOVERY_DIR}/debug/app/main.cog
+        -DSEARCH_DIR=${COGLET_DISCOVERY_DIR}/debug/lib
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_modules_discovery_debug_source.ll
+        -DEXPECT_SOURCE=math.cog
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_llvm_ir_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_discovery_debug_source
+        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;debug;stage9")
 
     function(add_llvm_stage7_native_test test_name fixture expected_exit)
         add_test(

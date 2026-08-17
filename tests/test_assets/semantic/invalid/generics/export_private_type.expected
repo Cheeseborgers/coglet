@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/export_private_type.cog:7:1: error: exported declaration 'expose' exposes private type 'Hidden'
+export expose::<T>(value: Hidden, fallback: T) -> T {
+^~~~~~~~~~~~~
+1 semantic error generated.

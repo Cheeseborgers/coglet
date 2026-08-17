@@ -481,6 +481,13 @@ static void walk_node(ExpressionWalker *walker, Node *node)
             break;
 
         case NODE_FUNC_DECL:
+            /*
+             * Generic source templates are intentionally not semantically
+             * checked as concrete bodies. Their synthesized monomorphizations
+             * are walked separately below.
+             */
+            if (node->as.func_decl.type_parameters.count > 0)
+                break;
             walk_node_list(
                 walker,
                 &node->as.func_decl.params
@@ -2019,6 +2026,24 @@ static void verify_declaration_info(Verifier *verifier, Node *declaration) {
             "SemDeclInfo has the invalid declaration ID");
     }
 
+    if (info->is_generic_template) {
+        if (declaration->type != NODE_FUNC_DECL ||
+            declaration->as.func_decl.type_parameters.count == 0) {
+            verifier_error(verifier, declaration,
+                "generic-template marker is attached to a non-generic function");
+        }
+        if (info->type || !info->symbol || info->symbol->type ||
+            info->abi_kind != SEM_DECL_ABI_NONE) {
+            verifier_error(verifier, declaration,
+                "generic template unexpectedly carries concrete semantic metadata");
+        }
+        if (semantic_get_decl_info_by_id(verifier->sem, info->id) != info) {
+            verifier_error(verifier, declaration,
+                "generic template ID does not resolve back to the same SemDeclInfo");
+        }
+        return;
+    }
+
     if (!info->type) {
         verifier_error(verifier, declaration,
             "SemDeclInfo has no resolved semantic type");
@@ -2402,6 +2427,18 @@ int semantic_info_verify_program(
     walker.context = &verifier;
 
     walk_node(&walker, program);
+
+    /*
+     * Concrete generic specializations are frontend-generated ASTs rather than
+     * children of the parsed source program. They still must satisfy the same
+     * semantic side-table invariants before CogIR lowering.
+     */
+    for (SemDeclInfo *info = sem->decl_infos; info; info = info->next) {
+        if (info->is_generic_specialization &&
+            info->node && info->node->type == NODE_FUNC_DECL) {
+            walk_node(&walker, info->node);
+        }
+    }
 
     for (int i = 0; i < verifier.expressions.count; i++) {
         verify_expression_info(

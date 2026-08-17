@@ -1059,6 +1059,46 @@ semantic_get_decl_info_by_id(ctx, id);
 The declaration IDs are deterministic for a given semantic traversal but are
 compiler-internal identities, not persistent source/module IDs.
 
+## Generic-Function Specialization
+
+Generic function declarations are frontend templates, not runtime declarations.
+The template receives a stable `SemDeclId`, but it has no concrete function type
+until a call selects concrete type arguments. Specialization identity is the pair
+of that template declaration ID and the structural concrete type-argument list;
+generated names are never used as cache keys. Repeated equivalent requests reuse
+one specialization.
+
+For each new specialization, semantic analysis clones the function AST, binds the
+template type-parameter names to concrete semantic types in a temporary scope,
+resolves the concrete signature, and checks the cloned body with the ordinary
+operator/call/flow/type rules. This is the first-version constraint model: body
+validity under substitution is the requirement, with no separate trait or
+capability type system. Failed specializations retain enough concrete signature
+metadata to suppress caller-side diagnostic cascades, but semantic failure
+prevents CogIR lowering.
+
+Generic calls infer type parameters only from ordinary argument types. Untyped
+numeric arguments use Coglet's existing default concretization; recursive pointer,
+array, and function parameter shapes can propagate an inferred concrete type.
+There is no expected-result-type inference in the current bottom-up checker.
+Explicit `::<...>` calls must provide every type argument.
+
+An in-progress cache entry permits ordinary recursive calls to the same concrete
+specialization. A changing specialization chain for one template is capped at 32
+active instantiations and diagnosed as likely non-terminating. This is a compiler
+termination guard rather than a language-level recursion limit.
+
+Concrete specialization functions receive deterministic diagnostic/debug names
+formed from the source function name plus concrete types in parameter order, for
+example `min<i32>` or `first<i32, u64>`. The name is descriptive only; stable
+specialization identity remains `SemDeclId + structural type arguments`.
+
+Generic templates are skipped during CogIR metadata/executable lowering. Only
+the fully checked concrete specialization declarations receive normal frozen
+CogIR functions, so neither host-C nor LLVM contains generic-specific runtime or
+name-recovery logic. Frontend template/type objects therefore do not cross the
+CogIR lifetime boundary.
+
 ## Contextual Conversion Metadata
 
 Semantic analysis now records implicit/contextual expression adaptation
@@ -1249,7 +1289,7 @@ type so frontend-only types never escape into IR. Runtime `wrapping_add`,
 `wrapping_sub`, `wrapping_mul`, and `wrapping_neg` calls
 now lower directly to `iadd.wrap`, `isub.wrap`, `imul.wrap`, and `ineg.wrap`;
 compile-time wrapping calls continue to materialize through checked constant
-metadata. All 100 programs under `tests/test_assets/semantic/valid/` now lower and
+metadata. All 106 programs under `tests/test_assets/semantic/valid/` now lower and
 verify through `dump_ir`. Native-C variadic calls are legalized before the call:
 CogIR inserts `c.vararg.promote` for target-required integer/Boolean/enum and
 `f32` promotions, and the verifier rejects unpromoted C-variadic tails. The

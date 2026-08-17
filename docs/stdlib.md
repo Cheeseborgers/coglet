@@ -23,8 +23,9 @@ or hidden intrinsic module lookup after source discovery.
 
 ## `std.math`
 
-`std.math` is the first shipped module. Its initial API is deliberately small and
-concrete while Coglet has no overloading or generics:
+`std.math` is the first shipped module. Its API remains deliberately small; the
+first generic-function milestone uses `min` and `max` as the standard-library
+proof that one source definition can produce concrete specializations:
 
 ```c
 import std.math;
@@ -36,8 +37,8 @@ Exports:
 pi       : f64 constant
 tau      : f64 constant
 abs_i32  : (i32) -> i32
-min_i32  : (i32, i32) -> i32
-max_i32  : (i32, i32) -> i32
+min<T>   : (T, T) -> T
+max<T>   : (T, T) -> T
 gcd_u64  : (u64, u64) -> u64
 ```
 
@@ -46,9 +47,13 @@ gcd_u64  : (u64, u64) -> u64
 `gcd_u64` uses the Euclidean algorithm and accepts zero operands; `gcd_u64(0, n)`
 and `gcd_u64(n, 0)` return `n`.
 
-The typed names are intentional. Future generic or overload facilities should be
-driven by language design rather than simulated inside the first standard-library
-surface.
+`min` and `max` infer `T` from ordinary arguments when inference is
+unambiguous, and callers may spell an explicit specialization such as
+`std.math.min::<u64>(30, 20)`. Their comparison operators are not assumed valid
+for every `T`: each concrete specialization is checked by the ordinary semantic
+rules, so an unsupported type is rejected at instantiation. `abs_i32` and
+`gcd_u64` remain intentionally concrete; this milestone does not attempt to make
+every standard-library function generic.
 
 ## Source-tree testing
 

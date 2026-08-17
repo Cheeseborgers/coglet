@@ -1,0 +1,49 @@
+program
+  func min<T> -> T
+    params:
+      param_decl a: T
+      param_decl b: T
+    body:
+      block
+        if
+          condition:
+            (<)
+              a
+              b
+          then:
+            block
+              return
+                a
+        return
+          b
+  func select<T, U> -> T
+    params:
+      param_decl left: T
+      param_decl right: U
+    body:
+      block
+        return
+          left
+  func main -> i32
+    body:
+      block
+        var_decl a: <inferred>
+          init:
+            call
+              min
+              10
+              20
+        var_decl b: <inferred>
+          init:
+            call::<i64>
+              min
+              30
+              40
+        var_decl c: <inferred>
+          init:
+            call::<i32, u64>
+              select
+              a
+              7
+        return
+          c

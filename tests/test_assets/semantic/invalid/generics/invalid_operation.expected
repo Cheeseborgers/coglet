@@ -1,0 +1,7 @@
+tests/test_assets/semantic/invalid/generics/invalid_operation.cog:6:8: error: ordered comparison requires numeric operands
+    if a < b
+       ^~~~~
+tests/test_assets/semantic/invalid/generics/invalid_operation.cog:14:20: error: cannot instantiate 'min' with T = Pair: generic body is invalid for these concrete types
+    result: Pair = min(a, b);
+                   ^~~
+2 semantic errors generated.

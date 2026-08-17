@@ -106,6 +106,18 @@ typedef struct {
     int capacity;
 } NodeList;
 
+typedef struct {
+    StringView *items;
+    int count;
+    int capacity;
+} StringViewList;
+
+typedef struct {
+    Type **items;
+    int count;
+    int capacity;
+} TypeList;
+
 struct Node {
     NodeType type;
 
@@ -198,6 +210,7 @@ struct Node {
 
         struct {
             Node *callee;
+            TypeList type_arguments; /* explicit `::<...>` arguments; empty when inferred */
             NodeList arguments;
         } call;
 
@@ -301,6 +314,7 @@ struct Node {
 
         struct {
             StringView name;
+            StringViewList type_parameters; /* source generic parameters; empty for ordinary/concrete functions */
             NodeList params;      // list of NODE_FUNC_PARAM_DECL
             Type *return_type;
             Node *body;           // NODE_BLOCK

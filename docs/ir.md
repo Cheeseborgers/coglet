@@ -71,6 +71,11 @@ CogIR does not perform name lookup, overload resolution, type inference,
 contextual-conversion selection, constant-expression legality checking, or
 control-flow legality checking. Those are frontend responsibilities.
 
+Generic function templates are likewise a frontend-only concept. Semantic
+analysis monomorphizes a successfully requested specialization before lowering,
+and CogIR receives only ordinary concrete functions. A template and its frontend
+type-parameter bindings are never retained by CogIR or reconstructed by a backend.
+
 ## Compilation unit and module initialization
 
 A `CogIrModule` represents one Coglet compilation unit, not necessarily exactly

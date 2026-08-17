@@ -1,0 +1,16 @@
+min::<T>(a: T, b: T) -> T {
+    if a < b
+        return a;
+    return b;
+}
+
+select::<T, U>(left: T, right: U) -> T {
+    return left;
+}
+
+main::() -> i32 {
+    a := min(10, 20);
+    b := min::<i64>(30, 40);
+    c := select::<i32, u64>(a, 7);
+    return c;
+}

@@ -571,3 +571,13 @@ provide executable feedback without defining Coglet semantics by C behavior.
 ## Self-Hosting Direction
 
 Self-hosting remains a long-term objective rather than the next milestone. The language still needs runtime and file I/O facilities, allocation support, diagnostics suitable for larger programs, and a stable module/standard-library discovery boundary before self-hosting becomes practical.
+
+## First generic-function milestone
+
+The first restricted generic facility is now implemented as frontend-only,
+compile-time monomorphization of top-level Coglet functions. Type parameters can
+be inferred from ordinary arguments or supplied explicitly with `::<...>`; each
+concrete body is rechecked under ordinary semantic rules before CogIR lowering.
+CogIR and both backends remain generic-unaware. Generic nominal types, explicit
+trait/constraint declarations, specialization, dynamic dispatch, and separate
+generic compilation remain future design work.

@@ -77,6 +77,7 @@ static Node *finish_struct_init_named(
 
 // postfix helpers
 static Node *finish_call(Parser *p, Node *callee);
+static Node *finish_generic_call(Parser *p, Node *callee);
 static Node *finish_field(Parser *p, Node *object);
 static Node *finish_index(Parser *p, Node *object);
 
@@ -730,6 +731,32 @@ static Node *make_inc_dec(Parser *p, Node *expr, TokenType op, int is_prefix, So
     );
 }
 
+static void string_view_list_push(Arena *arena, StringViewList *list, StringView value)
+{
+    if (list->count >= list->capacity) {
+        int capacity = list->capacity == 0 ? 4 : list->capacity * 2;
+        StringView *items = arena_alloc(arena, sizeof(*items) * (size_t)capacity);
+        if (list->items && list->count > 0)
+            memcpy(items, list->items, sizeof(*items) * (size_t)list->count);
+        list->items = items;
+        list->capacity = capacity;
+    }
+    list->items[list->count++] = value;
+}
+
+static void type_list_push(Arena *arena, TypeList *list, Type *value)
+{
+    if (list->count >= list->capacity) {
+        int capacity = list->capacity == 0 ? 4 : list->capacity * 2;
+        Type **items = arena_alloc(arena, sizeof(*items) * (size_t)capacity);
+        if (list->items && list->count > 0)
+            memcpy(items, list->items, sizeof(*items) * (size_t)list->count);
+        list->items = items;
+        list->capacity = capacity;
+    }
+    list->items[list->count++] = value;
+}
+
 // Continues postfix parsing (calls, field access, indexing) from an
 // already-built expression node. Used both by parse_postfix (starting
 // fresh from parse_primary) and by parse_decl_or_expr_statement
@@ -738,6 +765,12 @@ static Node *make_inc_dec(Parser *p, Node *expr, TokenType op, int is_prefix, So
 static Node *parse_postfix_from(Parser *p, Node *expr)
 {
     while (1) {
+
+        // explicit generic call: f::<T, U>(...)
+        if (match(p, TOK_COLON_COLON)) {
+            expr = finish_generic_call(p, expr);
+            continue;
+        }
 
         // function call: f(...)
         if (match(p, TOK_LPAREN)) {
@@ -1547,6 +1580,54 @@ static Node *parse_function_signature_rest(Parser *p, Token name, SourceSpan spa
         func->as.func_decl.return_type = make_void_type(p->arena);
     }
 
+    return func;
+}
+
+static Node *parse_generic_proc_decl_rest(Parser *p, Token name, SourceSpan span)
+{
+    if (!consume(p, TOK_LESS))
+        return ast_new_error(p->arena, p->current);
+
+    StringViewList parameters = {0};
+    if (check(p, TOK_GREATER)) {
+        error_at(p, &p->current, "generic function requires at least one type parameter");
+        advance(p);
+        return ast_new_error(p->arena, p->previous);
+    }
+
+    for (;;) {
+        if (!consume(p, TOK_IDENT)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+        Token parameter = p->previous;
+        string_view_list_push(
+            p->arena,
+            &parameters,
+            string_view(parameter.start, (size_t)parameter.length)
+        );
+
+        if (!match(p, TOK_COMMA))
+            break;
+    }
+
+    if (!consume(p, TOK_GREATER)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *func = parse_function_signature_rest(p, name, span);
+    if (!func || func->type == NODE_ERROR)
+        return func;
+
+    func->as.func_decl.type_parameters = parameters;
+
+    if (!check(p, TOK_LBRACE)) {
+        error_at(p, &p->current, "expected function body");
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+    func->as.func_decl.body = parse_block(p);
     return func;
 }
 
@@ -2376,6 +2457,7 @@ static Node *parse_decl_after_name(Parser *p, Token name) {
 
     SourceSpan span = name.span;
 
+    if (check(p, TOK_LESS))  return parse_generic_proc_decl_rest(p, name, span);
     if (check(p, TOK_LPAREN)) return parse_proc_decl_rest(p, name, span);
     if (check(p, TOK_STRUCT) || check(p, TOK_UNION))
         return parse_struct_decl_rest(p, name, span);
@@ -2977,6 +3059,38 @@ static Node *finish_call(Parser *p, Node *callee) {
     p->suppress_struct_init = saved;
 
     consume(p, TOK_RPAREN);
+    return call;
+}
+
+static Node *finish_generic_call(Parser *p, Node *callee)
+{
+    if (!consume(p, TOK_LESS)) {
+        error_at(p, &p->current, "expected '<' after '::' in generic call");
+        return ast_new_error(p->arena, p->current);
+    }
+
+    TypeList arguments = {0};
+    if (check(p, TOK_GREATER)) {
+        error_at(p, &p->current, "explicit generic call requires at least one type argument");
+        advance(p);
+        return ast_new_error(p->arena, p->previous);
+    }
+
+    for (;;) {
+        type_list_push(p->arena, &arguments, parse_type(p));
+        if (!match(p, TOK_COMMA))
+            break;
+    }
+
+    if (!consume(p, TOK_GREATER))
+        return ast_new_error(p->arena, p->current);
+    if (!consume(p, TOK_LPAREN)) {
+        error_at(p, &p->current, "generic type arguments must be followed by a call");
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *call = finish_call(p, callee);
+    call->as.call.type_arguments = arguments;
     return call;
 }
 

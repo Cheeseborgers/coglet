@@ -1,0 +1,9 @@
+module generic_visibility;
+
+private_identity::<T>(value: T) -> T {
+    return value;
+}
+
+export identity::<T>(value: T) -> T {
+    return private_identity(value);
+}

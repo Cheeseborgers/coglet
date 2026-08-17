@@ -589,7 +589,16 @@ static void print_node(Node *node)
             break;
 
         case NODE_CALL:
-            printf("(call ");
+            printf("(call");
+            if (node->as.call.type_arguments.count > 0) {
+                printf("::<");
+                for (int i = 0; i < node->as.call.type_arguments.count; i++) {
+                    if (i > 0) printf(", ");
+                    print_type(node->as.call.type_arguments.items[i]);
+                }
+                printf(">");
+            }
+            printf(" ");
             print_node(node->as.call.callee);
             printf(" (");
 
@@ -878,6 +887,14 @@ static void print_node(Node *node)
             }
 
             print_string_view(node->as.func_decl.name);
+            if (node->as.func_decl.type_parameters.count > 0) {
+                printf("<");
+                for (int i = 0; i < node->as.func_decl.type_parameters.count; i++) {
+                    if (i > 0) printf(", ");
+                    print_string_view(node->as.func_decl.type_parameters.items[i]);
+                }
+                printf(">");
+            }
             printf(" (");
 
             for (int i = 0;
@@ -1097,7 +1114,16 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_CALL:
             indent(depth);
-            printf("call\n");
+            printf("call");
+            if (node->as.call.type_arguments.count > 0) {
+                printf("::<");
+                for (int i = 0; i < node->as.call.type_arguments.count; i++) {
+                    if (i > 0) printf(", ");
+                    print_type(node->as.call.type_arguments.items[i]);
+                }
+                printf(">");
+            }
+            printf("\n");
             print_node_pretty(node->as.call.callee, depth + 1);
             for (int i = 0; i < node->as.call.arguments.count; i++)
                 print_node_pretty(node->as.call.arguments.items[i], depth + 1);
@@ -1481,6 +1507,14 @@ static void print_node_pretty(Node *node, int depth)
             }
 
             print_string_view(node->as.func_decl.name);
+            if (node->as.func_decl.type_parameters.count > 0) {
+                printf("<");
+                for (int i = 0; i < node->as.func_decl.type_parameters.count; i++) {
+                    if (i > 0) printf(", ");
+                    print_string_view(node->as.func_decl.type_parameters.items[i]);
+                }
+                printf(">");
+            }
             printf(" -> ");
 
             print_type(node->as.func_decl.return_type);

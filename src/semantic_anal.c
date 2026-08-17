@@ -26,6 +26,27 @@ struct LoopFlowContext {
     LoopFlowContext *parent;
 };
 
+typedef enum GenericSpecializationState {
+    GENERIC_SPECIALIZATION_CHECKING,
+    GENERIC_SPECIALIZATION_VALID,
+    GENERIC_SPECIALIZATION_INVALID,
+} GenericSpecializationState;
+
+struct GenericSpecialization {
+    SemDeclId template_id;
+    Node *template_decl;
+    Node *function;
+    Symbol *symbol;
+    Type *function_type;
+    Type **type_arguments;
+    int type_argument_count;
+    GenericSpecializationState state;
+
+    /* Active-instantiation chain, distinct from the cache list. */
+    GenericSpecialization *active_parent;
+    GenericSpecialization *next;
+};
+
 static Type *new_type(SemanticContext *ctx, TypeKind kind)
 {
     Type *type = arena_new(ctx->arena, Type);
@@ -2024,6 +2045,7 @@ static int  declare_struct_shell(SemanticContext *ctx, Node *node);
 static void fill_struct_fields(SemanticContext *ctx, Node *node);
 static void validate_repr_c_struct_layouts(SemanticContext *ctx, Node *program);
 static int  declare_function_signature(SemanticContext *ctx, Node *node);
+static int  declare_generic_function_template(SemanticContext *ctx, Node *node);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
 static int ensure_constant_symbol_checked(SemanticContext *ctx, Symbol *symbol);
@@ -2048,6 +2070,7 @@ static void fill_enum_members(SemanticContext *ctx,Node *node);
 static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
 static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value);
 static Type *check_value_expression(SemanticContext *ctx, Node *node);
+static Type *make_function_type(SemanticContext *ctx, Node *func);
 static Type *check_checked_cast_expression(SemanticContext *ctx, Node *node);
 static Type *check_reinterpret_expression(SemanticContext *ctx, Node *node);
 static Type *concretize_inferred_type(SemanticContext *ctx, Node *expression, Type *type);
@@ -6201,6 +6224,660 @@ typedef enum {
     IDENTIFIER_USE_WRITE_TARGET,
 } IdentifierUse;
 
+
+static int generic_type_parameter_index(const Node *func, StringView name)
+{
+    if (!func || func->type != NODE_FUNC_DECL)
+        return -1;
+
+    for (int i = 0; i < func->as.func_decl.type_parameters.count; i++) {
+        if (string_view_equals(func->as.func_decl.type_parameters.items[i], name))
+            return i;
+    }
+    return -1;
+}
+
+static int source_type_is_generic_parameter(const Node *func, const Type *type, int *out_index)
+{
+    if (!type || type->kind != TYPE_NAMED || type->named_module.length != 0)
+        return 0;
+
+    int index = generic_type_parameter_index(func, type->named_name);
+    if (index < 0)
+        return 0;
+
+    if (out_index)
+        *out_index = index;
+    return 1;
+}
+
+static int source_type_contains_generic_parameter(const Node *func, const Type *type)
+{
+    if (!type)
+        return 0;
+    if (source_type_is_generic_parameter(func, type, NULL))
+        return 1;
+
+    switch (type->kind) {
+        case TYPE_POINTER:
+        case TYPE_ARRAY:
+            return source_type_contains_generic_parameter(func, type->element);
+
+        case TYPE_FUNCTION:
+            for (int i = 0; i < type->parameter_count; i++) {
+                if (source_type_contains_generic_parameter(func, type->parameters[i]))
+                    return 1;
+            }
+            return source_type_contains_generic_parameter(func, type->return_type);
+
+        default:
+            return 0;
+    }
+}
+
+static int symbol_is_generic_template(const Symbol *symbol)
+{
+    return symbol &&
+        symbol->kind == SYMBOL_FUNCTION &&
+        symbol->declaration &&
+        symbol->declaration->type == NODE_FUNC_DECL &&
+        symbol->declaration->as.func_decl.type_parameters.count > 0;
+}
+
+static Symbol *resolve_generic_template_callee_no_diag(SemanticContext *ctx, Node *callee)
+{
+    if (!callee)
+        return NULL;
+
+    if (callee->type == NODE_IDENT) {
+        Symbol *symbol = scope_lookup(
+            ctx->current_scope,
+            callee->as.ident.data,
+            callee->as.ident.length
+        );
+        return symbol_is_generic_template(symbol) ? symbol : NULL;
+    }
+
+    if (callee->type == NODE_FIELD) {
+        SemanticModule *module = NULL;
+        StringView member_name = string_view_empty();
+        int recognized = 0;
+        Symbol *symbol = semantic_lookup_qualified_field_symbol(
+            ctx,
+            callee,
+            0,
+            &module,
+            &member_name,
+            &recognized
+        );
+        (void)module;
+        (void)member_name;
+        return recognized && symbol_is_generic_template(symbol) ? symbol : NULL;
+    }
+
+    return NULL;
+}
+
+static void format_generic_bindings(
+    const Node *template_decl,
+    Type *const *type_arguments,
+    int type_argument_count,
+    char *buffer,
+    size_t buffer_size
+) {
+    if (!buffer || buffer_size == 0)
+        return;
+
+    buffer[0] = '\0';
+    size_t used = 0;
+    int count = template_decl->as.func_decl.type_parameters.count;
+    if (type_argument_count < count)
+        count = type_argument_count;
+
+    for (int i = 0; i < count; i++) {
+        char type_name[192];
+        format_type_name(type_arguments[i], type_name, sizeof(type_name));
+        StringView parameter = template_decl->as.func_decl.type_parameters.items[i];
+
+        int written = snprintf(
+            buffer + used,
+            used < buffer_size ? buffer_size - used : 0,
+            "%s%.*s = %s",
+            i == 0 ? "" : ", ",
+            (int)parameter.length,
+            parameter.data,
+            type_name
+        );
+        if (written < 0)
+            return;
+        size_t added = (size_t)written;
+        if (used + added >= buffer_size) {
+            buffer[buffer_size - 1] = '\0';
+            return;
+        }
+        used += added;
+    }
+}
+
+static StringView make_generic_specialization_name(
+    SemanticContext *ctx,
+    const Node *template_decl,
+    Type *const *type_arguments,
+    int type_argument_count
+) {
+    char concrete_types[1024];
+    concrete_types[0] = '\0';
+    size_t used = 0;
+
+    for (int i = 0; i < type_argument_count; i++) {
+        char type_name[192];
+        format_type_name(type_arguments[i], type_name, sizeof(type_name));
+        int written = snprintf(
+            concrete_types + used,
+            used < sizeof(concrete_types) ? sizeof(concrete_types) - used : 0,
+            "%s%s",
+            i == 0 ? "" : ", ",
+            type_name
+        );
+        if (written < 0)
+            break;
+        size_t added = (size_t)written;
+        if (used + added >= sizeof(concrete_types)) {
+            used = sizeof(concrete_types) - 1;
+            concrete_types[used] = '\0';
+            break;
+        }
+        used += added;
+    }
+
+    size_t name_length = template_decl->as.func_decl.name.length;
+    size_t types_length = strlen(concrete_types);
+    size_t total = name_length + 1 + types_length + 1;
+    char *text = arena_alloc(ctx->arena, total);
+    memcpy(text, template_decl->as.func_decl.name.data, name_length);
+    text[name_length] = '<';
+    memcpy(text + name_length + 1, concrete_types, types_length);
+    text[total - 1] = '>';
+    return string_view(text, total);
+}
+
+static GenericSpecialization *find_generic_specialization(
+    SemanticContext *ctx,
+    SemDeclId template_id,
+    Type *const *type_arguments,
+    int type_argument_count
+) {
+    for (GenericSpecialization *spec = ctx->generic_specializations; spec; spec = spec->next) {
+        if (spec->template_id != template_id ||
+            spec->type_argument_count != type_argument_count) {
+            continue;
+        }
+
+        int equal = 1;
+        for (int i = 0; i < type_argument_count; i++) {
+            if (!type_equal(spec->type_arguments[i], type_arguments[i])) {
+                equal = 0;
+                break;
+            }
+        }
+        if (equal)
+            return spec;
+    }
+    return NULL;
+}
+
+static int active_generic_template_depth(SemanticContext *ctx, SemDeclId template_id)
+{
+    int depth = 0;
+    for (GenericSpecialization *spec = ctx->active_generic_specialization;
+         spec;
+         spec = spec->active_parent) {
+        if (spec->template_id == template_id)
+            depth++;
+    }
+    return depth;
+}
+
+static void define_generic_type_aliases(
+    SemanticContext *ctx,
+    const Node *template_decl,
+    Type *const *type_arguments
+) {
+    for (int i = 0; i < template_decl->as.func_decl.type_parameters.count; i++) {
+        scope_define(
+            ctx,
+            template_decl->as.func_decl.type_parameters.items[i],
+            SYMBOL_TYPE,
+            type_arguments[i]
+        );
+    }
+}
+
+static Symbol *new_specialization_symbol(
+    SemanticContext *ctx,
+    Node *function,
+    Type *function_type
+) {
+    Symbol *symbol = arena_new(ctx->arena, Symbol);
+    *symbol = (Symbol){
+        .name = function->as.func_decl.name,
+        .kind = SYMBOL_FUNCTION,
+        .builtin_kind = BUILTIN_NONE,
+        .type = function_type,
+        .declaration = NULL,
+        .declaration_id = INVALID_SEM_DECL_ID,
+        .variable_storage = VARIABLE_STORAGE_NONE,
+        .flow_owner_id = INVALID_FLOW_OWNER_ID,
+        .variable_id = INVALID_VARIABLE_ID,
+        .next = NULL,
+    };
+    return symbol;
+}
+
+static void record_specialization_signature(
+    SemanticContext *ctx,
+    Node *function,
+    Type *function_type,
+    Symbol *symbol
+) {
+    function->as.func_decl.resolved_type = function_type;
+    SemDeclInfo *info = sem_record_decl_info(ctx, function, function_type, symbol);
+    info->is_generic_specialization = 1;
+    info->abi_kind = SEM_DECL_ABI_FUNCTION;
+    info->abi.function.abi = FUNCTION_ABI_COGLET;
+    info->abi.function.linkage = SEM_FUNCTION_LINKAGE_INTERNAL;
+    info->abi.function.c_call_conv = C_CALL_DEFAULT;
+    info->abi.function.is_variadic = 0;
+
+    for (int i = 0; i < function->as.func_decl.params.count; i++) {
+        sem_record_decl_info(
+            ctx,
+            function->as.func_decl.params.items[i],
+            function_type->parameters[i],
+            NULL
+        );
+    }
+}
+
+static GenericSpecialization *instantiate_generic_function(
+    SemanticContext *ctx,
+    Symbol *template_symbol,
+    Type *const *type_arguments,
+    int type_argument_count,
+    Node *call_site
+) {
+    assert(symbol_is_generic_template(template_symbol));
+    Node *template_decl = template_symbol->declaration;
+    SemDeclId template_id = template_symbol->declaration_id;
+
+    GenericSpecialization *cached = find_generic_specialization(
+        ctx,
+        template_id,
+        type_arguments,
+        type_argument_count
+    );
+    if (cached)
+        return cached;
+
+    enum { GENERIC_SPECIALIZATION_RECURSION_LIMIT = 32 };
+    if (active_generic_template_depth(ctx, template_id) >=
+        GENERIC_SPECIALIZATION_RECURSION_LIMIT) {
+        char bindings[1024];
+        format_generic_bindings(
+            template_decl,
+            type_arguments,
+            type_argument_count,
+            bindings,
+            sizeof(bindings)
+        );
+        semantic_error_fmt(
+            ctx,
+            call_site,
+            "generic specialization recursion for '%.*s' exceeded %d changing instantiations (%s); likely non-terminating specialization",
+            (int)template_decl->as.func_decl.name.length,
+            template_decl->as.func_decl.name.data,
+            GENERIC_SPECIALIZATION_RECURSION_LIMIT,
+            bindings
+        );
+        return NULL;
+    }
+
+    GenericSpecialization *spec = arena_new(ctx->arena, GenericSpecialization);
+    memset(spec, 0, sizeof(*spec));
+    spec->template_id = template_id;
+    spec->template_decl = template_decl;
+    spec->type_argument_count = type_argument_count;
+    spec->state = GENERIC_SPECIALIZATION_CHECKING;
+    spec->type_arguments = arena_alloc(
+        ctx->arena,
+        sizeof(Type *) * (size_t)type_argument_count
+    );
+    memcpy(
+        spec->type_arguments,
+        type_arguments,
+        sizeof(Type *) * (size_t)type_argument_count
+    );
+    spec->next = ctx->generic_specializations;
+    ctx->generic_specializations = spec;
+
+    Node *function = ast_clone(ctx->arena, template_decl);
+    function->is_exported = 0;
+    function->as.func_decl.type_parameters.items = NULL;
+    function->as.func_decl.type_parameters.count = 0;
+    function->as.func_decl.type_parameters.capacity = 0;
+    function->as.func_decl.name = make_generic_specialization_name(
+        ctx,
+        template_decl,
+        type_arguments,
+        type_argument_count
+    );
+    spec->function = function;
+
+    Scope *saved_scope = ctx->current_scope;
+    SemanticModule *saved_module = ctx->current_module;
+    SourceFileId saved_source_id = ctx->current_source_id;
+
+    semantic_select_source_module(ctx, template_decl->span.file_id);
+    scope_push(ctx);
+    define_generic_type_aliases(ctx, template_decl, type_arguments);
+
+    int errors_before = ctx->error_count;
+    Type *function_type = make_function_type(ctx, function);
+    if (function_type) {
+        Symbol *symbol = new_specialization_symbol(ctx, function, function_type);
+        spec->function_type = function_type;
+        spec->symbol = symbol;
+        record_specialization_signature(ctx, function, function_type, symbol);
+
+        spec->active_parent = ctx->active_generic_specialization;
+        ctx->active_generic_specialization = spec;
+        check_function_body(ctx, function);
+        ctx->active_generic_specialization = spec->active_parent;
+    }
+
+    spec->state = ctx->error_count == errors_before && spec->symbol
+        ? GENERIC_SPECIALIZATION_VALID
+        : GENERIC_SPECIALIZATION_INVALID;
+
+    scope_pop(ctx);
+    ctx->current_scope = saved_scope;
+    ctx->current_module = saved_module;
+    ctx->current_source_id = saved_source_id;
+
+    return spec;
+}
+
+static int infer_generic_argument_candidate(
+    SemanticContext *ctx,
+    Node *template_decl,
+    const Type *pattern,
+    Type *actual,
+    Node *argument,
+    Type **inferred
+) {
+    int parameter_index = -1;
+    if (source_type_is_generic_parameter(template_decl, pattern, &parameter_index)) {
+        Type *candidate = actual;
+        if (candidate && is_untyped_numeric_type(candidate)) {
+            candidate = concretize_inferred_type(ctx, argument, candidate);
+            if (!candidate)
+                return 0;
+        }
+        if (!candidate || is_null_type(candidate))
+            return 1;
+
+        if (!inferred[parameter_index]) {
+            inferred[parameter_index] = candidate;
+            return 1;
+        }
+
+        if (!type_equal(inferred[parameter_index], candidate)) {
+            char previous_name[128];
+            char candidate_name[128];
+            format_type_name(inferred[parameter_index], previous_name, sizeof(previous_name));
+            format_type_name(candidate, candidate_name, sizeof(candidate_name));
+            StringView parameter = template_decl->as.func_decl.type_parameters.items[parameter_index];
+            semantic_error_fmt(
+                ctx,
+                argument,
+                "conflicting inference for generic type parameter '%.*s': %s versus %s",
+                (int)parameter.length,
+                parameter.data,
+                previous_name,
+                candidate_name
+            );
+            return 0;
+        }
+        return 1;
+    }
+
+    if (!pattern || !actual)
+        return 1;
+
+    if (pattern->kind == TYPE_POINTER && actual->kind == TYPE_POINTER)
+        return infer_generic_argument_candidate(
+            ctx, template_decl, pattern->element, actual->element, argument, inferred
+        );
+
+    if (pattern->kind == TYPE_ARRAY && actual->kind == TYPE_ARRAY)
+        return infer_generic_argument_candidate(
+            ctx, template_decl, pattern->element, actual->element, argument, inferred
+        );
+
+    if (pattern->kind == TYPE_FUNCTION && actual->kind == TYPE_FUNCTION) {
+        int count = pattern->parameter_count < actual->parameter_count
+            ? pattern->parameter_count
+            : actual->parameter_count;
+        for (int i = 0; i < count; i++) {
+            if (!infer_generic_argument_candidate(
+                    ctx,
+                    template_decl,
+                    pattern->parameters[i],
+                    actual->parameters[i],
+                    argument,
+                    inferred)) {
+                return 0;
+            }
+        }
+        return infer_generic_argument_candidate(
+            ctx,
+            template_decl,
+            pattern->return_type,
+            actual->return_type,
+            argument,
+            inferred
+        );
+    }
+
+    return 1;
+}
+
+static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *template_symbol)
+{
+    Node *template_decl = template_symbol->declaration;
+    int type_parameter_count = template_decl->as.func_decl.type_parameters.count;
+    int parameter_count = template_decl->as.func_decl.params.count;
+    int argc = call->as.call.arguments.count;
+
+    if (argc != parameter_count) {
+        semantic_error_fmt(
+            ctx,
+            call,
+            "wrong number of arguments: expected %d, got %d",
+            parameter_count,
+            argc
+        );
+        return NULL;
+    }
+
+    Type **type_arguments = arena_alloc(
+        ctx->arena,
+        sizeof(Type *) * (size_t)type_parameter_count
+    );
+    memset(type_arguments, 0, sizeof(Type *) * (size_t)type_parameter_count);
+
+    if (call->as.call.type_arguments.count > 0) {
+        if (call->as.call.type_arguments.count != type_parameter_count) {
+            semantic_error_fmt(
+                ctx,
+                call,
+                "wrong number of generic type arguments: expected %d, got %d",
+                type_parameter_count,
+                call->as.call.type_arguments.count
+            );
+            return NULL;
+        }
+
+        for (int i = 0; i < type_parameter_count; i++) {
+            Type *resolved = resolve_type(ctx, call->as.call.type_arguments.items[i], call);
+            if (!resolved)
+                return NULL;
+            if (is_untyped_numeric_type(resolved) || is_null_type(resolved) ||
+                resolved->kind == TYPE_NAMED) {
+                semantic_error(ctx, call, "generic type arguments must resolve to concrete types");
+                return NULL;
+            }
+            type_arguments[i] = resolved;
+        }
+    } else {
+        int inference_ok = 1;
+        for (int i = 0; i < parameter_count; i++) {
+            Type *pattern = template_decl->as.func_decl.params.items[i]->as.param_decl.var_type;
+            if (!source_type_contains_generic_parameter(template_decl, pattern))
+                continue;
+
+            Node *argument = call->as.call.arguments.items[i];
+            if (argument->type == NODE_ARRAY_LITERAL || argument->type == NODE_STRING)
+                continue;
+
+            Type *actual = check_value_expression(ctx, argument);
+            if (!actual) {
+                inference_ok = 0;
+                continue;
+            }
+            if (!infer_generic_argument_candidate(
+                    ctx,
+                    template_decl,
+                    pattern,
+                    actual,
+                    argument,
+                    type_arguments)) {
+                inference_ok = 0;
+            }
+        }
+        if (!inference_ok)
+            return NULL;
+
+        for (int i = 0; i < type_parameter_count; i++) {
+            if (!type_arguments[i]) {
+                StringView parameter = template_decl->as.func_decl.type_parameters.items[i];
+                semantic_error_fmt(
+                    ctx,
+                    call,
+                    "cannot infer generic type parameter '%.*s'; provide an explicit type argument",
+                    (int)parameter.length,
+                    parameter.data
+                );
+                return NULL;
+            }
+        }
+    }
+
+    GenericSpecialization *spec = instantiate_generic_function(
+        ctx,
+        template_symbol,
+        type_arguments,
+        type_parameter_count,
+        call
+    );
+    if (!spec)
+        return NULL;
+
+    if (spec->state == GENERIC_SPECIALIZATION_INVALID) {
+        if (!ctx->active_generic_specialization) {
+            char bindings[1024];
+            format_generic_bindings(
+                template_decl,
+                type_arguments,
+                type_parameter_count,
+                bindings,
+                sizeof(bindings)
+            );
+            semantic_error_fmt(
+                ctx,
+                call,
+                "cannot instantiate '%.*s' with %s: generic body is invalid for these concrete types",
+                (int)template_decl->as.func_decl.name.length,
+                template_decl->as.func_decl.name.data,
+                bindings
+            );
+        }
+
+        /*
+         * Preserve the concrete signature after a failed specialization so one
+         * primary generic error does not cascade into unrelated undefined-name
+         * diagnostics in the caller. Lowering never runs after semantic errors.
+         */
+        if (spec->symbol && spec->function_type) {
+            sem_record_expr_info(
+                ctx,
+                call->as.call.callee,
+                spec->function_type,
+                spec->symbol,
+                VALUE_CATEGORY_RVALUE
+            );
+            ValueCategory category =
+                spec->function_type->return_type->kind == TYPE_VOID
+                    ? VALUE_CATEGORY_NONE
+                    : VALUE_CATEGORY_RVALUE;
+            sem_record_expr_info(
+                ctx,
+                call,
+                spec->function_type->return_type,
+                NULL,
+                category
+            );
+            return spec->function_type->return_type;
+        }
+        return NULL;
+    }
+
+    if (!spec->symbol || !spec->function_type)
+        return NULL;
+
+    sem_record_expr_info(
+        ctx,
+        call->as.call.callee,
+        spec->function_type,
+        spec->symbol,
+        VALUE_CATEGORY_RVALUE
+    );
+
+    int ok = 1;
+    for (int i = 0; i < argc; i++) {
+        if (!check_argument_against_parameter(
+                ctx,
+                spec->function_type->parameters[i],
+                call->as.call.arguments.items[i])) {
+            ok = 0;
+        }
+    }
+    if (!ok)
+        return NULL;
+
+    ValueCategory category = spec->function_type->return_type->kind == TYPE_VOID
+        ? VALUE_CATEGORY_NONE
+        : VALUE_CATEGORY_RVALUE;
+    sem_record_expr_info(
+        ctx,
+        call,
+        spec->function_type->return_type,
+        NULL,
+        category
+    );
+    return spec->function_type->return_type;
+}
+
 static Type *check_identifier_expression(SemanticContext *ctx, Node *node,IdentifierUse use) {
 
     assert(node);
@@ -6262,6 +6939,17 @@ static Type *check_identifier_expression(SemanticContext *ctx, Node *node,Identi
             node->as.ident.length
         );
 
+        return NULL;
+    }
+
+    if (symbol_is_generic_template(sym)) {
+        semantic_error_fmt(
+            ctx,
+            node,
+            "generic function '%.*s' can only be used as a call target",
+            (int)node->as.ident.length,
+            node->as.ident.data
+        );
         return NULL;
     }
 
@@ -7696,10 +8384,21 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return NULL;
 
         case NODE_CALL: {
+            Symbol *generic_template =
+                resolve_generic_template_callee_no_diag(ctx, node->as.call.callee);
+
+            if (generic_template)
+                return check_generic_call(ctx, node, generic_template);
+
             Symbol *builtin =
                 resolve_builtin_callee(ctx,node->as.call.callee);
 
             if (builtin) {
+                if (node->as.call.type_arguments.count > 0) {
+                    semantic_error(ctx, node,
+                        "explicit type arguments require a generic function");
+                    return NULL;
+                }
                 return check_builtin_call(ctx, node, builtin);
             }
 
@@ -7712,6 +8411,12 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
             if (callee->kind != TYPE_FUNCTION) {
                 semantic_error(ctx, node, "called object is not a function");
+                return NULL;
+            }
+
+            if (node->as.call.type_arguments.count > 0) {
+                semantic_error(ctx, node,
+                    "explicit type arguments require a generic function");
                 return NULL;
             }
 
@@ -10303,6 +11008,88 @@ static StringView semantic_declaration_name(Node *node)
     }
 }
 
+static int validate_generic_export_source_type(
+    SemanticContext *ctx,
+    Node *generic_decl,
+    Type *source_type,
+    Node *owner,
+    StringView owner_name
+) {
+    if (!source_type)
+        return 1;
+    if (source_type_is_generic_parameter(generic_decl, source_type, NULL))
+        return 1;
+
+    if (source_type->kind == TYPE_POINTER || source_type->kind == TYPE_ARRAY) {
+        return validate_generic_export_source_type(
+            ctx,
+            generic_decl,
+            source_type->element,
+            owner,
+            owner_name
+        );
+    }
+
+    if (source_type->kind == TYPE_FUNCTION) {
+        for (int i = 0; i < source_type->parameter_count; i++) {
+            if (!validate_generic_export_source_type(
+                    ctx,
+                    generic_decl,
+                    source_type->parameters[i],
+                    owner,
+                    owner_name)) {
+                return 0;
+            }
+        }
+        return validate_generic_export_source_type(
+            ctx,
+            generic_decl,
+            source_type->return_type,
+            owner,
+            owner_name
+        );
+    }
+
+    Type *resolved = resolve_type(ctx, source_type, owner);
+    if (!resolved)
+        return 0;
+    return semantic_export_type_is_public(ctx, resolved, owner, owner_name);
+}
+
+static void validate_generic_function_export(SemanticContext *ctx, Node *node)
+{
+    StringView name = node->as.func_decl.name;
+    Scope *saved_scope = ctx->current_scope;
+    SemanticModule *saved_module = ctx->current_module;
+    SourceFileId saved_source_id = ctx->current_source_id;
+
+    semantic_select_source_module(ctx, node->span.file_id);
+
+    int ok = 1;
+    for (int i = 0; i < node->as.func_decl.params.count && ok; i++) {
+        ok = validate_generic_export_source_type(
+            ctx,
+            node,
+            node->as.func_decl.params.items[i]->as.param_decl.var_type,
+            node,
+            name
+        );
+    }
+    if (ok) {
+        validate_generic_export_source_type(
+            ctx,
+            node,
+            node->as.func_decl.return_type,
+            node,
+            name
+        );
+    }
+
+    ctx->current_scope = saved_scope;
+    ctx->current_module = saved_module;
+    ctx->current_source_id = saved_source_id;
+}
+
 static void validate_one_exported_declaration(
     SemanticContext *ctx,
     Node *node
@@ -10323,6 +11110,12 @@ static void validate_one_exported_declaration(
             node,
             "export is valid only for declarations in a named module"
         );
+        return;
+    }
+
+    if (node->type == NODE_FUNC_DECL &&
+        node->as.func_decl.type_parameters.count > 0) {
+        validate_generic_function_export(ctx, node);
         return;
     }
 
@@ -10428,8 +11221,12 @@ static void check_program(SemanticContext *ctx, Node *node)
             continue;
 
         semantic_select_source_module(ctx, stmt->span.file_id);
-        declare_function_signature(ctx, stmt);
-        validate_source_entry_signature(ctx, stmt);
+        if (stmt->as.func_decl.type_parameters.count > 0) {
+            declare_generic_function_template(ctx, stmt);
+        } else {
+            declare_function_signature(ctx, stmt);
+            validate_source_entry_signature(ctx, stmt);
+        }
     }
 
     /*
@@ -10509,7 +11306,8 @@ static void check_program(SemanticContext *ctx, Node *node)
         semantic_select_source_module(ctx, stmt->span.file_id);
 
         if (stmt->type == NODE_FUNC_DECL) {
-            check_function_body(ctx, stmt);
+            if (stmt->as.func_decl.type_parameters.count == 0)
+                check_function_body(ctx, stmt);
             continue;
         }
 
@@ -10912,6 +11710,68 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
     return type;
 }
 
+static int declare_generic_function_template(SemanticContext *ctx, Node *node)
+{
+    assert(node && node->type == NODE_FUNC_DECL);
+    assert(node->as.func_decl.type_parameters.count > 0);
+
+    node->as.func_decl.resolved_type = NULL;
+
+    if (scope_find_local(
+            ctx->current_scope,
+            node->as.func_decl.name.data,
+            node->as.func_decl.name.length)) {
+        semantic_error_name(
+            ctx,
+            node,
+            "duplicate declaration",
+            node->as.func_decl.name.data,
+            node->as.func_decl.name.length
+        );
+        return 0;
+    }
+
+    if (node->as.func_decl.linkage != FUNCTION_LINKAGE_COGLET ||
+        node->as.func_decl.is_repr_c ||
+        node->as.func_decl.is_variadic) {
+        semantic_error(
+            ctx,
+            node,
+            "generic functions are currently limited to ordinary non-variadic Coglet definitions"
+        );
+        return 0;
+    }
+
+    for (int i = 0; i < node->as.func_decl.type_parameters.count; i++) {
+        StringView parameter = node->as.func_decl.type_parameters.items[i];
+        for (int j = 0; j < i; j++) {
+            if (string_view_equals(
+                    parameter,
+                    node->as.func_decl.type_parameters.items[j])) {
+                semantic_error_fmt(
+                    ctx,
+                    node,
+                    "duplicate generic type parameter '%.*s'",
+                    (int)parameter.length,
+                    parameter.data
+                );
+                return 0;
+            }
+        }
+    }
+
+    scope_predeclare_declared(
+        ctx,
+        node,
+        node->as.func_decl.name,
+        SYMBOL_FUNCTION
+    );
+    SemDeclInfo *info = sem_find_decl_info(ctx, node);
+    assert(info && info->symbol);
+    info->is_generic_template = 1;
+    return 1;
+}
+
 static int declare_function_signature(SemanticContext *ctx, Node *node)
 {
     node->as.func_decl.resolved_type = NULL;
@@ -11115,6 +11975,12 @@ static void check_function_body(SemanticContext *ctx, Node *node)
 
 static void check_function(SemanticContext *ctx, Node *node)
 {
+    if (node->as.func_decl.type_parameters.count > 0) {
+        semantic_error(ctx, node,
+            "generic function declarations must be top level in the initial implementation");
+        return;
+    }
+
     if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C &&
         ctx->function_depth > 0) {
         semantic_error(ctx, node, "#extern(c) declarations must be at top level");

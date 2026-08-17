@@ -278,6 +278,12 @@ typedef struct SemDeclInfo {
      */
     int is_exported;
 
+    /* Frontend-only generic template declarations are never lowered to CogIR. */
+    int is_generic_template;
+
+    /* Concrete frontend monomorphization synthesized from a generic template. */
+    int is_generic_specialization;
+
     /* True only for the validated root-namespace `main::() -> i32`. */
     int is_executable_entry;
 

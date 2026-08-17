@@ -216,12 +216,13 @@ main::() -> i32 {
     if std.math.gcd_u64(84, 30) != 6
         return 1;
 
-    return std.math.max_i32(20, 22);
+    return std.math.max(20, 22);
 }
 ```
 
-`std.math` currently exports typed `f64` constants `pi`/`tau`, integer helpers
-`abs_i32`, `min_i32`, `max_i32`, and `gcd_u64`. See `docs/stdlib.md` for the API,
+`std.math` currently exports typed `f64` constants `pi`/`tau`, concrete integer helpers
+`abs_i32`/`gcd_u64`, and generic `min<T>`/`max<T>` functions whose operations are
+validated for each concrete specialization. See `docs/stdlib.md` for the API,
 installation layout, and stdlib testing workflow.
 
 For the current executable slice:

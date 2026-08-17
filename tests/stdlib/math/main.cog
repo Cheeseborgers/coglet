@@ -6,10 +6,14 @@ main::() -> i32 {
     if std.math.abs_i32(17) != 17
         return 2;
 
-    if std.math.min_i32(10, 20) != 10
+    if std.math.min(10, 20) != 10
         return 3;
-    if std.math.max_i32(10, 20) != 20
+    if std.math.max(10, 20) != 20
         return 4;
+    if std.math.min::<u64>(30, 20) != 20
+        return 10;
+    if std.math.max::<i64>(-30, -20) != -20
+        return 11;
 
     if std.math.gcd_u64(84, 30) != 6
         return 5;

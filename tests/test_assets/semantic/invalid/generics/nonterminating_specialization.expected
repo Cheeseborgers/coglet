@@ -1,0 +1,7 @@
+tests/test_assets/semantic/invalid/generics/nonterminating_specialization.cog:2:12: error: generic specialization recursion for 'grow' exceeded 32 changing instantiations (T = i32********************************); likely non-terminating specialization
+    return grow::<T*>(null);
+           ^~~~
+tests/test_assets/semantic/invalid/generics/nonterminating_specialization.cog:6:12: error: cannot instantiate 'grow' with T = i32: generic body is invalid for these concrete types
+    return grow::<i32>(null);
+           ^~~~
+2 semantic errors generated.

@@ -1,0 +1,5 @@
+import generic_visibility;
+
+main::() -> i32 {
+    return generic_visibility.private_identity(42);
+}

@@ -516,6 +516,44 @@ Nested functions may still refer to visible global variables, compile-time const
 Closure environments and captured runtime storage remain future language-design work.
 
 
+## Generic Functions
+
+Coglet's first generic facility is deliberately monomorphized and
+function-only. A top-level function may declare type parameters after its `::`:
+
+```c
+min::<T>(a: T, b: T) -> T {
+    if a < b
+        return a;
+    return b;
+}
+```
+
+Generic type parameters are placeholders only while the source function is a
+frontend template. A call either supplies all concrete type arguments explicitly
+(`min::<i64>(a, b)`) or omits the list and infers them from ordinary function
+arguments. The current semantic checker is bottom-up, so an expected result type
+does not participate in inference. Conflicting argument evidence is rejected, and
+a type parameter that cannot be inferred requires an explicit type argument.
+
+A type parameter does not implicitly support arbitrary operators. Before a
+concrete specialization is accepted, the function body is checked under the
+substitution using the same ordinary semantic rules as non-generic source. Thus
+`a < b` is legal only for concrete types for which Coglet already defines `<`; a
+struct or pointer does not gain comparison/arithmetic capabilities merely because
+it was substituted for `T`. There is no user-visible trait/interface language in
+this milestone.
+
+Specializations are compile-time entities. Equivalent calls reuse the same
+specialization. Ordinary recursion reuses an in-progress specialization, while a
+generic recursion that keeps producing new concrete type arguments is bounded and
+diagnosed instead of specializing indefinitely. Generic templates obey ordinary
+module visibility and export rules.
+
+Generic structs, enums, aliases, nested generic functions, specialization,
+dynamic dispatch, type erasure, and separate generic compilation remain outside
+this first facility.
+
 ## Void-Returning Calls
 
 A call to a function returning `void` is a successful no-value expression.
@@ -2058,7 +2096,7 @@ Near-term candidate areas include:
 - a later first-class string type;
 - package manifests and separate-compilation policy on top of the configured stdlib module root;
 - standard library facilities;
-- generics, if justified by real use cases;
+- broader generics (generic nominal types or explicit constraints) only when justified by real use cases;
 - self-hosting.
 
 At a future C ABI boundary, opaque pointers should map to C `void*`-style

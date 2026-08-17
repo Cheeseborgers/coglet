@@ -1,0 +1,10 @@
+first::<T>(a: T, b: T) -> T {
+    return a;
+}
+
+main::() -> i32 {
+    a: i32 = 1;
+    b: i64 = 2;
+    value := first(a, b);
+    return 0;
+}

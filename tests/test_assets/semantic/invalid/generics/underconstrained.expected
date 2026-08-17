@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/underconstrained.cog:6:12: error: cannot infer generic type parameter 'T'; provide an explicit type argument
+    return make();
+           ^~~~
+1 semantic error generated.

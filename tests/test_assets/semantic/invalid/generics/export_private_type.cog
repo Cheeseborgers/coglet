@@ -1,0 +1,9 @@
+module generic_visibility;
+
+Hidden::struct {
+    value: i32;
+}
+
+export expose::<T>(value: Hidden, fallback: T) -> T {
+    return fallback;
+}

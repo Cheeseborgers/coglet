@@ -725,6 +725,21 @@ set_tests_properties(
 )
 
 add_test(
+        NAME cog_ir_generic_functions_lowering_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/generic_functions.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/generic_functions.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_generic_functions_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;generic;semantic;monomorphization"
+)
+
+add_test(
         NAME cog_ir_semantic_valid_fixture_suite
         COMMAND "${CMAKE_COMMAND}"
         -DEXE=$<TARGET_FILE:dump_ir>
@@ -1159,6 +1174,11 @@ add_host_c_executable_test(
         "backend;backend.c;ir;declaration;grouped"
 )
 
+add_host_c_executable_test(
+        backend_generic_functions generic_functions.cog 42
+        "backend;backend.c;ir;generic;semantic;monomorphization"
+)
+
 foreach(cast_trap_case IN ITEMS integer float_integer float_narrow)
     add_host_c_trap_test(
             backend_checked_cast_${cast_trap_case}_trap
@@ -1365,6 +1385,32 @@ add_test(
 )
 set_tests_properties(backend_modules_visibility_host_c
         PROPERTIES LABELS "backend;backend.c;semantic;module;import;visibility;export;private;multi-file")
+
+add_test(
+        NAME backend_modules_generic_visibility_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/generic_visibility_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/generic_visibility_api.cog"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_modules_generic_visibility_host_c
+        -DEXPECT_EXIT=42
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_generic_visibility_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;generic;module;import;visibility;export;private;multi-file")
+
+add_test(
+        NAME driver_modules_generic_private_visibility
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/generic_visibility_private_use.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/generic_visibility_api.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=module 'generic_visibility' member 'private_identity' is private"
+        "-DEXPECT_PATH_SUBSTRING=generic_visibility_private_use.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_modules_generic_private_visibility
+        PROPERTIES LABELS "driver;semantic;generic;module;import;visibility;private;multi-file;invalid")
 
 add_test(
         NAME backend_modules_dotted_longest_prefix_host_c
@@ -2110,6 +2156,11 @@ if(COGLET_HAS_LLVM_BACKEND)
     add_llvm_stage7_native_test(
         backend_llvm_stage7_native_i32_entry native_i32_entry.cog 42
     )
+    add_llvm_stage7_native_test(
+        backend_llvm_generic_functions generic_functions.cog 42
+    )
+    set_tests_properties(backend_llvm_generic_functions
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;generic;semantic;monomorphization;codegen;object;linker;stage7")
     add_llvm_stage7_native_test(
         backend_llvm_stage7_pic_global_link llvm/stage7_pic_global.cog 9
     )

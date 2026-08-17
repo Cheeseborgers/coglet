@@ -1,0 +1,16 @@
+Pair::struct {
+    value: i32;
+}
+
+min::<T>(a: T, b: T) -> T {
+    if a < b
+        return a;
+    return b;
+}
+
+main::() -> i32 {
+    a: Pair = Pair{ value = 1 };
+    b: Pair = Pair{ value = 2 };
+    result: Pair = min(a, b);
+    return result.value;
+}

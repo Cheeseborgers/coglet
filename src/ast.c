@@ -136,8 +136,11 @@ Node *ast_new_block(Arena *arena, SourceSpan span) {
 
 Node *ast_new_call(Arena *arena, Node *callee, SourceSpan span) {
     Node *node = new_node(arena, NODE_CALL, span);
-    node->as.call.callee             = callee;
-    node->as.call.arguments.items    = NULL;
+    node->as.call.callee                  = callee;
+    node->as.call.type_arguments.items    = NULL;
+    node->as.call.type_arguments.count    = 0;
+    node->as.call.type_arguments.capacity = 0;
+    node->as.call.arguments.items         = NULL;
     node->as.call.arguments.count    = 0;
     node->as.call.arguments.capacity = 0;
     return node;
@@ -308,6 +311,10 @@ Node *ast_new_func_decl(Arena *arena, const char *name, int name_length, Type *r
     node->as.func_decl.c_call_conv    = C_CALL_DEFAULT;
     node->as.func_decl.is_variadic    = 0;
     node->as.func_decl.external_name = string_view_empty();
+
+    node->as.func_decl.type_parameters.items    = NULL;
+    node->as.func_decl.type_parameters.count    = 0;
+    node->as.func_decl.type_parameters.capacity = 0;
 
     node->as.func_decl.params.items    = NULL;
     node->as.func_decl.params.count    = 0;
@@ -500,6 +507,21 @@ Node *ast_clone(Arena *arena, const Node *node)
         case NODE_CALL:
             clone->as.call.callee = ast_clone(arena, node->as.call.callee);
 
+            clone->as.call.type_arguments.items = NULL;
+            clone->as.call.type_arguments.count = node->as.call.type_arguments.count;
+            clone->as.call.type_arguments.capacity = node->as.call.type_arguments.count;
+            if (node->as.call.type_arguments.count > 0) {
+                clone->as.call.type_arguments.items = arena_alloc(
+                    arena,
+                    sizeof(Type *) * (size_t)node->as.call.type_arguments.count
+                );
+                memcpy(
+                    clone->as.call.type_arguments.items,
+                    node->as.call.type_arguments.items,
+                    sizeof(Type *) * (size_t)node->as.call.type_arguments.count
+                );
+            }
+
             clone->as.call.arguments.items    = NULL;
             clone->as.call.arguments.count    = 0;
             clone->as.call.arguments.capacity = 0;
@@ -591,6 +613,20 @@ Node *ast_clone(Arena *arena, const Node *node)
         case NODE_FUNC_DECL:
             clone->as.func_decl.name.data     = node->as.func_decl.name.data;
             clone->as.func_decl.name.length   = node->as.func_decl.name.length;
+            clone->as.func_decl.type_parameters.items = NULL;
+            clone->as.func_decl.type_parameters.count = node->as.func_decl.type_parameters.count;
+            clone->as.func_decl.type_parameters.capacity = node->as.func_decl.type_parameters.count;
+            if (node->as.func_decl.type_parameters.count > 0) {
+                clone->as.func_decl.type_parameters.items = arena_alloc(
+                    arena,
+                    sizeof(StringView) * (size_t)node->as.func_decl.type_parameters.count
+                );
+                memcpy(
+                    clone->as.func_decl.type_parameters.items,
+                    node->as.func_decl.type_parameters.items,
+                    sizeof(StringView) * (size_t)node->as.func_decl.type_parameters.count
+                );
+            }
             clone->as.func_decl.return_type   = node->as.func_decl.return_type;
             clone->as.func_decl.resolved_type = NULL;
             clone->as.func_decl.linkage       = node->as.func_decl.linkage;

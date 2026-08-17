@@ -405,9 +405,13 @@ function_declaration =
 
 coglet_function_declaration =
     identifier "::"
+    [generic_type_parameter_list]
     "(" [parameter_list] ")"
     ["->" type]
     block;
+
+generic_type_parameter_list =
+    "<" identifier {"," identifier} ">";
 
 extern_c_function_declaration =
     "#" "extern" "(" "c" {"," extern_c_option} ")"
@@ -454,6 +458,42 @@ are terminated by `;`, and are currently restricted semantically to top level.
 A trailing `...` is available only for the C ABI; ordinary Coglet function
 definitions remain non-variadic. C-variadic declarations require at least one
 fixed parameter.
+
+### Generic functions
+
+The first generic facility applies only to ordinary top-level Coglet functions.
+A declaration places type parameters immediately after `::`:
+
+```c
+min::<T>(a: T, b: T) -> T {
+    if a < b
+        return a;
+    return b;
+}
+
+first::<T, U>(a: T, b: U) -> T {
+    return a;
+}
+```
+
+A call may supply all type arguments explicitly using the same `::<...>` marker:
+
+```c
+small := min::<i64>(10, 20);
+value := first::<i32, u64>(1, 2);
+```
+
+When ordinary arguments determine every type parameter unambiguously, the call
+uses the ordinary call spelling and semantic analysis infers the type arguments:
+
+```c
+small := min(10, 20);
+```
+
+Explicit type arguments are all-or-nothing in this first version; partial
+explicit inference is not supported. Generic structs, enums, aliases, nested
+generic functions, generic C ABI declarations, and user-visible trait/constraint
+syntax are not part of this grammar.
 
 C-compatible struct representation uses the same declaration-annotation shape:
 

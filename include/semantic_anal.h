@@ -97,6 +97,7 @@ typedef struct Scope {
 } Scope;
 
 typedef struct SemanticModule SemanticModule;
+typedef struct GenericSpecialization GenericSpecialization;
 
 typedef struct SemanticSourceModule {
     SourceFileId source_id;
@@ -189,6 +190,10 @@ typedef struct {
 
     SemDeclInfo *decl_infos;
     SemExprInfo *expr_infos;
+
+    /* Frontend-only monomorphization cache/state. */
+    GenericSpecialization *generic_specializations;
+    GenericSpecialization *active_generic_specialization;
 } SemanticContext;
 
 void semantic_check(

@@ -1,7 +1,10 @@
 module std.math;
 
-export pi :: cast(f64, 3.141592653589793);
-export tau :: cast(f64, 6.283185307179586);
+export pi :: 0x1.921fb6p+1;
+export pi_f64 :: 0x1.921fb54442d18p+1;
+
+export tau :: 0x1.921fb6p+2;
+export tau_f64 :: 0x1.921fb54442d18p+2;
 
 export abs_i32::(value: i32) -> i32 {
     if value < 0
@@ -10,14 +13,14 @@ export abs_i32::(value: i32) -> i32 {
     return value;
 }
 
-export min_i32::(a: i32, b: i32) -> i32 {
+export min::<T>(a: T, b: T) -> T {
     if a < b
         return a;
 
     return b;
 }
 
-export max_i32::(a: i32, b: i32) -> i32 {
+export max::<T>(a: T, b: T) -> T {
     if a > b
         return a;
 

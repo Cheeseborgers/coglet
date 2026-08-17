@@ -1,0 +1,31 @@
+min::<T>(a: T, b: T) -> T {
+    if a < b
+        return a;
+    return b;
+}
+
+first::<T, U>(a: T, b: U) -> T {
+    return a;
+}
+
+recur::<T>(value: T, depth: i32) -> T {
+    if depth == 0
+        return value;
+    return recur(value, depth - 1);
+}
+
+main::() -> i32 {
+    inferred: i32 = min(10, 20);
+    explicit: i64 = min::<i64>(30, 40);
+    again: i32 = min(8, 9);
+    mixed: i32 = first(inferred, cast(u64, 7));
+    recursive: i32 = recur(mixed, 2);
+
+    if explicit != 30
+        return 1;
+    if again != 8
+        return 2;
+    if recursive != 10
+        return 3;
+    return 0;
+}

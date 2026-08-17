@@ -1,11 +1,29 @@
 cmake_minimum_required(VERSION 3.20)
 project(coglet VERSION 0.1.0 LANGUAGES C)
 
+include(GNUInstallDirs)
+
+set(COGLET_STDLIB_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/coglet" CACHE STRING
+    "Install-prefix-relative directory containing Coglet standard modules")
+if(IS_ABSOLUTE "${COGLET_STDLIB_INSTALL_DIR}")
+    set(COGLET_CONFIGURED_STDLIB_ROOT "${COGLET_STDLIB_INSTALL_DIR}")
+else()
+    set(COGLET_CONFIGURED_STDLIB_ROOT
+        "${CMAKE_INSTALL_PREFIX}/${COGLET_STDLIB_INSTALL_DIR}")
+endif()
+file(TO_CMAKE_PATH "${COGLET_CONFIGURED_STDLIB_ROOT}" COGLET_CONFIGURED_STDLIB_ROOT)
+string(REPLACE "\"" "\\\"" COGLET_CONFIGURED_STDLIB_ROOT_C "${COGLET_CONFIGURED_STDLIB_ROOT}")
+
 set(COGLET_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${COGLET_GENERATED_INCLUDE_DIR}")
 configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/include/coglet_version.h.in"
         "${COGLET_GENERATED_INCLUDE_DIR}/coglet_version.h"
+        @ONLY
+)
+configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/coglet_paths.h.in"
+        "${COGLET_GENERATED_INCLUDE_DIR}/coglet_paths.h"
         @ONLY
 )
 
@@ -145,6 +163,7 @@ endif()
 # --- The real compiler binary. ---
 add_executable(coglet src/coglet.c ${COMMON_SOURCES})
 target_link_libraries(coglet PRIVATE compiler_core coglet_backend_c)
+install(TARGETS coglet RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 if(COGLET_HAS_LLVM_BACKEND)
     target_link_libraries(coglet PRIVATE coglet_backend_llvm)
     target_compile_definitions(coglet PRIVATE COGLET_HAS_LLVM_BACKEND=1)
@@ -327,6 +346,7 @@ set(COGLET_DISCOVERY_DIR "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/discover
 set(COGLET_DOTTED_DISCOVERY_DIR "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/discovery/dotted")
 set(COGLET_DOTTED_TRANSITIVE_DIR "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/discovery/dotted_transitive")
 set(COGLET_DOTTED_PREFIX_DIR "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/dotted_prefix")
+set(COGLET_STDLIB_TEST_DIR "${CMAKE_SOURCE_DIR}/tests/test_assets/modules/stdlib_root")
 
 function(add_module_discovery_host_test test_name inputs expected_exit)
     add_test(
@@ -410,6 +430,88 @@ add_module_discovery_host_test(
 set_tests_properties(driver_modules_dotted_discovery_transitive
     PROPERTIES LABELS "driver;backend;backend.c;module;import;discovery;multi-file;dotted;package")
 
+add_module_discovery_host_test(
+    driver_modules_stdlib_root_override
+    "${COGLET_STDLIB_TEST_DIR}/app/main.cog"
+    42
+    "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/root"
+    -DSTDLIB_STYLE=joined
+)
+set_tests_properties(driver_modules_stdlib_root_override
+    PROPERTIES LABELS "driver;backend;backend.c;module;import;discovery;package;stdlib")
+
+add_module_discovery_host_test(
+    driver_modules_stdlib_importer_precedence
+    "${COGLET_STDLIB_TEST_DIR}/local/app/main.cog"
+    43
+    "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/local/root"
+)
+set_tests_properties(driver_modules_stdlib_importer_precedence
+    PROPERTIES LABELS "driver;backend;backend.c;module;import;discovery;package;stdlib;precedence")
+
+add_module_discovery_host_test(
+    driver_modules_stdlib_search_path_precedence
+    "${COGLET_STDLIB_TEST_DIR}/search/app/main.cog"
+    44
+    "-DSEARCH_DIRS=${COGLET_STDLIB_TEST_DIR}/search/lib"
+    "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/search/root"
+)
+set_tests_properties(driver_modules_stdlib_search_path_precedence
+    PROPERTIES LABELS "driver;backend;backend.c;module;import;discovery;package;stdlib;precedence")
+
+add_module_discovery_host_test(
+    driver_modules_stdlib_transitive
+    "${COGLET_STDLIB_TEST_DIR}/transitive/app/main.cog"
+    42
+    "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/transitive/root"
+)
+set_tests_properties(driver_modules_stdlib_transitive
+    PROPERTIES LABELS "driver;backend;backend.c;module;import;discovery;package;stdlib;transitive")
+
+add_module_discovery_host_test(
+    driver_modules_stdlib_explicit_module_wins
+    "${COGLET_STDLIB_TEST_DIR}/explicit/app/main.cog|${COGLET_STDLIB_TEST_DIR}/explicit/custom/math.cog"
+    45
+    "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/explicit/root"
+)
+set_tests_properties(driver_modules_stdlib_explicit_module_wins
+    PROPERTIES LABELS "driver;backend;backend.c;module;import;discovery;package;stdlib;precedence")
+
+add_module_discovery_host_test(
+    driver_modules_stdlib_root_namespace
+    "${COGLET_STDLIB_TEST_DIR}/root_exact/app/main.cog"
+    46
+    "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/root_exact/root"
+)
+set_tests_properties(driver_modules_stdlib_root_namespace
+    PROPERTIES LABELS "driver;backend;backend.c;module;import;discovery;package;stdlib")
+
+add_test(
+    NAME driver_modules_stdlib_prefix_guard
+    COMMAND "${CMAKE_COMMAND}"
+    -DCOMPILER=$<TARGET_FILE:coglet>
+    -DINPUT=${COGLET_STDLIB_TEST_DIR}/prefix_guard/app/main.cog
+    "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/prefix_guard/root"
+    -DEXPECT_EXIT=1
+    "-DEXPECT_SUBSTRING=unknown module 'stdx.foo'"
+    -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_failure_test.cmake"
+)
+set_tests_properties(driver_modules_stdlib_prefix_guard
+    PROPERTIES LABELS "driver;semantic;module;import;discovery;package;stdlib;invalid")
+
+add_test(
+    NAME driver_modules_stdlib_restricted_namespace
+    COMMAND "${CMAKE_COMMAND}"
+    -DCOMPILER=$<TARGET_FILE:coglet>
+    -DINPUT=${COGLET_STDLIB_TEST_DIR}/nonstd/app/main.cog
+    "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/nonstd/root"
+    -DEXPECT_EXIT=1
+    "-DEXPECT_SUBSTRING=unknown module 'foo'"
+    -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_failure_test.cmake"
+)
+set_tests_properties(driver_modules_stdlib_restricted_namespace
+    PROPERTIES LABELS "driver;semantic;module;import;discovery;package;stdlib;invalid")
+
 add_test(
     NAME driver_modules_discovery_wrong_module
     COMMAND "${CMAKE_COMMAND}"
@@ -449,6 +551,19 @@ add_test(
 )
 set_tests_properties(driver_modules_discovery_rejects_empty_search_path
     PROPERTIES LABELS "driver;module;import;discovery;invalid")
+
+add_test(
+    NAME driver_modules_stdlib_rejects_missing_root
+    COMMAND "${CMAKE_COMMAND}"
+    -DCOMPILER=$<TARGET_FILE:coglet>
+    -DINPUT=${COGLET_STDLIB_TEST_DIR}/app/main.cog
+    -DEXPECT_EXIT=3
+    "-DEXPECT_SUBSTRING=--stdlib-root requires one non-empty directory"
+    "-DARGS=--stdlib-root"
+    -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
+)
+set_tests_properties(driver_modules_stdlib_rejects_missing_root
+    PROPERTIES LABELS "driver;module;import;discovery;package;stdlib;invalid")
 
 # --- CogIR core builder/verifier/dump regression. ---
 add_executable(check_cog_ir_core tools/tests/check_cog_ir_core.c)
@@ -497,6 +612,18 @@ add_test(
 set_tests_properties(
         driver_version
         PROPERTIES LABELS "driver;version"
+)
+
+add_test(
+        NAME driver_stdlib_root
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DEXPECT_ROOT=${COGLET_CONFIGURED_STDLIB_ROOT}"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_stdlib_root_test.cmake"
+)
+set_tests_properties(
+        driver_stdlib_root
+        PROPERTIES LABELS "driver;package;stdlib"
 )
 
 add_test(
@@ -1839,6 +1966,35 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_modules_dotted_discovery_debug_source
         PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;dotted;package;debug;stage9")
+
+    add_test(
+        NAME backend_llvm_modules_stdlib_root_native
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_TEST_DIR}/transitive/app/main.cog"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/transitive/root"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_stdlib_root_native
+        -DEXPECT_EXIT=42
+        -DBACKEND=llvm
+        -DOPT_LEVEL=3
+        -DDEBUG_INFO=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_stdlib_root_native
+        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;package;stdlib;codegen;debug;optimization")
+
+    add_test(
+        NAME backend_llvm_modules_stdlib_root_debug_source
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${COGLET_STDLIB_TEST_DIR}/transitive/app/main.cog
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/transitive/root"
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_modules_stdlib_root_debug_source.ll
+        -DEXPECT_SOURCE=first.cog
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_llvm_ir_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_stdlib_root_debug_source
+        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;package;stdlib;debug;stage9")
 
     function(add_llvm_stage7_native_test test_name fixture expected_exit)
         add_test(

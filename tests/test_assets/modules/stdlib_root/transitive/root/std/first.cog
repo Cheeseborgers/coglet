@@ -1,0 +1,6 @@
+module std.first;
+import std.second;
+
+export answer::() -> i32 {
+    return std.second.answer;
+}

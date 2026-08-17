@@ -1,0 +1,3 @@
+module stdx.foo;
+
+export answer :: 47;

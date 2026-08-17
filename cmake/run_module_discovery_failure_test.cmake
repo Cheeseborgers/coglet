@@ -11,6 +11,9 @@ if(DEFINED SEARCH_DIRS AND NOT "${SEARCH_DIRS}" STREQUAL "")
         list(APPEND command -I "${search_dir}")
     endforeach()
 endif()
+if(DEFINED STDLIB_ROOT AND NOT "${STDLIB_ROOT}" STREQUAL "")
+    list(APPEND command --stdlib-root "${STDLIB_ROOT}")
+endif()
 execute_process(
     COMMAND ${command}
     RESULT_VARIABLE result

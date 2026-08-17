@@ -46,6 +46,15 @@ repeated `-I` roots in command-line order:
 coglet app/main.cog -I lib -I vendor -o app
 ```
 
+If no candidate has been found and the canonical module name is `std` or starts
+with `std.`, the compiler consults its configured standard-library module root as
+a final fallback. The root contains the top-level `std` directory, so a normal
+installation with root `<prefix>/lib/coglet` resolves `std.math` as
+`<prefix>/lib/coglet/std/math.cog`. `--stdlib-root <dir>` replaces this fallback
+for one compiler invocation and `--print-stdlib-root` reports the configured
+default. Local/importer files and `-I` roots intentionally win over the installed
+stdlib; module names outside `std` never consult the stdlib root.
+
 The first existing candidate wins and its imports are discovered transitively.
 Explicit inputs are parsed before discovery; if any explicit source already
 declares `module std.math;`, no canonical `std/math.cog` is loaded for that
@@ -106,7 +115,7 @@ Explicit files retain command-line order; discovered files are appended after
 them in first-discovery order, and that physical order remains the
 module-initializer order. Only a root-namespace `main::() -> i32` is the
 executable entry. Package manifests, automatic multi-file package membership,
-installed stdlib lookup, and separate compilation remain future work.
+actual standard-library modules, and separate compilation remain future work.
 
 ## Values, Storage, and No-Value Expressions
 
@@ -2047,7 +2056,7 @@ Near-term candidate areas include:
 - mutable and readonly slices and byte views;
 - ownership and lifetime rules only when justified by concrete use cases;
 - a later first-class string type;
-- package manifests, installed module/stdlib lookup, and separate-compilation policy;
+- package manifests and separate-compilation policy on top of the configured stdlib module root;
 - standard library facilities;
 - generics, if justified by real use cases;
 - self-hosting.

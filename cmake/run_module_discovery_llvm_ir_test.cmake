@@ -1,12 +1,20 @@
-foreach(required_var IN ITEMS COMPILER INPUT SEARCH_DIR OUTPUT_IR EXPECT_SOURCE)
+foreach(required_var IN ITEMS COMPILER INPUT OUTPUT_IR EXPECT_SOURCE)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "run_module_discovery_llvm_ir_test.cmake requires ${required_var}")
     endif()
 endforeach()
 
 file(REMOVE "${OUTPUT_IR}")
+set(command "${COMPILER}" "${INPUT}")
+if(DEFINED SEARCH_DIR AND NOT "${SEARCH_DIR}" STREQUAL "")
+    list(APPEND command -I "${SEARCH_DIR}")
+endif()
+if(DEFINED STDLIB_ROOT AND NOT "${STDLIB_ROOT}" STREQUAL "")
+    list(APPEND command --stdlib-root "${STDLIB_ROOT}")
+endif()
+list(APPEND command --emit-llvm "${OUTPUT_IR}" -g)
 execute_process(
-    COMMAND "${COMPILER}" "${INPUT}" -I "${SEARCH_DIR}" --emit-llvm "${OUTPUT_IR}" -g
+    COMMAND ${command}
     RESULT_VARIABLE result
     OUTPUT_VARIABLE stdout
     ERROR_VARIABLE stderr

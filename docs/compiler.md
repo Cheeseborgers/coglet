@@ -56,12 +56,23 @@ resolution.
 The `coglet` command enables import discovery. If no loaded source declares an
 imported module, dots in the canonical module name map to path separators:
 `import std.math;` searches `std/math.cog` beside the importing file and then
-each repeated `-I` directory in command-line order. Search is transitive and
-first-existing-candidate wins. Explicit inputs are all parsed before discovery,
-so an explicitly supplied file contributing to `module std.math` suppresses
-automatic `std/math.cog` loading for that import. The library API keeps filesystem
-discovery opt-in through `CompileOptions`; existing parse/check entry points
-retain explicit-input behavior for deterministic embedding and semantic tooling.
+each repeated `-I` directory in command-line order. If and only if the unresolved
+name is `std` or begins with `std.`, discovery then consults `CompileOptions.stdlib_root`
+as a final fallback. The CLI initializes that field from the compiler's configured
+standard-library module root and permits a per-invocation `--stdlib-root` override.
+`--print-stdlib-root` reports the configured default. The root contains the `std`
+namespace directory itself, so `<root>/std/math.cog` implements `module std.math`.
+Ordinary package names never consult this compiler-owned fallback.
+
+Search is transitive and first-existing-candidate wins. Explicit inputs are all
+parsed before discovery, so an explicitly supplied file contributing to
+`module std.math` suppresses automatic `std/math.cog` loading for that import.
+Importer-local and user `-I` candidates intentionally precede the stdlib fallback,
+allowing development/override copies without changing compiler installation state.
+The library API keeps filesystem discovery opt-in through `CompileOptions`; existing
+parse/check entry points retain explicit-input behavior for deterministic embedding
+and semantic tooling, and an embedder must opt into the stdlib fallback explicitly
+by setting `stdlib_root`.
 
 Imports remain compile-time visibility rather than runtime dependency edges.
 Explicit inputs retain command-line/source order; newly discovered files are
@@ -70,8 +81,8 @@ combined physical order continues to define program-scope runtime initialization
 so imports do not acquire an implicit dependency-initialization guarantee. Import
 cycles remain permitted. Only root-namespace `main::() -> i32` is an executable
 entry; a `main` inside a named module is an ordinary function. Package manifests,
-automatic multi-file package membership, installed stdlib lookup, and separate
-compilation remain future work.
+automatic multi-file package membership, actual standard-library modules, and
+separate compilation remain future work.
 
 ## Post-semantic IR boundary
 
@@ -93,6 +104,11 @@ only the verified `CogIrModule`; they will not retain AST, `Symbol *`, frontend
 `CompileResult` borrows:
 
 - the filename string.
+
+`CompileOptions` paths, including user module roots and `stdlib_root`, are borrowed
+for the duration of the parse/check call only. Loaded source filenames/text are
+copied or owned by `CompileResult` as before; no search-root string is retained in
+CogIR.
 
 The following data is backed by the owned arenas:
 

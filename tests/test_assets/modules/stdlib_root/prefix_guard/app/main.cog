@@ -1,0 +1,5 @@
+import stdx.foo;
+
+main::() -> i32 {
+    return stdx.foo.answer;
+}

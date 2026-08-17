@@ -265,6 +265,16 @@ static char *source_directory(Arena *arena, const char *filename)
     return arena_strdup_len(arena, filename, length);
 }
 
+
+static int module_name_is_std_namespace(StringView module_name)
+{
+    if (module_name.length < 3 ||
+        memcmp(module_name.data, "std", 3) != 0)
+        return 0;
+
+    return module_name.length == 3 || module_name.data[3] == '.';
+}
+
 static const char *find_module_source(
     CompileResult *out,
     const CompileOptions *options,
@@ -309,6 +319,23 @@ static const char *find_module_source(
         }
         arena_reset_to(out->scratch, marker);
         marker = arena_mark(out->scratch);
+    }
+
+    if (options->stdlib_root && module_name_is_std_namespace(module_name)) {
+        candidate = module_candidate_path(
+            out->scratch,
+            options->stdlib_root,
+            module_name
+        );
+        if (stat(candidate, &info) == 0) {
+            const char *result = arena_strdup_len(
+                out->arena,
+                candidate,
+                strlen(candidate)
+            );
+            arena_reset_to(out->scratch, marker);
+            return result;
+        }
     }
 
     arena_reset_to(out->scratch, marker);
@@ -495,6 +522,10 @@ CompileStatus compile_parse_and_check_files_for_target_with_options(
             fprintf(stderr, "error: module search paths must be non-empty\n");
             return out->status;
         }
+    }
+    if (options->stdlib_root && options->stdlib_root[0] == '\0') {
+        fprintf(stderr, "error: standard library root must be non-empty\n");
+        return out->status;
     }
 
     out->filename = filenames[0];

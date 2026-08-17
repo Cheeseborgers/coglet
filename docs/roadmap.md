@@ -464,12 +464,15 @@ public import surface; exported APIs are checked against private nominal-type le
 The command-line driver now resolves missing hierarchical imports from a canonical
 source path by mapping dots to path separators (`std.math` -> `std/math.cog`) beside
 the importer or under repeated `-I` roots, including transitive imports and import
-cycles. Semantic lookup uses the longest visible module prefix so hierarchical module
-qualification composes with ordinary field access using one dot operator. Discovery
-is source ingestion only: explicit roots retain command-line order, discovered files
-follow in first-discovery order, and imports do not become runtime dependency edges.
+cycles. The compiler also has a configured install-prefix-aware standard-library
+module root consulted last for unresolved `std`/`std.*` imports, with CLI override
+and query support for packaging/development. Semantic lookup uses the longest visible
+module prefix so hierarchical module qualification composes with ordinary field
+access using one dot operator. Discovery is source ingestion only: explicit roots
+retain command-line order, discovered files follow in first-discovery order, and
+imports do not become runtime dependency edges.
 
-- package manifests, automatic multi-file package membership, and installed stdlib search roots
+- package manifests and automatic multi-file package membership
 - stable declaration identity for future separate compilation
 - stable declaration identity across files
 - diagnostic notes/secondary spans and richer recovery

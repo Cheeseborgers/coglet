@@ -1,0 +1,3 @@
+module std.second;
+
+export answer :: 42;

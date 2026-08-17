@@ -1,0 +1,5 @@
+import std.first;
+
+main::() -> i32 {
+    return std.first.answer();
+}

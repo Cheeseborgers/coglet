@@ -28,6 +28,13 @@ typedef struct CompileOptions {
      */
     const char *const *module_search_dirs;
     size_t module_search_dir_count;
+
+    /*
+     * Optional fallback module root for the standard-library `std` namespace. This is
+     * consulted only after importer-local and user module search roots, and
+     * only for `std` or `std.*` imports. The path is borrowed for the call.
+     */
+    const char *stdlib_root;
 } CompileOptions;
 
 CompileOptions compile_options_default(void);
@@ -103,7 +110,8 @@ CompileStatus compile_parse_and_check_files(
 /*
  * Options-aware host-target compilation. When discover_imports is enabled,
  * missing imports may add canonical module sources before semantic analysis;
- * dotted names map to path components (`std.io` -> `std/io.cog`).
+ * dotted names map to path components (`std.io` -> `std/io.cog`). The optional
+ * stdlib root is a final fallback for the standard-library `std` namespace only.
  */
 CompileStatus compile_parse_and_check_files_with_options(
     const char *const *filenames,

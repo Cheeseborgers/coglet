@@ -66,6 +66,23 @@ Run it with:
 ctest --test-dir cmake-build-debug -L version --output-on-failure
 ```
 
+## Standard-library root tests
+
+The `stdlib` label covers the compiler-configured `std.*` module fallback and its
+packaging/development controls. The tests verify exact `--print-stdlib-root`
+output, split/joined `--stdlib-root` overrides, importer-directory and user `-I`
+precedence over the stdlib fallback, transitive `std.*` discovery, explicit-module
+suppression, rejection of malformed root options, and the rule that non-`std`
+module names never consult the compiler-owned stdlib root. LLVM-enabled coverage
+also runs an optimized/debuggable native build and checks debug provenance from
+a stdlib-root-discovered source.
+
+Run the slice with:
+
+```bash
+ctest --test-dir cmake-build-debug -L stdlib --output-on-failure
+```
+
 ## Fixed-array zero-initializer tests
 
 The `{0}` array-initializer coverage checks parser spelling, contextual semantic
@@ -275,9 +292,9 @@ and LLVM debug provenance for discovered sources. Hierarchical-module coverage a
 dotted module/import parsing, `std.math` -> `std/math.cog` discovery, transitive dotted
 imports, qualified types/constructors/enums/data/functions, longest-visible-prefix
 resolution against ordinary runtime fields, missing-import diagnostics, and LLVM
-optimized/debuggable native output. Use `-L module`, `-L import`, `-L discovery`,
-`-L dotted`, `-L package`, `-L visibility`, `-L export`, `-L private`, `-L global`,
-or `-L constant` for focused namespace/data/visibility/discovery slices.
+optimized/debuggable native output. Use `-L module`, `-L import`, `-L discovery`, `-L dotted`, `-L package`, `-L stdlib`,
+`-L visibility`, `-L export`, `-L private`, `-L global`, or `-L constant` for focused
+namespace/data/visibility/discovery slices.
 
 Run only these tests with:
 

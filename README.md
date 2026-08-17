@@ -163,12 +163,24 @@ lookup.
 The command-line compiler performs deterministic source discovery for missing
 imports. A module name maps dots to path separators, so `import std.math;`
 searches first for `std/math.cog` beside the importing file and then under each
-repeated `-I` module search root in command-line order. The first existing
-candidate is loaded, its imports are discovered transitively, and the same
-physical file is not loaded twice. Explicit command-line inputs are parsed first
-and still take precedence: if one already contributes to `module std.math`, no
-canonical `std/math.cog` is auto-loaded for that import. Additional files for a
-multi-file module remain explicit until a manifest/package layer exists.
+repeated `-I` module search root in command-line order. If the imported name is
+`std` or begins with `std.`, one compiler-configured standard-library module root
+is consulted last. The default configured root is the install-prefix-relative
+`${CMAKE_INSTALL_LIBDIR}/coglet` location (normally `/usr/local/lib/coglet`), so
+`std.math` maps to `<stdlib-root>/std/math.cog`. Packagers may change
+`COGLET_STDLIB_INSTALL_DIR` at CMake configure time, while `--stdlib-root <dir>`
+provides a per-invocation development/toolchain override and
+`--print-stdlib-root` reports the configured default. Non-`std` imports never
+fall back to this compiler-owned root.
+
+The first existing candidate is loaded, its imports are discovered transitively,
+and the same physical file is not loaded twice. Explicit command-line inputs are
+parsed first and still take precedence: if one already contributes to
+`module std.math`, no canonical `std/math.cog` is auto-loaded for that import.
+Additional files for a multi-file module remain explicit until a manifest/package
+layer exists. User/importer sources and `-I` roots intentionally precede the
+standard-library fallback, so local or development copies may override installed
+`std.*` modules without changing compiler binaries.
 
 Files without a module declaration belong to the root namespace; multiple files
 may contribute to the same named module. Imports are file-scoped. Declarations
@@ -187,11 +199,11 @@ visibility only; top-level runtime initialization remains in physical input
 order. Only root-namespace `main::() -> i32` is the executable entry. Exported
 APIs may not expose private nominal types through function signatures,
 globals/constants, or exported struct fields. Package manifests, automatic
-multi-file package membership, an installed standard-library root, and separate
-compilation remain future work. Discovery does not imply runtime dependency
-ordering: explicit inputs retain command-line order and discovered files are
-appended in deterministic first-discovery order to the existing single module
-initializer.
+multi-file package membership, the actual standard-library module contents, and
+separate compilation remain future work. Discovery does not imply runtime
+dependency ordering: explicit inputs retain command-line order and discovered
+files are appended in deterministic first-discovery order to the existing single
+module initializer.
 
 For the current executable slice:
 
@@ -199,6 +211,8 @@ For the current executable slice:
 coglet program.cog -o program
 coglet main.cog math.cog util.cog -o program
 coglet main.cog -I lib -o program
+coglet main.cog --stdlib-root /path/to/coglet/modules -o program
+coglet --print-stdlib-root
 coglet program.cog -o program --backend llvm
 coglet program.cog -o program --backend llvm -O2
 coglet program.cog -o program --backend llvm -O2 -g
@@ -218,7 +232,10 @@ coglet program.cog -o program --backend llvm --emit-asm program.s -O2
 it is unrelated to native C header search. Both `-I dir` and `-Idir` are accepted,
 and repeated roots are searched left-to-right after the importing file's directory.
 Dotted module names map directly to relative source paths (`std.math` ->
-`std/math.cog`).
+`std/math.cog`). After those user-controlled roots, `std`/`std.*` imports alone may
+fall back to the compiler's configured standard-library module root.
+`--stdlib-root <dir>` (or `--stdlib-root=<dir>`) replaces that fallback for the
+current invocation; it does not alter ordinary package lookup or C linker paths.
 
 `-L` adds a native library search directory and `-l` requests a native library.
 Both joined and split spellings are accepted, both options may be repeated, and
@@ -872,7 +889,7 @@ object storage. Ordinary Coglet `bool*` is intentionally not interchangeable wit
 Near-term compiler work is backend-focused:
 
 1. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
-2. Extend the hierarchical module/import layer with package manifests and an installed standard-library root, then define the runtime/standard-library boundary needed for self-hosting.
+2. Extend the hierarchical module/import layer with package manifests and actual standard-library modules on top of the configured `std.*` search root, then define the runtime/standard-library boundary needed for self-hosting.
 3. Continue improving diagnostics, tests, and documentation.
 
 ## License

@@ -59,9 +59,12 @@ type in its public type surface.
 When command-line discovery is enabled, a dotted module name maps directly to a
 relative source path by replacing dots with path separators: `import std.math;`
 searches for `std/math.cog` beside the importing source and then under ordered
-`-I` roots. This path mapping does not change the grammar. Imports do not imply
+`-I` roots. Unresolved names in the standard-library `std` namespace additionally consult
+the compiler-configured standard-library module root as the final fallback; this
+discovery policy does not change the grammar. The CLI may override that root with
+`--stdlib-root`, while non-`std` module names never consult it. Imports do not imply
 runtime dependency ordering and import cycles are allowed. Package manifests,
-installed stdlib roots, and separate compilation remain deferred.
+the standard-library contents themselves, and separate compilation remain deferred.
 
 ## Type Syntax
 

@@ -9,6 +9,7 @@
 #endif
 #include "compiler_driver.h"
 #include "coglet_version.h"
+#include "coglet_paths.h"
 #include "cog_ir_lower.h"
 #include "optimization.h"
 
@@ -21,8 +22,10 @@ static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [<file> ...] [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [--emit-asm <file>] [-O0|-O1|-O2|-O3] [-g] [-I <dir>|-I<dir>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
-        "       %s --version\n",
+        "usage: %s <file> [<file> ...] [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [--emit-asm <file>] [-O0|-O1|-O2|-O3] [-g] [-I <dir>|-I<dir>] [--stdlib-root <dir>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
+        "       %s --version\n"
+        "       %s --print-stdlib-root\n",
+        program,
         program,
         program
     );
@@ -68,6 +71,10 @@ int main(int argc, char **argv)
         printf("coglet %s\n", COGLET_VERSION_STRING);
         return 0;
     }
+    if (argc == 2 && strcmp(argv[1], "--print-stdlib-root") == 0) {
+        printf("%s\n", COGLET_CONFIGURED_STDLIB_ROOT);
+        return 0;
+    }
 
     if (argc < 2) {
         print_usage(argv[0]);
@@ -84,6 +91,8 @@ int main(int argc, char **argv)
     int executable_backend_explicit = 0;
     CogOptimizationLevel optimization_level = COG_OPTIMIZATION_LEVEL_0;
     int debug_info = 0;
+    const char *stdlib_root = COGLET_CONFIGURED_STDLIB_ROOT;
+    int stdlib_root_explicit = 0;
 
     /* argc is an upper bound for each repeated option category. */
     const char *module_search_dirs[argc];
@@ -179,6 +188,28 @@ int main(int argc, char **argv)
             continue;
         }
 
+        if (strcmp(argv[i], "--stdlib-root") == 0) {
+            if (i + 1 >= argc || argv[i + 1][0] == '\0' || stdlib_root_explicit) {
+                fprintf(stderr, "error: --stdlib-root requires one non-empty directory\n");
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+            }
+            stdlib_root = argv[++i];
+            stdlib_root_explicit = 1;
+            continue;
+        }
+
+        if (strncmp(argv[i], "--stdlib-root=", 14) == 0) {
+            if (argv[i][14] == '\0' || stdlib_root_explicit) {
+                fprintf(stderr, "error: --stdlib-root requires one non-empty directory\n");
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+            }
+            stdlib_root = argv[i] + 14;
+            stdlib_root_explicit = 1;
+            continue;
+        }
+
         if (strcmp(argv[i], "-L") == 0) {
             if (i + 1 >= argc || argv[i + 1][0] == '\0') {
                 fprintf(stderr, "error: -L requires a non-empty library directory\n");
@@ -271,6 +302,7 @@ int main(int argc, char **argv)
     compile_options.discover_imports = 1;
     compile_options.module_search_dirs = module_search_dirs;
     compile_options.module_search_dir_count = module_search_dir_count;
+    compile_options.stdlib_root = stdlib_root;
 
     CompileResult result;
     CompileStatus status = compile_parse_and_check_files_with_options(

@@ -76,9 +76,11 @@ control-flow legality checking. Those are frontend responsibilities.
 A `CogIrModule` represents one Coglet compilation unit, not necessarily exactly
 one physical source file or one source-level namespace. The frontend may divide
 physical files into root/named hierarchical module namespaces, enforce private-by-default
-declaration visibility, resolve file-scoped imports, and map dotted module names to
-source paths during discovery, but those namespace/import/visibility/discovery
-relationships are compile-time lookup information and are erased during lowering. Qualified functions, globals, and constants are
+declaration visibility, resolve file-scoped imports, map dotted module names to
+source paths during discovery, and consult a compiler/toolchain-owned fallback root
+for unresolved `std` namespace modules, but those namespace/import/visibility/
+discovery/search-root relationships are compile-time lookup information and are
+erased during lowering. Qualified functions, globals, and constants are
 resolved to the same stable semantic declaration identities used by unqualified
 references before lowering; qualified globals therefore become ordinary CogIR
 global-address operations and qualified constants become ordinary CogIR constants.

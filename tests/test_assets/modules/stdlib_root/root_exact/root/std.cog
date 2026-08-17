@@ -1,0 +1,3 @@
+module std;
+
+export answer :: 46;

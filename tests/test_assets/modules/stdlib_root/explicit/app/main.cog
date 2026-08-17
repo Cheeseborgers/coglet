@@ -1,0 +1,5 @@
+import std.math;
+
+main::() -> i32 {
+    return std.math.answer;
+}

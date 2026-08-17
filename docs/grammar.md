@@ -34,10 +34,15 @@ main::() -> i32 {
 }
 ```
 
-Qualified enum members use `module.Enum.Member`. Imports currently expose
-functions and nominal types through qualification; globals/constants, exports,
-packages, dotted module names, and automatic file discovery are deferred. Imports
-do not imply runtime dependency ordering and import cycles are allowed.
+Qualified enum members use `module.Enum.Member`. Imported functions, globals,
+constants, and nominal types use the same single-dot qualification syntax:
+`math.add`, `math.tau`, `state.counter`, `math.Pair`, and `math.Mode.Red`.
+A qualified global remains an lvalue, so further ordinary field/index access such
+as `state.pair.x` or `state.values[0]` composes normally. The semantic resolver
+disambiguates `module.Enum.Member` from `module.global.field` by the resolved kind
+of the middle declaration rather than by syntax. Exports, packages, dotted module
+names, and automatic file discovery are deferred. Imports do not imply runtime
+dependency ordering and import cycles are allowed.
 
 ## Type Syntax
 

@@ -77,9 +77,13 @@ A `CogIrModule` represents one Coglet compilation unit, not necessarily exactly
 one physical source file or one source-level namespace. The frontend may divide
 physical files into root/named module namespaces and resolve file-scoped imports,
 but those namespace/import relationships are compile-time lookup information and
-are erased during lowering. CogIR copies every registered source file into its
-frozen source table and retains declaration identities/types/CFGs only. Backends
-therefore do not perform module lookup or import resolution.
+are erased during lowering. Qualified functions, globals, and constants are
+resolved to the same stable semantic declaration identities used by unqualified
+references before lowering; qualified globals therefore become ordinary CogIR
+global-address operations and qualified constants become ordinary CogIR constants.
+CogIR copies every registered source file into its frozen source table and retains
+declaration identities/types/CFGs only. Backends therefore do not perform module
+lookup or import resolution.
 
 Coglet currently permits runtime-bearing program-scope code, including global
 initializers that call functions, top-level expression/mutation statements, and

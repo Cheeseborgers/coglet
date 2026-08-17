@@ -258,11 +258,15 @@ source provenance, and LLVM `-g` metadata containing both physical source files.
 The multi-file tests use `-L multi-file` labels where applicable.
 
 Module/import coverage builds named modules from multiple physical files and
-checks qualified functions, structs, and enum members through host-C and LLVM.
-It also covers same-name isolation between modules, file-scoped imports, unknown
-and duplicate namespace diagnostics, permitted compile-time import cycles, and
-root-only executable entry selection when a named module also declares `main`.
-Use `-L module` or `-L import` for the focused namespace slices.
+checks qualified functions, globals, constants, structs, and enum members through
+host-C and LLVM. Qualified-data coverage includes writable/addressable globals,
+array/struct subobjects, qualified constants in compile-time contexts, input-order
+independence for module data used by function bodies, constant-cycle diagnostics, and
+same-name global/constant isolation between modules. It also covers file-scoped
+imports, unknown and duplicate namespace diagnostics, permitted compile-time import
+cycles, and root-only executable entry selection when a named module also declares
+`main`. Use `-L module`, `-L import`, `-L global`, or `-L constant` for focused
+namespace/data slices.
 
 Run only these tests with:
 

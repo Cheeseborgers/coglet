@@ -4,6 +4,63 @@ Coglet is a modern systems language focused on explicit semantics, predictable b
 
 This document records current user-visible language behavior.
 
+## Modules and Imports
+
+A physical source file may optionally begin with a named module declaration:
+
+```c
+module math;
+
+tau :: 6.283185307179586;
+counter: i32 = 0;
+add::(a: i32, b: i32) -> i32 { return a + b; }
+```
+
+Another file imports that namespace explicitly and uses one dot for qualified
+lookup:
+
+```c
+import math;
+
+main::() -> i32 {
+    math.counter = math.add(20, 22);
+    return math.counter;
+}
+```
+
+Files without `module name;` belong to the root namespace. Multiple physical
+files may contribute declarations to the same named module. Imports are
+file-scoped: importing a module in one file does not make it visible in another
+file automatically. All physical source files must still be supplied to the
+compiler; imports do not perform file discovery yet.
+
+Qualified functions and constants are rvalues. Qualified globals retain their
+ordinary storage category, so mutation, address-of, indexing, and field selection
+compose normally:
+
+```c
+state.counter += 1;
+pointer := &state.counter;
+state.values[0] = 7;
+state.point.x = 9;
+```
+
+Qualified constants retain compile-time constant behavior and may be used wherever
+the corresponding unqualified constant is valid, including other constant
+declarations and switch case expressions. Their dependencies are resolved independently
+of physical input-file order, and cyclic constant definitions are rejected. Function
+bodies likewise see imported global declarations regardless of input-file ordering;
+runtime-bearing top-level initialization itself still executes in physical input order.
+Nominal types and enum members use the
+same dot syntax (`math.Pair`, `math.Mode.Red`). A lexical symbol shadows a module
+name in expression lookup, preserving ordinary `value.field` behavior.
+
+The current module layer is compile-time namespace/visibility only. Import cycles
+are allowed, and imports do not reorder top-level runtime initialization. Only a
+root-namespace `main::() -> i32` is the executable entry. Export/private visibility,
+automatic module discovery, search paths, dotted package names, and separate
+compilation remain future work.
+
 ## Values, Storage, and No-Value Expressions
 
 Coglet distinguishes among:

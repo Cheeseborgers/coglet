@@ -1230,6 +1230,20 @@ static int lower_place(ExecLowerState *state, Node *node, LoweredPlace *out)
             break;
 
         case NODE_FIELD: {
+            /*
+             * A module-qualified global is semantically a direct declaration
+             * reference, not a runtime struct field. Namespace information is
+             * already erased into the resolved SemDeclId, so lower it through
+             * the same global binding used by an unqualified identifier.
+             */
+            if (expr->symbol &&
+                expr->symbol->kind == SYMBOL_VARIABLE &&
+                expr->symbol->variable_storage == VARIABLE_STORAGE_GLOBAL) {
+                out->address = lower_identifier_place(
+                    state, node, &out->is_volatile);
+                return out->address != COG_IR_VALUE_INVALID;
+            }
+
             LoweredPlace base;
             if (!lower_place(state, node->as.field.object, &base))
                 return 0;
@@ -2415,6 +2429,16 @@ static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
                     return COG_IR_VALUE_INVALID;
                 }
                 return emit_function_reference(state, binding, node->span);
+            }
+            if (node->type == NODE_FIELD && expr && expr->symbol &&
+                expr->symbol->kind == SYMBOL_CONSTANT) {
+                CogIrLowerDeclBinding *binding = binding_for_expr_ident(state->lower, node);
+                if (!binding || binding->kind != COG_IR_LOWER_DECL_CONSTANT) {
+                    lower_error(state->lower, node->span,
+                                "qualified constant has no CogIR declaration binding");
+                    return COG_IR_VALUE_INVALID;
+                }
+                return emit_constant_value(state, binding->as.constant, node->span);
             }
             if (node->type == NODE_FIELD && expr && expr->symbol && expr->symbol->kind == SYMBOL_TYPE &&
                 expr->type && expr->type->kind == TYPE_ENUM) {

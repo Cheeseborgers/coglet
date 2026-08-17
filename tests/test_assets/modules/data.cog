@@ -1,0 +1,21 @@
+module data;
+
+answer :: 40;
+step :: 2;
+
+counter: i32 = 1;
+values: i32[3] = [2, 3, 4];
+
+Pair::struct {
+    x: i32;
+    y: i32;
+}
+
+pair: Pair = Pair {
+    x = 5,
+    y = 6,
+};
+
+bump::() -> void {
+    data.counter += 1;
+}

@@ -1145,6 +1145,26 @@ static Symbol *scope_define_declared(
     return symbol;
 }
 
+static Symbol *scope_predeclare_declared(
+    SemanticContext *ctx,
+    Node *declaration,
+    StringView name,
+    SymbolKind kind
+) {
+    assert(declaration);
+    assert(kind != SYMBOL_BUILTIN);
+
+    Symbol *symbol = scope_define(ctx, name, kind, NULL);
+    SemDeclInfo *info = sem_get_or_create_decl_info(ctx, declaration);
+
+    assert(!info->symbol);
+    info->symbol = symbol;
+
+    symbol->declaration = declaration;
+    symbol->declaration_id = info->id;
+    return symbol;
+}
+
 static void assert_symbol_builtin_invariant(const Symbol *symbol) {
 
 #ifndef NDEBUG
@@ -1708,6 +1728,8 @@ static void validate_repr_c_struct_layouts(SemanticContext *ctx, Node *program);
 static int  declare_function_signature(SemanticContext *ctx, Node *node);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
+static int ensure_constant_symbol_checked(SemanticContext *ctx, Symbol *symbol);
+static int ensure_global_variable_symbol_checked(SemanticContext *ctx, Symbol *symbol);
 static void check_if_statement(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
 static void check_while_statement(SemanticContext *ctx, Node *node);
@@ -4269,14 +4291,14 @@ static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *ou
                 return 0;
             }
 
+            if (!ensure_constant_symbol_checked(ctx, symbol))
+                return 0;
+
             SemDeclInfo *declaration =
                 sem_find_decl_info_by_id(ctx, symbol->declaration_id);
 
-            if (!declaration || !declaration->has_constant_value) {
-                /* A SYMBOL_CONSTANT is created only after its value is known. */
-                assert(0 && "constant symbol has no semantic declaration value");
+            if (!declaration || !declaration->has_constant_value)
                 return 0;
-            }
 
             *out = declaration->constant_value;
             return 1;
@@ -4333,6 +4355,37 @@ static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *ou
                     out->as.integer = member->value;
                     out->type = symbol->type;
                     return 1;
+                }
+
+                /*
+                 * Module qualification is considered only when no lexical
+                 * value/type shadows the qualifier, matching ordinary field
+                 * expression lookup. Constant evaluation happens before the
+                 * normal value checker for constant declarations, so resolve
+                 * imported constants here while semantic scopes are live.
+                 */
+                if (!symbol && semantic_find_module(ctx, object->as.ident)) {
+                    Symbol *member = semantic_lookup_qualified_symbol(
+                        ctx,
+                        object->as.ident,
+                        node->as.field.name,
+                        node
+                    );
+                    if (!member)
+                        return 0;
+
+                    if (member->kind == SYMBOL_CONSTANT) {
+                        if (!ensure_constant_symbol_checked(ctx, member))
+                            return 0;
+
+                        SemDeclInfo *declaration =
+                            sem_find_decl_info_by_id(ctx, member->declaration_id);
+                        if (!declaration || !declaration->has_constant_value)
+                            return 0;
+
+                        *out = declaration->constant_value;
+                        return 1;
+                    }
                 }
             }
 
@@ -5763,15 +5816,23 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
                 object_node->as.ident.length
             );
 
-            return sym &&
-                   sym->kind == SYMBOL_TYPE &&
-                   sym->type &&
-                   sym->type->kind == TYPE_ENUM &&
-                   find_enum_member(
-                       sym->type,
-                       node->as.field.name.data,
-                       node->as.field.name.length
-                   );
+            if (sym) {
+                return sym->kind == SYMBOL_TYPE &&
+                       sym->type &&
+                       sym->type->kind == TYPE_ENUM &&
+                       find_enum_member(
+                           sym->type,
+                           node->as.field.name.data,
+                           node->as.field.name.length
+                       );
+            }
+
+            Symbol *member = semantic_lookup_visible_qualified_symbol_no_diag(
+                ctx,
+                object_node->as.ident,
+                node->as.field.name
+            );
+            return member && member->kind == SYMBOL_CONSTANT;
         }
 
         default:
@@ -5907,6 +5968,31 @@ static Type *check_identifier_expression(SemanticContext *ctx, Node *node,Identi
         );
 
         return NULL;
+    }
+
+    if (sym->kind == SYMBOL_CONSTANT && !sym->type) {
+        if (!ensure_constant_symbol_checked(ctx, sym))
+            return NULL;
+    }
+
+    if (sym->kind == SYMBOL_VARIABLE && !sym->type) {
+        /*
+         * Function bodies may be checked before a later physical source file
+         * reaches its global declaration. Force only semantic declaration
+         * checking here; CogIR runtime initialization order is unchanged.
+         * Top-level runtime initializers retain source-order visibility.
+         */
+        if (ctx->function_depth == 0 ||
+            !ensure_global_variable_symbol_checked(ctx, sym)) {
+            semantic_error_name(
+                ctx,
+                node,
+                "undefined identifier",
+                node->as.ident.data,
+                node->as.ident.length
+            );
+            return NULL;
+        }
     }
 
     ValueCategory category =
@@ -7468,45 +7554,54 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         );
                         if (!type_symbol)
                             return NULL;
-                        if (type_symbol->kind != SYMBOL_TYPE ||
-                            !type_symbol->type ||
-                            type_symbol->type->kind != TYPE_ENUM) {
-                            semantic_error_fmt(
-                                ctx,
-                                node,
-                                "'%.*s.%.*s' is not an enum type",
-                                (int)module_ident->as.ident.length,
-                                module_ident->as.ident.data,
-                                (int)type_field->as.field.name.length,
-                                type_field->as.field.name.data
-                            );
-                            return NULL;
-                        }
 
-                        EnumMember *member = find_enum_member(
-                            type_symbol->type,
-                            node->as.field.name.data,
-                            node->as.field.name.length
-                        );
-                        if (!member) {
-                            semantic_error_name(
-                                ctx,
-                                node,
-                                "unknown enum member",
+                        /*
+                         * Three-part syntax is ambiguous once modules may expose
+                         * globals: `math.Mode.Red` is enum qualification, while
+                         * `state.pair.x` is ordinary field access on the qualified
+                         * global `state.pair`. Only consume this branch when the
+                         * middle component actually resolves to a type.
+                         */
+                        if (type_symbol->kind == SYMBOL_TYPE) {
+                            if (!type_symbol->type ||
+                                type_symbol->type->kind != TYPE_ENUM) {
+                                semantic_error_fmt(
+                                    ctx,
+                                    node,
+                                    "'%.*s.%.*s' is not an enum type",
+                                    (int)module_ident->as.ident.length,
+                                    module_ident->as.ident.data,
+                                    (int)type_field->as.field.name.length,
+                                    type_field->as.field.name.data
+                                );
+                                return NULL;
+                            }
+
+                            EnumMember *member = find_enum_member(
+                                type_symbol->type,
                                 node->as.field.name.data,
                                 node->as.field.name.length
                             );
-                            return NULL;
-                        }
+                            if (!member) {
+                                semantic_error_name(
+                                    ctx,
+                                    node,
+                                    "unknown enum member",
+                                    node->as.field.name.data,
+                                    node->as.field.name.length
+                                );
+                                return NULL;
+                            }
 
-                        sem_record_expr_info(
-                            ctx,
-                            node,
-                            type_symbol->type,
-                            type_symbol,
-                            VALUE_CATEGORY_RVALUE
-                        );
-                        return type_symbol->type;
+                            sem_record_expr_info(
+                                ctx,
+                                node,
+                                type_symbol->type,
+                                type_symbol,
+                                VALUE_CATEGORY_RVALUE
+                            );
+                            return type_symbol->type;
+                        }
                     }
                 }
             }
@@ -7572,13 +7667,47 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         if (!member)
                             return NULL;
 
-                        if (member->kind == SYMBOL_FUNCTION) {
+                        if (member->kind == SYMBOL_FUNCTION ||
+                            member->kind == SYMBOL_CONSTANT) {
+                            if (member->kind == SYMBOL_CONSTANT && !member->type &&
+                                !ensure_constant_symbol_checked(ctx, member)) {
+                                return NULL;
+                            }
+
                             sem_record_expr_info(
                                 ctx,
                                 node,
                                 member->type,
                                 member,
                                 VALUE_CATEGORY_RVALUE
+                            );
+                            return member->type;
+                        }
+
+                        if (member->kind == SYMBOL_VARIABLE) {
+                            if (!member->type) {
+                                if (ctx->function_depth == 0 ||
+                                    !ensure_global_variable_symbol_checked(ctx, member)) {
+                                    semantic_error_fmt(
+                                        ctx,
+                                        node,
+                                        "global variable '%.*s.%.*s' is used before its declaration",
+                                        (int)object_node->as.ident.length,
+                                        object_node->as.ident.data,
+                                        (int)node->as.field.name.length,
+                                        node->as.field.name.data
+                                    );
+                                    return NULL;
+                                }
+                            }
+
+                            assert(member->variable_storage == VARIABLE_STORAGE_GLOBAL);
+                            sem_record_expr_info(
+                                ctx,
+                                node,
+                                member->type,
+                                member,
+                                VALUE_CATEGORY_LVALUE
                             );
                             return member->type;
                         }
@@ -7592,13 +7721,6 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                                 object_node->as.ident.data,
                                 (int)node->as.field.name.length,
                                 node->as.field.name.data
-                            );
-                        } else if (member->kind == SYMBOL_VARIABLE ||
-                                   member->kind == SYMBOL_CONSTANT) {
-                            semantic_error(
-                                ctx,
-                                node,
-                                "module-qualified variables and constants are not supported yet"
                             );
                         } else {
                             semantic_error(
@@ -8186,24 +8308,48 @@ static void check_block(SemanticContext *ctx, Node *node) {
 }
 
 static void check_const_decl(SemanticContext *ctx, Node *node) {
+    SemDeclInfo *decl_info = sem_get_or_create_decl_info(ctx, node);
 
-    if (scope_find_local(
-            ctx->current_scope,
+    if (decl_info->semantic_check_complete)
+        return;
+
+    if (decl_info->semantic_check_started) {
+        semantic_error_name(
+            ctx,
+            node,
+            "cyclic constant definition",
             node->as.const_decl.name.data,
-            node->as.const_decl.name.length)) {
+            node->as.const_decl.name.length
+        );
+        return;
+    }
 
+    Symbol *existing = scope_find_local(
+        ctx->current_scope,
+        node->as.const_decl.name.data,
+        node->as.const_decl.name.length
+    );
+
+    /*
+     * Top-level constants are predeclared before any constant initializer is
+     * checked so module qualification is independent of physical input order.
+     * Local constants still arrive here without a predeclared symbol.
+     */
+    if (existing && existing->declaration != node) {
         semantic_error_name(
             ctx, node,
             "duplicate declaration",
             node->as.const_decl.name.data,
             node->as.const_decl.name.length);
-
         return;
     }
+
+    decl_info->semantic_check_started = 1;
 
     ConstValue value;
 
     if (!eval_const_expr(ctx, node->as.const_decl.value, &value)) {
+        decl_info->semantic_check_started = 0;
         return;
     }
 
@@ -8212,8 +8358,10 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
         node->as.const_decl.value
     );
 
-    if (!value_type)
+    if (!value_type) {
+        decl_info->semantic_check_started = 0;
         return;
+    }
 
     Type *type = node->as.const_decl.const_type;
 
@@ -8223,14 +8371,14 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
         if (!type) {
             semantic_error(ctx, node,
                 "could not resolve constant type");
-
+            decl_info->semantic_check_started = 0;
             return;
         }
 
         if (invalid_value_type(type)) {
             semantic_error(ctx, node,
                 "constant cannot have type void");
-
+            decl_info->semantic_check_started = 0;
             return;
         }
 
@@ -8241,13 +8389,15 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
                 )) {
                 semantic_error(ctx, node->as.const_decl.value,
                     "integer zero is not a pointer; use null");
-                } else {
-                    semantic_error(ctx, node,
-                        "constant value does not match declared type");
-                }
+            } else {
+                semantic_error(ctx, node,
+                    "constant value does not match declared type");
+            }
 
+            decl_info->semantic_check_started = 0;
             return;
-    }
+        }
+
         ConstValue converted;
 
         if (!coerce_constant_to_type(
@@ -8259,6 +8409,7 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
                 "constant floating-point value does not fit declared type",
                 &converted
             )) {
+            decl_info->semantic_check_started = 0;
             return;
         }
 
@@ -8275,7 +8426,7 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
         if (value_type->kind == TYPE_NULL) {
             semantic_error(ctx, node->as.const_decl.value,
                 "cannot infer a concrete pointer type from null");
-
+            decl_info->semantic_check_started = 0;
             return;
         }
 
@@ -8286,24 +8437,78 @@ static void check_const_decl(SemanticContext *ctx, Node *node) {
         if (!type) {
             semantic_error(ctx, node,
                 "could not infer constant type");
-
+            decl_info->semantic_check_started = 0;
             return;
         }
 
         value.type = type;
     }
 
-    scope_define_declared(
-        ctx,
-        node,
-        node->as.const_decl.name,
-        SYMBOL_CONSTANT,
-        type);
+    Symbol *symbol = existing;
+    if (!symbol) {
+        symbol = scope_define_declared(
+            ctx,
+            node,
+            node->as.const_decl.name,
+            SYMBOL_CONSTANT,
+            type
+        );
+    } else {
+        assert(symbol->kind == SYMBOL_CONSTANT);
+        assert(!symbol->type);
+        symbol->type = type;
+        sem_record_decl_info(ctx, node, type, symbol);
+    }
 
-    SemDeclInfo *decl_info = sem_find_decl_info(ctx, node);
+    (void)symbol;
+    decl_info = sem_find_decl_info(ctx, node);
     assert(decl_info);
     decl_info->has_constant_value = 1;
     decl_info->constant_value = value;
+    decl_info->semantic_check_started = 0;
+    decl_info->semantic_check_complete = 1;
+}
+
+static int ensure_constant_symbol_checked(
+    SemanticContext *ctx,
+    Symbol *symbol
+) {
+    if (!ctx || !symbol || symbol->kind != SYMBOL_CONSTANT ||
+        !symbol->declaration ||
+        symbol->declaration->type != NODE_CONST_DECL) {
+        return 0;
+    }
+
+    SemDeclInfo *info = sem_find_decl_info_by_id(ctx, symbol->declaration_id);
+    if (info && info->semantic_check_complete)
+        return info->has_constant_value;
+
+    if (info && info->semantic_check_started) {
+        semantic_error_name(
+            ctx,
+            symbol->declaration,
+            "cyclic constant definition",
+            symbol->name.data,
+            symbol->name.length
+        );
+        /* Terminal invalid state: do not re-enter the same cycle later. */
+        info->semantic_check_complete = 1;
+        return 0;
+    }
+
+    SourceFileId saved_source_id = ctx->current_source_id;
+    SemanticModule *saved_module = ctx->current_module;
+    Scope *saved_scope = ctx->current_scope;
+
+    semantic_select_source_module(ctx, symbol->declaration->span.file_id);
+    check_const_decl(ctx, symbol->declaration);
+
+    ctx->current_source_id = saved_source_id;
+    ctx->current_module = saved_module;
+    ctx->current_scope = saved_scope;
+
+    info = sem_find_decl_info_by_id(ctx, symbol->declaration_id);
+    return info && info->semantic_check_complete && info->has_constant_value;
 }
 
 static void check_switch_statement(SemanticContext *ctx, Node *node) {
@@ -9267,7 +9472,17 @@ static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *i
 
 static void check_var_decl(SemanticContext *ctx, Node *node) {
 
-    if (scope_find_local(ctx->current_scope, node->as.var_decl.name.data, node->as.var_decl.name.length)) {
+    SemDeclInfo *decl_info = sem_get_or_create_decl_info(ctx, node);
+    if (decl_info->semantic_check_complete)
+        return;
+
+    Symbol *existing = scope_find_local(
+        ctx->current_scope,
+        node->as.var_decl.name.data,
+        node->as.var_decl.name.length
+    );
+
+    if (existing && existing->declaration != node) {
         semantic_error_name(
             ctx, node,
             "duplicate variable declaration",
@@ -9349,12 +9564,20 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
             ? VARIABLE_STORAGE_LOCAL
             : VARIABLE_STORAGE_GLOBAL;
 
-    Symbol *symbol = scope_define_declared(
-        ctx,
-        node,
-        node->as.var_decl.name,
-        SYMBOL_VARIABLE,
-        type);
+    Symbol *symbol = existing;
+    if (!symbol) {
+        symbol = scope_define_declared(
+            ctx,
+            node,
+            node->as.var_decl.name,
+            SYMBOL_VARIABLE,
+            type);
+    } else {
+        assert(symbol->kind == SYMBOL_VARIABLE);
+        assert(!symbol->type);
+        symbol->type = type;
+        sem_record_decl_info(ctx, node, type, symbol);
+    }
 
     classify_variable_symbol(ctx, symbol, storage);
 
@@ -9380,6 +9603,61 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
             init != NULL
         );
     }
+
+    decl_info = sem_find_decl_info(ctx, node);
+    assert(decl_info);
+    decl_info->semantic_check_complete = 1;
+}
+
+static int ensure_global_variable_symbol_checked(
+    SemanticContext *ctx,
+    Symbol *symbol
+) {
+    if (!ctx || !symbol || symbol->kind != SYMBOL_VARIABLE ||
+        !symbol->declaration ||
+        symbol->declaration->type != NODE_VAR_DECL) {
+        return 0;
+    }
+
+    SemDeclInfo *info = sem_find_decl_info_by_id(ctx, symbol->declaration_id);
+    if (info && info->semantic_check_complete)
+        return symbol->type != NULL;
+
+    if (info && info->semantic_check_started) {
+        semantic_error_name(
+            ctx,
+            symbol->declaration,
+            "cyclic global variable definition",
+            symbol->name.data,
+            symbol->name.length
+        );
+        return 0;
+    }
+
+    if (!info)
+        return 0;
+
+    info->semantic_check_started = 1;
+
+    SourceFileId saved_source_id = ctx->current_source_id;
+    SemanticModule *saved_module = ctx->current_module;
+    Scope *saved_scope = ctx->current_scope;
+    int saved_function_depth = ctx->function_depth;
+
+    semantic_select_source_module(ctx, symbol->declaration->span.file_id);
+    ctx->function_depth = 0;
+    check_var_decl(ctx, symbol->declaration);
+
+    ctx->current_source_id = saved_source_id;
+    ctx->current_module = saved_module;
+    ctx->current_scope = saved_scope;
+    ctx->function_depth = saved_function_depth;
+
+    info = sem_find_decl_info_by_id(ctx, symbol->declaration_id);
+    if (info)
+        info->semantic_check_started = 0;
+
+    return info && info->semantic_check_complete && symbol->type;
 }
 
 static void check_param_decl(SemanticContext *ctx, Node *node) {
@@ -9689,7 +9967,73 @@ static void check_program(SemanticContext *ctx, Node *node)
         validate_source_entry_signature(ctx, stmt);
     }
 
-    /* Pass 4: check bodies and runtime-bearing top-level syntax in source order. */
+    /*
+     * Pass 4: predeclare top-level data names without checking their values.
+     *
+     * This makes module namespace membership independent of physical file
+     * order while preserving the historical source-order diagnostic/checking
+     * pass below. Constants may be evaluated lazily across modules; globals
+     * may be forced when referenced from an earlier function body. Runtime
+     * module-initializer execution order remains a CogIR input-order property.
+     */
+    for (int i = 0; i < stmts->count; i++) {
+        Node *stmt = stmts->items[i];
+
+        if (stmt->type == NODE_CONST_DECL) {
+            semantic_select_source_module(ctx, stmt->span.file_id);
+            if (!scope_find_local(
+                    ctx->current_scope,
+                    stmt->as.const_decl.name.data,
+                    stmt->as.const_decl.name.length
+                )) {
+                scope_predeclare_declared(
+                    ctx,
+                    stmt,
+                    stmt->as.const_decl.name,
+                    SYMBOL_CONSTANT
+                );
+            }
+            continue;
+        }
+
+        if (stmt->type == NODE_VAR_DECL) {
+            semantic_select_source_module(ctx, stmt->span.file_id);
+            if (!scope_find_local(
+                    ctx->current_scope,
+                    stmt->as.var_decl.name.data,
+                    stmt->as.var_decl.name.length
+                )) {
+                scope_predeclare_declared(
+                    ctx,
+                    stmt,
+                    stmt->as.var_decl.name,
+                    SYMBOL_VARIABLE
+                );
+            }
+            continue;
+        }
+
+        if (stmt->type == NODE_VAR_DECL_GROUP) {
+            semantic_select_source_module(ctx, stmt->span.file_id);
+            for (int j = 0; j < stmt->as.var_decl_group.declarations.count; j++) {
+                Node *decl = stmt->as.var_decl_group.declarations.items[j];
+                if (!scope_find_local(
+                        ctx->current_scope,
+                        decl->as.var_decl.name.data,
+                        decl->as.var_decl.name.length
+                    )) {
+                    scope_predeclare_declared(
+                        ctx,
+                        decl,
+                        decl->as.var_decl.name,
+                        SYMBOL_VARIABLE
+                    );
+                }
+            }
+        }
+    }
+
+    /* Pass 5: check bodies and runtime-bearing top-level syntax in source order. */
     for (int i = 0; i < stmts->count; i++) {
         Node *stmt = stmts->items[i];
         if (stmt->type == NODE_MODULE_DECL || stmt->type == NODE_IMPORT_DECL ||

@@ -1,0 +1,6 @@
+import data;
+
+main::() -> i32 {
+    data.answer = 1;
+    return 0;
+}

@@ -271,6 +271,45 @@ add_test(
 set_tests_properties(driver_modules_duplicate_same_namespace
         PROPERTIES LABELS "driver;semantic;module;namespace;multi-file;invalid")
 
+add_test(
+        NAME driver_modules_qualified_global_requires_import
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_no_import.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=module 'data' is not imported in this file"
+        "-DEXPECT_PATH_SUBSTRING=data_no_import.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_modules_qualified_global_requires_import
+        PROPERTIES LABELS "driver;semantic;module;import;global;multi-file;invalid")
+
+add_test(
+        NAME driver_modules_qualified_constant_not_assignable
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_assign_constant.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=assignment target is not assignable"
+        "-DEXPECT_PATH_SUBSTRING=data_assign_constant.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_modules_qualified_constant_not_assignable
+        PROPERTIES LABELS "driver;semantic;module;import;constant;multi-file;invalid")
+
+add_test(
+        NAME driver_modules_qualified_constant_cycle
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/constant_cycle_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/constant_cycle_a.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/constant_cycle_b.cog"
+        -DEXPECT_EXIT=1
+        "-DEXPECT_SUBSTRING=cyclic constant definition 'x'"
+        "-DEXPECT_PATH_SUBSTRING=constant_cycle_a.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_failure_test.cmake"
+)
+set_tests_properties(driver_modules_qualified_constant_cycle
+        PROPERTIES LABELS "driver;semantic;module;import;constant;cycle;multi-file;invalid")
+
 # --- CogIR core builder/verifier/dump regression. ---
 add_executable(check_cog_ir_core tools/tests/check_cog_ir_core.c)
 target_link_libraries(check_cog_ir_core PRIVATE compiler_core)
@@ -986,6 +1025,32 @@ add_test(
 )
 set_tests_properties(backend_modules_import_cycle_host_c
         PROPERTIES LABELS "backend;backend.c;semantic;module;import;cycle;multi-file")
+
+add_test(
+        NAME backend_modules_qualified_data_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_qualified_data_host_c
+        -DEXPECT_EXIT=27
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_qualified_data_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;module;import;global;constant;multi-file")
+
+add_test(
+        NAME backend_modules_qualified_data_namespace_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_namespace_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_right.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_left.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_modules_qualified_data_namespace_host_c
+        -DEXPECT_EXIT=40
+        -DBACKEND=host-c
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+)
+set_tests_properties(backend_modules_qualified_data_namespace_host_c
+        PROPERTIES LABELS "backend;backend.c;semantic;module;namespace;global;constant;multi-file")
 add_host_c_failure_test(
         backend_rejects_obsolete_c_int_entry obsolete_c_int_entry.cog 1
         "executable entry point must have signature 'main::() -> i32'"
@@ -1454,6 +1519,34 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_modules_import_cycle
         PROPERTIES LABELS "backend;backend.llvm;semantic;module;import;cycle;multi-file;codegen")
+
+    add_test(
+        NAME backend_llvm_modules_qualified_data
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_qualified_data
+        -DEXPECT_EXIT=27
+        -DBACKEND=llvm
+        -DOPT_LEVEL=3
+        -DDEBUG_INFO=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_qualified_data
+        PROPERTIES LABELS "backend;backend.llvm;semantic;module;import;global;constant;multi-file;codegen;debug;optimization")
+
+    add_test(
+        NAME backend_llvm_modules_qualified_data_namespace
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_right.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_namespace_main.cog|${CMAKE_SOURCE_DIR}/tests/test_assets/modules/data_left.cog"
+        -DOUTPUT=${CMAKE_BINARY_DIR}/backend_llvm_modules_qualified_data_namespace
+        -DEXPECT_EXIT=40
+        -DBACKEND=llvm
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_executable_test.cmake"
+    )
+    set_tests_properties(backend_llvm_modules_qualified_data_namespace
+        PROPERTIES LABELS "backend;backend.llvm;semantic;module;namespace;global;constant;multi-file;codegen")
 
     function(add_llvm_stage7_native_test test_name fixture expected_exit)
         add_test(

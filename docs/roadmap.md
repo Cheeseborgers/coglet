@@ -456,8 +456,10 @@ encoding, and C-interoperability rules are clearer.
 Source provenance and the compilation driver are multi-file-capable, and the
 initial module/import namespace layer is now present. Files may declare a named
 module, multiple files may contribute to one module namespace, and file-scoped
-imports permit qualified function/nominal-type access while preserving one frozen
-CogIR compilation unit. Imports do not perform file discovery or runtime ordering;
+imports permit qualified function/global/constant/nominal-type access while
+preserving one frozen CogIR compilation unit. Qualified globals retain ordinary
+storage semantics and qualified constants retain compile-time value semantics.
+Imports do not perform file discovery or runtime ordering;
 all physical inputs remain explicit and top-level runtime execution remains in
 input order.
 

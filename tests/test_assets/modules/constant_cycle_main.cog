@@ -1,0 +1,5 @@
+import const_a;
+
+main::() -> i32 {
+    return const_a.x;
+}

@@ -1,0 +1,8 @@
+import left_data;
+import right_data;
+
+main::() -> i32 {
+    left_data.slot += 3;
+    right_data.slot += 4;
+    return left_data.value + right_data.value + left_data.slot + right_data.slot;
+}

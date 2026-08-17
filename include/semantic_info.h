@@ -261,6 +261,15 @@ typedef struct SemDeclInfo {
     int has_constant_value;
     ConstValue constant_value;
 
+    /*
+     * Frontend-only declaration-check state. Top-level constants are
+     * predeclared so imported module constants are independent of physical
+     * input order; these flags guard lazy dependency evaluation and cycles.
+     * Backends do not consume this state.
+     */
+    int semantic_check_started;
+    int semantic_check_complete;
+
     /* True only for the validated root-namespace `main::() -> i32`. */
     int is_executable_entry;
 

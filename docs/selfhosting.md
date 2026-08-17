@@ -52,7 +52,7 @@ These features remain intentionally deferred until real use cases justify them:
 * first-class owned strings
 * slices and views
 * generics
-* modules/packages
+* hierarchical package/module naming and discovery
 * a package manager
 * interfaces or traits
 * operator overloading

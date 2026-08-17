@@ -1,0 +1,4 @@
+module const_b;
+import const_a;
+
+y :: const_a.x;

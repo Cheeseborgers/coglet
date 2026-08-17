@@ -1,0 +1,29 @@
+import data;
+
+copied_answer :: data.answer;
+root_copy: i32 = data.answer;
+
+main::() -> i32 {
+    if copied_answer != 40 || root_copy != 40
+        return 1;
+
+    probe: i32 = 2;
+    switch probe {
+        case data.step: {}
+        default:
+            return 2;
+    }
+
+    data.bump();
+
+    pointer := &data.counter;
+    *pointer += 1;
+
+    data.values[1] = data.values[1] + 7;
+    data.pair.y = 9;
+
+    if data.pair.x != 5
+        return 3;
+
+    return data.counter + data.values[1] + data.pair.x + data.pair.y;
+}

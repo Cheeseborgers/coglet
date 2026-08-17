@@ -155,13 +155,18 @@ main::() -> i32 { return math.add(20, 22); }
 Builds remain explicit: `coglet math.cog main.cog -o program`. An import does
 not search for or load a file. Files without `module name;` belong to the root
 namespace; multiple files may contribute to the same named module. Imports are
-file-scoped and permit qualified functions and nominal types, including
-`math.Pair`, `math.Pair { ... }`, and `math.Mode.Red`. Same-module references
-remain unqualified. Import cycles are allowed because imports currently affect
-compile-time visibility only; top-level runtime initialization remains in input
-order. Only root-namespace `main::() -> i32` is the executable entry. Export/private
-visibility, package naming/search paths, automatic module discovery, and
-module-qualified globals/constants remain future work.
+file-scoped and permit qualified functions, globals, constants, and nominal types,
+including `math.add`, `math.tau`, `state.counter`, `math.Pair`,
+`math.Pair { ... }`, and `math.Mode.Red`. Qualified globals preserve ordinary
+lvalue/addressability semantics, while qualified constants remain compile-time
+values and may be used in constant-expression contexts. Module data declarations
+are visible to function bodies regardless of physical input-file order; compile-time
+constant dependencies are resolved lazily and cycles are diagnosed. Same-module
+references remain unqualified, although explicit qualification by the current module
+name is also valid. Import cycles are allowed because imports currently affect compile-time
+visibility only; top-level runtime initialization remains in input order. Only
+root-namespace `main::() -> i32` is the executable entry. Export/private visibility,
+package naming/search paths, and automatic module discovery remain future work.
 
 For the current executable slice:
 

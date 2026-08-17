@@ -31,8 +31,13 @@ They form one compilation unit and one frozen CogIR module. Files without an
 explicit module declaration contribute to the root namespace. A file may instead
 begin with `module name;`; multiple files with the same module name contribute to
 the same semantic namespace. File-scoped `import name;` directives permit
-qualified access to imported functions and nominal types (`math.add`,
-`math.Pair`, `math.Mode.Red`). Same-module references remain unqualified.
+qualified access to imported functions, globals, constants, and nominal types
+(`math.add`, `math.tau`, `state.counter`, `math.Pair`, `math.Mode.Red`). Qualified
+globals retain ordinary writable/addressable storage semantics and qualified
+constants retain compile-time constant semantics. Module data names are predeclared
+so function-body lookup is independent of physical input-file order; compile-time
+constant dependencies are resolved lazily with cycle diagnostics. Same-module
+references remain unqualified, with explicit current-module qualification also accepted.
 
 Imports are compile-time visibility only: they do not load files, create separate
 CogIR modules, or reorder program-scope runtime initialization. Every physical
@@ -40,8 +45,7 @@ source file must still be supplied to the driver, and runtime-bearing top-level
 items retain command-line/source order. Import cycles are therefore permitted in
 this initial layer. Only root-namespace `main::() -> i32` is an executable entry;
 a `main` inside a named module is an ordinary function. Export/private rules,
-module search paths, package names, and module-qualified globals/constants remain
-future work.
+module search paths, and package names remain future work.
 
 
 ## Post-semantic IR boundary

@@ -410,12 +410,17 @@ classification remain explicitly deferred.
 
 For executable output, `coglet input.cog -o program --backend llvm` performs
 CogIR -> verified LLVM IR -> native object -> platform link. Object generation
-uses LLVM target APIs and does not invoke an external compiler. `linker.c` is a
-separate backend toolchain boundary: on the currently supported Unix-like host
-path it invokes `cc` directly with `execvp()` (never a shell) only to supply the
-platform startup objects/default runtime libraries and resolve explicit `-L`/`-l`
-inputs. No linker policy or platform-specific object-format detail is stored in
-CogIR. The host-C backend remains the default executable backend.
+uses LLVM target APIs and does not invoke an external compiler. Objects destined
+for the executable-link path use LLVM's PIC relocation model so they remain valid
+when the host compiler driver defaults to PIE; this policy is selected by the LLVM
+backend/toolchain boundary rather than encoded in CogIR or approximated with a
+platform-specific `-no-pie` linker flag. The standalone object-emission API keeps
+LLVM's default relocation policy. `linker.c` is a separate backend toolchain
+boundary: on the currently supported Unix-like host path it invokes `cc` directly
+with `execvp()` (never a shell) only to supply the platform startup objects/default
+runtime libraries and resolve explicit `-L`/`-l` inputs. No linker policy or
+platform-specific object-format detail is stored in CogIR. The host-C backend
+remains the default executable backend.
 
 `COGLET_LLVM=AUTO` enables the backend when `LLVMConfig.cmake` is available;
 `ON` requires LLVM 17 or newer and `OFF` disables it. The CMake integration

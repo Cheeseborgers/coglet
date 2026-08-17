@@ -61,7 +61,7 @@ int llvm_backend_init_native_target(LlvmBackend *backend)
         "",
         "",
         codegen_optimization_level(backend->optimization_level),
-        LLVMRelocDefault,
+        backend->relocation_mode,
         LLVMCodeModelDefault
     );
     if (!backend->target_machine) {

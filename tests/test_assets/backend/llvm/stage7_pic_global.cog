@@ -1,0 +1,5 @@
+global_value: i32 = 9;
+
+main::() -> i32 {
+    return global_value;
+}

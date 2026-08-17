@@ -535,8 +535,10 @@ all consume the same backend ABI plan. LLVM-specific target layout and callable
 signatures remain backend-owned derivations of frozen CogIR; no frontend object is
 consulted after lowering. LLVM Stage 7 reuses that same verified module and
 backend-owned target machine to emit native objects and links them through a
-separate host toolchain boundary;
-textual LLVM IR emission remains available. LLVM Stage 8 adds user-visible
+separate host toolchain boundary. Executable-link objects use LLVM PIC relocation
+so hosts that default to PIE link correctly even at `-O0`; this remains backend
+policy and does not enter CogIR. Textual LLVM IR emission remains available.
+LLVM Stage 8 adds user-visible
 `-O0`/`-O1`/`-O2`/`-O3` policy without changing CogIR: O1-O3 run LLVM's default
 new-pass-manager pipelines with the backend target machine, optimized modules are
 verified again before output, and target code-generation intensity follows the

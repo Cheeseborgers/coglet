@@ -1240,6 +1240,9 @@ if(COGLET_HAS_LLVM_BACKEND)
     add_llvm_stage7_native_test(
         backend_llvm_stage7_native_i32_entry native_i32_entry.cog 42
     )
+    add_llvm_stage7_native_test(
+        backend_llvm_stage7_pic_global_link llvm/stage7_pic_global.cog 9
+    )
     add_llvm_stage7_native_library_test(
         backend_llvm_stage7_c_scalar_link extern_c_integer_aliases.cog 29 joined
     )

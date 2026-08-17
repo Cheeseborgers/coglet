@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "backends/llvm/backend_llvm.h"
+#include "backend_llvm_internal.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -97,7 +97,12 @@ LlvmBackendStatus llvm_backend_build_executable(
         return LLVM_BACKEND_STATUS_IO_ERROR;
     }
 
-    LlvmBackendStatus status = llvm_backend_emit_object_file(
+    /*
+     * The host compiler driver may default to PIE. Generate executable-link
+     * objects as PIC so the LLVM relocation model matches that toolchain policy
+     * without teaching CogIR about PIE or passing a platform-specific -no-pie.
+     */
+    LlvmBackendStatus status = llvm_backend_emit_position_independent_object_file(
         object_path,
         module,
         backend_options

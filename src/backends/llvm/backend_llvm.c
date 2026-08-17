@@ -481,6 +481,7 @@ static LlvmBackendStatus verify_llvm_module(LlvmBackend *backend, const char *ph
 static LlvmBackendStatus lower_verified_module(
     const CogIrModule *module,
     const LlvmBackendOptions *options,
+    LLVMRelocMode relocation_mode,
     LlvmBackend *backend
 ) {
     if (!module) {
@@ -497,6 +498,7 @@ static LlvmBackendStatus lower_verified_module(
     backend->optimization_level = options
         ? options->optimization_level
         : COG_OPTIMIZATION_LEVEL_0;
+    backend->relocation_mode = relocation_mode;
     backend->debug_info = options ? options->debug_info != 0 : 0;
     if (!optimization_level_valid(backend->optimization_level)) {
         fprintf(stderr, "LLVM backend error: invalid optimization level\n");
@@ -559,7 +561,8 @@ LlvmBackendStatus llvm_backend_emit_ir_file(
 
     LlvmBackend backend;
     memset(&backend, 0, sizeof(backend));
-    LlvmBackendStatus status = lower_verified_module(module, options, &backend);
+    LlvmBackendStatus status = lower_verified_module(
+        module, options, LLVMRelocDefault, &backend);
     if (status != LLVM_BACKEND_STATUS_OK)
         goto cleanup;
 
@@ -585,10 +588,11 @@ cleanup:
     return status;
 }
 
-LlvmBackendStatus llvm_backend_emit_object_file(
+static LlvmBackendStatus emit_object_file_with_relocation(
     const char *output_path,
     const CogIrModule *module,
-    const LlvmBackendOptions *options
+    const LlvmBackendOptions *options,
+    LLVMRelocMode relocation_mode
 )
 {
     if (!output_path) {
@@ -598,7 +602,7 @@ LlvmBackendStatus llvm_backend_emit_object_file(
 
     LlvmBackend backend;
     memset(&backend, 0, sizeof(backend));
-    LlvmBackendStatus status = lower_verified_module(module, options, &backend);
+    LlvmBackendStatus status = lower_verified_module(module, options, relocation_mode, &backend);
     if (status != LLVM_BACKEND_STATUS_OK)
         goto cleanup;
     if (!llvm_backend_init_native_asm_printer(&backend)) {
@@ -642,4 +646,24 @@ LlvmBackendStatus llvm_backend_emit_object_file(
 cleanup:
     dispose_backend(&backend);
     return status;
+}
+
+LlvmBackendStatus llvm_backend_emit_object_file(
+    const char *output_path,
+    const CogIrModule *module,
+    const LlvmBackendOptions *options
+)
+{
+    return emit_object_file_with_relocation(
+        output_path, module, options, LLVMRelocDefault);
+}
+
+LlvmBackendStatus llvm_backend_emit_position_independent_object_file(
+    const char *output_path,
+    const CogIrModule *module,
+    const LlvmBackendOptions *options
+)
+{
+    return emit_object_file_with_relocation(
+        output_path, module, options, LLVMRelocPIC);
 }

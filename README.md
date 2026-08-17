@@ -143,9 +143,11 @@ Both joined and split spellings are accepted, both options may be repeated, and
 they are valid only when `-o` requests an executable link step. They are passed
 directly to the selected backend's native linker/compiler driver without invoking
 a shell. Executable output defaults to the host-C bootstrap backend. When LLVM
-support is enabled, `--backend llvm` lowers and verifies LLVM IR, emits a native
-object through LLVM's `TargetMachine`, then invokes the host `cc` driver only for
-the final platform link/CRT step. Textual LLVM IR remains available through
+support is enabled, `--backend llvm` lowers and verifies LLVM IR, emits a
+position-independent native object through LLVM's `TargetMachine`, then invokes
+the host `cc` driver only for the final platform link/CRT step. Executable-object
+PIC is backend/toolchain policy so hosts whose compiler driver defaults to PIE do
+not require optimization or linker-specific `-no-pie` workarounds. Textual LLVM IR remains available through
 `--emit-llvm`. LLVM output accepts `-O0`, `-O1`, `-O2`, and `-O3`; `-O0` is the
 default and preserves the unoptimized LLVM-IR path, while `-O1` through `-O3`
 run LLVM's corresponding default new-pass-manager pipeline before IR/object

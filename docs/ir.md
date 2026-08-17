@@ -1216,10 +1216,13 @@ volatile access contract.
     Non-x86-64 aggregate classification remains deferred until cross-target work.
 25. ~~Add LLVM native object generation and executable linking.~~ The LLVM backend
     now reuses its verified module and backend-owned native `TargetMachine` for
-    object emission. Final executable linking is a separate toolchain boundary
-    that consumes the object plus explicit link inputs; CogIR gains no linker,
-    relocation, object-format, or frontend-lifetime dependency. Textual LLVM IR
-    emission remains available independently.
+    object emission. Objects specifically destined for executable linking use
+    LLVM PIC relocation so default-PIE host linker drivers can consume them;
+    standalone object emission retains LLVM's default relocation policy. Final
+    executable linking is a separate toolchain boundary that consumes the object
+    plus explicit link inputs; CogIR gains no linker, relocation, object-format,
+    or frontend-lifetime dependency. Textual LLVM IR emission remains available
+    independently.
 26. ~~Add LLVM optimization levels without turning CogIR into a general-purpose
     optimizer.~~ Compiler-wide `-O0` through `-O3` intent stays outside CogIR; the
     LLVM backend maps it to LLVM's default new-pass-manager pipelines and matching

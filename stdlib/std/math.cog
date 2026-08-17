@@ -84,6 +84,75 @@ export to_degrees::<T: floating>(radians: T) -> T {
     return radians * rad_to_deg;
 }
 
+// Runtime-backed floating-point math. Coglet does not yet have overloads or
+// compile-time type dispatch, so the initial public API names the precision
+// explicitly. Both precisions use the same backend-neutral runtime ABI.
+
+export #extern(c, name="coglet_rt_math_sqrt_f32")
+sqrt_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_sqrt_f64")
+sqrt_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_sin_f32")
+sin_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_sin_f64")
+sin_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_cos_f32")
+cos_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_cos_f64")
+cos_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_tan_f32")
+tan_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_tan_f64")
+tan_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_asin_f32")
+asin_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_asin_f64")
+asin_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_acos_f32")
+acos_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_acos_f64")
+acos_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_atan_f32")
+atan_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_atan_f64")
+atan_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_atan2_f32")
+atan2_f32::(y: f32, x: f32) -> f32;
+export #extern(c, name="coglet_rt_math_atan2_f64")
+atan2_f64::(y: f64, x: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_floor_f32")
+floor_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_floor_f64")
+floor_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_ceil_f32")
+ceil_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_ceil_f64")
+ceil_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_round_f32")
+round_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_round_f64")
+round_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_trunc_f32")
+trunc_f32::(value: f32) -> f32;
+export #extern(c, name="coglet_rt_math_trunc_f64")
+trunc_f64::(value: f64) -> f64;
+
+export #extern(c, name="coglet_rt_math_fmod_f32")
+fmod_f32::(x: f32, y: f32) -> f32;
+export #extern(c, name="coglet_rt_math_fmod_f64")
+fmod_f64::(x: f64, y: f64) -> f64;
+
 export gcd_u64::(a: u64, b: u64) -> u64 {
     left := a;
     right := b;

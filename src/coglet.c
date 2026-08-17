@@ -77,6 +77,23 @@ static int cog_ir_requires_runtime(const CogIrModule *module)
     return 0;
 }
 
+static int cog_ir_requires_runtime_math(const CogIrModule *module)
+{
+    if (!module)
+        return 0;
+
+    for (size_t i = 0; i < module->function_count; ++i) {
+        const CogIrFunction *function = &module->functions[i];
+        if (function->linkage != COG_IR_LINKAGE_EXTERNAL ||
+            function->abi.abi != COG_IR_ABI_C) {
+            continue;
+        }
+        if (cog_string_view_starts_with_cstr(function->abi.external_symbol, "coglet_rt_math_"))
+            return 1;
+    }
+    return 0;
+}
+
 static int resolve_runtime_source(
     const char *stdlib_root,
     char *buffer,
@@ -435,6 +452,7 @@ int main(int argc, char **argv)
 
     char runtime_source_path[4096];
     const char *runtime_source = NULL;
+    int runtime_math = output_path && cog_ir_requires_runtime_math(&ir);
     if (output_path && cog_ir_requires_runtime(&ir)) {
         if (!resolve_runtime_source(stdlib_root, runtime_source_path, sizeof(runtime_source_path))) {
             cog_ir_module_destroy(&ir);
@@ -502,6 +520,7 @@ int main(int argc, char **argv)
         if (executable_backend == EXECUTABLE_BACKEND_HOST_C) {
             CBackendLinkOptions link_options = {
                 .runtime_source = runtime_source,
+                .runtime_math = runtime_math,
                 .library_dirs = library_dirs,
                 .library_dir_count = library_dir_count,
                 .libraries = libraries,
@@ -524,6 +543,7 @@ int main(int argc, char **argv)
             };
             LlvmBackendLinkOptions link_options = {
                 .runtime_source = runtime_source,
+                .runtime_math = runtime_math,
                 .library_dirs = library_dirs,
                 .library_dir_count = library_dir_count,
                 .libraries = libraries,

@@ -221,7 +221,7 @@ main::() -> s32 {
 }
 ```
 
-`std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_s32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; and an initial floating game/application math slice with `clamp01`, `lerp`, `inverse_lerp`, `remap`, `smoothstep`, `to_radians`, and `to_degrees`. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow.
+`std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_s32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; floating game/application helpers such as `lerp`/`smoothstep`; and runtime-backed `f32`/`f64` square-root, trigonometric, inverse-trigonometric, rounding, and floating-remainder functions. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow. Known implementation limitations and follow-up work are tracked separately in `docs/known_shortcomings.md`.
 
 `std.io` is the first runtime-backed standard module. It provides `print`/`println`
 for direct C-string literals or pointers, `newline`, `flush`, Boolean printing,

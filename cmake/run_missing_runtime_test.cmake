@@ -1,4 +1,4 @@
-foreach(required_var IN ITEMS COMPILER MAIN IO_MODULE STDLIB_ROOT OUTPUT EXPECT_SUBSTRING)
+foreach(required_var IN ITEMS COMPILER MAIN MODULE STDLIB_ROOT OUTPUT EXPECT_SUBSTRING)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "run_missing_runtime_test.cmake requires ${required_var}")
     endif()
@@ -6,7 +6,7 @@ endforeach()
 
 file(REMOVE "${OUTPUT}")
 execute_process(
-    COMMAND "${COMPILER}" "${MAIN}" "${IO_MODULE}"
+    COMMAND "${COMPILER}" "${MAIN}" "${MODULE}"
             --stdlib-root "${STDLIB_ROOT}"
             -o "${OUTPUT}"
     RESULT_VARIABLE result

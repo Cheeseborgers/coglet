@@ -303,6 +303,8 @@ static CogNativeToolchainStatus build_gnu_style(
     if (ok && options && options->runtime_source) {
         if (!primary_is_c)
             ok = args_push(&args, "-std=c99") && args_push(&args, "-Wall") && args_push(&args, "-Wextra");
+        if (ok && options->runtime_math)
+            ok = args_push(&args, "-DCOGLET_RUNTIME_MATH=1");
         if (ok)
             ok = args_push(&args, options->runtime_source);
     }
@@ -310,6 +312,10 @@ static CogNativeToolchainStatus build_gnu_style(
         ok = args_push(&args, "-o") && args_push(&args, output_path);
     if (ok)
         ok = append_gnu_link_options(&args, options);
+#if !defined(_WIN32)
+    if (ok && options && options->runtime_math)
+        ok = args_push(&args, "-lm");
+#endif
 
     CogNativeToolchainStatus status = COG_NATIVE_TOOLCHAIN_PROCESS_ERROR;
     if (!ok) {
@@ -341,6 +347,8 @@ static CogNativeToolchainStatus build_msvc_style(
         else
             ok = args_push(&args, primary_input);
     }
+    if (ok && options && options->runtime_math)
+        ok = args_push(&args, "/DCOGLET_RUNTIME_MATH=1");
     if (ok && options && options->runtime_source)
         ok = args_push_owned_concat(&args, "/Tc", options->runtime_source, "");
     if (ok)

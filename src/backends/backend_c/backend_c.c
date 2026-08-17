@@ -3797,6 +3797,7 @@ CBackendStatus c_backend_build_executable(
 
     CogNativeToolchainLinkOptions native_options = {
         .runtime_source = link_options ? link_options->runtime_source : NULL,
+        .runtime_math = link_options ? link_options->runtime_math : 0,
         .library_dirs = link_options ? link_options->library_dirs : NULL,
         .library_dir_count = link_options ? link_options->library_dir_count : 0,
         .libraries = link_options ? link_options->libraries : NULL,

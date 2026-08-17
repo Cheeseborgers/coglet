@@ -386,13 +386,15 @@ is still native-host compilation: Linux/Windows x86-64 and AArch64 are supported
 through their native CMake-selected toolchains; selecting an arbitrary cross
 target/toolchain from the Coglet CLI remains deferred.
 
-`std.io` establishes runtime ABI v0. Its public Coglet declarations name reserved
-`coglet_rt_*` C symbols. Once semantic state has been lowered and destroyed, the
-driver inspects only frozen CogIR external-symbol metadata; if any reserved runtime
-symbol is referenced it adds `<stdlib-root>/runtime/coglet_runtime.c` to the same
-native link. Programs without such references do not gain a runtime dependency.
-Both host-C and LLVM therefore call the exact same runtime ABI with no frontend or
-standard-library object retained by CogIR.
+`std.io` and runtime-backed `std.math` use runtime ABI v0. Their public Coglet
+declarations name reserved `coglet_rt_*` C symbols. Once semantic state has been
+lowered and destroyed, the driver inspects only frozen CogIR external-symbol
+metadata; if any reserved runtime symbol is present it adds
+`<stdlib-root>/runtime/coglet_runtime.c` to the same native link. The narrower
+`coglet_rt_math_*` namespace also enables the runtime math capability; GNU/Clang-
+style Linux links add `libm`, while Windows uses the normal C runtime math
+implementation. Both host-C and LLVM therefore call the exact same runtime ABI
+with no frontend or standard-library object retained by CogIR.
 
 The frontend now has an explicit target model. `compile_parse_and_check()`
 constructs a host `TargetInfo` for compatibility, while

@@ -92,7 +92,7 @@ global-address operations and qualified constants become ordinary CogIR constant
 CogIR copies every registered source file into its frozen source table and retains
 declaration identities/types/CFGs only. Backends therefore do not perform module
 lookup, import resolution, or export/private checks.
-The shipped `std.math` and `std.io` modules are ordinary Coglet source discovered above this boundary; CogIR and backends have no standard-library module special case. Runtime-facing declarations lower to ordinary frozen C-ABI external-symbol metadata. The command-line driver may recognize the reserved `coglet_rt_` symbol namespace after frontend destruction to decide whether to add the runtime implementation to the native link, but no runtime module object, frontend type, or source-module identity survives in CogIR.
+The shipped `std.math` and `std.io` modules are ordinary Coglet source discovered above this boundary; CogIR and backends have no standard-library module special case. Runtime-facing declarations lower to ordinary frozen C-ABI external-symbol metadata. The command-line driver may recognize the reserved `coglet_rt_` symbol namespace after frontend destruction to decide whether to add the runtime implementation, and the narrower `coglet_rt_math_` namespace to enable native math linkage, but no runtime module object, frontend type, or source-module identity survives in CogIR.
 
 Coglet currently permits runtime-bearing program-scope code, including global
 initializers that call functions, top-level expression/mutation statements, and

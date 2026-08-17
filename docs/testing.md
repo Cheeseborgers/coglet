@@ -109,9 +109,12 @@ the `stdlib.source` label so they are distinct from the lower-level stdlib-root/
 discovery-policy fixtures. The `std.io` integration test links the runtime through
 the same executable path users invoke and compares its complete stdout, covering
 string output, Boolean output, every fixed-width integer printer, `f32`, `f64`,
-newline, and flush. A separate failure-path test verifies that a runtime-backed
-executable reports a clear error when the selected stdlib root contains `std.io`
-but omits `runtime/coglet_runtime.c`.
+newline, and flush. The `std.math` integration test exercises both precisions of
+the runtime-backed square-root, trigonometric, inverse-trigonometric, rounding,
+and floating-remainder functions. Transcendental comparisons use tolerances;
+rounding/remainder cases use exact expected values. Separate failure-path tests
+verify that runtime-backed `std.io` and `std.math` executables diagnose a selected
+stdlib root that omits `runtime/coglet_runtime.c`.
 
 Run them with:
 

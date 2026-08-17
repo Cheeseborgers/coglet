@@ -11,6 +11,7 @@ typedef enum CogNativeToolchainStatus {
 
 typedef struct CogNativeToolchainLinkOptions {
     const char *runtime_source;
+    int runtime_math;
 
     const char *const *library_dirs;
     int library_dir_count;

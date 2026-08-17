@@ -1566,13 +1566,14 @@ add_test(
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DINPUTS=${COGLET_STDLIB_MATH_TEST_MAIN}"
         "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
-        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_math_host_c
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_math_host_c${CMAKE_EXECUTABLE_SUFFIX}
         -DEXPECT_EXIT=0
         -DBACKEND=host-c
+        -DFORBID_COMPILE_WARNINGS=ON
         -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
 )
 set_tests_properties(stdlib_math_host_c
-        PROPERTIES LABELS "stdlib;stdlib.source;std.math;backend;backend.c;module;import;discovery")
+        PROPERTIES LABELS "stdlib;stdlib.source;std.math;runtime;backend;backend.c;module;import;discovery;warning-free")
 
 add_test(
         NAME stdlib_io_host_c
@@ -1610,7 +1611,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         "-DMAIN=${COGLET_STDLIB_IO_TEST_MAIN}"
-        "-DIO_MODULE=${CMAKE_SOURCE_DIR}/stdlib/std/io.cog"
+        "-DMODULE=${CMAKE_SOURCE_DIR}/stdlib/std/io.cog"
         "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/root"
         -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_io_missing_runtime${CMAKE_EXECUTABLE_SUFFIX}
         "-DEXPECT_SUBSTRING=program requires Coglet runtime support"
@@ -1618,6 +1619,20 @@ add_test(
 )
 set_tests_properties(stdlib_io_missing_runtime
         PROPERTIES LABELS "stdlib;stdlib.source;std.io;runtime;driver;invalid")
+
+add_test(
+        NAME stdlib_math_missing_runtime
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DMAIN=${COGLET_STDLIB_MATH_TEST_MAIN}"
+        "-DMODULE=${CMAKE_SOURCE_DIR}/stdlib/std/math.cog"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_TEST_DIR}/root"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_math_missing_runtime${CMAKE_EXECUTABLE_SUFFIX}
+        "-DEXPECT_SUBSTRING=program requires Coglet runtime support"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_missing_runtime_test.cmake"
+)
+set_tests_properties(stdlib_math_missing_runtime
+        PROPERTIES LABELS "stdlib;stdlib.source;std.math;runtime;driver;invalid")
 
 add_custom_target(check_stdlib
         COMMAND "${CMAKE_CTEST_COMMAND}"
@@ -1648,7 +1663,7 @@ if(COGLET_HAS_LLVM_BACKEND)
             -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
         )
         set_tests_properties(stdlib_math_llvm_O${stdlib_opt_level}
-            PROPERTIES LABELS "stdlib;stdlib.source;std.math;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
+            PROPERTIES LABELS "stdlib;stdlib.source;std.math;runtime;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
 
         add_test(
             NAME stdlib_io_llvm_O${stdlib_opt_level}

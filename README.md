@@ -129,11 +129,13 @@ For the current executable slice:
 coglet program.cog -o program
 coglet program.cog -o program --backend llvm
 coglet program.cog -o program --backend llvm -O2
+coglet program.cog -o program --backend llvm -O2 -g
 coglet program.cog -o program -L/path/to/lib -lfoo
 coglet program.cog -o program -L /path/to/lib -l foo
 coglet program.cog --emit-c program.c
 coglet program.cog --emit-llvm program.ll
 coglet program.cog --emit-llvm optimized.ll -O2
+coglet program.cog --emit-llvm debug.ll -g
 ```
 
 `-L` adds a native library search directory and `-l` requests a native library.
@@ -149,7 +151,14 @@ default and preserves the unoptimized LLVM-IR path, while `-O1` through `-O3`
 run LLVM's corresponding default new-pass-manager pipeline before IR/object
 emission and select the matching target code-generation optimization level.
 Nonzero optimization levels are currently rejected for host-C executable output
-rather than being silently ignored.
+rather than being silently ignored. LLVM output also accepts `-g`, which emits
+source-level debug metadata from frozen CogIR source provenance for source
+functions, locations, globals, parameters, locals, and the currently supported
+runtime types. Compiler-generated local-storage slots are not exposed as source
+variables, and the synthetic process-entry adapter is deliberately left without a
+fake Coglet source location. `-g` composes with `-O0` through `-O3`; optimized
+debugging follows LLVM's normal optimized-code behavior. Host-C executable output
+rejects `-g` rather than silently claiming to provide equivalent debug metadata.
 
 Coglet executables require a source-top-level `main::() -> i32`. The `c_*`
 types are C-interoperability types and are not part of the language-level entry
@@ -743,12 +752,16 @@ The host-C backend is the bootstrap executable path for the current CogIR
 contract. It consumes only frozen CogIR, covers every current `CogIrOp`, and is
 built as a separate backend library beneath the frontend/semantic/CogIR core.
 This keeps C implementation details out of the language boundary. An optional
-LLVM Stage 8 backend now consumes the same frozen module through its own backend
+LLVM Stage 9 backend now consumes the same frozen module through its own backend
 library. It emits verifier-checked LLVM IR with an explicit native target triple
 and data layout, can emit a native object with LLVM target APIs, and can link that
 object into an executable through a separate host linker-driver boundary. It can
 also run LLVM's target-aware default `O1`/`O2`/`O3` optimization pipelines after
-initial verification and verifies the transformed module again before output. Its
+initial verification and verifies the transformed module again before output. With
+`-g`, it derives LLVM source-level debug metadata only from frozen CogIR-owned
+source files, spans, declaration/type metadata, exact C ABI spelling where storage
+representation matters, and explicit local-slot provenance; no frontend-lifetime
+object is retained for debugging. Its
 implemented lowering covers native scalar/CFG and integer semantics, ordinary Coglet
 memory and aggregates, floating-point operations and conversions, switch/trap
 terminators, indirect native Coglet function values/calls, and the C scalar,

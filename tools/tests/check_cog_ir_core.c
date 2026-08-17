@@ -179,7 +179,8 @@ int main(void)
     CogIrValueId x = bump_fn->parameters[0];
 
     CogIrSlotId x_slot = cog_ir_add_slot(
-        &module, bump, string_view_from_cstr("x"), function_span, i32_type);
+        &module, bump, COG_IR_SLOT_SOURCE_PARAMETER, 0,
+        string_view_from_cstr("x"), function_span, i32_type);
     CogIrBlockId entry = cog_ir_add_block(
         &module, bump, string_view_from_cstr("entry"), function_span);
     if (x_slot == COG_IR_SLOT_INVALID || entry == COG_IR_BLOCK_INVALID)

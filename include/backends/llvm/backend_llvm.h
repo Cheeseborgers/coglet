@@ -16,6 +16,7 @@ typedef enum LlvmBackendStatus {
 
 typedef struct LlvmBackendOptions {
     CogOptimizationLevel optimization_level;
+    int debug_info;
 } LlvmBackendOptions;
 
 typedef struct LlvmBackendLinkOptions {

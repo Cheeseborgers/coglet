@@ -21,8 +21,6 @@ add_library(compiler_core STATIC
         src/lexer.c
         src/parser.c
         src/ast.c
-        src/utils/utils.c
-        src/utils/arena.c
         src/parser_diag.c
         src/semantic_anal.c
         src/target_info.c
@@ -32,6 +30,8 @@ add_library(compiler_core STATIC
         src/cog_ir_verify.c
         src/cog_ir_dump.c
         src/cog_ir_lower.c
+        src/utils/utils.c
+        src/utils/arena.c
 )
 target_include_directories(compiler_core PUBLIC include)
 
@@ -97,6 +97,7 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
 
         add_library(coglet_backend_llvm STATIC
                 src/backends/llvm/backend_llvm.c
+                src/backends/llvm/debug.c
                 src/backends/llvm/linker.c
                 src/backends/llvm/optimize.c
                 src/backends/llvm/lower_types.c
@@ -113,6 +114,7 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
                 PRIVATE ${LLVM_INCLUDE_DIRS}
         )
         target_compile_options(coglet_backend_llvm PRIVATE ${COGLET_LLVM_DEFINITIONS})
+        target_compile_definitions(coglet_backend_llvm PRIVATE COGLET_LLVM_VERSION_MAJOR=${LLVM_VERSION_MAJOR})
         target_link_libraries(coglet_backend_llvm PRIVATE compiler_core ${COGLET_LLVM_LIBS})
 
         add_executable(check_llvm_stage4_trap tools/tests/check_llvm_stage4_trap.c)
@@ -1343,6 +1345,111 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_stage8_rejects_unknown_optimization_level
         PROPERTIES LABELS "driver;backend;backend.llvm;optimization;invalid;stage8")
+
+    function(add_llvm_stage9_native_debug_test test_name fixture expected_exit opt_level debug_string_regex)
+        add_test(
+            NAME ${test_name}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${fixture}
+            -DOUTPUT=${CMAKE_BINARY_DIR}/${test_name}
+            -DEXPECT_EXIT=${expected_exit}
+            -DOPT_LEVEL=${opt_level}
+            -DDEBUG_INFO=ON
+            "-DEXPECT_DEBUG_STRING_REGEX=${debug_string_regex}"
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
+        )
+        set_tests_properties(${test_name}
+            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;codegen;stage9;O${opt_level}")
+    endfunction()
+
+    add_test(
+        NAME backend_llvm_stage9_debug_ir_metadata
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_info.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_stage9_debug_ir_metadata.ll
+        -DOPT_LEVEL=0
+        "-DREQUIRED_TEXT_1=!DICompileUnit("
+        "-DREQUIRED_TEXT_2=!DISubprogram(name: \"compute\""
+        "-DREQUIRED_TEXT_3=!DILocalVariable(name: \"value\", arg: 1"
+        "-DREQUIRED_TEXT_4=!DILocalVariable(name: \"local\""
+        "-DREQUIRED_TEXT_5=!DIGlobalVariable(name: \"global_bias\""
+        "-DREQUIRED_TEXT_6=!DICompositeType(tag: DW_TAG_structure_type, name: \"Point\""
+        "-DREQUIRED_TEXT_7=!DICompositeType(tag: DW_TAG_enumeration_type, name: \"Shade\""
+        "-DREQUIRED_TEXT_8=!DILocation(line:"
+        "-DREQUIRED_TEXT_9=define i32 @main() {"
+        "-DABSENT_TEXT_1=name: \".cfg.tmp\""
+        "-DABSENT_TEXT_2=define i32 @main() !dbg"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_debug_ir_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage9_debug_ir_metadata
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;metadata;stage9;O0")
+
+    add_test(
+        NAME backend_llvm_stage9_debug_O2_ir
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_info.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_stage9_debug_O2_ir.ll
+        -DOPT_LEVEL=2
+        "-DREQUIRED_TEXT_1=!DICompileUnit("
+        "-DREQUIRED_TEXT_2=isOptimized: true"
+        "-DREQUIRED_TEXT_3=stage9_debug_info.cog"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_debug_ir_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage9_debug_O2_ir
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;optimization;stage9;O2")
+
+    add_test(
+        NAME backend_llvm_stage9_repr_c_union_metadata
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_repr_union.cog
+        -DOUTPUT_IR=${CMAKE_BINARY_DIR}/backend_llvm_stage9_repr_c_union_metadata.ll
+        -DOPT_LEVEL=0
+        "-DREQUIRED_TEXT_1=!DILocalVariable(name: \"packet\""
+        "-DREQUIRED_TEXT_2=!DICompositeType(tag: DW_TAG_union_type, name: \"BackendValue\""
+        "-DREQUIRED_TEXT_3=!DICompositeType(tag: DW_TAG_structure_type, name: \"BackendUnionPacket\""
+        "-DREQUIRED_TEXT_4=!DIBasicType(name: \"c_int\", size: 32, encoding: DW_ATE_signed)"
+        "-DREQUIRED_TEXT_5=!DIBasicType(name: \"c_bool\", size: 8, encoding: DW_ATE_boolean)"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_debug_ir_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage9_repr_c_union_metadata
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;metadata;interop;abi;aggregate;stage9;O0")
+
+    add_llvm_stage9_native_debug_test(
+        backend_llvm_stage9_debug_native_O0 native_i32_entry.cog 42 0 "native_i32_entry[.]cog"
+    )
+    add_llvm_stage9_native_debug_test(
+        backend_llvm_stage9_debug_native_O3 llvm/stage9_debug_info.cog 14 3 "stage9_debug_info[.]cog"
+    )
+
+    add_test(
+        NAME backend_llvm_stage9_rejects_host_c_debug
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DEXPECT_EXIT=3
+        "-DEXPECT_SUBSTRING=executable debug information currently requires --backend llvm"
+        "-DARGS=-o;${CMAKE_BINARY_DIR}/backend_llvm_stage9_rejects_host_c_debug.out;-g"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage9_rejects_host_c_debug
+        PROPERTIES LABELS "driver;backend;backend.llvm;debug;invalid;stage9")
+
+    add_test(
+        NAME backend_llvm_stage9_rejects_debug_without_llvm_output
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_i32_entry.cog
+        -DEXPECT_EXIT=3
+        "-DEXPECT_SUBSTRING=-g currently requires LLVM output"
+        "-DARGS=-g"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
+    )
+    set_tests_properties(backend_llvm_stage9_rejects_debug_without_llvm_output
+        PROPERTIES LABELS "driver;backend;backend.llvm;debug;invalid;stage9")
 
     add_test(
         NAME backend_llvm_stage6_rejects_native_bool_as_c_bool_pointer

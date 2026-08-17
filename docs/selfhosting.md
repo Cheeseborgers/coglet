@@ -71,4 +71,4 @@ The frontend now performs:
 * unified reachability analysis
 * switch exhaustiveness analysis
 
-At this stage, the remaining path toward self-hosting is primarily runtime/library, toolchain, and compilation-unit engineering rather than another major semantic-analysis subsystem. The host-C backend and LLVM Stage 8 optimized native path both consume frozen CogIR; major remaining gaps include multi-file/module support, allocation and I/O facilities, a standard-library boundary, and production-grade target/cross-toolchain policy.
+At this stage, the remaining path toward self-hosting is primarily runtime/library, toolchain, and compilation-unit engineering rather than another major semantic-analysis subsystem. The host-C backend and LLVM Stage 9 optimized/debuggable native path both consume frozen CogIR; major remaining gaps include multi-file/module support, allocation and I/O facilities, a standard-library boundary, and production-grade target/cross-toolchain policy.

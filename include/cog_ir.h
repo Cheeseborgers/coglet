@@ -240,8 +240,18 @@ typedef struct CogIrValue {
     SourceSpan span;
 } CogIrValue;
 
+typedef enum CogIrSlotKind {
+    COG_IR_SLOT_SOURCE_LOCAL,
+    COG_IR_SLOT_SOURCE_PARAMETER,
+    COG_IR_SLOT_COMPILER_TEMP,
+} CogIrSlotKind;
+
+#define COG_IR_PARAMETER_INDEX_INVALID SIZE_MAX
+
 typedef struct CogIrSlot {
     CogIrSlotId id;
+    CogIrSlotKind kind;
+    size_t parameter_index;
     StringView debug_name;
     SourceSpan span;
     CogIrTypeId type;
@@ -595,7 +605,15 @@ int cog_ir_begin_function_definition(CogIrModule *module, CogIrFunctionId functi
 
 int cog_ir_set_entry_function(CogIrModule *module, CogIrFunctionId function);
 int cog_ir_set_init_function(CogIrModule *module, CogIrFunctionId function);
-CogIrSlotId cog_ir_add_slot(CogIrModule *module, CogIrFunctionId function, StringView debug_name, SourceSpan span, CogIrTypeId type);
+CogIrSlotId cog_ir_add_slot(
+    CogIrModule *module,
+    CogIrFunctionId function,
+    CogIrSlotKind kind,
+    size_t parameter_index,
+    StringView debug_name,
+    SourceSpan span,
+    CogIrTypeId type
+);
 int cog_ir_set_slot_abi_type(CogIrModule *module, CogIrFunctionId function, CogIrSlotId slot, CogIrAbiTypeId abi_type);
 int cog_ir_set_value_abi_type(CogIrModule *module, CogIrFunctionId function, CogIrValueId value, CogIrAbiTypeId abi_type);
 CogIrBlockId cog_ir_add_block(CogIrModule *module, CogIrFunctionId function, StringView debug_name, SourceSpan span);

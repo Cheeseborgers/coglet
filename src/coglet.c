@@ -20,7 +20,7 @@ static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [-O0|-O1|-O2|-O3] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n",
+        "usage: %s <file> [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [-O0|-O1|-O2|-O3] [-g] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n",
         program
     );
 }
@@ -73,6 +73,7 @@ int main(int argc, char **argv)
     ExecutableBackend executable_backend = EXECUTABLE_BACKEND_HOST_C;
     int executable_backend_explicit = 0;
     CogOptimizationLevel optimization_level = COG_OPTIMIZATION_LEVEL_0;
+    int debug_info = 0;
 
     /* argc is an upper bound for each repeated option category. */
     const char *library_dirs[argc];
@@ -137,6 +138,11 @@ int main(int argc, char **argv)
             continue;
         }
 
+        if (strcmp(argv[i], "-g") == 0) {
+            debug_info = 1;
+            continue;
+        }
+
         if (strcmp(argv[i], "-L") == 0) {
             if (i + 1 >= argc || argv[i + 1][0] == '\0') {
                 fprintf(stderr, "error: -L requires a non-empty library directory\n");
@@ -193,6 +199,21 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "error: -O1/-O2/-O3 currently require LLVM output via --emit-llvm or --backend llvm -o\n"
+        );
+        return COMPILE_STATUS_DRIVER_ERROR;
+    }
+    if (debug_info && output_path && executable_backend == EXECUTABLE_BACKEND_HOST_C) {
+        fprintf(
+            stderr,
+            "error: -g executable debug information currently requires --backend llvm\n"
+        );
+        return COMPILE_STATUS_DRIVER_ERROR;
+    }
+    if (debug_info &&
+        !emit_llvm_path && (!output_path || executable_backend != EXECUTABLE_BACKEND_LLVM)) {
+        fprintf(
+            stderr,
+            "error: -g currently requires LLVM output via --emit-llvm or --backend llvm -o\n"
         );
         return COMPILE_STATUS_DRIVER_ERROR;
     }
@@ -273,6 +294,7 @@ int main(int argc, char **argv)
 #ifdef COGLET_HAS_LLVM_BACKEND
         LlvmBackendOptions backend_options = {
             .optimization_level = optimization_level,
+            .debug_info = debug_info,
         };
         LlvmBackendStatus backend_status = llvm_backend_emit_ir_file(
             emit_llvm_path,
@@ -311,6 +333,7 @@ int main(int argc, char **argv)
 #ifdef COGLET_HAS_LLVM_BACKEND
             LlvmBackendOptions backend_options = {
                 .optimization_level = optimization_level,
+                .debug_info = debug_info,
             };
             LlvmBackendLinkOptions link_options = {
                 .library_dirs = library_dirs,

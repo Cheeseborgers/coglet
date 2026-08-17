@@ -1535,6 +1535,8 @@ static CogIrSlotId spill_value(ExecLowerState *state, CogIrValueId value, Source
     CogIrSlotId slot = cog_ir_add_slot(
         state->lower->module,
         state->function,
+        COG_IR_SLOT_COMPILER_TEMP,
+        COG_IR_PARAMETER_INDEX_INVALID,
         string_view_from_cstr(".cfg.tmp"),
         span,
         type
@@ -2781,6 +2783,8 @@ static int bind_local_declaration(ExecLowerState *state, Node *node)
     CogIrSlotId slot = cog_ir_add_slot(
         state->lower->module,
         state->function,
+        COG_IR_SLOT_SOURCE_LOCAL,
+        COG_IR_PARAMETER_INDEX_INVALID,
         node->as.var_decl.name,
         node->span,
         binding->type
@@ -3271,6 +3275,8 @@ static int bind_function_parameters(ExecLowerState *state, Node *function_node)
         CogIrSlotId slot = cog_ir_add_slot(
             state->lower->module,
             state->function,
+            COG_IR_SLOT_SOURCE_PARAMETER,
+            (size_t)i,
             param->as.param_decl.name,
             param->span,
             binding->type

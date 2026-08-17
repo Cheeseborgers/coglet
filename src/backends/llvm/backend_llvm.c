@@ -72,6 +72,8 @@ static int declare_globals(LlvmBackend *backend)
             LLVMSetInitializer(value, init);
         }
         backend->globals[i] = value;
+        if (!llvm_debug_declare_global(backend, global, value))
+            return 0;
     }
     return 1;
 }
@@ -132,6 +134,8 @@ static int declare_functions(LlvmBackend *backend)
         }
         backend->functions[i] = value;
         backend->function_types[i] = llvm_type;
+        if (!llvm_debug_declare_function(backend, function, value))
+            return 0;
     }
     return 1;
 }
@@ -343,6 +347,7 @@ static int lower_function_body(LlvmBackend *backend, const CogIrFunction *functi
         state.blocks[i] = LLVMAppendBasicBlockInContext(backend->context, llvm_function, name);
     }
 
+    llvm_debug_clear_location(backend);
     for (size_t i = 0; i < function->block_count; ++i) {
         const CogIrBlock *block = &function->blocks[i];
         LLVMPositionBuilderAtEnd(backend->builder, state.blocks[i]);
@@ -362,6 +367,7 @@ static int lower_function_body(LlvmBackend *backend, const CogIrFunction *functi
             state.values[function->parameters[i]] = LLVMGetParam(llvm_function, (unsigned)i);
     }
 
+    llvm_debug_clear_location(backend);
     for (size_t i = 0; i < function->slot_count; ++i) {
         LLVMTypeRef type = function->slots[i].abi_type != COG_IR_ABI_TYPE_INVALID
             ? llvm_lower_c_object_type(backend, function->slots[i].abi_type)
@@ -369,14 +375,20 @@ static int lower_function_body(LlvmBackend *backend, const CogIrFunction *functi
         if (!type) goto fail;
         state.slots[i] = LLVMBuildAlloca(backend->builder, type, "");
     }
+    if (!llvm_debug_declare_slots(backend, function, &state))
+        goto fail;
 
     for (size_t i = 0; i < function->block_count; ++i) {
         const CogIrBlock *block = &function->blocks[i];
         LLVMPositionBuilderAtEnd(backend->builder, state.blocks[i]);
-        for (size_t j = 0; j < block->instruction_count; ++j)
+        for (size_t j = 0; j < block->instruction_count; ++j) {
+            llvm_debug_set_location(backend, function, block->instructions[j].span);
             if (!lower_instruction(backend, function, &state, &block->instructions[j])) goto fail;
+        }
+        llvm_debug_set_location(backend, function, block->terminator.span);
         if (!llvm_lower_terminator(backend, function, &state, block)) goto fail;
     }
+    llvm_debug_clear_location(backend);
 
     destroy_function_state(&state);
     return 1;
@@ -406,6 +418,7 @@ static int emit_process_entry(LlvmBackend *backend)
         return 0;
     }
 
+    llvm_debug_clear_location(backend);
     LLVMTypeRef i32 = LLVMIntTypeInContext(backend->context, 32);
     LLVMTypeRef main_type = LLVMFunctionType(i32, NULL, 0, 0);
     LLVMValueRef main_fn = LLVMAddFunction(backend->module, "main", main_type);
@@ -428,6 +441,7 @@ static void dispose_backend(LlvmBackend *backend)
 {
     if (!backend)
         return;
+    llvm_debug_dispose(backend);
     free_backend_tables(backend);
     llvm_backend_dispose_target(backend);
     if (backend->builder)
@@ -483,6 +497,7 @@ static LlvmBackendStatus lower_verified_module(
     backend->optimization_level = options
         ? options->optimization_level
         : COG_OPTIMIZATION_LEVEL_0;
+    backend->debug_info = options ? options->debug_info != 0 : 0;
     if (!optimization_level_valid(backend->optimization_level)) {
         fprintf(stderr, "LLVM backend error: invalid optimization level\n");
         return LLVM_BACKEND_STATUS_UNSUPPORTED;
@@ -507,12 +522,14 @@ static LlvmBackendStatus lower_verified_module(
 
     if (!llvm_backend_init_native_target(backend) ||
         !allocate_backend_tables(backend) ||
+        !llvm_debug_init(backend) ||
         !declare_globals(backend) ||
         !declare_functions(backend) ||
         !lower_functions(backend) ||
         !emit_process_entry(backend)) {
         return LLVM_BACKEND_STATUS_UNSUPPORTED;
     }
+    llvm_debug_finalize(backend);
 
     LlvmBackendStatus status = verify_llvm_module(backend, "before optimization");
     if (status != LLVM_BACKEND_STATUS_OK)

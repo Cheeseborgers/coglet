@@ -975,6 +975,7 @@ static Type *fixed_integer_type_for_c_abi_bits(
         case 16: return is_signed ? ctx->type_i16 : ctx->type_u16;
         case 32: return is_signed ? ctx->type_i32 : ctx->type_u32;
         case 64: return is_signed ? ctx->type_i64 : ctx->type_u64;
+        default: return NULL;
     }
 
     return NULL;
@@ -6343,7 +6344,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     /*
                      * Both writable and readonly storage have an address.
                      *
-                     * Address-of therefore requires an lvalue, but it does not
+                     * Address-of therefore requires a lvalue, but it does not
                      * require a writable lvalue.
                      */
                     if (!require_lvalue(

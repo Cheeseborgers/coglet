@@ -202,8 +202,9 @@ The existing `SourceFileId` values may be preserved during this copy so
 `SourceSpan` itself can remain unchanged.
 
 This permits IR lowering/verifier/backend diagnostics after `CompileResult` has
-been destroyed and gives later debug-info generation a direct path back to
-Coglet source.
+been destroyed. LLVM Stage 9 consumes this frozen provenance directly for source
+debug information; the backend does not recover source files or locations from
+frontend state.
 
 ## CogIR type system
 
@@ -394,7 +395,19 @@ values. Mutable source variables use explicit storage.
 ### Local slots
 
 `CogIrSlotId` represents function-lifetime addressable storage. A slot has a
-concrete stored type and optional source/debug metadata.
+concrete stored type, optional source/debug metadata, and explicit provenance:
+
+- `COG_IR_SLOT_SOURCE_LOCAL` is source-declared local storage and carries no
+  parameter index;
+- `COG_IR_SLOT_SOURCE_PARAMETER` is source parameter storage and carries the exact
+  function-parameter index, whose type must match the slot type;
+- `COG_IR_SLOT_COMPILER_TEMP` is lowering-generated storage and carries no
+  parameter index.
+
+This provenance is an IR invariant rather than a debug-name convention. Backends
+can therefore expose only real source variables without testing spellings such as
+`.cfg.tmp`. LLVM debug metadata itself remains backend-owned and is not stored in
+CogIR.
 
 The initial lowerer should deliberately use slots even when a local could be
 SSA-promoted. Parameters are function input values; lowering may create a slot
@@ -1207,3 +1220,14 @@ volatile access contract.
     that consumes the object plus explicit link inputs; CogIR gains no linker,
     relocation, object-format, or frontend-lifetime dependency. Textual LLVM IR
     emission remains available independently.
+26. ~~Add LLVM optimization levels without turning CogIR into a general-purpose
+    optimizer.~~ Compiler-wide `-O0` through `-O3` intent stays outside CogIR; the
+    LLVM backend maps it to LLVM's default new-pass-manager pipelines and matching
+    target code-generation levels, verifies transformed modules again, and leaves
+    CogIR optimization limited to future semantic/backend-neutral needs.
+27. ~~Add LLVM source-level debug information from frozen CogIR.~~ `-g` now derives
+    files, source locations, functions, globals, parameters, locals, and supported
+    type descriptions from CogIR-owned provenance after frontend destruction. Slot
+    provenance explicitly separates source locals/parameters from compiler temps,
+    while exact C object spellings may be read from existing `CogIrAbiType` metadata
+    and LLVM DI objects/version-specific debug-record APIs stay backend-owned.

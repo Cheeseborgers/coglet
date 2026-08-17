@@ -202,7 +202,15 @@ support library. Stage 8 adds explicit `-O0`, checked integer execution at
 `-O1`, represented aggregate C interop at `-O2`, volatile C pointer behavior at
 `-O3`, an optimized textual-IR transformation check, and a direct-link `-O3`
 checked-overflow trap. Driver regressions also reject nonzero optimization on the
-host-C executable path and unsupported optimization levels. The float suite includes
+host-C executable path and unsupported optimization levels. Stage 9 adds `-g`
+coverage for compile units/source locations, source functions, globals, parameters,
+locals, arrays/structs/enums/pointers, represented C union metadata, optimized
+`-g -O2` IR, and direct native `-g` execution at both O0 and O3. The native debug
+harness additionally checks that the linked executable contains the expected source
+filename, so merely accepting `-g` cannot satisfy the regression. Negative driver
+coverage rejects host-C executable debug requests and `-g` requests with no LLVM
+output. Compiler-generated storage slots and the synthetic process-entry adapter are
+checked not to masquerade as Coglet source variables/code. The float suite includes
 NaN/infinity, signed/unsigned range boundaries, and narrowing behavior so LLVM
 conversion instructions are not used before Coglet's checked-cast guards.
 

@@ -298,7 +298,7 @@ details also remain deferred.
 ## Target Description
 
 
-### LLVM backend Stage 8
+### LLVM backend Stage 9
 
 The LLVM backend lives under `src/backends/llvm/` with its public API under
 `include/backends/llvm/`. It accepts only frozen `CogIrModule` input, constructs
@@ -375,6 +375,35 @@ Nonzero optimization levels currently apply only to LLVM outputs. A host-C
 executable request combined with `-O1`, `-O2`, or `-O3` is rejected explicitly
 rather than silently producing an unoptimized host-C binary. Textual `--emit-c`
 remains a backend/debugging output and is not transformed by LLVM optimization.
+
+Stage 9 adds LLVM source-level debug information without retaining frontend
+objects past lowering. `-g` creates a backend-owned `DIBuilder` after the frozen
+CogIR module has been handed to the LLVM backend. Files, line/column locations,
+function/global names, source locals and parameters, and debug type descriptions
+are derived only from CogIR-owned source provenance and type/declaration metadata.
+When a source object has exact C ABI spelling, the debug type also consumes the
+frozen `CogIrAbiType` so `c_int` is not collapsed to `i32` and addressable
+`c_bool` uses the target C `_Bool` object width. `CogIrSlotKind` explicitly distinguishes source locals, source parameters, and
+compiler temporaries; the LLVM backend therefore never decides debugger visibility
+from names such as `.cfg.tmp`. Parameter slots additionally retain their exact
+parameter index so argument debug records remain stable after frontend destruction.
+
+The debug builder is finalized before the first LLVM verification step. With
+`-O1` through `-O3`, the ordinary Stage 8 optimization pipeline then consumes and
+updates that metadata along with the optimized IR, followed by the existing
+post-optimization verifier. LLVM 19 and later use the C API's debug-record declare
+form, while LLVM 17-18 use the legacy debug-intrinsic insertion API; this
+compatibility distinction is confined to the LLVM backend. The synthetic process
+entry adapter intentionally has no Coglet source subprogram/location attached.
+
+CogIR currently does not retain a source lexical-scope tree for locals. Stage 9
+therefore gives source parameters and locals function-level debug scope while
+preserving each declaration's actual source location; it does not fabricate
+narrower lexical visibility. A later lexical-debugging improvement should add an
+explicit backend-neutral CogIR scope representation if needed. Optimized debugging
+likewise inherits LLVM's normal behavior: optimization may fold, move, or eliminate
+source variables and instructions. Host-C executable requests reject `-g` rather
+than silently claiming equivalent debug-information support.
 
 Volatile whole-aggregate accesses and non-x86-64 represented aggregate
 classification remain explicitly deferred.

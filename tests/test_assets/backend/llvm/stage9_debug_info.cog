@@ -1,0 +1,30 @@
+Shade::enum(u8) {
+    Dark,
+    Light,
+}
+
+Point::struct {
+    x: i32;
+    y: i32;
+}
+
+global_bias: i32 = 5;
+
+compute::(value: i32) -> i32 {
+    local: i32 = value + 1;
+    point: Point = Point {
+        x = local,
+        y = global_bias,
+    };
+    samples: i32[2] = [point.x, point.y];
+    shade: Shade = Shade.Light;
+
+    if value > 0
+        return samples[0] + samples[1] + cast(i32, shade);
+
+    return 0;
+}
+
+main::() -> i32 {
+    return compute(7);
+}

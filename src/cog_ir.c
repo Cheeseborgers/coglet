@@ -1113,11 +1113,16 @@ int cog_ir_set_init_function(CogIrModule *module, CogIrFunctionId function)
 CogIrSlotId cog_ir_add_slot(
     CogIrModule *module,
     CogIrFunctionId function_id,
+    CogIrSlotKind kind,
+    size_t parameter_index,
     StringView debug_name,
     SourceSpan span,
     CogIrTypeId type
 ) {
-    if (!module_mutable(module) || !cog_ir_get_type(module, type))
+    if (!module_mutable(module) || !cog_ir_get_type(module, type) ||
+        kind < COG_IR_SLOT_SOURCE_LOCAL || kind > COG_IR_SLOT_COMPILER_TEMP ||
+        (kind == COG_IR_SLOT_SOURCE_PARAMETER) !=
+            (parameter_index != COG_IR_PARAMETER_INDEX_INVALID))
         return COG_IR_SLOT_INVALID;
 
     CogIrFunction *function = get_function_mut(module, function_id);
@@ -1136,6 +1141,8 @@ CogIrSlotId cog_ir_add_slot(
     CogIrSlot *slot = &function->slots[function->slot_count++];
     memset(slot, 0, sizeof(*slot));
     slot->id = id;
+    slot->kind = kind;
+    slot->parameter_index = parameter_index;
     slot->debug_name = copy_string_view(module, debug_name);
     slot->span = span;
     slot->type = type;

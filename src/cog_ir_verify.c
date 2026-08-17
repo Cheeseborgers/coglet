@@ -951,7 +951,14 @@ static int verify_function(
 
     for (size_t i = 0; i < function->slot_count; ++i) {
         const CogIrSlot *slot = &function->slots[i];
-        if (slot->id != i || !cog_ir_get_type(module, slot->type) || !valid_span(module, slot->span) ||
+        int valid_kind = slot->kind >= COG_IR_SLOT_SOURCE_LOCAL &&
+                         slot->kind <= COG_IR_SLOT_COMPILER_TEMP;
+        int valid_parameter = slot->kind == COG_IR_SLOT_SOURCE_PARAMETER
+            ? slot->parameter_index < function->parameter_count &&
+              slot->type == function_type->as.function.parameter_types[slot->parameter_index]
+            : slot->parameter_index == COG_IR_PARAMETER_INDEX_INVALID;
+        if (slot->id != i || !valid_kind || !valid_parameter ||
+            !cog_ir_get_type(module, slot->type) || !valid_span(module, slot->span) ||
             !optional_abi_matches_runtime(module, slot->abi_type, slot->type)) {
             ir_error(diagnostics, slot->span, "slot $s%zu in function @f%u is invalid", i, function->id);
             ok = 0;

@@ -5,6 +5,7 @@
 #include "optimization.h"
 
 #include <llvm-c/Core.h>
+#include <llvm-c/DebugInfo.h>
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
 
@@ -26,6 +27,15 @@ typedef struct LlvmBackend {
     LLVMTargetMachineRef target_machine;
     LLVMTargetDataRef target_data;
     CogOptimizationLevel optimization_level;
+    int debug_info;
+    LLVMDIBuilderRef di_builder;
+    LLVMMetadataRef di_compile_unit;
+    LLVMMetadataRef di_expression;
+    LLVMMetadataRef *di_files;
+    size_t di_file_count;
+    LLVMMetadataRef *di_types;
+    LLVMMetadataRef *di_abi_types;
+    LLVMMetadataRef *di_subprograms;
     LLVMTypeRef *types;
     LLVMTypeRef *c_aggregate_inner_types;
     unsigned char *c_aggregate_is_wrapped;
@@ -37,6 +47,19 @@ typedef struct LlvmBackend {
 } LlvmBackend;
 
 void llvm_backend_error(LlvmBackend *backend, const char *message);
+
+int llvm_debug_init(LlvmBackend *backend);
+void llvm_debug_dispose(LlvmBackend *backend);
+void llvm_debug_finalize(LlvmBackend *backend);
+int llvm_debug_declare_global(LlvmBackend *backend, const CogIrGlobal *global, LLVMValueRef value);
+int llvm_debug_declare_function(LlvmBackend *backend, const CogIrFunction *function, LLVMValueRef value);
+int llvm_debug_declare_slots(
+    LlvmBackend *backend,
+    const CogIrFunction *function,
+    const LlvmFunctionState *state
+);
+void llvm_debug_set_location(LlvmBackend *backend, const CogIrFunction *function, SourceSpan span);
+void llvm_debug_clear_location(LlvmBackend *backend);
 
 int llvm_backend_init_native_target(LlvmBackend *backend);
 int llvm_backend_init_native_asm_printer(LlvmBackend *backend);

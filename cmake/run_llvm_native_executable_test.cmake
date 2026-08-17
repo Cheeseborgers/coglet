@@ -23,6 +23,9 @@ if(DEFINED OPT_LEVEL)
     endif()
     list(APPEND compile_command "-O${OPT_LEVEL}")
 endif()
+if(DEFINED DEBUG_INFO AND DEBUG_INFO)
+    list(APPEND compile_command -g)
+endif()
 if(DEFINED LIB_DIR OR DEFINED LIB_NAME OR DEFINED STYLE)
     if(NOT DEFINED LIB_DIR OR NOT DEFINED LIB_NAME OR NOT DEFINED STYLE)
         message(FATAL_ERROR "LIB_DIR, LIB_NAME, and STYLE must be provided together")
@@ -50,6 +53,15 @@ if(NOT compile_result EQUAL 0)
         "stdout:\n${compile_stdout}\n"
         "stderr:\n${compile_stderr}"
     )
+endif()
+
+if(DEFINED EXPECT_DEBUG_STRING_REGEX)
+    file(STRINGS "${OUTPUT}" debug_strings REGEX "${EXPECT_DEBUG_STRING_REGEX}" LIMIT_COUNT 1)
+    if(debug_strings STREQUAL "")
+        message(FATAL_ERROR
+            "LLVM native executable contains no debug string matching '${EXPECT_DEBUG_STRING_REGEX}'"
+        )
+    endif()
 endif()
 
 execute_process(

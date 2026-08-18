@@ -737,6 +737,7 @@ typedef struct ExecLoopContext ExecLoopContext;
 struct ExecLoopContext {
     CogIrBlockId break_target;
     CogIrBlockId continue_target;
+    size_t defer_base;
     int has_break;
     ExecLoopContext *parent;
 };
@@ -746,6 +747,9 @@ typedef struct ExecLowerState {
     CogIrFunctionId function;
     CogIrBlockId block;
     ExecLoopContext *loop;
+    Node **deferred;
+    size_t defer_count;
+    size_t defer_capacity;
 } ExecLowerState;
 
 typedef struct LoweredPlace {
@@ -3454,31 +3458,90 @@ static int lower_variable_declaration(ExecLowerState *state, Node *node)
 
 static int lower_statement(ExecLowerState *state, Node *node);
 
+static int remember_defer(ExecLowerState *state, Node *node)
+{
+    if (state->defer_count == state->defer_capacity) {
+        Node **grown = grow_heap_array(
+            state->deferred, sizeof(*state->deferred), &state->defer_capacity);
+        if (!grown) {
+            lower_error(state->lower, node->span, "out of memory recording defer");
+            return 0;
+        }
+        state->deferred = grown;
+    }
+    state->deferred[state->defer_count++] = node;
+    return 1;
+}
+
+static int run_deferred_from(ExecLowerState *state, size_t base)
+{
+    for (size_t i = state->defer_count; i > base; --i) {
+        if (!block_is_open(state))
+            break;
+        Node *defer_node = state->deferred[i - 1];
+        if (!defer_node || defer_node->type != NODE_DEFER ||
+            !lower_statement(state, defer_node->as.defer_stmt.statement))
+            return 0;
+    }
+    return 1;
+}
+
 static int lower_block_statements(ExecLowerState *state, Node *block)
 {
     if (!block || block->type != NODE_BLOCK) {
         lower_error(state->lower, block ? block->span : source_span_invalid(), "expected block during CogIR lowering");
         return 0;
     }
+    size_t defer_base = state->defer_count;
     for (int i = 0; i < block->as.block.statements.count; ++i) {
         if (!block_is_open(state))
             break;
-        if (!lower_statement(state, block->as.block.statements.items[i]))
+        if (!lower_statement(state, block->as.block.statements.items[i])) {
+            state->defer_count = defer_base;
             return 0;
+        }
     }
+    if (block_is_open(state) && !run_deferred_from(state, defer_base)) {
+        state->defer_count = defer_base;
+        return 0;
+    }
+    state->defer_count = defer_base;
     return 1;
 }
 
 static int lower_return_statement(ExecLowerState *state, Node *node)
 {
+    CogIrValueId value = COG_IR_VALUE_INVALID;
+    CogIrSlotId value_spill = COG_IR_SLOT_INVALID;
+    int has_value = node->as.return_stmt.value != NULL;
+
+    if (has_value) {
+        value = lower_expression(state, node->as.return_stmt.value);
+        if (value == COG_IR_VALUE_INVALID)
+            return 0;
+        if (state->defer_count > 0) {
+            value_spill = spill_value(state, value, node->span);
+            if (value_spill == COG_IR_SLOT_INVALID)
+                return 0;
+        }
+    }
+
+    if (!run_deferred_from(state, 0))
+        return 0;
+    if (!block_is_open(state))
+        return 1;
+
+    if (value_spill != COG_IR_SLOT_INVALID) {
+        value = reload_spill(state, value_spill, node->span);
+        if (value == COG_IR_VALUE_INVALID)
+            return 0;
+    }
+
     CogIrTerminator term;
     memset(&term, 0, sizeof(term));
     term.kind = COG_IR_TERMINATOR_RET;
     term.span = node->span;
-    if (node->as.return_stmt.value) {
-        CogIrValueId value = lower_expression(state, node->as.return_stmt.value);
-        if (value == COG_IR_VALUE_INVALID)
-            return 0;
+    if (has_value) {
         term.as.ret.has_value = 1;
         term.as.ret.value = value;
     }
@@ -3550,6 +3613,10 @@ static int lower_break_statement(ExecLowerState *state, Node *node)
         return 0;
     }
     state->loop->has_break = 1;
+    if (!run_deferred_from(state, state->loop->defer_base))
+        return 0;
+    if (!block_is_open(state))
+        return 1;
     return set_branch(state, state->loop->break_target, node->span);
 }
 
@@ -3559,6 +3626,10 @@ static int lower_continue_statement(ExecLowerState *state, Node *node)
         lower_error(state->lower, node->span, "continue has no active CogIR loop target");
         return 0;
     }
+    if (!run_deferred_from(state, state->loop->defer_base))
+        return 0;
+    if (!block_is_open(state))
+        return 1;
     return set_branch(state, state->loop->continue_target, node->span);
 }
 
@@ -3588,6 +3659,7 @@ static int lower_while_statement(ExecLowerState *state, Node *node)
     ExecLoopContext loop = {
         .break_target = exit_block,
         .continue_target = condition_block,
+        .defer_base = state->defer_count,
         .parent = state->loop,
     };
     state->loop = &loop;
@@ -3661,6 +3733,7 @@ static int lower_for_statement(ExecLowerState *state, Node *node)
     ExecLoopContext loop = {
         .break_target = exit_block,
         .continue_target = post_block,
+        .defer_base = state->defer_count,
         .parent = state->loop,
     };
     state->loop = &loop;
@@ -3840,6 +3913,8 @@ static int lower_statement(ExecLowerState *state, Node *node)
             return lower_statement_expression(state, node->as.expr_stmt.expr);
         case NODE_RETURN:
             return lower_return_statement(state, node);
+        case NODE_DEFER:
+            return remember_defer(state, node);
         case NODE_BLOCK:
             return lower_block_statements(state, node);
         case NODE_IF:
@@ -3968,9 +4043,11 @@ static int lower_function_body(CogIrLowerContext *ctx, SemDeclInfo *info)
         return 0;
     }
     ExecLowerState state = { .lower = ctx, .function = binding->as.function, .block = entry };
-    if (!bind_function_parameters(&state, node) || !lower_block_statements(&state, node->as.func_decl.body))
-        return 0;
-    return finish_void_function_if_needed(&state, node->as.func_decl.body->span);
+    int ok = bind_function_parameters(&state, node) &&
+             lower_block_statements(&state, node->as.func_decl.body) &&
+             finish_void_function_if_needed(&state, node->as.func_decl.body->span);
+    free(state.deferred);
+    return ok;
 }
 
 static int node_is_runtime_module_item(Node *node)

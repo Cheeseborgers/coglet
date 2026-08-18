@@ -1317,6 +1317,11 @@ add_host_c_executable_test(
 )
 
 add_host_c_executable_test(
+        backend_defer defer.cog 42
+        "backend;backend.c;ir;defer;control-flow;cleanup"
+)
+
+add_host_c_executable_test(
         backend_slices slices.cog 0
         "backend;backend.c;ir;slice;string;aggregate;generic"
 )
@@ -2548,6 +2553,11 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_operators
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;operator;method;struct;semantic;desugar;compound-assignment;codegen;object;linker;stage7")
+    add_llvm_stage7_native_test(
+        backend_llvm_defer defer.cog 42
+    )
+    set_tests_properties(backend_llvm_defer
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;defer;control-flow;cleanup;codegen;object;linker;stage7")
     add_llvm_stage7_native_test(
         backend_llvm_slices slices.cog 0
     )

@@ -472,6 +472,32 @@ Normal body fallthrough and `continue` paths reach the post expression. `break` 
 
 `break` and `continue` apply to the nearest enclosing loop.
 
+### Deferred cleanup
+
+`defer` registers cleanup at the point where it appears and executes that cleanup
+in last-in, first-out order when the current lexical block is left. Both a single
+expression statement and a block are supported:
+
+```c
+file := open_file();
+defer file.close();
+
+arena := make_arena();
+defer {
+    arena.deinit();
+}
+```
+
+Deferred cleanup also runs before `return`, `break`, and `continue` leave the
+relevant scope. A return expression is evaluated before its deferred cleanup is
+executed, so cleanup cannot change the already selected return value.
+
+The first version deliberately forbids `return`, `break`, `continue`, and nested
+`defer` inside a deferred body. Deferred expressions are semantically checked at
+the registration point, so values they read must already satisfy normal definite-
+assignment rules there. `defer` has no ownership/lifetime semantics by itself; it
+is only deterministic lexical cleanup.
+
 A loop whose Boolean condition is known at compile time to be `true` and has no reachable `break` does not continue to the statement following the loop. This includes the literal `true`, named/local constants, and other checked constant Boolean expressions:
 
 ```c

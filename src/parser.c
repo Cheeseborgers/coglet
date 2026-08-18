@@ -48,6 +48,7 @@ static Node *parse_expression_before_block(Parser *p);
 static Node *parse_switch_statement(Parser *p);
 static Node *parse_switch_case(Parser *p);
 static Node *parse_return_statement(Parser *p);
+static Node *parse_defer_statement(Parser *p);
 static Node *parse_while_statement(Parser *p);
 static Node *parse_for_statement(Parser *p);
 static Node *parse_scoped_control_body(Parser *p);
@@ -248,6 +249,7 @@ static void synchronize(Parser *p)
             case TOK_WHILE:
             case TOK_FOR:
             case TOK_RETURN:
+            case TOK_DEFER:
                 return;
 
             default:
@@ -308,6 +310,9 @@ const char *token_debug_display_name(TokenType type)
 
         case TOK_RETURN:
             return "'return'";
+
+        case TOK_DEFER:
+            return "'defer'";
 
         case TOK_VOID:
             return "'void'";
@@ -2820,6 +2825,28 @@ static Node *parse_return_statement(Parser *p) {
     return ast_new_return(p->arena, value, span);
 }
 
+static Node *parse_defer_statement(Parser *p) {
+    SourceSpan span = p->previous.span; /* TOK_DEFER already consumed */
+
+    Node *statement = NULL;
+    if (check(p, TOK_LBRACE)) {
+        statement = parse_block(p);
+    } else {
+        Node *expr = parse_expression(p);
+        if (!consume(p, TOK_SEMICOLON)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+        statement = ast_new_expr_stmt(p->arena, expr, expr ? expr->span : span);
+    }
+
+    return ast_new_defer(
+        p->arena,
+        statement,
+        statement ? source_span_join(span, statement->span) : span
+    );
+}
+
 static Node *parse_scoped_control_body(Parser *p)
 {
     Node *statement = parse_statement(p);
@@ -3002,6 +3029,7 @@ static Node *parse_statement(Parser *p) {
     if (match(p, TOK_WHILE))  return parse_while_statement(p);
     if (match(p, TOK_FOR))    return parse_for_statement(p);
     if (match(p, TOK_RETURN)) return parse_return_statement(p);
+    if (match(p, TOK_DEFER))  return parse_defer_statement(p);
     if (check(p, TOK_SWITCH)) return parse_switch_statement(p);
 
     if (match(p, TOK_BREAK)) {

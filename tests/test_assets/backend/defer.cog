@@ -1,0 +1,49 @@
+g_counter : s32 = 0;
+
+mark::(digit: s32) -> void {
+    g_counter = g_counter * 10 + digit;
+}
+
+return_value::() -> s32 {
+    value := 7;
+    defer {
+        value = 99;
+        mark(4);
+    }
+    return value;
+}
+
+main::() -> s32 {
+    defer mark(1);
+    defer mark(2);
+
+    {
+        defer mark(3);
+        mark(4);
+    }
+
+    if g_counter != 43
+        return 1;
+
+    if return_value() != 7
+        return 2;
+
+    if g_counter != 434
+        return 3;
+
+    i := 0;
+    while i < 3 {
+        i += 1;
+        defer mark(5);
+        if i == 1
+            continue;
+        if i == 2
+            break;
+    }
+
+    if g_counter != 43455
+        return 4;
+
+    // Function-scope defers run in reverse order after the return value is fixed.
+    return 42;
+}

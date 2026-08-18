@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/control_flow/defer_control_transfer.cog:3:9: error: return is not allowed inside defer
+        return 1;
+        ^~~~~~
+1 semantic error generated.

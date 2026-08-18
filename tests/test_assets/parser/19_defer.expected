@@ -1,0 +1,13 @@
+program
+  func main -> s32
+    body:
+      block
+        defer
+          call
+            cleanup
+        defer
+          block
+            call
+              cleanup
+        return
+          0

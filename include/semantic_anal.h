@@ -173,6 +173,7 @@ typedef struct {
     LoopFlowContext *current_loop;
 
     int function_depth;
+    int defer_depth;
 
     /*
     * Flow-owner IDs are unique for the complete semantic check.

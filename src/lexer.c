@@ -208,6 +208,7 @@ static const Keyword keywords[] = {
     {"while", TOK_WHILE},
     {"for", TOK_FOR},
     {"return", TOK_RETURN},
+    {"defer", TOK_DEFER},
     {"struct", TOK_STRUCT},
     {"union", TOK_UNION},
     {"break", TOK_BREAK},
@@ -1329,6 +1330,7 @@ const char *token_type_name(TokenType type) {
         case TOK_WHILE: return "WHILE";
         case TOK_FOR: return "FOR";
         case TOK_RETURN: return "RETURN";
+        case TOK_DEFER: return "DEFER";
         case TOK_VOID: return "VOID";
         case TOK_STRUCT: return "STRUCT";
         case TOK_UNION: return "UNION";

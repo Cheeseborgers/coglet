@@ -1,0 +1,18 @@
+cleanup::(value: s32*) -> void {
+    (*value) += 1;
+}
+
+main::() -> s32 {
+    value := 0;
+    defer cleanup(&value);
+    defer {
+        value += 2;
+    }
+
+    while value < 10 {
+        defer cleanup(&value);
+        break;
+    }
+
+    return value;
+}

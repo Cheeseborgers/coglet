@@ -14078,12 +14078,14 @@ static void check_function_body(SemanticContext *ctx, Node *node)
         check_param_decl(ctx, node->as.func_decl.params.items[i]);
 
     int saved_loop_depth        = ctx->loop_depth;
+    int saved_defer_depth       = ctx->defer_depth;
 
     LoopFlowContext *saved_loop = ctx->current_loop;
 
     Type *saved_return_type     = ctx->current_return_type;
 
     ctx->loop_depth = 0;
+    ctx->defer_depth = 0;
     ctx->current_loop = NULL;
     ctx->current_return_type = func_type->return_type;
 
@@ -14117,6 +14119,7 @@ static void check_function_body(SemanticContext *ctx, Node *node)
     ctx->function_depth--;
     ctx->current_return_type = saved_return_type;
     ctx->loop_depth          = saved_loop_depth;
+    ctx->defer_depth         = saved_defer_depth;
     ctx->current_loop        = saved_loop;
 
     scope_pop(ctx);
@@ -15656,6 +15659,10 @@ static void check_node(SemanticContext *ctx,Node *node) {
         }
 
         case NODE_BREAK:
+            if (ctx->defer_depth > 0) {
+                semantic_error(ctx, node, "break is not allowed inside defer");
+                break;
+            }
             if (ctx->loop_depth <= 0) {
                 semantic_error(ctx, node,
                     "break statement not inside loop");
@@ -15669,6 +15676,10 @@ static void check_node(SemanticContext *ctx,Node *node) {
             break;
 
         case NODE_CONTINUE:
+            if (ctx->defer_depth > 0) {
+                semantic_error(ctx, node, "continue is not allowed inside defer");
+                break;
+            }
             if (ctx->loop_depth <= 0) {
                 semantic_error(ctx, node,
                     "continue statement not inside loop");
@@ -15697,7 +15708,29 @@ static void check_node(SemanticContext *ctx,Node *node) {
 
             break;
 
+        case NODE_DEFER: {
+            if (ctx->function_depth == 0) {
+                semantic_error(ctx, node, "defer outside function");
+                break;
+            }
+            if (ctx->defer_depth > 0) {
+                semantic_error(ctx, node, "nested defer is not supported");
+                break;
+            }
+
+            FlowState saved_flow = ctx->flow;
+            ctx->defer_depth++;
+            check_node(ctx, node->as.defer_stmt.statement);
+            ctx->defer_depth--;
+            ctx->flow = saved_flow;
+            break;
+        }
+
         case NODE_RETURN: {
+            if (ctx->defer_depth > 0) {
+                semantic_error(ctx, node, "return is not allowed inside defer");
+                break;
+            }
             if (ctx->function_depth == 0) {
                 semantic_error(ctx, node,
                     "return outside function");
@@ -15766,6 +15799,7 @@ void semantic_check(
     ctx->had_error          = 0;
     ctx->loop_depth         = 0;
     ctx->function_depth     = 0;
+    ctx->defer_depth        = 0;
     ctx->error_count        = 0;
     ctx->next_flow_owner_id = 0;
     ctx->next_variable_id   = 0;

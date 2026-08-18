@@ -1036,6 +1036,19 @@ three-clause initializer as a surrounding lexical block followed by the existing
 `for` node. These surface variants therefore do not add backend-specific loop
 semantics.
 
+## Deferred cleanup
+
+```ebnf
+defer_statement =
+      "defer" expression ";"
+    | "defer" block;
+```
+
+Deferred bodies execute in reverse registration order when their lexical block
+is left, including exits through `return`, `break`, and `continue`. The first
+version rejects nested `defer` and control-transfer statements inside a deferred
+body.
+
 ## Switch
 
 A simplified switch form is:

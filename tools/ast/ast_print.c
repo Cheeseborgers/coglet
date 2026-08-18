@@ -253,6 +253,9 @@ static const char *token_type_str(TokenType type)
         case TOK_RETURN:
             return "RETURN";
 
+        case TOK_DEFER:
+            return "DEFER";
+
         case TOK_VOID:
             return "VOID";
 
@@ -831,6 +834,12 @@ static void print_node(Node *node)
                 printf(" ");
                 print_node(node->as.return_stmt.value);
             }
+            printf(")");
+            break;
+
+        case NODE_DEFER:
+            printf("(defer ");
+            print_node(node->as.defer_stmt.statement);
             printf(")");
             break;
 
@@ -1471,6 +1480,12 @@ static void print_node_pretty(Node *node, int depth)
             printf("return\n");
             if (node->as.return_stmt.value)
                 print_node_pretty(node->as.return_stmt.value, depth + 1);
+            break;
+
+        case NODE_DEFER:
+            indent(depth);
+            printf("defer\n");
+            print_node_pretty(node->as.defer_stmt.statement, depth + 1);
             break;
 
         case NODE_SWITCH:

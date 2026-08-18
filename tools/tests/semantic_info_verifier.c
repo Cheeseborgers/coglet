@@ -95,6 +95,7 @@ static const char *node_type_name(NodeType type)
         case NODE_SWITCH:            return "switch";
         case NODE_SWITCH_CASE:       return "switch_case";
         case NODE_RETURN:            return "return";
+        case NODE_DEFER:             return "defer";
         case NODE_WHILE:             return "while";
         case NODE_FOR:               return "for";
         case NODE_BREAK:             return "break";
@@ -608,6 +609,10 @@ static void walk_node(ExpressionWalker *walker, Node *node)
                 walker,
                 node->as.return_stmt.value
             );
+            break;
+
+        case NODE_DEFER:
+            walk_node(walker, node->as.defer_stmt.statement);
             break;
 
         case NODE_WHILE:

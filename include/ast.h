@@ -91,6 +91,7 @@ typedef enum {
     NODE_SWITCH,
     NODE_SWITCH_CASE,
     NODE_RETURN,
+    NODE_DEFER,
     NODE_WHILE,
     NODE_FOR,
     NODE_BREAK,
@@ -228,6 +229,10 @@ struct Node {
         struct {
             Node *expr;
         } expr_stmt;
+
+        struct {
+            Node *statement; /* expression statement or block, executed at scope exit */
+        } defer_stmt;
 
         struct {
             NodeList statements;
@@ -492,6 +497,7 @@ Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int 
 Node *ast_new_type_ref(Arena *arena, Type *source_type, SourceSpan span);
 Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, SourceSpan span);
 Node *ast_new_return(Arena *arena, Node *value, SourceSpan span);
+Node *ast_new_defer(Arena *arena, Node *statement, SourceSpan span);
 Node *ast_new_while(Arena *arena, Node *cond, Node *body, SourceSpan span);
 Node *ast_new_for(Arena *arena, Node *cond, Node *post, Node *body, SourceSpan span);
 Node *ast_new_break(Arena *arena, SourceSpan span);

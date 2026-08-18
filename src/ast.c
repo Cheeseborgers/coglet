@@ -267,6 +267,12 @@ Node *ast_new_return(Arena *arena, Node *value, SourceSpan span) {
     return node;
 }
 
+Node *ast_new_defer(Arena *arena, Node *statement, SourceSpan span) {
+    Node *node = new_node(arena, NODE_DEFER, span);
+    node->as.defer_stmt.statement = statement;
+    return node;
+}
+
 Node*ast_new_while(Arena *arena, Node *cond, Node *body, SourceSpan span) {
     Node *node = new_node(arena, NODE_WHILE, span);
     node->as.while_stmt.condition = cond;
@@ -829,6 +835,11 @@ Node *ast_clone(Arena *arena, const Node *node)
         case NODE_RETURN:
             clone->as.return_stmt.value =
                 ast_clone(arena, node->as.return_stmt.value);
+            break;
+
+        case NODE_DEFER:
+            clone->as.defer_stmt.statement =
+                ast_clone(arena, node->as.defer_stmt.statement);
             break;
 
         case NODE_WHILE:

@@ -142,6 +142,12 @@ should not be forgotten.
 - **I/O error reporting is not surfaced.** The v0 print/flush routines return
   `void`; write failures and stream errors are not represented in Coglet yet.
 
+## Deferred cleanup
+
+- **`defer` is lexical cleanup only.** It does not infer ownership, prevent aliases, or make pointers/slices lifetime-safe. The programmer still controls resource ownership explicitly.
+- **Deferred bodies cannot currently transfer control.** `return`, `break`, `continue`, and nested `defer` inside a deferred body are rejected. This keeps the first lowering model deterministic and can be relaxed later only if a concrete use case justifies the extra CFG semantics.
+- **Deferred reads are checked at registration time.** A cleanup cannot currently rely on a variable becoming definitely initialized later in the same scope. A more sophisticated delayed definite-assignment model is possible but intentionally deferred.
+
 ## Memory and owning containers
 
 - **`Array<T>` is manually owned but still shallow-copyable.** Coglet has no move-only values, ownership checker, destructors, or automatic cleanup yet. Copying an `Array<T>` aliases the same allocation, so exactly one logical owner must call `deinit()`; treating two copies as owners can cause use-after-free or double-free. This is the highest-priority container safety debt.

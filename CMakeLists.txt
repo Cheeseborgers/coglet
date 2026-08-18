@@ -175,8 +175,8 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
         target_compile_definitions(coglet_backend_llvm PRIVATE COGLET_LLVM_VERSION_MAJOR=${LLVM_VERSION_MAJOR})
         target_link_libraries(coglet_backend_llvm PRIVATE compiler_core coglet_native_toolchain ${COGLET_LLVM_LIBS})
 
-        add_executable(check_llvm_stage4_trap tools/tests/check_llvm_stage4_trap.c)
-        target_link_libraries(check_llvm_stage4_trap PRIVATE compiler_core coglet_backend_llvm)
+        add_executable(check_llvm_trap tools/tests/check_llvm_trap.c)
+        target_link_libraries(check_llvm_trap PRIVATE compiler_core coglet_backend_llvm)
 
         set(COGLET_HAS_LLVM_BACKEND ON)
     elseif(COGLET_LLVM_MODE STREQUAL "ON")
@@ -622,11 +622,11 @@ add_test(NAME cog_ir_frontend_metadata_lowering
 set_tests_properties(cog_ir_frontend_metadata_lowering
         PROPERTIES LABELS "ir;ir.lowering;semantic;metadata")
 
-# --- Standalone lexer test tool (Stage 1 harness). ---
+# --- Standalone lexer snapshot tool. ---
 add_executable(dump_tokens tools/dump_tokens.c ${COMMON_SOURCES})
 target_link_libraries(dump_tokens PRIVATE compiler_core)
 
-# --- Standalone parser test tool (Stage 2 harness). ---
+# --- Standalone parser snapshot tool. ---
 add_executable(dump_ast tools/dump_ast.c ${COMMON_SOURCES})
 target_link_libraries(dump_ast PRIVATE compiler_core)
 
@@ -1234,8 +1234,8 @@ set(COGLET_TEST_TOOL_TARGETS
         dump_ast
         dump_ir
 )
-if(TARGET check_llvm_stage4_trap)
-    list(APPEND COGLET_TEST_TOOL_TARGETS check_llvm_stage4_trap)
+if(TARGET check_llvm_trap)
+    list(APPEND COGLET_TEST_TOOL_TARGETS check_llvm_trap)
 endif()
 set_target_properties(${COGLET_TEST_TOOL_TARGETS}
         PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${COGLET_TEST_ARTIFACT_DIR}/tools"
@@ -2022,86 +2022,86 @@ if(COGLET_HAS_LLVM_BACKEND)
     endforeach()
 
     add_test(
-        NAME backend_llvm_stage1_scalar_cfg_entry
+        NAME backend_llvm_scalar_cfg_entry
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage1_entry.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage1_entry.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/scalar_cfg_entry.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_entry.ll
         -DEXPECT_EXIT=11
         "-DEXPECT_IR_SUBSTRING=br i1"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage1_scalar_cfg_entry
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;cfg;entrypoint")
+    set_tests_properties(backend_llvm_scalar_cfg_entry
+        PROPERTIES LABELS "backend;backend.llvm;ir;cfg;entrypoint")
 
     add_test(
-        NAME backend_llvm_stage1_module_init
+        NAME backend_llvm_module_init
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage1_module_init.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage1_module_init.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/module_init.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_module_init.ll
         -DEXPECT_EXIT=7
         "-DEXPECT_IR_SUBSTRING=call void @cog.fn.1()"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage1_module_init
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;module-init;entrypoint")
+    set_tests_properties(backend_llvm_module_init
+        PROPERTIES LABELS "backend;backend.llvm;ir;module-init;entrypoint")
 
     add_test(
-        NAME backend_llvm_stage2_checked_add
+        NAME backend_llvm_checked_add
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_checked_add.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage2_checked_add.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/checked_add.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_checked_add.ll
         -DEXPECT_EXIT=3
         "-DEXPECT_IR_SUBSTRING=llvm.sadd.with.overflow.i32"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage2_checked_add
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;checked-arithmetic")
+    set_tests_properties(backend_llvm_checked_add
+        PROPERTIES LABELS "backend;backend.llvm;ir;checked-arithmetic")
 
     add_test(
-        NAME backend_llvm_stage2_integer_semantics
+        NAME backend_llvm_integer_semantics
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_integer_semantics.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage2_integer_semantics.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/integer_semantics.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_integer_semantics.ll
         -DEXPECT_EXIT=0
         "-DEXPECT_IR_SUBSTRING=llvm.smul.with.overflow.i32"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage2_integer_semantics
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;integer;checked-arithmetic;wrapping;shift;cast")
+    set_tests_properties(backend_llvm_integer_semantics
+        PROPERTIES LABELS "backend;backend.llvm;ir;integer;checked-arithmetic;wrapping;shift;cast")
 
     add_test(
-        NAME backend_llvm_stage2_enum_integer
+        NAME backend_llvm_enum_integer
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_enum_integer.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage2_enum_integer.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/enum_integer.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_enum_integer.ll
         -DEXPECT_EXIT=0
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage2_enum_integer
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;integer;enum;cast")
+    set_tests_properties(backend_llvm_enum_integer
+        PROPERTIES LABELS "backend;backend.llvm;ir;integer;enum;cast")
 
     add_test(
-        NAME backend_llvm_stage2_fibonacci
+        NAME backend_llvm_fibonacci
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage2_fibonacci.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage2_fibonacci.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/fibonacci.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_fibonacci.ll
         -DEXPECT_EXIT=55
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage2_fibonacci
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;integer;cfg;loop;entrypoint")
+    set_tests_properties(backend_llvm_fibonacci
+        PROPERTIES LABELS "backend;backend.llvm;ir;integer;cfg;loop;entrypoint")
 
     foreach(trap_case IN ITEMS
         "checked_overflow_trap.cog|96|checked-overflow"
@@ -2118,114 +2118,114 @@ if(COGLET_HAS_LLVM_BACKEND)
         list(GET trap_fields 2 trap_label)
         get_filename_component(trap_stem "${trap_input}" NAME_WE)
         add_test(
-            NAME backend_llvm_stage2_${trap_stem}
+            NAME backend_llvm_${trap_stem}
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${trap_input}
-            -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage2_${trap_stem}.ll
+            -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_${trap_stem}.ll
             -DNO_TRAP_EXIT=${trap_no_exit}
             -DCLANG=${COGLET_CLANG_EXECUTABLE}
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_trap_test.cmake"
         )
-        set_tests_properties(backend_llvm_stage2_${trap_stem}
-            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;trap;${trap_label}")
+        set_tests_properties(backend_llvm_${trap_stem}
+            PROPERTIES LABELS "backend;backend.llvm;ir;trap;${trap_label}")
     endforeach()
 
     add_test(
-        NAME backend_llvm_stage3_pointer_compare
+        NAME backend_llvm_pointer_compare
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_pointer_compare.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage3_pointer_compare.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/pointer_compare.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_pointer_compare.ll
         -DEXPECT_EXIT=0
         "-DEXPECT_IR_SUBSTRING=icmp eq ptr"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage3_pointer_compare
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;pointer;comparison")
+    set_tests_properties(backend_llvm_pointer_compare
+        PROPERTIES LABELS "backend;backend.llvm;ir;pointer;comparison")
 
     add_test(
-        NAME backend_llvm_stage3_memory_aggregates
+        NAME backend_llvm_memory_aggregates
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_memory_aggregates.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage3_memory_aggregates.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/memory_aggregates.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_memory_aggregates.ll
         -DEXPECT_EXIT=73
         "-DEXPECT_IR_SUBSTRING=getelementptr inbounds"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage3_memory_aggregates
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;memory;pointer;array;struct;aggregate;module-init")
+    set_tests_properties(backend_llvm_memory_aggregates
+        PROPERTIES LABELS "backend;backend.llvm;ir;memory;pointer;array;struct;aggregate;module-init")
 
     add_test(
-        NAME backend_llvm_stage3_extract_struct_value
+        NAME backend_llvm_extract_struct_value
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_extract_struct_value.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage3_extract_struct_value.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/extract_struct_value.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_extract_struct_value.ll
         -DEXPECT_EXIT=9
         "-DEXPECT_IR_SUBSTRING=extractvalue %cog.struct"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage3_extract_struct_value
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;struct;aggregate;extract")
+    set_tests_properties(backend_llvm_extract_struct_value
+        PROPERTIES LABELS "backend;backend.llvm;ir;struct;aggregate;extract")
 
     add_test(
-        NAME backend_llvm_stage3_rejects_volatile_aggregate
+        NAME backend_llvm_rejects_volatile_aggregate
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage3_rejects_volatile_aggregate.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage3_volatile_aggregate_unsupported.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/rejects_volatile_aggregate.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_volatile_aggregate_unsupported.ll
         "-DEXPECT_SUBSTRING=volatile aggregate loads remain unsupported in the LLVM backend"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage3_rejects_volatile_aggregate
-        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;aggregate;volatile")
+    set_tests_properties(backend_llvm_rejects_volatile_aggregate
+        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;aggregate;volatile")
 
     add_test(
-        NAME backend_llvm_stage4_float_semantics
+        NAME backend_llvm_float_semantics
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage4_float_semantics.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage4_float_semantics.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/float_semantics.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_float_semantics.ll
         -DEXPECT_EXIT=0
         "-DEXPECT_IR_SUBSTRING=fcmp une"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage4_float_semantics
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;float;cast;comparison")
+    set_tests_properties(backend_llvm_float_semantics
+        PROPERTIES LABELS "backend;backend.llvm;ir;float;cast;comparison")
 
     add_test(
-        NAME backend_llvm_stage4_switch
+        NAME backend_llvm_switch
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage4_switch.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage4_switch.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/switch.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_switch.ll
         -DEXPECT_EXIT=29
         "-DEXPECT_IR_SUBSTRING=switch i32"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage4_switch
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;cfg;switch;enum;bool")
+    set_tests_properties(backend_llvm_switch
+        PROPERTIES LABELS "backend;backend.llvm;ir;cfg;switch;enum;bool")
 
     add_test(
-        NAME backend_llvm_stage4_indirect_native_call
+        NAME backend_llvm_indirect_native_call
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage4_indirect_native_call.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage4_indirect_native_call.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/indirect_native_call.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_indirect_native_call.ll
         -DEXPECT_EXIT=42
         "-DEXPECT_IR_SUBSTRING=call i32 %"
         -DCLANG=${COGLET_CLANG_EXECUTABLE}
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage4_indirect_native_call
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;function-value;indirect-call")
+    set_tests_properties(backend_llvm_indirect_native_call
+        PROPERTIES LABELS "backend;backend.llvm;ir;function-value;indirect-call")
 
     foreach(float_trap_case IN ITEMS
         "checked_cast_float_integer_trap.cog|91|float-to-int"
@@ -2238,26 +2238,26 @@ if(COGLET_HAS_LLVM_BACKEND)
         list(GET float_trap_fields 2 float_trap_label)
         get_filename_component(float_trap_stem "${float_trap_input}" NAME_WE)
         add_test(
-            NAME backend_llvm_stage4_${float_trap_stem}
+            NAME backend_llvm_${float_trap_stem}
             COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:coglet>
             -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/${float_trap_input}
-            -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage4_${float_trap_stem}.ll
+            -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_${float_trap_stem}.ll
             -DNO_TRAP_EXIT=${float_trap_no_exit}
             -DCLANG=${COGLET_CLANG_EXECUTABLE}
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_trap_test.cmake"
         )
-        set_tests_properties(backend_llvm_stage4_${float_trap_stem}
-            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;float;cast;trap;${float_trap_label}")
+        set_tests_properties(backend_llvm_${float_trap_stem}
+            PROPERTIES LABELS "backend;backend.llvm;ir;float;cast;trap;${float_trap_label}")
     endforeach()
 
     add_test(
-        NAME backend_llvm_stage4_explicit_trap_terminator
-        COMMAND $<TARGET_FILE:check_llvm_stage4_trap>
-                ${COGLET_TEST_ARTIFACT_DIR}/llvm_stage4_explicit_trap.ll
+        NAME backend_llvm_explicit_trap_terminator
+        COMMAND $<TARGET_FILE:check_llvm_trap>
+                ${COGLET_TEST_ARTIFACT_DIR}/llvm_explicit_trap.ll
     )
-    set_tests_properties(backend_llvm_stage4_explicit_trap_terminator
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;cfg;trap")
+    set_tests_properties(backend_llvm_explicit_trap_terminator
+        PROPERTIES LABELS "backend;backend.llvm;ir;cfg;trap")
 
     function(add_llvm_c_abi_executable_test test_name fixture expected_exit ir_substring)
         add_test(
@@ -2273,38 +2273,38 @@ if(COGLET_HAS_LLVM_BACKEND)
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
         )
         set_tests_properties(${test_name}
-            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;interop;abi;stage5")
+            PROPERTIES LABELS "backend;backend.llvm;ir;interop;abi")
     endfunction()
 
     add_llvm_c_abi_executable_test(
-        backend_llvm_stage5_integer_aliases extern_c_integer_aliases.cog 29 "i8 signext"
+        backend_llvm_integer_aliases extern_c_integer_aliases.cog 29 "i8 signext"
     )
     add_llvm_c_abi_executable_test(
-        backend_llvm_stage5_scalar_aliases extern_c_scalar_aliases.cog 31 "i1 zeroext"
+        backend_llvm_scalar_aliases extern_c_scalar_aliases.cog 31 "i1 zeroext"
     )
     add_llvm_c_abi_executable_test(
-        backend_llvm_stage5_small_scalar_boundary llvm/stage5_small_scalar_boundary.cog 83 "signext i8"
+        backend_llvm_small_scalar_boundary llvm/c_small_scalar_boundary.cog 83 "signext i8"
     )
     add_llvm_c_abi_executable_test(
-        backend_llvm_stage5_callbacks_indirect indirect_calls.cog 0 "call i32 (i32, ...) %"
+        backend_llvm_callbacks_indirect indirect_calls.cog 0 "call i32 (i32, ...) %"
     )
     add_llvm_c_abi_executable_test(
-        backend_llvm_stage5_variadic extern_c_variadic.cog 57 "call i32 (i32, ...) @coglet_backend_varargs_probe"
+        backend_llvm_variadic extern_c_variadic.cog 57 "call i32 (i32, ...) @coglet_backend_varargs_probe"
     )
     add_llvm_c_abi_executable_test(
-        backend_llvm_stage5_win64_calling_convention extern_c_calling_convention.cog 79 "call win64cc i32"
+        backend_llvm_win64_calling_convention extern_c_calling_convention.cog 79 "call win64cc i32"
     )
     add_llvm_c_abi_executable_test(
-        backend_llvm_stage5_incomplete_pointer extern_c_incomplete_struct.cog 67 "@coglet_backend_get_incomplete_handle"
+        backend_llvm_incomplete_pointer extern_c_incomplete_struct.cog 67 "@coglet_backend_get_incomplete_handle"
     )
     add_llvm_c_abi_executable_test(
-        backend_llvm_stage5_volatile_pointer extern_c_volatile_pointers.cog 89 "@coglet_backend_volatile_probe"
+        backend_llvm_volatile_pointer extern_c_volatile_pointers.cog 89 "@coglet_backend_volatile_probe"
     )
     add_llvm_c_abi_executable_test(
-        backend_llvm_stage5_symbol_override extern_c_symbol_override.cog 7 "@abs"
+        backend_llvm_symbol_override extern_c_symbol_override.cog 7 "@abs"
     )
 
-    function(add_llvm_stage6_abi_test test_name fixture expected_exit ir_substring)
+    function(add_llvm_abi_test test_name fixture expected_exit ir_substring)
         add_test(
             NAME ${test_name}
             COMMAND "${CMAKE_COMMAND}"
@@ -2318,44 +2318,44 @@ if(COGLET_HAS_LLVM_BACKEND)
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_executable_test.cmake"
         )
         set_tests_properties(${test_name}
-            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;interop;abi;aggregate;stage6")
+            PROPERTIES LABELS "backend;backend.llvm;ir;interop;abi;aggregate")
     endfunction()
 
-    add_llvm_stage6_abi_test(
-        backend_llvm_stage6_repr_c_struct extern_c_repr_struct.cog 37 "declare { i32, double } @coglet_backend_make_pair"
+    add_llvm_abi_test(
+        backend_llvm_repr_c_struct extern_c_repr_struct.cog 37 "declare { i32, double } @coglet_backend_make_pair"
     )
-    add_llvm_stage6_abi_test(
-        backend_llvm_stage6_repr_c_nested_struct extern_c_repr_nested_struct.cog 41 "@coglet_backend_nested_struct_probe"
+    add_llvm_abi_test(
+        backend_llvm_repr_c_nested_struct extern_c_repr_nested_struct.cog 41 "@coglet_backend_nested_struct_probe"
     )
-    add_llvm_stage6_abi_test(
-        backend_llvm_stage6_repr_c_array_fields extern_c_repr_array_fields.cog 45 "byval(%cog.c.struct"
+    add_llvm_abi_test(
+        backend_llvm_repr_c_array_fields extern_c_repr_array_fields.cog 45 "byval(%cog.c.struct"
     )
-    add_llvm_stage6_abi_test(
-        backend_llvm_stage6_repr_c_enum extern_c_repr_enum.cog 49 "@coglet_backend_enum_packet_probe"
+    add_llvm_abi_test(
+        backend_llvm_repr_c_enum extern_c_repr_enum.cog 49 "@coglet_backend_enum_packet_probe"
     )
-    add_llvm_stage6_abi_test(
-        backend_llvm_stage6_repr_c_union extern_c_repr_union.cog 71 "@coglet_backend_union_packet_probe"
+    add_llvm_abi_test(
+        backend_llvm_repr_c_union extern_c_repr_union.cog 71 "@coglet_backend_union_packet_probe"
     )
-    add_llvm_stage6_abi_test(
-        backend_llvm_stage6_repr_c_layout extern_c_repr_layout.cog 73 "sret(%cog.c.struct"
+    add_llvm_abi_test(
+        backend_llvm_repr_c_layout extern_c_repr_layout.cog 73 "sret(%cog.c.struct"
     )
-    add_llvm_stage6_abi_test(
-        backend_llvm_stage6_c_bool_object_storage llvm/stage6_c_bool_object_storage.cog 79 "alloca i8"
+    add_llvm_abi_test(
+        backend_llvm_c_bool_object_storage llvm/c_bool_object_storage.cog 79 "alloca i8"
     )
-    add_llvm_stage6_abi_test(
-        backend_llvm_stage6_aggregate_callback llvm/stage6_aggregate_callback.cog 87 "define internal { i32, double }"
+    add_llvm_abi_test(
+        backend_llvm_aggregate_callback llvm/c_aggregate_callback.cog 87 "define internal { i32, double }"
     )
-    add_llvm_stage6_abi_test(
-        backend_llvm_stage6_c_bool_aggregate llvm/stage6_c_bool_aggregate.cog 82 "%cog.c.struct"
+    add_llvm_abi_test(
+        backend_llvm_c_bool_aggregate llvm/c_bool_aggregate.cog 82 "%cog.c.struct"
     )
-    add_llvm_stage6_abi_test(
-        backend_llvm_stage6_repr_c_global llvm/stage6_repr_c_global.cog 37 "@cog.global.0"
+    add_llvm_abi_test(
+        backend_llvm_repr_c_global llvm/repr_c_global.cog 37 "@cog.global.0"
     )
 
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" AND
        CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
-        add_llvm_stage6_abi_test(
-            backend_llvm_stage6_win64_aggregates llvm/stage6_win64_aggregates.cog 86 "win64cc void @coglet_backend_win64_make_large_aggregate"
+        add_llvm_abi_test(
+            backend_llvm_win64_aggregates llvm/win64_aggregates.cog 86 "win64cc void @coglet_backend_win64_make_large_aggregate"
         )
     endif()
 
@@ -2396,7 +2396,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -P "${CMAKE_SOURCE_DIR}/cmake/run_multifile_llvm_ir_test.cmake"
     )
     set_tests_properties(backend_llvm_multifile_debug_sources
-        PROPERTIES LABELS "backend;backend.llvm;source;multi-file;debug;stage9")
+        PROPERTIES LABELS "backend;backend.llvm;source;multi-file;debug")
 
     add_test(
         NAME backend_llvm_modules_native
@@ -2510,7 +2510,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_llvm_ir_test.cmake"
     )
     set_tests_properties(backend_llvm_modules_discovery_debug_source
-        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;debug;stage9")
+        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;debug")
 
     add_test(
         NAME backend_llvm_modules_dotted_discovery_native
@@ -2552,7 +2552,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_llvm_ir_test.cmake"
     )
     set_tests_properties(backend_llvm_modules_dotted_discovery_debug_source
-        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;dotted;package;debug;stage9")
+        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;multi-file;dotted;package;debug")
 
     add_test(
         NAME backend_llvm_modules_stdlib_root_native
@@ -2581,9 +2581,9 @@ if(COGLET_HAS_LLVM_BACKEND)
         -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_llvm_ir_test.cmake"
     )
     set_tests_properties(backend_llvm_modules_stdlib_root_debug_source
-        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;package;stdlib;debug;stage9")
+        PROPERTIES LABELS "backend;backend.llvm;module;import;discovery;package;stdlib;debug")
 
-    function(add_llvm_stage7_native_test test_name fixture expected_exit)
+    function(add_llvm_native_test test_name fixture expected_exit)
         add_test(
             NAME ${test_name}
             COMMAND "${CMAKE_COMMAND}"
@@ -2594,10 +2594,10 @@ if(COGLET_HAS_LLVM_BACKEND)
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
         )
         set_tests_properties(${test_name}
-            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;codegen;object;linker;stage7")
+            PROPERTIES LABELS "backend;backend.llvm;ir;codegen;object;linker")
     endfunction()
 
-    function(add_llvm_stage7_native_library_test test_name fixture expected_exit style)
+    function(add_llvm_native_library_test test_name fixture expected_exit style)
         add_test(
             NAME ${test_name}
             COMMAND "${CMAKE_COMMAND}"
@@ -2611,68 +2611,68 @@ if(COGLET_HAS_LLVM_BACKEND)
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
         )
         set_tests_properties(${test_name}
-            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;codegen;object;linker;interop;abi;stage7")
+            PROPERTIES LABELS "backend;backend.llvm;ir;codegen;object;linker;interop;abi")
     endfunction()
 
-    add_llvm_stage7_native_test(
-        backend_llvm_stage7_native_s32_entry native_s32_entry.cog 42
+    add_llvm_native_test(
+        backend_llvm_native_s32_entry native_s32_entry.cog 42
     )
-    add_llvm_stage7_native_test(
+    add_llvm_native_test(
         backend_llvm_generic_functions generic_functions.cog 42
     )
     set_tests_properties(backend_llvm_generic_functions
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;generic;semantic;monomorphization;codegen;object;linker;stage7")
-    add_llvm_stage7_native_test(
+        PROPERTIES LABELS "backend;backend.llvm;ir;generic;semantic;monomorphization;codegen;object;linker")
+    add_llvm_native_test(
         backend_llvm_exact_overloads overloads.cog 42
     )
     set_tests_properties(backend_llvm_exact_overloads
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;semantic;overload;dispatch;codegen;object;linker;stage7")
-    add_llvm_stage7_native_test(
+        PROPERTIES LABELS "backend;backend.llvm;ir;semantic;overload;dispatch;codegen;object;linker")
+    add_llvm_native_test(
         backend_llvm_generic_structs generic_structs.cog 42
     )
     set_tests_properties(backend_llvm_generic_structs
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;generic;struct;semantic;monomorphization;codegen;object;linker;stage7")
-    add_llvm_stage7_native_test(
+        PROPERTIES LABELS "backend;backend.llvm;ir;generic;struct;semantic;monomorphization;codegen;object;linker")
+    add_llvm_native_test(
         backend_llvm_methods methods.cog 42
     )
     set_tests_properties(backend_llvm_methods
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;method;generic;struct;semantic;desugar;codegen;object;linker;stage7")
-    add_llvm_stage7_native_test(
+        PROPERTIES LABELS "backend;backend.llvm;ir;method;generic;struct;semantic;desugar;codegen;object;linker")
+    add_llvm_native_test(
         backend_llvm_operators operators.cog 42
     )
     set_tests_properties(backend_llvm_operators
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;operator;method;struct;semantic;desugar;compound-assignment;codegen;object;linker;stage7")
-    add_llvm_stage7_native_test(
+        PROPERTIES LABELS "backend;backend.llvm;ir;operator;method;struct;semantic;desugar;compound-assignment;codegen;object;linker")
+    add_llvm_native_test(
         backend_llvm_defer defer.cog 42
     )
     set_tests_properties(backend_llvm_defer
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;defer;control-flow;cleanup;codegen;object;linker;stage7")
-    add_llvm_stage7_native_test(
+        PROPERTIES LABELS "backend;backend.llvm;ir;defer;control-flow;cleanup;codegen;object;linker")
+    add_llvm_native_test(
         backend_llvm_resources resources.cog 42
     )
     set_tests_properties(backend_llvm_resources
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;resource;move;ownership;semantic;desugar;codegen;object;linker;stage7")
-    add_llvm_stage7_native_test(
+        PROPERTIES LABELS "backend;backend.llvm;ir;resource;move;ownership;semantic;desugar;codegen;object;linker")
+    add_llvm_native_test(
         backend_llvm_slices slices.cog 0
     )
     set_tests_properties(backend_llvm_slices
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;slice;string;aggregate;generic;codegen;object;linker;stage7")
-    add_llvm_stage7_native_test(
+        PROPERTIES LABELS "backend;backend.llvm;ir;slice;string;aggregate;generic;codegen;object;linker")
+    add_llvm_native_test(
         backend_llvm_layout_memory layout_memory.cog 0
     )
     set_tests_properties(backend_llvm_layout_memory
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;memory;layout;interop;callback;codegen;object;linker;stage7")
-    add_llvm_stage7_native_test(
-        backend_llvm_stage7_pic_global_link llvm/stage7_pic_global.cog 9
+        PROPERTIES LABELS "backend;backend.llvm;ir;memory;layout;interop;callback;codegen;object;linker")
+    add_llvm_native_test(
+        backend_llvm_pic_global_link llvm/pic_global.cog 9
     )
-    add_llvm_stage7_native_library_test(
-        backend_llvm_stage7_c_scalar_link extern_c_integer_aliases.cog 29 joined
+    add_llvm_native_library_test(
+        backend_llvm_c_scalar_link extern_c_integer_aliases.cog 29 joined
     )
-    add_llvm_stage7_native_library_test(
-        backend_llvm_stage7_c_aggregate_link extern_c_repr_struct.cog 37 split
+    add_llvm_native_library_test(
+        backend_llvm_c_aggregate_link extern_c_repr_struct.cog 37 split
     )
 
-    function(add_llvm_stage8_native_test test_name fixture expected_exit opt_level)
+    function(add_llvm_optimized_native_test test_name fixture expected_exit opt_level)
         add_test(
             NAME ${test_name}
             COMMAND "${CMAKE_COMMAND}"
@@ -2684,10 +2684,10 @@ if(COGLET_HAS_LLVM_BACKEND)
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
         )
         set_tests_properties(${test_name}
-            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;optimization;codegen;stage8;O${opt_level}")
+            PROPERTIES LABELS "backend;backend.llvm;ir;optimization;codegen;O${opt_level}")
     endfunction()
 
-    function(add_llvm_stage8_native_library_test test_name fixture expected_exit opt_level)
+    function(add_llvm_optimized_native_library_test test_name fixture expected_exit opt_level)
         add_test(
             NAME ${test_name}
             COMMAND "${CMAKE_COMMAND}"
@@ -2702,76 +2702,76 @@ if(COGLET_HAS_LLVM_BACKEND)
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
         )
         set_tests_properties(${test_name}
-            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;optimization;codegen;interop;abi;stage8;O${opt_level}")
+            PROPERTIES LABELS "backend;backend.llvm;ir;optimization;codegen;interop;abi;O${opt_level}")
     endfunction()
 
-    add_llvm_stage8_native_test(
-        backend_llvm_stage8_O0_explicit native_s32_entry.cog 42 0
+    add_llvm_optimized_native_test(
+        backend_llvm_O0_explicit native_s32_entry.cog 42 0
     )
-    add_llvm_stage8_native_test(
-        backend_llvm_stage8_O1_checked_integer llvm/stage2_checked_add.cog 3 1
+    add_llvm_optimized_native_test(
+        backend_llvm_O1_checked_integer llvm/checked_add.cog 3 1
     )
-    add_llvm_stage8_native_library_test(
-        backend_llvm_stage8_O2_c_aggregate extern_c_repr_struct.cog 37 2
+    add_llvm_optimized_native_library_test(
+        backend_llvm_O2_c_aggregate extern_c_repr_struct.cog 37 2
     )
-    add_llvm_stage8_native_library_test(
-        backend_llvm_stage8_O3_volatile_pointer extern_c_volatile_pointers.cog 89 3
+    add_llvm_optimized_native_library_test(
+        backend_llvm_O3_volatile_pointer extern_c_volatile_pointers.cog 89 3
     )
 
     add_test(
-        NAME backend_llvm_stage8_O2_ir_pipeline
+        NAME backend_llvm_O2_ir_pipeline
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_O2_ir_pipeline.ll
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_O2_ir_pipeline.ll
         -DOPT_LEVEL=2
         "-DEXPECT_SUBSTRING=ret i32 42"
         "-DABSENT_SUBSTRING=@cog.fn.0"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_optimization_ir_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage8_O2_ir_pipeline
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;optimization;stage8;O2")
+    set_tests_properties(backend_llvm_O2_ir_pipeline
+        PROPERTIES LABELS "backend;backend.llvm;ir;optimization;O2")
 
     add_test(
-        NAME backend_llvm_stage8_O3_checked_overflow_trap
+        NAME backend_llvm_O3_checked_overflow_trap
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/checked_overflow_trap.cog
-        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_O3_checked_overflow_trap
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_O3_checked_overflow_trap
         -DOPT_LEVEL=3
         -DNO_TRAP_EXIT=96
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_trap_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage8_O3_checked_overflow_trap
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;optimization;trap;checked-overflow;stage8;O3")
+    set_tests_properties(backend_llvm_O3_checked_overflow_trap
+        PROPERTIES LABELS "backend;backend.llvm;ir;optimization;trap;checked-overflow;O3")
 
     add_test(
-        NAME backend_llvm_stage8_rejects_host_c_optimization
+        NAME backend_llvm_rejects_host_c_optimization
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=optimization currently requires --backend llvm"
-        "-DARGS=-o;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_rejects_host_c_optimization.out;-O2"
+        "-DARGS=-o;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_rejects_host_c_optimization.out;-O2"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage8_rejects_host_c_optimization
-        PROPERTIES LABELS "driver;backend;backend.llvm;optimization;invalid;stage8")
+    set_tests_properties(backend_llvm_rejects_host_c_optimization
+        PROPERTIES LABELS "driver;backend;backend.llvm;optimization;invalid")
 
     add_test(
-        NAME backend_llvm_stage8_rejects_unknown_optimization_level
+        NAME backend_llvm_rejects_unknown_optimization_level
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=unsupported optimization level '-O4'"
-        "-DARGS=--emit-llvm;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage8_invalid_O4.ll;-O4"
+        "-DARGS=--emit-llvm;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_invalid_O4.ll;-O4"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage8_rejects_unknown_optimization_level
-        PROPERTIES LABELS "driver;backend;backend.llvm;optimization;invalid;stage8")
+    set_tests_properties(backend_llvm_rejects_unknown_optimization_level
+        PROPERTIES LABELS "driver;backend;backend.llvm;optimization;invalid")
 
-    function(add_llvm_stage9_native_debug_test test_name fixture expected_exit opt_level debug_string_regex)
+    function(add_llvm_native_debug_test test_name fixture expected_exit opt_level debug_string_regex)
         add_test(
             NAME ${test_name}
             COMMAND "${CMAKE_COMMAND}"
@@ -2785,15 +2785,15 @@ if(COGLET_HAS_LLVM_BACKEND)
             -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
         )
         set_tests_properties(${test_name}
-            PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;codegen;stage9;O${opt_level}")
+            PROPERTIES LABELS "backend;backend.llvm;ir;debug;codegen;O${opt_level}")
     endfunction()
 
     add_test(
-        NAME backend_llvm_stage9_debug_ir_metadata
+        NAME backend_llvm_debug_ir_metadata
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_info.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage9_debug_ir_metadata.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/debug_info.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_debug_ir_metadata.ll
         -DOPT_LEVEL=0
         "-DREQUIRED_TEXT_1=!DICompileUnit("
         "-DREQUIRED_TEXT_2=!DISubprogram(name: \"compute\""
@@ -2808,8 +2808,8 @@ if(COGLET_HAS_LLVM_BACKEND)
         "-DABSENT_TEXT_2=define i32 @main() !dbg"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_debug_ir_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage9_debug_ir_metadata
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;metadata;stage9;O0")
+    set_tests_properties(backend_llvm_debug_ir_metadata
+        PROPERTIES LABELS "backend;backend.llvm;ir;debug;metadata;O0")
 
     add_test(
         NAME backend_llvm_generic_struct_debug_ir
@@ -2824,7 +2824,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_debug_ir_test.cmake"
     )
     set_tests_properties(backend_llvm_generic_struct_debug_ir
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;metadata;generic;struct;monomorphization;stage9;O0")
+        PROPERTIES LABELS "backend;backend.llvm;ir;debug;metadata;generic;struct;monomorphization;O0")
 
     add_test(
         NAME backend_llvm_methods_debug_ir
@@ -2838,29 +2838,29 @@ if(COGLET_HAS_LLVM_BACKEND)
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_debug_ir_test.cmake"
     )
     set_tests_properties(backend_llvm_methods_debug_ir
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;metadata;method;struct;desugar;stage9;O0")
+        PROPERTIES LABELS "backend;backend.llvm;ir;debug;metadata;method;struct;desugar;O0")
 
     add_test(
-        NAME backend_llvm_stage9_debug_O2_ir
+        NAME backend_llvm_debug_O2_ir
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_info.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage9_debug_O2_ir.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/debug_info.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_debug_O2_ir.ll
         -DOPT_LEVEL=2
         "-DREQUIRED_TEXT_1=!DICompileUnit("
         "-DREQUIRED_TEXT_2=isOptimized: true"
-        "-DREQUIRED_TEXT_3=stage9_debug_info.cog"
+        "-DREQUIRED_TEXT_3=debug_info.cog"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_debug_ir_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage9_debug_O2_ir
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;optimization;stage9;O2")
+    set_tests_properties(backend_llvm_debug_O2_ir
+        PROPERTIES LABELS "backend;backend.llvm;ir;debug;optimization;O2")
 
     add_test(
-        NAME backend_llvm_stage9_repr_c_union_metadata
+        NAME backend_llvm_repr_c_union_metadata
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_repr_union.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage9_repr_c_union_metadata.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/debug_repr_union.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_repr_c_union_metadata.ll
         -DOPT_LEVEL=0
         "-DREQUIRED_TEXT_1=!DILocalVariable(name: \"packet\""
         "-DREQUIRED_TEXT_2=!DICompositeType(tag: DW_TAG_union_type, name: \"BackendValue\""
@@ -2869,31 +2869,31 @@ if(COGLET_HAS_LLVM_BACKEND)
         "-DREQUIRED_TEXT_5=!DIBasicType(name: \"c_bool\", size: 8, encoding: DW_ATE_boolean)"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_debug_ir_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage9_repr_c_union_metadata
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;debug;metadata;interop;abi;aggregate;stage9;O0")
+    set_tests_properties(backend_llvm_repr_c_union_metadata
+        PROPERTIES LABELS "backend;backend.llvm;ir;debug;metadata;interop;abi;aggregate;O0")
 
-    add_llvm_stage9_native_debug_test(
-        backend_llvm_stage9_debug_native_O0 native_s32_entry.cog 42 0 "native_s32_entry[.]cog"
+    add_llvm_native_debug_test(
+        backend_llvm_debug_native_O0 native_s32_entry.cog 42 0 "native_s32_entry[.]cog"
     )
-    add_llvm_stage9_native_debug_test(
-        backend_llvm_stage9_debug_native_O3 llvm/stage9_debug_info.cog 14 3 "stage9_debug_info[.]cog"
+    add_llvm_native_debug_test(
+        backend_llvm_debug_native_O3 llvm/debug_info.cog 14 3 "debug_info[.]cog"
     )
 
     add_test(
-        NAME backend_llvm_stage9_rejects_host_c_debug
+        NAME backend_llvm_rejects_host_c_debug
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
         -DEXPECT_EXIT=3
         "-DEXPECT_SUBSTRING=executable debug information currently requires --backend llvm"
-        "-DARGS=-o;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_stage9_rejects_host_c_debug.out;-g"
+        "-DARGS=-o;${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_rejects_host_c_debug.out;-g"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage9_rejects_host_c_debug
-        PROPERTIES LABELS "driver;backend;backend.llvm;debug;invalid;stage9")
+    set_tests_properties(backend_llvm_rejects_host_c_debug
+        PROPERTIES LABELS "driver;backend;backend.llvm;debug;invalid")
 
     add_test(
-        NAME backend_llvm_stage9_rejects_debug_without_llvm_output
+        NAME backend_llvm_rejects_debug_without_llvm_output
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
         -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/native_s32_entry.cog
@@ -2902,20 +2902,20 @@ if(COGLET_HAS_LLVM_BACKEND)
         "-DARGS=-g"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_driver_args_failure_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage9_rejects_debug_without_llvm_output
-        PROPERTIES LABELS "driver;backend;backend.llvm;debug;invalid;stage9")
+    set_tests_properties(backend_llvm_rejects_debug_without_llvm_output
+        PROPERTIES LABELS "driver;backend;backend.llvm;debug;invalid")
 
     add_test(
-        NAME backend_llvm_stage6_rejects_native_bool_as_c_bool_pointer
+        NAME backend_llvm_rejects_native_bool_as_c_bool_pointer
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage6_rejects_native_bool_as_c_bool_pointer.cog
-        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_stage6_native_bool_c_bool_pointer_unsupported.ll
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/rejects_native_bool_as_c_bool_pointer.cog
+        -DOUTPUT_IR=${COGLET_TEST_ARTIFACT_DIR}/llvm_native_bool_c_bool_pointer_unsupported.ll
         "-DEXPECT_SUBSTRING=C pointer argument requires exact addressable C _Bool object storage"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_failure_test.cmake"
     )
-    set_tests_properties(backend_llvm_stage6_rejects_native_bool_as_c_bool_pointer
-        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;llvm;interop;abi;pointer;bool;stage6")
+    set_tests_properties(backend_llvm_rejects_native_bool_as_c_bool_pointer
+        PROPERTIES LABELS "backend;backend.llvm;backend.invalid;ir;interop;abi;pointer;bool")
 
     set(COGLET_ASSEMBLY_ROUNDTRIP_ARGS)
     if(UNIX)
@@ -2929,7 +2929,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         NAME backend_llvm_emit_asm_O0_pic_global
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage7_pic_global.cog
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/pic_global.cog
         -DOUTPUT_ASM=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_O0_pic_global.s
         ${COGLET_ASSEMBLY_ROUNDTRIP_ARGS}
         -DOPT_LEVEL=0
@@ -2938,21 +2938,21 @@ if(COGLET_HAS_LLVM_BACKEND)
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_assembly_test.cmake"
     )
     set_tests_properties(backend_llvm_emit_asm_O0_pic_global
-        PROPERTIES LABELS "backend;backend.llvm;llvm;codegen;assembly;O0")
+        PROPERTIES LABELS "backend;backend.llvm;codegen;assembly;O0")
 
     add_test(
         NAME backend_llvm_emit_asm_O3_debug
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>
-        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/stage9_debug_info.cog
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/llvm/debug_info.cog
         -DOUTPUT_ASM=${COGLET_TEST_ARTIFACT_DIR}/backend_llvm_emit_asm_O3_debug.s
         -DOPT_LEVEL=3
         -DDEBUG_INFO=ON
-        "-DEXPECT_ASM_SUBSTRING=stage9_debug_info.cog"
+        "-DEXPECT_ASM_SUBSTRING=debug_info.cog"
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_assembly_test.cmake"
     )
     set_tests_properties(backend_llvm_emit_asm_O3_debug
-        PROPERTIES LABELS "backend;backend.llvm;llvm;codegen;assembly;optimization;debug;O3")
+        PROPERTIES LABELS "backend;backend.llvm;codegen;assembly;optimization;debug;O3")
 
     add_test(
         NAME backend_llvm_array_zero_initializer
@@ -2964,7 +2964,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
     )
     set_tests_properties(backend_llvm_array_zero_initializer
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;array;initializer;zero")
+        PROPERTIES LABELS "backend;backend.llvm;ir;array;initializer;zero")
 
 
     add_test(
@@ -2977,7 +2977,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_native_executable_test.cmake"
     )
     set_tests_properties(backend_llvm_grouped_var_decl
-        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;declaration;grouped")
+        PROPERTIES LABELS "backend;backend.llvm;ir;declaration;grouped")
 
     add_test(
         NAME backend_llvm_emit_asm_with_native_executable
@@ -2992,7 +2992,7 @@ if(COGLET_HAS_LLVM_BACKEND)
         -P "${CMAKE_SOURCE_DIR}/cmake/run_llvm_assembly_test.cmake"
     )
     set_tests_properties(backend_llvm_emit_asm_with_native_executable
-        PROPERTIES LABELS "backend;backend.llvm;llvm;codegen;assembly;object;linker;optimization;O2")
+        PROPERTIES LABELS "backend;backend.llvm;codegen;assembly;object;linker;optimization;O2")
 else()
     add_test(
         NAME backend_llvm_emit_asm_unavailable

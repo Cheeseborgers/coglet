@@ -2281,7 +2281,7 @@ attributes/macros. `cdecl` uses the ordinary C ABI (with an explicit attribute o
 x86-64 `sysv_abi` / `ms_abi` support. If a requested convention cannot be
 represented by the host C compiler/architecture, generated C fails explicitly
 instead of silently using another convention. Cross-target ABI selection remains
-a separate future milestone.
+a separate future feature.
 
 ### Volatile raw-pointer access
 

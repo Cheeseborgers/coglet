@@ -6,6 +6,29 @@ planned language/compiler direction, while this file records concrete rough
 edges, temporary API compromises, missing validation, and cleanup work that
 should not be forgotten.
 
+## Priority queue
+
+The sections below remain the detailed source of truth. For planning, the current
+order is:
+
+1. **P1 — target/toolchain correctness and native CI:** explicit cross-target
+   selection/toolchain policy, continuous Windows/AArch64 coverage, and target ABI
+   expansion where required.
+2. **P1 — memory/slice contracts:** bounds policy, zero-sized element behavior,
+   target-sized lengths/layout values, recoverable allocation, and clearly specified
+   invalidation behavior for non-owning views.
+3. **P2 — reachability/build scaling:** whole-program DCE, reachable-call runtime
+   requirements, package/build metadata, and eventual separate-compilation identity.
+4. **P2 — diagnostics/tooling:** secondary spans/recovery, machine-readable
+   diagnostics, richer debug lexical scope, and source-location plumbing.
+5. **P3 — API/language expansion:** broader generics/methods/operators, richer math
+   convenience APIs, additional containers/allocators, formatting/text features, and
+   other ergonomics that do not block correctness or portability.
+
+Items explicitly described as deliberate model choices (for example, no implicit
+borrow checker) are not bugs and should not be promoted solely because they differ
+from another systems language.
+
 ## Runtime and platform support
 
 - **Windows and AArch64 need continuous native CI.** The runtime/native-toolchain
@@ -103,9 +126,6 @@ should not be forgotten.
   convention are easy to make ambiguous. Add explicitly named Euler helpers only
   after choosing and documenting their order semantics.
 
-## Compiler/build hygiene
-
-
 ## Code generation and linking
 
 - **No whole-program reachability/DCE yet.** Importing a module can emit unused
@@ -150,7 +170,7 @@ should not be forgotten.
 - **Allocation failure is infallible at the Coglet API.** `std.mem.alloc`/`resize` currently abort on allocation failure. A later `try_alloc`/result-style API should be added for tools or game subsystems that need recoverable OOM behavior.
 - **Allocator lifetime is not tracked.** `Allocator` values are copyable handles. A handle returned by `Arena.allocator()` becomes invalid after `Arena.deinit()`, and allocations/views from an arena may become stale after `reset()`. The compiler intentionally performs no borrow/lifetime checking.
 - **The allocator set is still intentionally small.** Heap, growable `Arena`, caller-buffer `FixedArena`, scoped `Scratch`, fixed-capacity `Pool<T>`, and guard/poison/tracking `DebugAllocator` now exist. Virtual-memory reserve/commit arenas, size-class/slab allocators, and more specialized pools remain future work.
-- **Debug allocation reports do not yet capture source locations or stack traces.** The allocator ABI has no file/line/call-site metadata and Coglet has no general source-location intrinsic for ordinary stdlib calls. Reports use stable allocation IDs, size, alignment, and pointer values instead. Add source-location capture during the technical-debt/runtime-instrumentation pass rather than making `std.mem` compiler-special.
+- **Debug allocation reports do not yet capture source locations or stack traces.** The allocator ABI has no file/line/call-site metadata and Coglet has no general source-location intrinsic for ordinary stdlib calls. Reports use stable allocation IDs, size, alignment, and pointer values instead. A future general source-location facility can feed this metadata without making `std.mem` compiler-special.
 - **Debug allocation poisoning is diagnostic, not temporal memory safety.** Newly allocated bytes are filled with `0xCD` and bytes are filled with `0xDD` before returning storage to the parent allocator, but freed memory is not quarantined. A stale pointer may therefore be recycled immediately by the parent allocator; add an optional bounded quarantine later if use-after-free diagnostics justify the memory cost.
 - **Debug guards are byte canaries, not page guards.** Sixteen-byte front/back guards catch nearby under/overwrites when checked or freed, but large overruns may escape detection or corrupt unrelated storage. Guard-page allocation belongs with the future virtual-memory allocator/debug tooling.
 
@@ -171,8 +191,7 @@ should not be forgotten.
   those element types explicitly; cleanup should not invent a hidden stride.
 - **Layout query results and container lengths are fixed `u64`.** `size_of::<T>()`, `align_of::<T>()`, slice lengths, and `Array` length/capacity all match the initial 64-bit target focus rather than a general target-sized `usize`.
 - **`size_of::<T>()` / `align_of::<T>()` are not semantic constant expressions yet.** They lower to target-layout constants in CogIR/backends, but cannot currently be used where the frontend requires a compile-time constant.
-- **Default parameters are intentionally not supported in the current language.** An older parser-only implementation stored default expressions on parameter AST nodes, but ordinary and method calls never consumed omitted arguments. That dead path was removed during cleanup. Reintroduce defaults only after defining declaration-scope name resolution, interaction with exact overloads/generics, and call-site evaluation semantics; use explicit convenience functions/constructors meanwhile.
-- **Allocator portability is implemented but not yet continuously validated on every claimed host.** The runtime allocator is architecture-neutral C for Linux/Windows x86-64/AArch64, but this environment only executes Linux x86-64; native CI remains required for the rest of the matrix.
+- **Default parameters are intentionally not supported in the current language.** Reintroduce them only after defining declaration-scope name resolution, interaction with exact overloads/generics, and call-site evaluation semantics; use explicit convenience functions/constructors meanwhile.
 
 ## Generics and aggregate types
 
@@ -233,5 +252,5 @@ should not be forgotten.
 - Every claimed platform should eventually have a CI job that builds the
   compiler, runs the complete suite, and executes at least `std.io` and
   runtime-backed `std.math` through both available backends.
-- Add new concrete shortcomings here when a milestone exposes them, even when a
+- Add new concrete shortcomings here when implementation work exposes them, even when a
   local workaround is sufficient for the current patch.

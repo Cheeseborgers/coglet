@@ -11,7 +11,7 @@ LLVMTypeRef llvm_lower_function_signature(LlvmBackend *backend, CogIrTypeId id)
         return NULL;
     }
     if (type->as.function.abi != COG_IR_ABI_COGLET || type->as.function.is_variadic) {
-        llvm_backend_error(backend, "Stage 4 supports callable signatures only for non-variadic Coglet ABI functions");
+        llvm_backend_error(backend, "LLVM callable signatures require non-variadic Coglet ABI functions");
         return NULL;
     }
 

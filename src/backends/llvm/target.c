@@ -32,7 +32,7 @@ int llvm_backend_init_native_target(LlvmBackend *backend)
 
     TargetInfo host_target = target_info_host();
     if (!target_info_equal(&backend->ir->target, &host_target)) {
-        llvm_backend_error(backend, "Stage 3 LLVM emission currently supports only the compiler host target");
+        llvm_backend_error(backend, "LLVM emission currently supports only the compiler host target");
         return 0;
     }
 

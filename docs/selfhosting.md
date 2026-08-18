@@ -1,72 +1,62 @@
 # Self-Hosting Requirements
 
-Self-hosting remains a long-term objective rather than the current milestone.
+Self-hosting remains a long-term validation objective rather than a near-term
+language milestone. The compiler architecture is already suitable for it: semantic
+analysis lowers into frozen CogIR, and both host-C and LLVM consume that IR without
+retaining frontend objects.
 
-Coglet now has a compiler-owned typed CFG IR (CogIR) and a host-C bootstrap backend that executes the current tested CogIR surface, including structured control flow, storage, aggregates, checked/wrapping arithmetic, pointers/casts, strings, and C interoperability. The host-C path is an execution bootstrap, not a commitment to C as the permanent backend architecture.
+## Capabilities already present
 
-## Frontend Features Already Present
+The language/frontend already provides the core facilities a compiler implementation
+would expect:
 
-The semantic frontend now provides:
+- structs, enums, fixed arrays, slices, raw pointers, function values, and explicit C
+  interoperability;
+- exact overloads, restricted generic functions/structs, methods, and restricted
+  user-defined arithmetic operators;
+- structured control flow, `defer`, definite assignment, unified reachability, and
+  move-only resource flow for direct local/parameter owners;
+- compile-time constants, checked/wrapping numeric semantics, casts, target-layout
+  queries, and deterministic semantic metadata;
+- multi-file named modules/imports with private-by-default visibility and source
+  discovery through importer-relative paths, `-I`, and the configured `std.*` root;
+- a frozen compiler-owned IR with verifier coverage and source provenance;
+- host-C execution plus optional LLVM native object/assembly/link, optimization, and
+  debug-information paths;
+- standard-library I/O, math, heap allocation, arenas/scratch/fixed arenas, debug
+  allocation, growable arrays, and fixed-capacity pools.
 
-* structs
-* closed enums
-* fixed-size arrays
-* raw pointer types
-* function calls
-* nested functions (without closure capture)
-* `if`, `while`, `for`, `switch`, `break`, `continue`, and `return`
-* integer, floating-point, boolean, pointer, and enum type checking
-* explicit casts with compile-time validation
-* compile-time constants and exact integer evaluation
-* fixed byte-array string literals
-* lexical scopes and nominal symbol resolution
-* local and parameter definite-assignment analysis
-* unified reachability analysis
-* value-based switch exhaustiveness
-* unreachable-statement diagnostics
-* semantic expression-information verification
+## Practical blockers
 
-These analyses provide the semantic foundation required before lowering and backend implementation.
+The remaining blockers are mostly library, package, target, and tooling work rather
+than another fundamental semantic-analysis subsystem:
 
-## Still Required for Practical Self-Hosting
+- file I/O, path/filesystem APIs, clocks/time, and other platform services needed by
+  a compiler driver;
+- package manifests and a stable compilation-unit/library/dependency model beyond
+  source import discovery;
+- explicit target/cross-toolchain selection, SDK/sysroot/linker policy, and native CI
+  across the claimed host matrix;
+- stronger diagnostics for large projects, including secondary spans/recovery and a
+  machine-readable interface;
+- a stable installed standard-library/runtime ABI/versioning boundary;
+- whole-program reachability/DCE and eventually compilation caching/separate
+  compilation if compiler scale justifies them;
+- additional containers/text utilities as demanded by an actual Coglet compiler
+  port, rather than speculative language features.
 
-The remaining work is primarily backend and language evolution rather than fundamental semantic analysis.
+## Deferred language questions
 
-Likely requirements include:
+These may become useful during a self-hosting attempt but are not prerequisites by
+definition:
 
-* production target/cross-toolchain policy beyond the current native LLVM object/link path, plus future non-LLVM native backends where justified
-* explicit target ABI lowering for interoperability surfaces that C currently classifies for the compiler
-* basic runtime calls and file I/O
-* arena or general allocation facilities available to Coglet programs
-* package manifests, a broader standard library beyond the initial `std.math`, and a stable compilation-unit/library model
-* a stable runtime / standard-library boundary
-* stable diagnostics for large projects
-* profile-guided/LTO policy if self-hosting workloads later justify it
+- closure environments/captures for nested runtime functions;
+- first-class owned strings/text and an encoding policy;
+- richer generic constraints or generic methods;
+- resource field moves/resource globals/ownership-aware containers;
+- interfaces/traits or broader operator hooks;
+- stronger compile-time execution/reflection.
 
-## Future Language Work
-
-These features remain intentionally deferred until real use cases justify them:
-
-* closure environments and variable capture
-* first-class owned strings
-* slices and views
-* generics
-* a package manager
-* interfaces or traits
-* operator overloading
-* advanced compile-time execution
-
-## Current Frontend Status
-
-The frontend now performs:
-
-* parsing
-* symbol resolution
-* nominal type checking
-* compile-time constant evaluation
-* semantic expression side-table generation
-* definite-assignment analysis
-* unified reachability analysis
-* switch exhaustiveness analysis
-
-At this stage, the remaining path toward self-hosting is primarily runtime/library, toolchain, and compilation-unit engineering rather than another major semantic-analysis subsystem. The host-C backend and LLVM Stage 9 optimized/debuggable native path both consume frozen CogIR; named-module visibility is private-by-default with explicit exports and hierarchical imports now support deterministic dotted-path sibling/`-I` discovery plus a configured fallback root for `std.*`; the first pure-Coglet `std.math` module now exercises that installed discovery path; major remaining gaps include package manifests, broader standard-library modules, allocation and I/O facilities, a stable standard-library/runtime boundary, and production-grade target/cross-toolchain policy.
+A self-hosting effort should first implement a representative compiler subsystem in
+Coglet and use the resulting friction to prioritize these items. It should not add
+features merely to mirror the implementation language of the bootstrap compiler.

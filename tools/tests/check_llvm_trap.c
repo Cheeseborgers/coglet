@@ -8,7 +8,7 @@
 
 static int fail(const char *message)
 {
-    fprintf(stderr, "llvm-stage4-trap: %s\n", message);
+    fprintf(stderr, "llvm-trap: %s\n", message);
     return 1;
 }
 

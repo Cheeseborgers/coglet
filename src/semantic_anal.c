@@ -462,10 +462,8 @@ static void sem_record_expr_info(
             break;
 
         case VALUE_CATEGORY_LVALUE:
-            /*
-             * Existing behaviour remains unchanged during Stage 4A.
-             * Readonly lvalues will be recorded explicitly in Stage 4B.
-             */
+            /* Callers that know a narrower access mode overwrite this default
+             * through sem_record_lvalue_info_qualified(). */
             info->value_access =
                 VALUE_ACCESS_WRITABLE;
             break;

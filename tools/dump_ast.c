@@ -1,6 +1,5 @@
-// Reads a file, runs it through lexer+parser ONLY, prints the AST.
-// Stage 2 test harness: lets us verify parsing is correct in
-// isolation, same idea as dump_tokens.c for the le
+// Reads a file through lexer+parser only and prints the AST.
+// Used by parser snapshot and diagnostic tests.
 #include <stdio.h>
 #include <stdlib.h>
 

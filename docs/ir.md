@@ -236,7 +236,7 @@ The existing `SourceFileId` values may be preserved during this copy so
 `SourceSpan` itself can remain unchanged.
 
 This permits IR lowering/verifier/backend diagnostics after `CompileResult` has
-been destroyed. LLVM Stage 9 consumes this frozen provenance directly for source
+been destroyed. The LLVM backend consumes this frozen provenance directly for source
 debug information; the backend does not recover source files or locations from
 frontend state.
 
@@ -971,14 +971,14 @@ Do not block the first IR implementation on:
 CogIR v1 is successful when the complete currently-supported frontend can lower
 to a verified module and execution backends consume that module without consulting
 AST or semantic objects. The host-C bootstrap backend now satisfies that boundary;
-LLVM/native lowering builds on the same contract. LLVM Stage 8 performs
-general-purpose optimization only after CogIR has been fully lowered, frozen, and
-translated to verifier-checked LLVM IR; optimization level is compiler/backend
+LLVM/native lowering builds on the same contract. LLVM optimization runs
+only after CogIR has been fully lowered, frozen, and translated to verifier-checked
+LLVM IR; optimization level is compiler/backend
 policy and is not stored in CogIR.
 
 ## Implementation status
 
-The first CogIR core milestone now provides:
+CogIR currently provides:
 
 - `include/cog_ir.h` with stable IDs and module/type/ABI/constant/global/function/CFG structures;
 - an IR-owned arena-backed builder in `src/cog_ir.c`;
@@ -1104,9 +1104,9 @@ left-to-right evaluation and spills an earlier operand when a later wrapping
 argument can introduce CFG. Compile-time wrapping calls still use semantic
 constant metadata and therefore materialize as typed CogIR constants.
 
-All 110 `semantic/valid` fixture programs now lower successfully through `dump_ir`.
-A registered integration test recursively runs the entire fixture directory so
-future frontend-valid additions must also cross the CogIR boundary. Native-C
+The registered `semantic/valid` fixture tree lowers successfully through
+`dump_ir`. The integration test recursively runs the directory so future
+frontend-valid additions must also cross the CogIR boundary. Native-C
 variadic tails are now legalized in CogIR with explicit `c.vararg.promote`
 instructions, and the verifier rejects unpromoted tails.
 
@@ -1155,128 +1155,27 @@ interop, and string backing data all use this common representation. Volatile ar
 copies are emitted element-by-element instead of using `memcpy`, preserving the
 volatile access contract.
 
-## Implementation sequence
+## Current implementation boundaries
 
-1. ~~Add `include/cog_ir.h` with IDs, module/type/constant/function/CFG structures.~~
-2. ~~Add an arena-backed builder in `src/cog_ir.c`.~~
-3. ~~Add deterministic `cog_ir_dump()` and the `dump_ir` source-program tool.~~
-4. ~~Add `cog_ir_verify()` and verifier unit tests.~~
-5. ~~Add semantic-to-IR type/declaration/source/constant maps.~~
-   Metadata preparation now owns source provenance, nominal/function
-   predeclaration, ABI/type mapping, constants, and zeroed global storage.
-6. ~~Lower constants, globals/module init, slots, returns, basic arithmetic, and
-   simple calls first.~~ Comparisons join the control-flow slice next.
-7. ~~Add branches/loops/switches and short-circuit Boolean CFG lowering.~~
-   Structured CFG lowering now includes comparisons, block-parameter short
-   circuiting, loop targets, exhaustive switch handling, and CFG-safe value spills.
-8. ~~Add pointers, arrays, structs, volatile memory, casts, and string/data lowering.~~
-   Places now cover identifiers, fields, indexes, and dereferences; aggregate values,
-   address-of, casts/reinterpretation, volatile accesses, and string/character values
-   are lowered and verifier-checked.
-9. ~~Make successful lowering independent: destroy `CompileResult` before invoking
-   IR-only test consumers.~~ `dump_ir` verifies and dumps after frontend destruction.
-10. ~~Lower explicit wrapping builtins to dedicated wrapping operations.~~ Runtime
-    wrapping calls now emit `iadd.wrap`, `isub.wrap`, `imul.wrap`, or `ineg.wrap`,
-    while constant calls retain the existing constant-materialization path.
-11. ~~Audit and legalize ABI-specific calls, including C variadic default promotions.~~
-    C variadic tails now carry explicit non-trapping promotion operations and
-    verifier enforcement.
-12. ~~Resolve executable entry semantics without leaking the host C ABI.~~ A
-    source-top-level entry is `main::() -> s32`; semantic analysis validates the
-    source spelling before alias canonicalization, CogIR records the resolved
-    entry identity, and the verifier enforces a backend-neutral `() -> s32`
-    invariant without retaining source C-scalar spelling.
-13. ~~Port the host-C backend to `const CogIrModule *` and restore all backend tests
-    through AST -> semantic -> CogIR -> C.~~ The public backend API is IR-only,
-    frontend lifetime ends before backend invocation, and the existing
-    executable/interop suite runs through CogIR.
-14. ~~Expand the host-C backend through the core structured-CFG execution slice.~~
-    Wrapping and checked integer arithmetic, integer predicates, scalar globals and
-    ordered module initialization now execute through reachable block labels/gotos
-    with parallel block-parameter transfer, branches, switches, traps, and
-    unreachable terminators. Non-trapping bitwise operations, checked-count shifts,
-    floating arithmetic/comparisons/negation, and pointer equality/inequality now
-    execute through the same emitter.
-15. ~~Expand the host-C backend through the core data/address and cast execution
-    slice.~~ Represented field and array-field places, typed-pointer indexing,
-    volatile scalar memory operations, checked numeric conversions, integer
-    truncation, and typed/opaque raw-pointer reinterpretation now execute directly
-    from CogIR.
-16. ~~Lower first-class native-C function values and indirect calls through the
-    host-C backend.~~ Exact callback ABI metadata now survives parameters, locals,
-    CFG spills/reloads, and callback-valued C call results; fixed and variadic
-    `cfn` calls execute from CogIR without recovering frontend type spelling.
-17. ~~Lower aggregate values and globals through the host-C backend.~~ Array values
-    use assignable wrapper structs while array storage remains native C arrays;
-    construction/extraction, copies, aggregate arguments/returns, ordered aggregate
-    global initialization, represented aggregate interop, and string backing data
-    now execute from CogIR.
-18. ~~Complete the host-C parity/cleanup audit.~~ Every current `CogIrOp` has an
-    explicit emitter path, the public backend remains IR-only after frontend
-    destruction, and executable entry selection is now an explicit
-    `module.entry_function` identity rather than a debug-name scan. A nested
-    function named `main` cannot become the process entry accidentally, and the
-    verifier enforces the backend-neutral `() -> s32` entry invariant. The host-C
-    wrapper alone adapts that result to C `int`. The CogIR-only host-C bootstrap
-    path is complete for the current executable/interop contract.
-19. ~~Establish the first LLVM backend vertical slice.~~ The optional LLVM backend
-    consumes only frozen CogIR, constructs verifier-checked LLVM IR for the
-    initial native scalar/CFG/storage subset, honors ordered module initialization,
-    and adapts the resolved Coglet `() -> s32` entry through an LLVM `main` wrapper.
-    Unsupported CogIR operations fail explicitly so later milestones can add their
-    semantics without approximation.
-20. ~~Lower Coglet integer semantics through LLVM.~~ Checked and wrapping integer
-    arithmetic, division/remainder traps, checked-count shifts, bitwise operations,
-    integer-backed enums, and checked/truncating conversions use explicit LLVM
-    operations and trap control flow rather than undefined/poison approximations.
-21. ~~Establish target-aware native memory and aggregate lowering.~~ The LLVM backend
-    creates its native target machine, stamps the module with the target triple and
-    `DataLayout`, and lowers ordinary Coglet loads/stores, addresses, pointer
-    equality/qualification/reinterpretation, arrays, nominal structs, aggregate
-    construction/extraction, copies, arguments, returns, and globals. The LLVM
-    target objects remain backend-owned. `#repr(c)` aggregates and unions remain
-    deferred to explicit C ABI/layout lowering rather than leaking backend layout
-    facts into CogIR.
-22. ~~Complete the remaining native LLVM execution semantics.~~ Floating-point
-    arithmetic/comparisons and checked float/integer conversions now preserve
-    Coglet's NaN/range rules; `switch` and explicit `trap` terminators lower
-    directly; and ordinary Coglet function values are first-class opaque pointer
-    values whose callable signatures are derived separately from frozen CogIR at
-    declarations and calls. Per-switch-edge trampoline blocks retain CogIR block
-    arguments. represented C aggregate layout/classification
-    remains a separate target-ABI milestone.
-23. ~~Lower the scalar/pointer/function C ABI through LLVM.~~ Exact CogIR C ABI
-    spelling now drives external declarations, callbacks and returned function
-    pointers, explicit calling conventions, x86-64 SysV small-integer extension
-    attributes, C variadic function types, and `c.vararg.promote`. The backend
-    links and executes against independently compiled C probes without consulting
-    frontend objects. Typed pointers that would expose C `_Bool` object storage
-    and by-value `#repr(c)` aggregates remain explicitly rejected until their
-    target storage/classification rules are implemented.
-24. ~~Lower represented C object layout and aggregate ABIs through LLVM.~~
-    CogIR-owned field/object ABI metadata now drives C `_Bool` storage, nested
-    represented structs/unions/arrays, packed/explicit alignment, and x86-64
-    SysV/Win64 aggregate argument/return classification. One ABI plan drives
-    declarations, calls, callbacks, hidden `sret`, `byval`, and register coercions.
-    Ordinary Coglet `bool*` remains distinct from addressable `c_bool*` storage.
-    Non-x86-64 aggregate classification remains deferred until cross-target work.
-25. ~~Add LLVM native object generation and executable linking.~~ The LLVM backend
-    now reuses its verified module and backend-owned native `TargetMachine` for
-    object emission. Objects specifically destined for executable linking use
-    LLVM PIC relocation so default-PIE host linker drivers can consume them;
-    standalone object emission retains LLVM's default relocation policy. Final
-    executable linking is a separate toolchain boundary that consumes the object
-    plus explicit link inputs; CogIR gains no linker, relocation, object-format,
-    or frontend-lifetime dependency. Textual LLVM IR emission remains available
-    independently.
-26. ~~Add LLVM optimization levels without turning CogIR into a general-purpose
-    optimizer.~~ Compiler-wide `-O0` through `-O3` intent stays outside CogIR; the
-    LLVM backend maps it to LLVM's default new-pass-manager pipelines and matching
-    target code-generation levels, verifies transformed modules again, and leaves
-    CogIR optimization limited to future semantic/backend-neutral needs.
-27. ~~Add LLVM source-level debug information from frozen CogIR.~~ `-g` now derives
-    files, source locations, functions, globals, parameters, locals, and supported
-    type descriptions from CogIR-owned provenance after frontend destruction. Slot
-    provenance explicitly separates source locals/parameters from compiler temps,
-    while exact C object spellings may be read from existing `CogIrAbiType` metadata
-    and LLVM DI objects/version-specific debug-record APIs stay backend-owned.
+CogIR is the sole successful frontend/backend boundary. The current implementation:
+
+- owns runtime/ABI type metadata, exact constants, globals, functions, CFG, storage,
+  source provenance, executable-entry identity, and frozen runtime-component
+  requirements;
+- verifies structural/type/CFG/ABI invariants before and after freeze;
+- lowers all currently supported frontend expressions/statements, including
+  structured control flow, move-aware resource semantics already resolved by the
+  frontend, places/addressing, aggregates, casts, wrapping operations, C variadic
+  promotions, callbacks, and represented-C metadata;
+- permits frontend state to be destroyed before either execution backend runs;
+- is consumed directly by the complete host-C emitter and the optional LLVM backend.
+
+CogIR intentionally does **not** own LLVM-specific types/instructions, register or
+instruction-selection policy, object/linker formats, general-purpose optimization,
+module-discovery ordering, runtime reflection, or language checks that belong in the
+frontend. Backend-specific target layouts and ABI classifiers are derived from frozen
+CogIR metadata plus the selected backend target rather than written back into the IR.
+
+Future CogIR changes should therefore be driven by a concrete missing
+backend-neutral semantic fact. New execution features should not preserve frontend
+objects past freeze or encode one backend's machine representation into the core IR.

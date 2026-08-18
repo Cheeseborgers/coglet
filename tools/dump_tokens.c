@@ -1,6 +1,5 @@
-// Reads a file, runs ONLY the lexer, prints every token.
-// This is the Stage 1 test harness described in the roadmap:
-// it lets us verify lexing is correct before the parser exists.
+// Reads a file, runs only the lexer, and prints every token.
+// Used by lexer snapshot and diagnostic tests.
 #include <stdio.h>
 #include <stdlib.h>
 #include "../include/lexer.h"

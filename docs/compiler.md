@@ -411,147 +411,76 @@ details also remain deferred.
 ## Target Description
 
 
-### LLVM backend Stage 9
+### LLVM backend
 
 The LLVM backend lives under `src/backends/llvm/` with its public API under
-`include/backends/llvm/`. It accepts only frozen `CogIrModule` input, constructs
-LLVM IR through the LLVM C API, and runs `LLVMVerifyModule`. Textual IR remains
-available for diagnostics/tests. Stage 7 also reuses that verified module and its
-backend-owned native `TargetMachine` to emit an object file, then hands only the
-object and explicit link inputs to a separate linker/toolchain layer. Stage 6
-retains the native execution foundation from Stages 1-4 and the Stage 5
-scalar/pointer/function C ABI surface, then adds target-aware C object
-storage and represented aggregate classification. Native C scalar aliases, raw
-pointers, incomplete handles, callbacks, variadics/default promotions, external
-symbols, and explicit calling conventions continue to derive only from frozen
-CogIR metadata. Complete `#repr(c)` structs/unions now use backend-owned physical
-storage types and, on x86-64, are classified for SysV or Win64 calls as direct
-register components or indirect `byval`/hidden-`sret` values as required.
+`include/backends/llvm/`. It accepts only a frozen `CogIrModule`, constructs LLVM IR
+through the LLVM C API, and verifies the module before emission. Textual LLVM IR,
+native assembly, native objects, and linked executables all originate from this same
+backend-owned module state. No AST or semantic object is retained or consulted after
+CogIR lowering.
 
-Before lowering types, the backend initializes LLVM's native target, creates a
-target machine, and stamps the module with the resulting target triple and
-`DataLayout`. These LLVM-specific objects remain backend-owned; they are not
-added to CogIR or frontend `TargetInfo`. The LLVM backend remains host-target-only
-until Coglet has explicit target selection and cross-toolchain policy.
+Before lowering runtime types, the backend initializes LLVM's native target, creates
+a `TargetMachine`, and stamps the LLVM module with the resulting target triple and
+`DataLayout`. These are LLVM implementation details rather than frontend target
+facts. The backend remains host-target-only until Coglet has explicit target
+selection and cross-toolchain policy.
 
-Runtime integer failure paths branch to `llvm.trap`; checked overflow uses LLVM's
-`*.with.overflow` intrinsics rather than relying on poison-producing flags or
-host-language behavior. Floating operations are emitted without fast-math flags.
-Comparisons use predicates that preserve Coglet's specified NaN behavior, and
-checked floating/integer conversions guard non-finite and range failures before
-the LLVM conversion instruction executes. Backend-created trap/continuation
-blocks preserve CogIR block-parameter semantics by recording the actual current
-LLVM predecessor when adding PHI inputs.
+Checked integer operations use overflow intrinsics and explicit trap control flow;
+division, remainder, shift-count, and checked-conversion failures likewise preserve
+Coglet's defined runtime semantics instead of relying on LLVM poison/undefined
+behavior. Floating operations are emitted without fast-math flags, comparisons
+preserve the specified NaN behavior, and checked float/integer conversions guard
+non-finite and range failures before conversion instructions execute. CogIR
+`switch`, `trap`, block arguments, and backend-created continuation blocks are
+lowered with explicit CFG/PHI predecessor tracking.
 
-Native Coglet function *values* lower as ordinary LLVM opaque pointer values.
-Their callable signature is derived separately from the frozen CogIR function
-type when a function is declared or called. This distinction permits native
-function values to pass through locals, parameters, results, and CFG storage
-without treating an LLVM function type itself as a first-class data value. C function values use the same opaque pointer value representation, but their
-callable signatures and call-site attributes are derived from CogIR's exact C ABI
-type metadata rather than from the ordinary runtime type alone.
+Native Coglet and native-C function values are ordinary LLVM opaque pointer runtime
+values. Their callable signatures are derived separately from frozen CogIR function
+metadata when declarations or calls are emitted. C callbacks additionally consume
+exact frozen ABI spelling and call-site attributes, including variadic promotions
+and explicit calling conventions.
 
-CogIR `switch` terminators lower to LLVM switch control flow. Per-edge trampoline
-blocks preserve edge-specific CogIR block arguments even when more than one case
-targets the same destination block. CogIR `trap` terminators lower explicitly to
-`llvm.trap` followed by `unreachable`.
+LLVM runtime values are distinct from represented C object storage. For example,
+scalar C `_Bool` call values use logical `i1`, while addressable `c_bool` objects use
+the target C `_Bool` storage width with load/store conversion. Exact object spelling
+is therefore frozen on CogIR storage/address metadata wherever canonical semantic
+identity alone would lose ABI-relevant representation. Ordinary Coglet `bool*` is
+not silently interchangeable with `c_bool*`.
 
-Stage 6 distinguishes LLVM runtime values from C object storage. In particular,
-scalar C `_Bool` call values remain logical `i1`, while addressable `c_bool`
-objects use the target C `_Bool` storage width and are converted on load/store.
-The same conversion is recursive through represented C array/struct fields.
-Exact object spelling is frozen on CogIR slots/globals/addresses where canonical
-semantic identity would otherwise lose this distinction. Passing an ordinary
-Coglet `bool*` as `c_bool*` is rejected rather than silently reinterpreting an
-`i1` object as C storage.
+Complete `#repr(c)` structs/unions use backend-owned physical storage types. On
+x86-64, one ABI plan classifies SysV and Win64 aggregate parameters/results,
+including direct register coercions, `byval`, hidden `sret`, packed objects, explicit
+alignment, nested represented aggregates/arrays, and callbacks. Non-x86-64
+represented aggregate classification and volatile whole-aggregate accesses remain
+explicitly unsupported.
 
-Represented aggregate classification is currently implemented for x86-64 SysV
-and Win64. SysV values are classified into INTEGER/SSE eightbytes or MEMORY;
-Win64 uses its size-based direct/indirect aggregate rules. Packed or misaligned
-SysV objects fall back to MEMORY, and explicit aggregate alignment is reflected
-in LLVM storage plus `sret`/`byval` alignment attributes. This is a backend ABI
-plan, not an ordinary LLVM-struct shortcut: the same plan drives declarations,
-call sites, C callback definitions, parameter reconstruction, and returns.
-Stage 8 adds compiler-wide optimization intent without adding optimization state
-to CogIR. The driver accepts `-O0` through `-O3` and passes the selected
-`CogOptimizationLevel` to the LLVM backend. `-O0` is the default and skips the
-LLVM middle-end optimization pipeline, preserving the Stage 1-7 textual IR path.
-`-O1`, `-O2`, and `-O3` run `default<O1>`, `default<O2>`, or `default<O3>` through
-LLVM's new-pass-manager C API with the backend-owned `TargetMachine`. The target
-machine itself maps those levels to LLVM code-generation levels
-`None`/`Less`/`Default`/`Aggressive`. The module is verified before optimization
-and again after an optimization pipeline succeeds. General-purpose optimization
-is therefore delegated to LLVM rather than duplicated in CogIR; CogIR v1 remains
-focused on semantics and backend-neutral lowering invariants.
+Optimization policy stays outside CogIR. The driver accepts `-O0` through `-O3`;
+`-O0` skips the LLVM middle-end pipeline, while `-O1`/`-O2`/`-O3` run LLVM's default
+new-pass-manager pipeline with the backend-owned target machine. The transformed
+module is verified again before output. Nonzero optimization levels are currently
+LLVM-only; host-C executable requests reject them rather than silently ignoring the
+request.
 
-Nonzero optimization levels currently apply only to LLVM outputs. A host-C
-executable request combined with `-O1`, `-O2`, or `-O3` is rejected explicitly
-rather than silently producing an unoptimized host-C binary. Textual `--emit-c`
-remains a backend/debugging output and is not transformed by LLVM optimization.
+`-g` builds source-level debug metadata only from frozen CogIR provenance. Source
+files/spans, functions, globals, parameters, locals, type descriptions, and exact C
+ABI spellings are backend inputs; `CogIrSlotKind` separates source-visible storage
+from compiler temporaries. CogIR does not yet carry a lexical-scope tree, so local
+debug scope is currently function-level even though declaration source locations are
+preserved. Optimized debugging inherits LLVM's ordinary variable folding/elision
+behavior.
 
-Stage 9 adds LLVM source-level debug information without retaining frontend
-objects past lowering. `-g` creates a backend-owned `DIBuilder` after the frozen
-CogIR module has been handed to the LLVM backend. Files, line/column locations,
-function/global names, source locals and parameters, and debug type descriptions
-are derived only from CogIR-owned source provenance and type/declaration metadata.
-When a source object has exact C ABI spelling, the debug type also consumes the
-frozen `CogIrAbiType` so `c_int` is not collapsed to `s32` and addressable
-`c_bool` uses the target C `_Bool` object width. `CogIrSlotKind` explicitly distinguishes source locals, source parameters, and
-compiler temporaries; the LLVM backend therefore never decides debugger visibility
-from names such as `.cfg.tmp`. Parameter slots additionally retain their exact
-parameter index so argument debug records remain stable after frontend destruction.
+`coglet input.cog --emit-asm output.s` emits target assembly directly through
+`LLVMTargetMachineEmitToFile`. `coglet input.cog -o program --backend llvm` emits a
+native object and hands that object plus explicit link inputs to the separate linker
+layer. Executable-link objects use PIC relocation so host compiler drivers that
+default to PIE can link them correctly. The linker boundary supplies platform startup
+objects/default libraries and `-L`/`-l` inputs; object-format/linker policy is not
+stored in CogIR.
 
-The debug builder is finalized before the first LLVM verification step. With
-`-O1` through `-O3`, the ordinary Stage 8 optimization pipeline then consumes and
-updates that metadata along with the optimized IR, followed by the existing
-post-optimization verifier. LLVM 19 and later use the C API's debug-record declare
-form, while LLVM 17-18 use the legacy debug-intrinsic insertion API; this
-compatibility distinction is confined to the LLVM backend. The synthetic process
-entry adapter intentionally has no Coglet source subprogram/location attached.
-
-CogIR currently does not retain a source lexical-scope tree for locals. Stage 9
-therefore gives source parameters and locals function-level debug scope while
-preserving each declaration's actual source location; it does not fabricate
-narrower lexical visibility. A later lexical-debugging improvement should add an
-explicit backend-neutral CogIR scope representation if needed. Optimized debugging
-likewise inherits LLVM's normal behavior: optimization may fold, move, or eliminate
-source variables and instructions. Host-C executable requests reject `-g` rather
-than silently claiming equivalent debug-information support.
-
-LLVM target assembly is also available through
-`coglet input.cog --emit-asm output.s`. This is a backend/tooling output, not a
-CogIR feature: after the same lowering, debug construction, verification, and
-optional optimization path, the backend calls `LLVMTargetMachineEmitToFile` with
-`LLVMAssemblyFile`. The existing native asm-printer initialization is shared with
-object generation, and no external assembler or shell command is involved.
-Assembly output uses the PIC relocation model so an `-O0` program with mutable
-globals does not recreate the default-PIE relocation mismatch fixed in the
-native executable path. `-O0` through `-O3` and `-g` apply normally, and
-`--emit-asm` may be combined with `--backend llvm -o` when both an executable and
-a retained assembly file are desired. The standalone object API continues to use
-LLVM's default relocation model.
-
-Volatile whole-aggregate accesses and non-x86-64 represented aggregate
-classification remain explicitly deferred.
-
-For executable output, `coglet input.cog -o program --backend llvm` performs
-CogIR -> verified LLVM IR -> native object -> platform link. Object generation
-uses LLVM target APIs and does not invoke an external compiler. Objects destined
-for the executable-link path use LLVM's PIC relocation model so they remain valid
-when the host compiler driver defaults to PIE; this policy is selected by the LLVM
-backend/toolchain boundary rather than encoded in CogIR or approximated with a
-platform-specific `-no-pie` linker flag. The standalone object-emission API keeps
-LLVM's default relocation policy. `linker.c` is a separate backend toolchain
-boundary: on the currently supported Unix-like host path it invokes `cc` directly
-with `execvp()` (never a shell) only to supply the platform startup objects/default
-runtime libraries and resolve explicit `-L`/`-l` inputs. No linker policy or
-platform-specific object-format detail is stored in CogIR. The host-C backend
-remains the default executable backend.
-
-`COGLET_LLVM=AUTO` enables the backend when `LLVMConfig.cmake` is available;
-`ON` requires LLVM 17 or newer and `OFF` disables it. The CMake integration
-supports both monolithic LLVM shared-library packages and component-library
-installations.
+`COGLET_LLVM=AUTO` enables LLVM when `LLVMConfig.cmake` is available; `ON` requires
+LLVM 17 or newer and `OFF` disables it. CMake supports both monolithic LLVM shared
+library packages and component-library installations.
 
 `TargetInfo` is the backend-neutral target contract needed by the frontend. Its
 fields are expressed in bits and currently cover:

@@ -28,7 +28,7 @@ typedef enum BuiltinKind {
 typedef enum {
     SYMBOL_VARIABLE,  // variables
     SYMBOL_FUNCTION,  // functions
-    SYMBOL_TYPE,       // struct names, typedefs later // TODO: make separations for typedefs
+    SYMBOL_TYPE,      // nominal types and generic type parameters
     SYMBOL_CONSTANT,
 
 

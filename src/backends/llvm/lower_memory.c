@@ -416,7 +416,7 @@ int llvm_lower_memory_instruction(
         }
 
         default:
-            llvm_backend_error(backend, "invalid memory operation passed to LLVM Stage 3 memory lowering");
+            llvm_backend_error(backend, "invalid memory operation passed to LLVM memory lowering");
             return 0;
     }
 }

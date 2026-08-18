@@ -1065,68 +1065,38 @@ Higher-level facilities may be added later, but they should not obscure ownershi
 
 ## Current Status
 
-The parser and semantic analyzer support a substantial core language. The
-semantic-information verifier walks successful programs in source order and
-checks table completeness, duplicate/orphan entries, value categories, storage
-access, symbol associations, and concrete variable/parameter types. An
-optional diagnostic flag prints the semantic table deterministically.
+Coglet has a multi-file frontend with lexer/parser, semantic analysis, explicit
+target facts, deterministic semantic metadata, and a verifier that checks the
+frontend-to-IR contract. The semantic layer owns type identity, exact overload and
+generic specialization decisions, definite-assignment/resource flow, module/import
+visibility, C ABI declarations, and source diagnostics.
 
-Recently completed work includes:
+Successful programs lower into compiler-owned CogIR. The module is verified and
+frozen before frontend state is destroyed, so execution backends consume only
+backend-neutral runtime types, CFG/storage operations, source provenance, and the
+exact ABI metadata needed at foreign boundaries. Runtime requirements are frozen on
+the CogIR module and select the split I/O, math, and memory runtime components.
 
-- canonical shared semantic types for built-in scalars;
-- dedicated `null` semantics with no integer-zero pointer conversion;
-- nominal declaration identity for structs and enums;
-- restricted equality and ordered-comparison operand categories;
-- checked known integer zero-divisor diagnostics;
-- integer-only bitwise and shift operators with defined fixed-width semantics;
-- build-mode-independent checked runtime scalar semantics;
-- explicit wrapping integer builtins;
-- explicit truncating integer conversion;
-- exact constant arithmetic and representability checks;
-- IEEE-754 constant behavior for `f32` and `f64`;
-- closed enum value sets and checked enum conversions;
-- definite-assignment and unified reachability analysis;
-- mutable and readonly raw-pointer access;
-- safe mutable-to-readonly pointer adaptation;
-- access-preserving dereference, indexing, fields, and address-of;
-- separate semantic facts for storage identity and write permission;
-- readonly-pointer compatibility and semantic-info verification;
-- rejection of unsupported nested-function captures;
-- native `#repr(c)` union ABI layout for FFI carrier values.
+The host-C backend is the bootstrap executable path and covers every current
+`CogIrOp`. The optional LLVM backend consumes the same frozen module, verifies LLVM
+IR, supports native object/assembly generation and linking, `-O0` through `-O3`, and
+source debug information with `-g`. Its represented C aggregate ABI classifier
+currently covers x86-64 SysV and Win64; non-x86-64 aggregate classification remains
+future cross-target work.
 
-The host-C backend is the bootstrap executable path for the current CogIR
-contract. It consumes only frozen CogIR, covers every current `CogIrOp`, and is
-built as a separate backend library beneath the frontend/semantic/CogIR core.
-This keeps C implementation details out of the language boundary. An optional
-LLVM Stage 9 backend now consumes the same frozen module through its own backend
-library. It emits verifier-checked LLVM IR with an explicit native target triple
-and data layout, can emit native assembly or an object with LLVM target APIs, and
-can link the object into an executable through a separate host linker-driver
-boundary. Assembly emission is a direct TargetMachine output and can be retained
-alongside an executable build. It can also run LLVM's target-aware default
-`O1`/`O2`/`O3` optimization pipelines after
-initial verification and verifies the transformed module again before output. With
-`-g`, it derives LLVM source-level debug metadata only from frozen CogIR-owned
-source files, spans, declaration/type metadata, exact C ABI spelling where storage
-representation matters, and explicit local-slot provenance; no frontend-lifetime
-object is retained for debugging. Its
-implemented lowering covers native scalar/CFG and integer semantics, ordinary Coglet
-memory and aggregates, floating-point operations and conversions, switch/trap
-terminators, indirect native Coglet function values/calls, and the C scalar,
-pointer, callback/function-pointer, variadic, represented-object, and aggregate
-ABI surface. On x86-64 it classifies complete `#repr(c)` structs/unions for SysV
-and Win64 calling conventions, including direct register coercions, `byval`,
-hidden `sret`, packed/explicit alignment, nested arrays/unions, and C `_Bool`
-object storage. Ordinary Coglet `bool*` is intentionally not interchangeable with
-`c_bool*`; exact C object spelling must be present when the storage layouts differ.
+The standard library currently includes I/O, scalar/transcendental math, typed heap
+allocation, growable/fixed/scratch arenas, debug allocation instrumentation,
+`Array<T>`, and generation-checked `Pool<T>`. Resource values are move-only with
+control-flow-aware ownership state, but Coglet intentionally does not infer borrows
+or lifetimes for raw pointers and slices.
 
 ## Roadmap
 
-Near-term compiler work is backend-focused:
-
-1. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
-2. Grow the runtime/standard-library layer beyond the existing math, I/O, heap-allocation, and growable-array foundation with file I/O, time, allocator/arena APIs, and stronger ownership semantics.
-3. Continue improving diagnostics, tests, and documentation.
+Near-term work is tracked in `docs/roadmap.md` and prioritized debt in
+`docs/known_shortcomings.md`. The main directions are explicit cross-target/toolchain
+selection and native CI, package/platform standard-library growth, unresolved slice
+and allocation contracts such as bounds/`usize`/zero-sized elements, whole-program
+reachability/DCE, and larger-program diagnostics/tooling.
 
 ## License
 

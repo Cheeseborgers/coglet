@@ -36,6 +36,11 @@ The test suite includes:
 * host-C backend compile/link/run integration tests and backend rejection tests.
 
 CTest labels allow related tests to be selected without depending on test-number ranges.
+The stable top-level labels are `lexer`, `parser`, `semantic`, `ir`, `driver`,
+`backend`, and `stdlib`; backend-specific selection uses `backend.c` or
+`backend.llvm`. Feature labels such as `module`, `resource`, `interop`, `debug`, or
+`optimization` refine those families. Historical implementation-stage labels are
+not part of the test interface.
 
 To list all registered tests:
 
@@ -281,62 +286,38 @@ enables it when CMake can find `LLVMConfig.cmake`; use `COGLET_LLVM=ON` to make
 missing LLVM 17+ development files a configuration error or `COGLET_LLVM=OFF` to
 disable the backend deliberately.
 
-The Stage 1-6 LLVM tests emit IR through the compiler, which means every success
-case has already passed LLVM's module verifier inside the backend. When `clang`
-is available, those compatibility/regression harnesses also compile the emitted IR
-and check executable status. Stage 7 adds direct native-executable tests that use
-`--backend llvm`: the compiler verifies LLVM IR, emits an object with the native
-`TargetMachine`, links it, and executes the result without routing the object path
-through textual `.ll` plus `clang`.
-Stage 1 coverage remains for scalar conditional CFG/direct calls, the resolved
-Coglet entry adapter, and ordered module initialization. Stage 2 adds checked and
-wrapping integer arithmetic, division/remainder traps, bitwise operations, checked
-shift counts, integer-backed enums, integer conversions, and Fibonacci loop
-execution. Stage 3 adds native target triple/data-layout emission, pointer
-comparison and reinterpretation, field/array/pointer addressing, ordinary struct
-and array values, aggregate copies/arguments/returns, aggregate globals, and
-negative coverage that keeps `#repr(c)` and volatile whole-aggregate behavior out
-of the subset until their ABI/access semantics are implemented explicitly. Stage
-4 adds floating arithmetic/comparisons and checked float/integer conversions,
-integer/boolean/enum switches, indirect native Coglet function values/calls, and
-direct CogIR coverage for the explicit trap terminator. Stage 5 links emitted
-LLVM IR against an independently compiled C support library to exercise exact C
-scalar aliases, SysV extension attributes, callbacks and returned function
-pointers, direct and indirect C variadics/default promotions, explicit Win64
-calling convention lowering, incomplete/volatile pointers, and external symbol
-overrides. Stage 6 reuses the independently compiled C support library for
-represented structs, nested structs, arrays, enums, unions, packed/explicitly
-aligned objects, aggregate callbacks, represented globals, and addressable C
-`_Bool` objects. The x86-64 suite exercises both SysV direct/register and
-`byval`/`sret` paths plus Win64 small and indirect aggregate rules. A negative
-regression keeps ordinary Coglet `bool*` distinct from `c_bool*`, and volatile
-whole-aggregate access remains explicitly unsupported. Stage 7 direct-link
-coverage includes native Coglet `main::() -> s32`, exact C scalar ABI linkage,
-and a represented aggregate C ABI call/return through the independently compiled
-support library. Stage 7 also includes an `-O0` mutable-global executable case
-that requires position-independent object code on hosts whose compiler driver
-defaults to PIE, preventing optimization from masking relocation-policy bugs.
-Stage 8 adds explicit `-O0`, checked integer execution at
-`-O1`, represented aggregate C interop at `-O2`, volatile C pointer behavior at
-`-O3`, an optimized textual-IR transformation check, and a direct-link `-O3`
-checked-overflow trap. Driver regressions also reject nonzero optimization on the
-host-C executable path and unsupported optimization levels. Stage 9 adds `-g`
-coverage for compile units/source locations, source functions, globals, parameters,
-locals, arrays/structs/enums/pointers, represented C union metadata, optimized
-`-g -O2` IR, and direct native `-g` execution at both O0 and O3. The native debug
-harness additionally checks that the linked executable contains the expected source
-filename, so merely accepting `-g` cannot satisfy the regression. Negative driver
-coverage rejects host-C executable debug requests and `-g` requests with no LLVM
-output. Compiler-generated storage slots and the synthetic process-entry adapter are
-checked not to masquerade as Coglet source variables/code. Assembly-emission
-coverage adds three LLVM-enabled cases: an `-O0` mutable-global program whose PIC
-assembly is assembled/linked by the configured host C compiler and executed, an
-`-O3 -g` output check that retains the Coglet source filename, and a combined
-`--emit-asm` plus `--backend llvm -o` build that verifies both outputs in one
-driver invocation. LLVM-disabled configurations register a negative assembly
-driver test so the flag cannot be silently ignored. The float suite includes
-NaN/infinity, signed/unsigned range boundaries, and narrowing behavior so LLVM
-conversion instructions are not used before Coglet's checked-cast guards.
+LLVM tests are grouped by stable capability rather than implementation order. IR
+compatibility cases emit through the compiler, so successful cases have already
+passed the LLVM verifier; when `clang` is available, those harnesses can also compile
+the textual IR and check process status. Native-backend cases use `--backend llvm`
+directly so the compiler verifies LLVM IR, emits a native object with its
+`TargetMachine`, links it, and executes the result without routing through textual
+`.ll` output.
+
+The core LLVM slice covers scalar/structured CFG, ordered module initialization,
+checked and wrapping integer semantics, traps, shifts, enum/integer conversions,
+floating arithmetic/comparisons/conversions, pointers, ordinary aggregates, switch,
+and indirect native Coglet function calls. Memory tests cover target triple/data
+layout, fields/arrays/pointer indexing, aggregate values/copies/arguments/returns,
+globals, and explicit rejection of unsupported volatile whole-aggregate access.
+
+Interop tests link against an independently compiled C support library. They cover
+exact C scalar aliases, small-integer ABI attributes, callbacks/returned function
+pointers, variadics/default promotions, calling conventions, incomplete and volatile
+pointers, external symbol overrides, represented structs/unions/enums/arrays,
+packed/explicit alignment, represented globals, addressable C `_Bool`, and x86-64
+SysV/Win64 aggregate passing. Negative coverage keeps ordinary Coglet `bool*`
+distinct from `c_bool*`.
+
+Native code-generation coverage includes PIC executable linking, `-O0` through
+`-O3`, optimized textual IR, checked-overflow traps after optimization, and driver
+rejection of optimization requests that the selected output path cannot honor. Debug
+coverage checks compile units, locations, source functions/globals/parameters/locals,
+aggregate/enum/pointer types, exact represented-C metadata, optimized debug IR, and
+native `-g` execution. Compiler-generated slots and the synthetic process-entry
+adapter are checked not to masquerade as source entities. Assembly tests cover PIC
+round-tripping, optimized debug assembly, and combined assembly + executable output.
+LLVM-disabled configurations retain negative driver coverage for LLVM-only flags.
 
 Multi-file compilation coverage exercises a shared global namespace through both
 host-C and LLVM with the input order reversed between backend tests, cross-file

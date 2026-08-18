@@ -2799,7 +2799,8 @@ static Node *parse_decl_or_expr_statement(Parser *p)
 
 // ======================= end declaration dispatching ==================
 
-// TODO: Ensure we only allow return only inside a function body,
+/* Parsing is context-free here; semantic analysis diagnoses `return` outside
+ * a function so recovery and source provenance stay centralized there. */
 static Node *parse_return_statement(Parser *p) {
 
     SourceSpan span = p->previous.span;   // TOK_RETURN already consumed by caller
@@ -3299,7 +3300,7 @@ static int parse_integer_u64(Token token, uint64_t *out) {
 
 static int parse_float_token(Parser *p, Token token, double *out)
 {
-    // TODO: Why we using scratch here? what is the life time?
+    ArenaMarker marker = arena_mark(p->scratch);
     char *text = arena_alloc(p->scratch, (size_t)token.length + 1);
 
     memcpy(text, token.start, (size_t)token.length);
@@ -3307,8 +3308,11 @@ static int parse_float_token(Parser *p, Token token, double *out)
 
     char *end    = NULL;
     double value = strtod(text, &end);
+    int valid = isfinite(value) && end == text + token.length;
 
-    if (!isfinite(value) || end != text + token.length)
+    arena_reset_to(p->scratch, marker);
+
+    if (!valid)
         return 0;
 
     *out = value;

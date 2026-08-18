@@ -1,0 +1,17 @@
+program
+  const_decl LIMIT: <inferred>
+    value:
+      4
+  static_assert
+    condition:
+      (==)
+        LIMIT
+        4
+  func check -> void
+    body:
+      block
+        static_assert
+          condition:
+            true
+          message:
+            "always true"

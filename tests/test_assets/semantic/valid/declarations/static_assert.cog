@@ -1,0 +1,25 @@
+static_assert(LATER == 7);
+LATER :: 7;
+
+Mode::enum {
+    Read = 1,
+    Write = 2,
+}
+
+static_assert(Mode.Read != Mode.Write, "enum members must differ");
+static_assert((2 + 3) * 4 == 20);
+static_assert(!false && true);
+
+check_static_assert::() -> void {
+    LOCAL :: 3;
+    static_assert(LOCAL * 2 == 6, "local constants are available");
+}
+
+checked_identity::<T: copyable>(value: T) -> T {
+    static_assert(true, "generic specialization assertion");
+    return value;
+}
+
+use_checked_identity::() -> s32 {
+    return checked_identity::<s32>(9);
+}

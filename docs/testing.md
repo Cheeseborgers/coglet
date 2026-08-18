@@ -27,6 +27,9 @@ Target/layout coverage includes synthetic 32-bit and 64-bit pointer targets for
 `align_of::<T>()` spelling, and semantic/CogIR/backend coverage for the current
 `size_of(T)` / `align_of(T)` forms.
 
+
+Static-assert coverage includes parser snapshots, top-level and block assertions, forward and local constants, enum/Boolean/arithmetic conditions, optional diagnostic messages, non-Boolean and runtime-value rejection, generic-specialization checking, and an explicit regression for the current rule that backend-owned layout queries are not frontend constant expressions.
+
 Result-use coverage checks the default must-use rule for value-returning calls,
 explicit `discard`, `#discardable` ordinary/generic/method/extern declarations,
 `discard` in loop-post and deferred statement positions, rejection of `discard` in

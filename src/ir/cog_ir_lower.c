@@ -3969,6 +3969,7 @@ static int lower_statement(ExecLowerState *state, Node *node)
             return lower_continue_statement(state, node);
         case NODE_SWITCH:
             return lower_switch_statement(state, node);
+        case NODE_STATIC_ASSERT:
         case NODE_CONST_DECL:
         case NODE_FUNC_DECL:
         case NODE_STRUCT_DECL:

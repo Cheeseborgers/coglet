@@ -2462,6 +2462,7 @@ static void check_if_statement(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
 static void check_while_statement(SemanticContext *ctx, Node *node);
 static void check_for_statement(SemanticContext *ctx, Node *node);
+static void check_static_assert_statement(SemanticContext *ctx, Node *node);
 static int check_statement_expression(SemanticContext *ctx, Node *node);
 static int check_assignment_statement(SemanticContext *ctx, Node *node);
 static int check_compound_assignment_statement(SemanticContext *ctx, Node *node);
@@ -16412,6 +16413,73 @@ static int switch_case_values_are_exhaustive(
     return 1;
 }
 
+static void check_static_assert_statement(SemanticContext *ctx, Node *node) {
+    assert(node);
+    assert(node->type == NODE_STATIC_ASSERT);
+
+    Node *condition = node->as.static_assert_stmt.condition;
+    Node *message = node->as.static_assert_stmt.message;
+
+    Type *condition_type = check_value_expression(ctx, condition);
+    if (!condition_type)
+        return;
+
+    if (!is_bool_type(condition_type)) {
+        semantic_error(ctx, condition,
+            "static_assert condition must have type bool");
+        return;
+    }
+
+    if (message) {
+        if (message->type != NODE_STRING) {
+            semantic_error(ctx, message,
+                "static_assert message must be a string literal");
+            return;
+        }
+
+        StringDecodeInfo info = string_analyze(message->as.string_literal);
+        if (!info.ok) {
+            if (info.invalid_escape) {
+                semantic_error_fmt(
+                    ctx,
+                    message,
+                    "invalid escape sequence '\\%c' in static_assert message",
+                    info.invalid_escape
+                );
+            } else {
+                semantic_error(ctx, message,
+                    "unterminated escape sequence in static_assert message");
+            }
+            return;
+        }
+    }
+
+    ConstValue value;
+    if (!eval_const_expr(ctx, condition, &value))
+        return;
+
+    if (value.kind != CONST_VALUE_BOOL) {
+        semantic_error(ctx, condition,
+            "static_assert condition must be a boolean constant");
+        return;
+    }
+
+    if (value.as.boolean)
+        return;
+
+    if (message && message->as.string_literal.length > 0) {
+        semantic_error_fmt(
+            ctx,
+            node,
+            "static assertion failed: %.*s",
+            (int)message->as.string_literal.length,
+            message->as.string_literal.data
+        );
+    } else {
+        semantic_error(ctx, node, "static assertion failed");
+    }
+}
+
 // ============================================================
 // node dispatcher
 // ============================================================
@@ -16435,6 +16503,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
         case NODE_WHILE:           check_while_statement(ctx, node); break;
         case NODE_CONST_DECL:      check_const_decl(ctx,node);       break;
         case NODE_EXPR_STMT:       check_statement_expression(ctx, node->as.expr_stmt.expr); break;
+        case NODE_STATIC_ASSERT:   check_static_assert_statement(ctx, node); break;
 
         case NODE_STRUCT_DECL: {
             if (node->as.struct_decl.type_parameters.count > 0) {

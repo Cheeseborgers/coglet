@@ -259,6 +259,9 @@ static const char *token_type_str(TokenType type)
         case TOK_DISCARD:
             return "DISCARD";
 
+        case TOK_STATIC_ASSERT:
+            return "STATIC_ASSERT";
+
         case TOK_VOID:
             return "VOID";
 
@@ -609,6 +612,16 @@ static void print_node(Node *node)
 
         case NODE_EXPR_STMT:
             print_node(node->as.expr_stmt.expr);
+            break;
+
+        case NODE_STATIC_ASSERT:
+            printf("(static_assert ");
+            print_node(node->as.static_assert_stmt.condition);
+            if (node->as.static_assert_stmt.message) {
+                printf(" ");
+                print_node(node->as.static_assert_stmt.message);
+            }
+            printf(")");
             break;
 
         case NODE_BLOCK:
@@ -1263,6 +1276,19 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_EXPR_STMT:
             print_node_pretty(node->as.expr_stmt.expr, depth);
+            break;
+
+        case NODE_STATIC_ASSERT:
+            indent(depth);
+            printf("static_assert\n");
+            indent(depth + 1);
+            printf("condition:\n");
+            print_node_pretty(node->as.static_assert_stmt.condition, depth + 2);
+            if (node->as.static_assert_stmt.message) {
+                indent(depth + 1);
+                printf("message:\n");
+                print_node_pretty(node->as.static_assert_stmt.message, depth + 2);
+            }
             break;
 
         case NODE_BLOCK:

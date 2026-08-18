@@ -42,11 +42,22 @@ Supported declaration behavior includes:
 - type inference with `:=`
 - name-first declaration syntax
 - compile-time constants
+- compile-time `static_assert(condition[, "message"])` checks
 - contextual array and string initializers
 - rejection of `void` as a stored value type
 - concrete default types for inferred mutable numeric storage
 - adaptable compile-time numeric constants
 - hexadecimal floating-point literals with binary `p`/`P` exponents
+
+Static assertions use the same frontend constant-expression evaluator as constants and enum members:
+
+```c
+LIMIT :: 4;
+static_assert(LIMIT > 0);
+static_assert(LIMIT == 4, "unexpected limit");
+```
+
+The condition must have type `bool` and be known during semantic analysis. `static_assert` emits no runtime code. Target-layout queries such as `size_of(T)` and `align_of(T)` are not yet frontend constant expressions, so they cannot currently be used as assertion conditions.
 
 ### Functions
 

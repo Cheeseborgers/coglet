@@ -1,0 +1,8 @@
+broken::<T: copyable>(value: T) -> T {
+    static_assert(false, "generic specialization rejected");
+    return value;
+}
+
+use_broken::() -> s32 {
+    return broken::<s32>(1);
+}

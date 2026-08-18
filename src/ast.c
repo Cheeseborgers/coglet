@@ -126,6 +126,13 @@ Node *ast_new_expr_stmt(Arena *arena, Node *expr, SourceSpan span) {
     return node;
 }
 
+Node *ast_new_static_assert(Arena *arena, Node *condition, Node *message, SourceSpan span) {
+    Node *node = new_node(arena, NODE_STATIC_ASSERT, span);
+    node->as.static_assert_stmt.condition = condition;
+    node->as.static_assert_stmt.message = message;
+    return node;
+}
+
 Node *ast_new_block(Arena *arena, SourceSpan span) {
     Node *node = new_node(arena, NODE_BLOCK, span);
     node->as.block.statements.items    = NULL;
@@ -523,6 +530,13 @@ Node *ast_clone(Arena *arena, const Node *node)
         case NODE_EXPR_STMT:
             clone->as.expr_stmt.expr =
                 ast_clone(arena, node->as.expr_stmt.expr);
+            break;
+
+        case NODE_STATIC_ASSERT:
+            clone->as.static_assert_stmt.condition =
+                ast_clone(arena, node->as.static_assert_stmt.condition);
+            clone->as.static_assert_stmt.message =
+                ast_clone(arena, node->as.static_assert_stmt.message);
             break;
 
         case NODE_BLOCK:

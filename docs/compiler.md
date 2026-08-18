@@ -597,6 +597,11 @@ constant payload: constant identifier evaluation follows the stable declaration
 ID back to `SemDeclInfo`. Implicit enum members are recorded too, so later
 phases do not have to reproduce enum auto-increment rules.
 
+
+`NODE_STATIC_ASSERT` reuses this evaluator directly. Semantic analysis first checks that the condition has type `bool`, evaluates it while lexical scope is live, and emits a diagnostic when the cached result is false. The optional message is syntax-only string-literal diagnostic text. Static assertions are accepted at top level and in blocks, and cloned generic bodies carry the assertion into concrete specialization checking. Successful assertions have no CogIR representation and are ignored by executable lowering.
+
+This does not change target-layout ownership. `size_of(T)` and `align_of(T)` remain backend-resolved layout operations rather than frontend `ConstValue` expressions, so they cannot yet participate in `static_assert`.
+
 Fixed-array lengths are currently parsed as integer literal syntax rather than
 general constant expressions, so there is no separate array-length evaluator
 to migrate at this stage. Expanding array lengths to arbitrary constant

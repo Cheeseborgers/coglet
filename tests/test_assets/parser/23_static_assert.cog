@@ -1,0 +1,6 @@
+LIMIT :: 4;
+static_assert(LIMIT == 4);
+
+check::() -> void {
+    static_assert(true, "always true");
+}

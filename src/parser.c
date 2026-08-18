@@ -51,6 +51,7 @@ static Node *parse_switch_statement(Parser *p);
 static Node *parse_switch_case(Parser *p);
 static Node *parse_return_statement(Parser *p);
 static Node *parse_defer_statement(Parser *p);
+static Node *parse_static_assert_statement(Parser *p);
 static Node *parse_while_statement(Parser *p);
 static Node *parse_for_statement(Parser *p);
 static Node *parse_scoped_control_body(Parser *p);
@@ -253,6 +254,7 @@ static void synchronize(Parser *p)
             case TOK_RETURN:
             case TOK_DEFER:
             case TOK_DISCARD:
+            case TOK_STATIC_ASSERT:
             case TOK_RESOURCE:
                 return;
 
@@ -320,6 +322,9 @@ const char *token_debug_display_name(TokenType type)
 
         case TOK_DISCARD:
             return "'discard'";
+
+        case TOK_STATIC_ASSERT:
+            return "'static_assert'";
 
         case TOK_VOID:
             return "'void'";
@@ -2976,6 +2981,51 @@ static Node *parse_return_statement(Parser *p) {
     return ast_new_return(p->arena, value, span);
 }
 
+static Node *parse_static_assert_statement(Parser *p) {
+    SourceSpan span = p->previous.span; /* TOK_STATIC_ASSERT already consumed */
+
+    if (!consume(p, TOK_LPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    if (check(p, TOK_RPAREN) || check(p, TOK_COMMA)) {
+        error_at(p, &p->current, "static_assert requires a condition expression");
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *condition = parse_expression(p);
+    Node *message = NULL;
+
+    if (match(p, TOK_COMMA)) {
+        if (!consume(p, TOK_STRING)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+
+        Token t = p->previous;
+        message = ast_new_string(
+            p->arena,
+            t.start + 1,
+            t.length - 2,
+            t.span
+        );
+    }
+
+    if (!consume(p, TOK_RPAREN) || !consume(p, TOK_SEMICOLON)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    return ast_new_static_assert(
+        p->arena,
+        condition,
+        message,
+        source_span_join(span, p->previous.span)
+    );
+}
+
 static Node *parse_defer_statement(Parser *p) {
     SourceSpan span = p->previous.span; /* TOK_DEFER already consumed */
 
@@ -3181,6 +3231,7 @@ static Node *parse_statement(Parser *p) {
     if (match(p, TOK_FOR))    return parse_for_statement(p);
     if (match(p, TOK_RETURN)) return parse_return_statement(p);
     if (match(p, TOK_DEFER))  return parse_defer_statement(p);
+    if (match(p, TOK_STATIC_ASSERT)) return parse_static_assert_statement(p);
     if (check(p, TOK_SWITCH)) return parse_switch_statement(p);
 
     if (match(p, TOK_BREAK)) {

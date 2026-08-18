@@ -17,8 +17,8 @@ would expect:
 - structured control flow, `defer`, definite assignment, unified reachability,
   must-use function results with explicit `discard`/`#discardable`, and move-only
   resource flow for direct local/parameter owners;
-- compile-time constants, checked/wrapping numeric semantics, casts, target-sized
-  `usize`/`isize` aliases, target-layout queries, and deterministic semantic metadata;
+- compile-time constants and `static_assert`, checked/wrapping numeric semantics, casts,
+  target-sized `usize`/`isize` aliases, target-layout queries, and deterministic semantic metadata;
 - multi-file named modules/imports with private-by-default visibility and source
   discovery through importer-relative paths, `-I`, and the configured `std.*` root;
 - a frozen compiler-owned IR with verifier coverage and source provenance;

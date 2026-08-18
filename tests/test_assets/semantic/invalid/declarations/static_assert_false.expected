@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/declarations/static_assert_false.cog:1:1: error: static assertion failed
+static_assert(false);
+^~~~~~~~~~~~~~~~~~~~~
+1 semantic error generated.

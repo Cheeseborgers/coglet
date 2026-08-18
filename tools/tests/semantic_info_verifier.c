@@ -72,6 +72,7 @@ static const char *node_type_name(NodeType type)
         case NODE_ASSIGN:            return "assign";
         case NODE_COMPOUND_ASSIGN:   return "compound_assign";
         case NODE_EXPR_STMT:         return "expr_stmt";
+        case NODE_STATIC_ASSERT:     return "static_assert";
         case NODE_CALL:              return "call";
         case NODE_FIELD:             return "field";
         case NODE_INDEX:             return "index";
@@ -559,6 +560,14 @@ static void walk_node(ExpressionWalker *walker, Node *node)
                 walker,
                 node->as.expr_stmt.expr
             );
+            break;
+
+        case NODE_STATIC_ASSERT:
+            walk_expression(
+                walker,
+                node->as.static_assert_stmt.condition
+            );
+            /* The optional message is syntax-only diagnostic text. */
             break;
 
         case NODE_IF:

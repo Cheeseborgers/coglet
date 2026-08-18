@@ -188,7 +188,7 @@ from another systems language.
   such a `T` yields distinct addressable element storage. A future language/runtime
   decision should either define zero-sized-element container behavior or reject
   those element types explicitly; cleanup should not invent a hidden stride.
-- **`size_of(T)` / `align_of(T)` are not semantic constant expressions yet.** They lower to target-layout constants in CogIR/backends, but cannot currently be used where the frontend requires a compile-time constant.
+- **`size_of(T)` / `align_of(T)` are not semantic constant expressions yet.** They lower to target-layout constants in CogIR/backends, but cannot currently be used where the frontend requires a compile-time constant, including `static_assert`. Supporting this should use one authoritative target-layout contract rather than duplicating backend layout rules in semantic analysis.
 - **Default parameters are intentionally not supported in the current language.** Reintroduce them only after defining declaration-scope name resolution, interaction with exact overloads/generics, and call-site evaluation semantics; use explicit convenience functions/constructors meanwhile.
 
 ## Generics and aggregate types

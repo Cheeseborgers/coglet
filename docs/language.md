@@ -989,6 +989,22 @@ remain must-use unless the caller writes `discard`.
 Mutation operations remain no-value statements. A void call remains an expression
 with type `void`; both have value category `none`.
 
+## Static Assertions
+
+`static_assert` checks a Boolean invariant during semantic analysis and emits no runtime code:
+
+```c
+MAX_ITEMS :: 64;
+static_assert(MAX_ITEMS > 0);
+static_assert(MAX_ITEMS <= 1024, "MAX_ITEMS is unexpectedly large");
+```
+
+The condition must have type `bool` and be a frontend compile-time constant. The evaluator is the same one used for constant declarations, enum-member values, switch cases, and other semantic constant contexts, so named constants, enum values, checked constant casts, Boolean logic, comparisons, and supported constant arithmetic compose normally. A false condition reports `static assertion failed`, followed by the optional message text.
+
+Assertions are valid both at top level and inside statement blocks. In a generic function body, the assertion is checked with the concrete body during specialization rather than by evaluating an uninstantiated template body.
+
+`static_assert` deliberately does not lower into CogIR. The current `size_of(T)` and `align_of(T)` operations are resolved through backend target layout rather than the frontend constant evaluator, so layout-query assertions are not yet supported. Extending that capability requires one authoritative target-layout evaluation contract rather than a second semantic layout implementation.
+
 ## Numeric Literals, Inference, and Constants
 
 Integer and floating-point literals begin as adaptable numeric values:

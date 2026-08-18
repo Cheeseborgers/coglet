@@ -210,6 +210,7 @@ static const Keyword keywords[] = {
     {"return", TOK_RETURN},
     {"defer", TOK_DEFER},
     {"discard", TOK_DISCARD},
+    {"static_assert", TOK_STATIC_ASSERT},
     {"struct", TOK_STRUCT},
     {"resource", TOK_RESOURCE},
     {"union", TOK_UNION},
@@ -1339,6 +1340,7 @@ const char *token_type_name(TokenType type) {
         case TOK_RETURN: return "RETURN";
         case TOK_DEFER: return "DEFER";
         case TOK_DISCARD: return "DISCARD";
+        case TOK_STATIC_ASSERT: return "STATIC_ASSERT";
         case TOK_VOID: return "VOID";
         case TOK_STRUCT: return "STRUCT";
         case TOK_RESOURCE: return "RESOURCE";

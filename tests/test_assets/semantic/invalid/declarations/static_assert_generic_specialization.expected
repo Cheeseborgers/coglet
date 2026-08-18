@@ -1,0 +1,7 @@
+tests/test_assets/semantic/invalid/declarations/static_assert_generic_specialization.cog:2:5: error: static assertion failed: generic specialization rejected
+    static_assert(false, "generic specialization rejected");
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+tests/test_assets/semantic/invalid/declarations/static_assert_generic_specialization.cog:7:12: error: cannot instantiate 'broken' with T = s32: generic body is invalid for these concrete types
+    return broken::<s32>(1);
+           ^~~~~~
+2 semantic errors generated.

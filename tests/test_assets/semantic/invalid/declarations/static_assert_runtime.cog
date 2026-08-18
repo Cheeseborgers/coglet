@@ -1,0 +1,3 @@
+check::(flag: bool) -> void {
+    static_assert(flag);
+}

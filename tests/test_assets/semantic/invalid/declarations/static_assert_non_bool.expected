@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/declarations/static_assert_non_bool.cog:1:15: error: static_assert condition must have type bool
+static_assert(1);
+              ^
+1 semantic error generated.

@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/declarations/static_assert_layout_query.cog:1:15: error: expression is not a compile-time constant
+static_assert(size_of(usize) == size_of(opaque*));
+              ^~~~~~~~~~~~~~
+1 semantic error generated.

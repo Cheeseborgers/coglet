@@ -58,6 +58,7 @@ typedef enum {
     NODE_COMPOUND_ASSIGN, // +=, -=. *=, /= %=
 
     NODE_EXPR_STMT,    // an expression used as a statement: `1 + 2;`
+    NODE_STATIC_ASSERT, // compile-time assertion: static_assert(condition[, "message"]);
 
     NODE_CALL,         // function calls
     NODE_FIELD,
@@ -320,6 +321,11 @@ struct Node {
         } field_init;
 
         struct {
+            Node *condition;
+            Node *message;       // optional NODE_STRING literal
+        } static_assert_stmt;
+
+        struct {
             Node *value;         // NULL for bare `return;`
         } return_stmt;
 
@@ -491,6 +497,7 @@ Node *ast_new_binary(Arena *arena, TokenType op, Node *left, Node *right, Source
 Node *ast_new_assign(Arena *arena,Node *target,Node *value,SourceSpan span);
 Node *ast_new_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, SourceSpan span);
 Node *ast_new_expr_stmt(Arena *arena, Node *expr, SourceSpan span);
+Node *ast_new_static_assert(Arena *arena, Node *condition, Node *message, SourceSpan span);
 Node *ast_new_block(Arena *arena, SourceSpan span);
 Node *ast_new_call(Arena *arena, Node *callee, SourceSpan span);
 Node *ast_new_field(Arena *arena, Node *object, const char *name, int length, SourceSpan span );

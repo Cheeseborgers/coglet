@@ -1116,6 +1116,18 @@ three-clause initializer as a surrounding lexical block followed by the existing
 `for` node. These surface variants therefore do not add backend-specific loop
 semantics.
 
+## Static Assertions
+
+```ebnf
+static_assert_statement =
+    "static_assert" "(" constant_boolean_expression
+        ["," string_literal] ")" ";";
+```
+
+`static_assert` is a reserved statement keyword and may appear at top level or wherever an ordinary statement is accepted. Its condition must have type `bool` and must be evaluable by the frontend compile-time constant evaluator. A false condition is a semantic error; when present, the string literal is appended to the diagnostic. The assertion is semantic-only and emits no runtime operation.
+
+Assertions inside generic function bodies are checked when the concrete specialization body is checked. Target-layout queries `size_of(T)` and `align_of(T)` are not yet frontend constant expressions, so they are not currently valid inside `static_assert`.
+
 ## Deferred cleanup
 
 ```ebnf

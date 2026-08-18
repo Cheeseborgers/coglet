@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/declarations/static_assert_runtime.cog:2:19: error: expression is not a compile-time constant
+    static_assert(flag);
+                  ^~~~
+1 semantic error generated.

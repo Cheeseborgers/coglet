@@ -139,7 +139,18 @@ typedef struct {
      */
     size_t owner_id;
 
+    /*
+     * Bitmask per variable:
+     *   0x1 = may be uninitialized
+     *   0x2 = may be initialized
+     * Reachable-path merges OR these bits, which preserves the
+     * difference between definitely uninitialized and maybe initialized.
+     */
     unsigned char *initialized;
+
+    /* True for move-only resource owners; used for loop backedge checks. */
+    unsigned char *resource_owner;
+
     size_t count;
     size_t capacity;
     int reachable;

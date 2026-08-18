@@ -1,0 +1,10 @@
+Handle::resource {
+    value: s32;
+    deinit::(self: Self*) -> void {}
+}
+
+test::() -> void {
+    value := Handle { value = 1 };
+    value.deinit();
+    value = Handle { value = 2 };
+}

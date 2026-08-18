@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/partial_if_overwrite.cog:11:5: error: resource assignment may overwrite an initialized owner; move the existing owner first
+    value = Handle { value = 2 };
+    ^~~~~
+1 semantic error generated.

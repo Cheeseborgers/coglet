@@ -51,6 +51,7 @@ struct SliceTypeIntern {
 };
 
 static int type_equal(const Type *a, const Type *b);
+static int contains_resource_by_value(const Type *type);
 static int generic_specialization_key_matches(
     SemDeclId specialization_template_id,
     Type *const *specialization_arguments,
@@ -608,8 +609,15 @@ static PointerAccess pointer_access_from_value_access(
 }
 
 // ============================================================
-// definite-assignment flow state
+// definite-assignment / ownership flow state
 // ============================================================
+
+enum {
+    FLOW_MAY_BE_UNINITIALIZED = 1u << 0,
+    FLOW_MAY_BE_INITIALIZED   = 1u << 1,
+    FLOW_DEFINITELY_UNINITIALIZED = FLOW_MAY_BE_UNINITIALIZED,
+    FLOW_DEFINITELY_INITIALIZED   = FLOW_MAY_BE_INITIALIZED,
+};
 
 static void flow_init(FlowState *state, size_t owner_id) {
     *state = (FlowState){
@@ -636,13 +644,18 @@ static void flow_reserve(SemanticContext *ctx, FlowState *state, size_t minimum_
     }
 
     unsigned char *initialized = arena_zalloc(ctx->arena, new_capacity);
+    unsigned char *resource_owner = arena_zalloc(ctx->arena, new_capacity);
 
     if (state->initialized) {
         memcpy(initialized, state->initialized, state->count);
     }
+    if (state->resource_owner) {
+        memcpy(resource_owner, state->resource_owner, state->count);
+    }
 
-    state->initialized = initialized;
-    state->capacity    = new_capacity;
+    state->initialized  = initialized;
+    state->resource_owner = resource_owner;
+    state->capacity     = new_capacity;
 }
 
 static void flow_truncate_to(FlowState *state, size_t count) {
@@ -653,6 +666,7 @@ static void flow_truncate_to(FlowState *state, size_t count) {
         return;
 
     memset(state->initialized + count, 0, state->count - count);
+    memset(state->resource_owner + count, 0, state->count - count);
 
     state->count = count;
 }
@@ -708,7 +722,11 @@ static void flow_register_variable(SemanticContext *ctx, const Symbol *symbol, i
     flow_reserve(ctx, state, required_count);
 
     state->initialized[variable_id] =
-        initialized ? 1 : 0;
+        initialized
+            ? FLOW_DEFINITELY_INITIALIZED
+            : FLOW_DEFINITELY_UNINITIALIZED;
+    state->resource_owner[variable_id] =
+        contains_resource_by_value(symbol->type) ? 1 : 0;
 
     if (state->count < required_count)
         state->count = required_count;
@@ -726,7 +744,7 @@ static void flow_mark_variable_initialized(SemanticContext *ctx, const Symbol *s
     assert(symbol_belongs_to_flow(symbol, &ctx->flow));
     assert(symbol->variable_id < ctx->flow.count);
 
-    ctx->flow.initialized[symbol->variable_id] = 1;
+    ctx->flow.initialized[symbol->variable_id] = FLOW_DEFINITELY_INITIALIZED;
 }
 
 static void flow_mark_variable_uninitialized(SemanticContext *ctx, const Symbol *symbol) {
@@ -737,7 +755,7 @@ static void flow_mark_variable_uninitialized(SemanticContext *ctx, const Symbol 
     assert(symbol_belongs_to_flow(symbol, &ctx->flow));
     assert(symbol->variable_id < ctx->flow.count);
 
-    ctx->flow.initialized[symbol->variable_id] = 0;
+    ctx->flow.initialized[symbol->variable_id] = FLOW_DEFINITELY_UNINITIALIZED;
 }
 
 static int flow_variable_is_initialized(const SemanticContext *ctx, const Symbol *symbol) {
@@ -748,7 +766,34 @@ static int flow_variable_is_initialized(const SemanticContext *ctx, const Symbol
     assert(symbol_belongs_to_flow(symbol, &ctx->flow));
     assert(symbol->variable_id < ctx->flow.count);
 
-    return ctx->flow.initialized[symbol->variable_id] != 0;
+    return ctx->flow.initialized[symbol->variable_id] ==
+           FLOW_DEFINITELY_INITIALIZED;
+}
+
+static int flow_variable_is_definitely_uninitialized(
+    const SemanticContext *ctx, const Symbol *symbol) {
+
+    if (!symbol_has_flow_state(symbol))
+        return 0;
+
+    assert(symbol_belongs_to_flow(symbol, &ctx->flow));
+    assert(symbol->variable_id < ctx->flow.count);
+
+    return ctx->flow.initialized[symbol->variable_id] ==
+           FLOW_DEFINITELY_UNINITIALIZED;
+}
+
+static int flow_variable_may_be_initialized(
+    const SemanticContext *ctx, const Symbol *symbol) {
+
+    if (!symbol_has_flow_state(symbol))
+        return 1;
+
+    assert(symbol_belongs_to_flow(symbol, &ctx->flow));
+    assert(symbol->variable_id < ctx->flow.count);
+
+    return (ctx->flow.initialized[symbol->variable_id] &
+            FLOW_MAY_BE_INITIALIZED) != 0;
 }
 
 static FlowState flow_clone(SemanticContext *ctx, const FlowState *source) {
@@ -758,8 +803,10 @@ static FlowState flow_clone(SemanticContext *ctx, const FlowState *source) {
     flow_init(&clone, source->owner_id);
     flow_reserve(ctx, &clone, source->count);
 
-    if (source->count > 0)
+    if (source->count > 0) {
         memcpy(clone.initialized, source->initialized, source->count);
+        memcpy(clone.resource_owner, source->resource_owner, source->count);
+    }
 
     clone.count = source->count;
     clone.reachable = source->reachable;
@@ -809,7 +856,9 @@ static FlowState flow_merge_continuing_paths(
     flow_truncate_to(&result, active_variable_count);
 
     for (size_t i = 0; i < active_variable_count; i++) {
-        result.initialized[i] = left->initialized[i] && right->initialized[i];
+        assert(left->resource_owner[i] == right->resource_owner[i]);
+        result.initialized[i] =
+            left->initialized[i] | right->initialized[i];
     }
 
     result.reachable = 1;
@@ -907,26 +956,97 @@ static FlowState loop_iteration_flow(
     return result;
 }
 
-static FlowState loop_conservative_exit_flow(
-    SemanticContext *ctx, const LoopFlowContext *loop, const FlowState *incoming) {
+static Symbol *flow_find_symbol_by_variable_id(
+    SemanticContext *ctx, const FlowState *state, size_t variable_id) {
+
+    for (Scope *scope = ctx->current_scope; scope; scope = scope->parent) {
+        for (Symbol *symbol = scope->symbols; symbol; symbol = symbol->next) {
+            if (!symbol_has_flow_state(symbol))
+                continue;
+            if (symbol->flow_owner_id == state->owner_id &&
+                symbol->variable_id == variable_id) {
+                return symbol;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+static int flow_validate_loop_backedge_resources(
+    SemanticContext *ctx,
+    Node *loop_node,
+    const FlowState *entry,
+    const FlowState *backedge,
+    size_t active_variable_count
+) {
+    assert(entry);
+    assert(backedge);
+    assert(active_variable_count <= entry->count);
+    assert(active_variable_count <= backedge->count);
+
+    if (!backedge->reachable)
+        return 1;
+
+    for (size_t i = 0; i < active_variable_count; i++) {
+        if (!entry->resource_owner[i])
+            continue;
+
+        assert(backedge->resource_owner[i]);
+
+        if (entry->initialized[i] == backedge->initialized[i])
+            continue;
+
+        Symbol *symbol =
+            flow_find_symbol_by_variable_id(ctx, entry, i);
+
+        if (symbol) {
+            semantic_error_fmt(
+                ctx,
+                loop_node,
+                "resource '%.*s' changes ownership state on a loop backedge; restore it to its loop-entry state before the next iteration",
+                (int)symbol->name.length,
+                symbol->name.data
+            );
+        } else {
+            semantic_error(
+                ctx,
+                loop_node,
+                "resource ownership state changes on a loop backedge; restore each owner to its loop-entry state before the next iteration"
+            );
+        }
+
+        return 0;
+    }
+
+    return 1;
+}
+
+static FlowState loop_exit_flow(
+    SemanticContext *ctx,
+    const LoopFlowContext *loop,
+    const FlowState *normal_exit,
+    int condition_is_always_true
+) {
+    assert(loop);
+    assert(normal_exit);
 
     /*
-    * Coglet does not currently perform loop fixed-point analysis.
-     *
-    * For a loop that may terminate normally, preserve the unchanged
-    * incoming state as a conservative possible exit. Initialization
-    * performed only during an iteration therefore cannot become
-    * definitely initialized after the loop.
-    *
-    * Literal-true loops with no reachable break are handled separately
-    * and never reach this helper as continuing control flow.
-    */
-    FlowState result = flow_clone(ctx, incoming);
+     * A compile-time-true loop has no condition-false exit. If it can
+     * continue after the loop, every such path came from an explicit break.
+     */
+    if (condition_is_always_true) {
+        assert(loop->has_break_flow);
+        return flow_clone(ctx, &loop->break_flow);
+    }
 
     /*
-    * Reachable break paths are additional possible exits. Merge them
-    * with the conservative incoming path.
-    */
+     * Otherwise the condition-false path is a real exit. The state after
+     * evaluating the condition is used rather than the pre-condition state
+     * because short-circuit expressions may transfer resource ownership.
+     */
+    FlowState result = flow_clone(ctx, normal_exit);
+
     if (loop->has_break_flow) {
         result =
             flow_merge_continuing_paths(
@@ -3858,18 +3978,28 @@ static int is_bool_cast_pair(Type *to, Type *from)       { return is_bool_type(t
 static int is_numeric_cast_pair(Type *to, Type *from)    { return is_numeric_type(to) && is_numeric_type(from); }
 static int is_enum_to_integer_cast(Type *to, Type *from) { return is_integer_kind(to->kind) && is_enum_type(from);}
 static int is_integer_to_enum_cast(Type *to, Type *from) { return is_enum_type(to) && is_integer_kind(from->kind); }
-static int expression_is_compile_time_true(SemanticContext *ctx, Node *node) {
-    if (!ctx || !node ||
+static int expression_compile_time_bool_value(
+    SemanticContext *ctx, Node *node, int *out_value) {
+
+    if (!ctx || !node || !out_value ||
         !expression_is_compile_time_constant(ctx, node)) {
         return 0;
     }
 
     ConstValue value;
 
-    if (!eval_const_expr(ctx, node, &value))
+    if (!eval_const_expr(ctx, node, &value) ||
+        value.kind != CONST_VALUE_BOOL) {
         return 0;
+    }
 
-    return value.kind == CONST_VALUE_BOOL && value.as.boolean;
+    *out_value = value.as.boolean ? 1 : 0;
+    return 1;
+}
+
+static int expression_is_compile_time_true(SemanticContext *ctx, Node *node) {
+    int value = 0;
+    return expression_compile_time_bool_value(ctx, node, &value) && value;
 }
 
 static int is_equality_comparable_type(const Type *type) {
@@ -9632,6 +9762,72 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 );
             }
 
+            if (node->as.binary.op == TOK_AND_AND ||
+                node->as.binary.op == TOK_OR_OR) {
+
+                FlowState after_left =
+                    flow_clone(ctx, &ctx->flow);
+                size_t active_variable_count = after_left.count;
+
+                /*
+                 * The RHS is still semantically checked, but it begins from the
+                 * state after the LHS and its ownership effects propagate only
+                 * along the runtime path where short-circuit evaluation reaches it.
+                 */
+                ctx->flow = flow_clone(ctx, &after_left);
+                Type *right =
+                    check_value_expression(ctx, node->as.binary.right);
+                FlowState after_right = ctx->flow;
+
+                int left_constant_value = 0;
+                int left_is_constant_bool =
+                    left->kind == TYPE_BOOL &&
+                    expression_compile_time_bool_value(
+                        ctx,
+                        node->as.binary.left,
+                        &left_constant_value
+                    );
+
+                if (left_is_constant_bool) {
+                    int rhs_executes =
+                        node->as.binary.op == TOK_AND_AND
+                            ? left_constant_value
+                            : !left_constant_value;
+
+                    ctx->flow = flow_clone(
+                        ctx,
+                        rhs_executes ? &after_right : &after_left
+                    );
+                } else {
+                    ctx->flow =
+                        flow_merge_continuing_paths(
+                            ctx,
+                            &after_left,
+                            &after_right,
+                            active_variable_count
+                        );
+                }
+
+                if (left->kind != TYPE_BOOL) {
+                    semantic_error(ctx, node,
+                        "left operand must be boolean");
+                    return NULL;
+                }
+
+                if (!right)
+                    return NULL;
+
+                if (right->kind != TYPE_BOOL) {
+                    semantic_error(ctx, node,
+                        "right operand must be boolean");
+                    return NULL;
+                }
+
+                sem_record_expr_info(
+                    ctx, node, ctx->type_bool, NULL, VALUE_CATEGORY_RVALUE);
+                return ctx->type_bool;
+            }
+
             Type *right = check_value_expression(ctx, node->as.binary.right);
             if (!right) return NULL;
 
@@ -9867,26 +10063,6 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     );
 
                     return result;
-                }
-
-                // logical boolean operators
-                case TOK_AND_AND:
-                case TOK_OR_OR:
-                {
-                    if(left->kind != TYPE_BOOL) {
-                        semantic_error(ctx,node,
-                            "left operand must be boolean");
-                        return NULL;
-                    }
-
-                    if(right->kind != TYPE_BOOL) {
-                        semantic_error(ctx,node,
-                            "right operand must be boolean");
-                        return NULL;
-                    }
-
-                    sem_record_expr_info(ctx, node, ctx->type_bool, NULL, VALUE_CATEGORY_RVALUE);
-                    return ctx->type_bool;
                 }
 
                 case TOK_EQUAL_EQUAL:
@@ -11548,9 +11724,15 @@ static int check_assignment_statement(SemanticContext *ctx, Node *node) {
             return 0;
         }
 
-        if (flow_variable_is_initialized(ctx, target_symbol)) {
-            semantic_error(ctx, target_node,
-                "resource assignment would overwrite an initialized owner; move or deinitialize it first");
+        if (!flow_variable_is_definitely_uninitialized(ctx, target_symbol)) {
+            semantic_error(
+                ctx,
+                target_node,
+                flow_variable_may_be_initialized(ctx, target_symbol) &&
+                !flow_variable_is_initialized(ctx, target_symbol)
+                    ? "resource assignment may overwrite an initialized owner; move the existing owner first"
+                    : "resource assignment would overwrite an initialized owner; move the existing owner first"
+            );
             return 0;
         }
     }
@@ -13654,6 +13836,15 @@ static void check_if_statement(SemanticContext *ctx, Node *node) {
 
 static void check_while_statement(SemanticContext *ctx, Node *node) {
 
+    /*
+     * A loop condition executes before the first iteration and again on every
+     * backedge. Preserve both sides of that boundary so resource ownership on
+     * a continuing path can be compared with the state under which the
+     * condition was semantically checked.
+     */
+    FlowState condition_entry =
+        flow_clone(ctx, &ctx->flow);
+
     Type *condition_type =
         check_value_expression(ctx, node->as.while_stmt.condition);
 
@@ -13667,46 +13858,60 @@ static void check_while_statement(SemanticContext *ctx, Node *node) {
         is_bool_type(condition_type) &&
         expression_is_compile_time_true(ctx, node->as.while_stmt.condition);
 
-    FlowState incoming =
+    FlowState condition_exit =
         flow_clone(ctx, &ctx->flow);
 
     LoopFlowContext loop = {
-        .active_variable_count = incoming.count,
+        .active_variable_count = condition_entry.count,
         .parent = ctx->current_loop,
     };
 
     ctx->current_loop = &loop;
-    ctx->flow = flow_clone(ctx, &incoming);
+    ctx->flow = flow_clone(ctx, &condition_exit);
 
     ctx->loop_depth++;
 
     check_node(ctx, node->as.while_stmt.body);
 
+    FlowState body_flow = ctx->flow;
+    FlowState backedge =
+        loop_iteration_flow(ctx, &loop, &body_flow);
+
     ctx->loop_depth--;
     ctx->current_loop = loop.parent;
 
-    /*
-    * A literal-true loop cannot reach its following statement unless
-    * some reachable path executes break.
-    *
-    * Body fallthrough and continue both begin another iteration.
-    * Return leaves the function rather than the loop.
-    */
-    if (condition_is_always_true && !loop.has_break_flow) {
-        ctx->flow = flow_clone(ctx, &incoming);
+    flow_validate_loop_backedge_resources(
+        ctx,
+        node,
+        &condition_entry,
+        &backedge,
+        loop.active_variable_count
+    );
 
+    /*
+     * A compile-time-true loop cannot reach its following statement unless
+     * some reachable path executes break. Body fallthrough and continue both
+     * begin another iteration; return leaves the function rather than the loop.
+     */
+    if (condition_is_always_true && !loop.has_break_flow) {
+        ctx->flow = flow_clone(ctx, &condition_exit);
         ctx->flow.reachable = 0;
         return;
     }
 
     ctx->flow =
-        loop_conservative_exit_flow(
+        loop_exit_flow(
             ctx,
             &loop,
-            &incoming);
+            &condition_exit,
+            condition_is_always_true
+        );
 }
 
 static void check_for_statement(SemanticContext *ctx, Node *node) {
+
+    FlowState condition_entry =
+        flow_clone(ctx, &ctx->flow);
 
     int condition_is_always_true =
         node->as.for_stmt.condition == NULL;
@@ -13729,16 +13934,16 @@ static void check_for_statement(SemanticContext *ctx, Node *node) {
         }
     }
 
-    FlowState incoming =
+    FlowState condition_exit =
         flow_clone(ctx, &ctx->flow);
 
     LoopFlowContext loop = {
-        .active_variable_count = incoming.count,
+        .active_variable_count = condition_entry.count,
         .parent = ctx->current_loop,
     };
 
     ctx->current_loop = &loop;
-    ctx->flow = flow_clone(ctx, &incoming);
+    ctx->flow = flow_clone(ctx, &condition_exit);
 
     ctx->loop_depth++;
 
@@ -13747,8 +13952,8 @@ static void check_for_statement(SemanticContext *ctx, Node *node) {
     FlowState body_flow = ctx->flow;
 
     /*
-     * Both ordinary body fallthrough and continue to execute the post
-     * expression. Break and return paths do not.
+     * Both ordinary body fallthrough and continue execute the post expression.
+     * Break and return paths do not.
      */
     ctx->flow =
         loop_iteration_flow(
@@ -13764,21 +13969,32 @@ static void check_for_statement(SemanticContext *ctx, Node *node) {
         );
     }
 
+    FlowState backedge = ctx->flow;
+
     ctx->loop_depth--;
     ctx->current_loop = loop.parent;
 
-    if (condition_is_always_true && !loop.has_break_flow) {
-        ctx->flow = flow_clone(ctx, &incoming);
+    flow_validate_loop_backedge_resources(
+        ctx,
+        node,
+        &condition_entry,
+        &backedge,
+        loop.active_variable_count
+    );
 
+    if (condition_is_always_true && !loop.has_break_flow) {
+        ctx->flow = flow_clone(ctx, &condition_exit);
         ctx->flow.reachable = 0;
         return;
     }
 
     ctx->flow =
-        loop_conservative_exit_flow(
+        loop_exit_flow(
             ctx,
             &loop,
-            &incoming);
+            &condition_exit,
+            condition_is_always_true
+        );
 }
 
 // Check functions -------------------------------------------
@@ -16004,7 +16220,8 @@ static void check_node(SemanticContext *ctx,Node *node) {
                 break;
             }
 
-            FlowState saved_flow = ctx->flow;
+            FlowState saved_flow =
+                flow_clone(ctx, &ctx->flow);
             DeferredResourceUse *saved_capture =
                 ctx->captured_deferred_resources;
             ctx->captured_deferred_resources = NULL;

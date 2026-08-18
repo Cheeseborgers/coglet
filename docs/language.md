@@ -448,7 +448,7 @@ and post expression; that scope ends after the loop. The initializer, condition,
 and post clauses may be omitted as appropriate, including `for (;;)`. The
 three-clause form requires parentheses.
 
-Loop analysis is intentionally conservative. Initialization performed only during an iteration is not generally available after the loop:
+Loop analysis is intentionally conservative for ordinary definite assignment. Initialization performed only during an iteration is not generally available after the loop:
 
 ```c
 value: s32;
@@ -460,7 +460,7 @@ while condition {
 return value; // invalid
 ```
 
-The same rule applies to `for` loops.
+The same rule applies to `for` loops. Move-only resource state is stricter: every reachable loop backedge must restore each resource that existed at loop entry to the ownership state under which the condition was checked. A resource may therefore be moved during an iteration only when that path either leaves the loop or reinitializes the owner before the next iteration.
 
 After any three-clause initializer has executed, `for` flow is checked in runtime order:
 
@@ -495,8 +495,12 @@ executed, so cleanup cannot change the already selected return value.
 The first version deliberately forbids `return`, `break`, `continue`, and nested
 `defer` inside a deferred body. Deferred expressions are semantically checked at
 the registration point, so values they read must already satisfy normal definite-
-assignment rules there. `defer` has no ownership/lifetime semantics by itself; it
-is only deterministic lexical cleanup.
+assignment rules there. Flow mutations performed while checking the deferred body
+do not happen at registration time: for example, `defer consume(move value)` does
+not make `value` immediately uninitialized. The defer still records direct resource
+uses as active cleanup state, so a later explicit `move value` in the same lexical
+scope is rejected. `defer` is deterministic lexical cleanup rather than a general
+borrow/lifetime system.
 
 ### Move-only resources
 
@@ -537,14 +541,22 @@ consume(move file); // by-value parameter; ownership transfers
 
 Resource values are currently local/parameter values rather than globals, and a
 copyable struct may not contain a resource by value. A resource may contain other
-resources. Assignment cannot overwrite an already-initialized resource owner;
-move/deinitialize the old owner first, then assign a fresh value.
+resources. Ownership flow distinguishes definitely initialized, definitely
+uninitialized, and path-dependent/maybe-initialized owners. Resource assignment is
+accepted only for a definitely uninitialized owner, so a move on only some incoming
+paths does not make reassignment safe. Move the old owner on every continuing path
+before assigning a fresh value. An ordinary method call such as `value.deinit()`
+does not change compiler ownership state; `deinit` is not a reserved destructor
+name or a hidden ownership operation.
 
 `defer owner.deinit()` and explicit move cooperate conservatively. Once a defer in
 the current lexical scope has directly referenced a resource owner, that owner may
 not subsequently be moved from that scope, preventing the common double-cleanup
-mistake. This is not a borrow checker: pointers and slices remain freely copyable
-non-owning aliases and Coglet performs no general alias or lifetime analysis.
+mistake. Short-circuit `&&`/`||` expressions also merge ownership only across the
+runtime paths that can actually execute the right-hand side; a compile-time-skipped
+RHS does not move its operands. This is not a borrow checker: pointers and slices
+remain freely copyable non-owning aliases and Coglet performs no general alias or
+lifetime analysis.
 
 `resource` and `move` are semantic/frontend concepts only. Concrete resource
 layout is ordinary struct layout, and `move` does not imply a runtime copy helper,
@@ -573,7 +585,7 @@ run_forever::() -> s32 {
 }
 ```
 
-A compile-time-true loop with a reachable `break` may continue after the loop and does not satisfy a non-void function's return obligation by itself.
+A compile-time-true loop with a reachable `break` may continue after the loop and does not satisfy a non-void function's return obligation by itself. Its post-loop flow state is formed from the reachable `break` exits; there is no invented zero-iteration path for a condition that is known to be true.
 
 ### Unreachable statements
 

@@ -1,0 +1,14 @@
+Handle::resource { value: s32; }
+consume::(value: Handle) -> void {}
+
+test::(selector: bool) -> void {
+    value := Handle { value = 1 };
+
+    switch selector {
+        case true:
+            consume(move value);
+        case false: {}
+    }
+
+    value = Handle { value = 2 };
+}

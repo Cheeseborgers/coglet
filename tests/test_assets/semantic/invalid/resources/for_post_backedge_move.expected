@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/for_post_backedge_move.cog:7:5: error: resource 'value' changes ownership state on a loop backedge; restore it to its loop-entry state before the next iteration
+    for cond : consume(move value) {}
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1 semantic error generated.

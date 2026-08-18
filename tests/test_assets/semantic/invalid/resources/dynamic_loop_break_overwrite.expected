@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/dynamic_loop_break_overwrite.cog:12:5: error: resource assignment may overwrite an initialized owner; move the existing owner first
+    value = Handle { value = 2 };
+    ^~~~~
+1 semantic error generated.

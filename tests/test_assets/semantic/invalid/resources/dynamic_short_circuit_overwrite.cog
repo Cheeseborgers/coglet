@@ -1,0 +1,8 @@
+Handle::resource { value: s32; }
+consume_bool::(value: Handle) -> bool { return true; }
+
+test::(cond: bool) -> void {
+    value := Handle { value = 1 };
+    ignored := cond && consume_bool(move value);
+    value = Handle { value = 2 };
+}

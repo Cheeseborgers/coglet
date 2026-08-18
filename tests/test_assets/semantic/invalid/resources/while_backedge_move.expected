@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/while_backedge_move.cog:7:5: error: resource 'value' changes ownership state on a loop backedge; restore it to its loop-entry state before the next iteration
+    while cond {
+    ^~~~~~~~~~~~
+1 semantic error generated.

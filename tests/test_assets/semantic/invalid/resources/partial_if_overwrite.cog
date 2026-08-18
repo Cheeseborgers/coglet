@@ -1,0 +1,12 @@
+Handle::resource { value: s32; }
+consume::(value: Handle) -> void {}
+
+test::(cond: bool) -> void {
+    value := Handle { value = 1 };
+
+    if cond {
+        consume(move value);
+    }
+
+    value = Handle { value = 2 };
+}

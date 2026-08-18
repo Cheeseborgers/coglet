@@ -861,10 +861,18 @@ Globals do not receive local flow IDs and are not tracked by this analysis.
 `FlowState` contains:
 
 * the current function's flow-owner ID;
-* an arena-backed byte array of initialization flags;
+* an arena-backed byte array of initialization-state bitmasks;
+* a parallel byte array identifying move-only resource-owner slots;
 * a tracked-slot prefix count;
 * allocated capacity;
 * a `reachable` flag.
+
+Each initialization byte is a two-bit possibility set: one bit means the variable
+may be uninitialized and one means it may be initialized. The resulting states are
+definitely uninitialized, definitely initialized, or maybe initialized. Ordinary
+definite-assignment reads still require the definitely-initialized state; the richer
+state exists so resource assignment can distinguish definitely empty storage from a
+path merge that may still contain a live owner.
 
 The count is the active tracked-slot prefix, not necessarily the number of currently visible variables. Because variable IDs are not reused, variables from exited inner scopes may leave unused slots below the current high-water boundary.
 
@@ -883,7 +891,7 @@ Each lexical `Scope` records the flow-slot count that was active when the scope 
 When the scope exits:
 
 * the tracked-slot prefix is truncated to the recorded mark;
-* removed initialization flags are cleared;
+* removed initialization/resource-owner entries are cleared;
 * the function's next variable ID is not rewound.
 
 This prevents block-local variables from leaking into later branch merges while preserving stable symbol identity.
@@ -892,7 +900,7 @@ This prevents block-local variables from leaking into later branch merges while 
 
 Identifier checking distinguishes ordinary reads from direct plain-assignment targets.
 
-An ordinary read consults the active flow state. A tracked variable is rejected when its initialization slot is not set.
+An ordinary read consults the active flow state. A tracked variable is accepted only when its initialization state is definitely initialized.
 
 A direct target such as:
 
@@ -926,11 +934,16 @@ Every clone preserves its flow-owner ID.
 
 Flow merging first restricts both inputs to the tracked-slot prefix that was active before the branch. It then handles reachability as follows:
 
-* when both paths continue, initialization flags are intersected;
+* when both paths continue, each slot's initialization possibility bits are ORed;
 * when only one path continues, that path is preserved;
 * when neither path continues, the result remains unreachable.
 
-An unreachable path therefore does not weaken a reachable path.
+For ordinary definite assignment this has the same visible effect as the previous
+Boolean intersection: a read is valid only when every continuing path is initialized.
+For resources it additionally preserves the distinction between definitely
+uninitialized and maybe initialized, preventing a partial move from authorizing an
+overwriting assignment. An unreachable path therefore does not weaken a reachable
+path.
 
 Merge helpers assert that both inputs belong to the same flow owner.
 
@@ -941,6 +954,12 @@ An `if` condition is checked before the incoming flow state is cloned.
 The `then` and `else` branches each begin from independent copies of that state. When no explicit `else` exists, the false path is represented by an unchanged copy of the incoming state.
 
 After both branches have been checked, their continuing paths are merged.
+
+Short-circuit Boolean operators use the same path-sensitive model. The RHS is
+semantically checked from the post-LHS flow state, but its flow effects are merged
+only with the runtime path on which the RHS executes. If the LHS is a compile-time
+Boolean that forces short-circuiting, the skipped RHS contributes no ownership-flow
+mutation.
 
 ### Switch statements
 
@@ -991,9 +1010,27 @@ After that optional initializer has executed, a `for` loop is checked in runtime
 
 Normal body fallthrough and accumulated `continue` paths are merged before the post expression is checked. `break` and `return` paths do not reach the post expression.
 
-Coglet does not currently compute a loop fixed point. A loop that may terminate normally preserves the unchanged incoming state as a conservative possible exit. Initialization performed only during an iteration therefore cannot become definitely initialized after the loop.
+Coglet does not currently compute a general loop fixed point for ordinary
+definite assignment. Initialization performed only during an iteration therefore
+cannot generally become definitely initialized after a loop that may execute zero
+times.
 
-A loop with a Boolean condition proven by the central constant evaluator to be `true` and no reachable `break` is handled specially and leaves the surrounding flow unreachable. The condition need not be the literal token `true`; named/local constants and checked constant Boolean expressions participate as well.
+Resource ownership receives an additional backedge invariant. Semantic analysis
+records the flow state immediately before checking the loop condition and compares
+every reachable body/`continue`/post backedge against it. A move-only owner that
+existed at loop entry must have the same ownership state before the next condition
+evaluation. This rejects repeated moves and repeated initialization-overwrite cases
+without introducing a general fixed-point or borrow analysis. A path that leaves
+the loop through `break` is not a backedge and may legitimately transfer ownership.
+
+For a loop that may terminate through its condition, the normal exit uses the state
+after condition evaluation, which matters when a short-circuit condition transfers
+resource ownership. Reachable `break` exits are merged with that state. For a
+compile-time-true loop, there is no condition-false/zero-iteration exit: when a
+reachable `break` exists, the post-loop state is formed only from accumulated break
+flows; with no reachable `break`, surrounding flow is unreachable. The condition
+need not be the literal token `true`; named/local constants and checked constant
+Boolean expressions participate as well.
 
 ### Unified reachability
 
@@ -1205,11 +1242,15 @@ resource fields.
 
 Resource methods must use pointer receivers and resource structs cannot define the
 current by-value operator mappings. Assignment to a resource local is accepted only
-when that owner is currently uninitialized, preventing silent overwrite/leak of an
-existing owner. Globals are excluded from the initial resource model. A lexical
-defer that directly references a resource owner also records that owner as active
-cleanup state; a later `move` in the same active lexical scope is rejected to avoid
-double cleanup.
+when that owner is definitely uninitialized. A path merge that is initialized on
+some paths and moved/uninitialized on others remains maybe initialized and cannot
+be overwritten, preventing silent loss of a live owner. Globals are excluded from
+the initial resource model. A lexical defer that directly references a resource
+owner also records that owner as active cleanup state; a later `move` in the same
+active lexical scope is rejected to avoid double cleanup. Deferred bodies are
+checked against a cloned flow snapshot so ownership mutations inside the deferred
+syntax do not happen at registration time. Ordinary methods, including a method
+spelled `deinit`, do not implicitly alter flow ownership state.
 
 Lowering erases `move`: after semantic ownership validity has been established, the
 operand lowers exactly as the corresponding ordinary concrete value. CogIR has no

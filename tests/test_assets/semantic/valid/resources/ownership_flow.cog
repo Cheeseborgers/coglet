@@ -1,0 +1,86 @@
+Handle::resource {
+    value: s32;
+
+    deinit::(self: Self*) -> void {}
+}
+
+consume::(value: Handle) -> void {}
+consume_bool::(value: Handle) -> bool { return true; }
+
+both_if_paths_move::(cond: bool) -> void {
+    value := Handle { value = 1 };
+
+    if cond {
+        consume(move value);
+    } else {
+        consume(move value);
+    }
+
+    value = Handle { value = 2 };
+    consume(move value);
+}
+
+exhaustive_switch_moves::(selector: bool) -> void {
+    value := Handle { value = 1 };
+
+    switch selector {
+        case true:
+            consume(move value);
+        case false:
+            consume(move value);
+    }
+
+    value = Handle { value = 2 };
+    consume(move value);
+}
+
+constant_short_circuit_preserves_owner::() -> void {
+    first := Handle { value = 1 };
+    skipped_and := false && consume_bool(move first);
+    consume(move first);
+
+    second := Handle { value = 2 };
+    skipped_or := true || consume_bool(move second);
+    consume(move second);
+}
+
+loop_backedge_restores_owner::(cond: bool) -> void {
+    value := Handle { value = 1 };
+
+    while cond {
+        consume(move value);
+        value = Handle { value = 2 };
+    }
+
+    consume(move value);
+}
+
+loop_condition_transfer_restored_for_repeat::() -> void {
+    value := Handle { value = 1 };
+
+    while consume_bool(move value) {
+        value = Handle { value = 2 };
+    }
+
+    value = Handle { value = 3 };
+    consume(move value);
+}
+
+true_loop_break_has_only_break_exit::() -> void {
+    value := Handle { value = 1 };
+
+    while true {
+        consume(move value);
+        break;
+    }
+
+    value = Handle { value = 2 };
+    consume(move value);
+}
+
+defer_move_does_not_happen_at_registration::() -> s32 {
+    value := Handle { value = 7 };
+    defer consume(move value);
+
+    return value.value;
+}

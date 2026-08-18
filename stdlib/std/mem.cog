@@ -1,41 +1,122 @@
 module std.mem;
 
-// Typed heap allocation over the Coglet runtime allocator.
-//
-// Allocation is deliberately explicit and manual in this first version.
-// alloc/resize abort on allocation failure. A zero element count returns null.
-// free(null) is valid.
+// Copyable allocation capability. Allocator values do not own their state; the
+// concrete allocator implementation controls that lifetime.
+export #repr(c)
+Allocator::struct {
+    state: opaque*;
+    allocate: cfn(opaque*, c_size, c_size) -> opaque*;
+    resize: cfn(opaque*, opaque*, c_size, c_size, c_size) -> opaque*;
+    free: cfn(opaque*, opaque*, c_size, c_size) -> void;
+}
 
-#extern(c, name="coglet_rt_mem_alloc")
-rt_alloc::(size: u64, alignment: u64) -> opaque*;
+#extern(c, name="coglet_rt_mem_heap_alloc")
+heap_alloc::(state: opaque*, size: c_size, alignment: c_size) -> opaque*;
 
-#extern(c, name="coglet_rt_mem_resize")
-rt_resize::(pointer: opaque*, size: u64, alignment: u64) -> opaque*;
+#extern(c, name="coglet_rt_mem_heap_resize")
+heap_resize::(state: opaque*, pointer: opaque*, old_size: c_size, new_size: c_size, alignment: c_size) -> opaque*;
 
-#extern(c, name="coglet_rt_mem_free")
-rt_free::(pointer: opaque*) -> void;
+#extern(c, name="coglet_rt_mem_heap_free")
+heap_free::(state: opaque*, pointer: opaque*, size: c_size, alignment: c_size) -> void;
 
-export alloc::<T>(count: u64) -> T* {
+#extern(c, name="coglet_rt_mem_arena_create")
+arena_create::(parent: Allocator, block_size: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_arena_reset")
+arena_reset::(state: opaque*) -> void;
+
+#extern(c, name="coglet_rt_mem_arena_destroy")
+arena_destroy::(state: opaque*) -> void;
+
+#extern(c, name="coglet_rt_mem_arena_alloc")
+arena_alloc::(state: opaque*, size: c_size, alignment: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_arena_resize")
+arena_resize::(state: opaque*, pointer: opaque*, old_size: c_size, new_size: c_size, alignment: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_arena_free")
+arena_free::(state: opaque*, pointer: opaque*, size: c_size, alignment: c_size) -> void;
+
+export heap::() -> Allocator {
+    return Allocator {
+        state = null,
+        allocate = heap_alloc,
+        resize = heap_resize,
+        free = heap_free
+    };
+}
+
+export alloc::<T>(allocator: Allocator, count: u64) -> T* {
     if count == 0
         return null;
 
     bytes := count * size_of::<T>();
-    raw := rt_alloc(bytes, align_of::<T>());
+    raw := allocator.allocate(
+        allocator.state,
+        cast(c_size, bytes),
+        cast(c_size, align_of::<T>())
+    );
     return reinterpret(T*, raw);
 }
 
-export resize::<T>(pointer: T*, count: u64) -> T* {
-    if count == 0 {
-        free(pointer);
+export resize::<T>(allocator: Allocator, pointer: T*, old_count: u64, new_count: u64) -> T* {
+    if new_count == 0 {
+        free(allocator, pointer, old_count);
         return null;
     }
 
-    bytes := count * size_of::<T>();
-    raw := reinterpret(opaque*, pointer);
-    resized := rt_resize(raw, bytes, align_of::<T>());
-    return reinterpret(T*, resized);
+    old_bytes := old_count * size_of::<T>();
+    new_bytes := new_count * size_of::<T>();
+    raw := allocator.resize(
+        allocator.state,
+        reinterpret(opaque*, pointer),
+        cast(c_size, old_bytes),
+        cast(c_size, new_bytes),
+        cast(c_size, align_of::<T>())
+    );
+    return reinterpret(T*, raw);
 }
 
-export free::<T>(pointer: T*) -> void {
-    rt_free(reinterpret(opaque*, pointer));
+export free::<T>(allocator: Allocator, pointer: T*, count: u64) -> void {
+    if pointer == null
+        return;
+
+    bytes := count * size_of::<T>();
+    allocator.free(
+        allocator.state,
+        reinterpret(opaque*, pointer),
+        cast(c_size, bytes),
+        cast(c_size, align_of::<T>())
+    );
+}
+
+// Growable region allocator. Allocations are individually addressable but
+// individual free operations are no-ops; reset() releases all allocations for
+// reuse and deinit() returns every backing block to the parent allocator.
+export Arena::struct {
+    state: opaque*;
+
+    new::(parent: Allocator, block_size: u64 = 65536) -> Self {
+        return Self {
+            state = arena_create(parent, cast(c_size, block_size))
+        };
+    }
+
+    allocator::(self: readonly Self*) -> Allocator {
+        return Allocator {
+            state = (*self).state,
+            allocate = arena_alloc,
+            resize = arena_resize,
+            free = arena_free
+        };
+    }
+
+    reset::(self: Self*) -> void {
+        arena_reset((*self).state);
+    }
+
+    deinit::(self: Self*) -> void {
+        arena_destroy((*self).state);
+        (*self).state = null;
+    }
 }

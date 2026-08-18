@@ -1025,7 +1025,25 @@ static CogIrValueId emit_load(
         .span = span,
         .as.load = { .address = address, .is_volatile = is_volatile },
     };
-    return emit_instruction_value(state, instruction);
+    CogIrValueId value = emit_instruction_value(state, instruction);
+    if (value == COG_IR_VALUE_INVALID)
+        return value;
+
+    /* Preserve exact C ABI spelling/function metadata through loads from an
+     * ABI-annotated pointer (notably cfn fields inside #repr(c) structs). */
+    const CogIrFunction *function = cog_ir_get_function(state->lower->module, state->function);
+    const CogIrValue *address_value = function ? cog_ir_get_value(function, address) : NULL;
+    const CogIrAbiType *address_abi = address_value && address_value->abi_type != COG_IR_ABI_TYPE_INVALID
+        ? cog_ir_get_abi_type(state->lower->module, address_value->abi_type)
+        : NULL;
+    if (address_abi && address_abi->kind == COG_IR_ABI_TYPE_POINTER) {
+        const CogIrAbiType *element_abi = cog_ir_get_abi_type(
+            state->lower->module, address_abi->element_type);
+        if (element_abi && element_abi->runtime_type == type &&
+            !annotate_value_abi(state, value, element_abi->id, span))
+            return COG_IR_VALUE_INVALID;
+    }
+    return value;
 }
 
 static int emit_store(

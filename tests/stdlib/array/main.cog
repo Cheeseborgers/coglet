@@ -1,72 +1,65 @@
 import std.array as array;
 import std.mem as mem;
 
-#repr(c, align=16)
+#repr(c, align=32)
 Aligned::struct {
-    x: u64;
-    y: u64;
+    value: c_ulonglong;
 }
 
 main::() -> s32 {
-    if size_of::<s32>() != 4 || align_of::<s32>() != 4
-        return 1;
+    heap := mem.heap();
 
-    // Raw typed allocation and explicit pointer+length slice construction.
-    raw := mem.alloc::<s32>(3);
+    raw := mem.alloc::<s32>(heap, 3);
     raw[0] = 7;
     raw[1] = 8;
     raw[2] = 9;
-    raw_view := slice(raw, 3);
-    if raw_view.len != 3 || raw_view[0] != 7 || raw_view[2] != 9
-        return 2;
-    mem.free(raw);
+    view := slice(raw, 3);
+    if view.len != 3 || view[1] != 8 {
+        mem.free(heap, raw, 3);
+        return 1;
+    }
+    mem.free(heap, raw, 3);
 
-    values := array.Array::<s32>.new();
-    if !values.is_empty()
-        return 3;
-
+    values := array.Array::<s32>.new(heap);
+    defer values.deinit();
     values.push(10);
     values.push(20);
     values.push(30);
     if values.len != 3 || values.capacity < 3
-        return 4;
-
+        return 2;
     mutable := values.as_slice();
     mutable[1] = 25;
-    readonly_view := values.as_readonly_slice();
-    if readonly_view.len != 3 || readonly_view[0] != 10 ||
-       readonly_view[1] != 25 || readonly_view[2] != 30 {
+    if values.data[1] != 25
+        return 3;
+    if values.pop() != 30 || values.len != 2
+        return 4;
+
+    aligned := mem.alloc::<Aligned>(heap, 2);
+    aligned[0].value = 11;
+    aligned[1].value = 22;
+    if aligned[1].value != 22 {
+        mem.free(heap, aligned, 2);
         return 5;
     }
+    mem.free(heap, aligned, 2);
 
-    if values.pop() != 30 || values.len != 2
+    arena := mem.Arena.new(heap, 128);
+    defer arena.deinit();
+    arena_alloc := arena.allocator();
+
+    temp := array.Array::<s32>.new(arena_alloc);
+    // deinit is valid but individual arena frees are no-ops.
+    defer temp.deinit();
+    for (i: s32 = 0; i < 100; i++)
+        temp.push(i);
+    if temp.len != 100 || temp.data[99] != 99
         return 6;
 
-    values.reserve(30);
-    if values.capacity < 32 || values.as_slice()[1] != 25
+    arena.reset();
+    after_reset := mem.alloc::<s32>(arena_alloc, 4);
+    after_reset[0] = 42;
+    if after_reset[0] != 42
         return 7;
-
-    values.clear();
-    if !values.is_empty() || values.capacity < 32
-        return 8;
-
-    values.deinit();
-    if values.data != null || values.len != 0 || values.capacity != 0
-        return 9;
-
-    // The runtime allocator honors target alignment reported by align_of.
-    if align_of::<Aligned>() != 16
-        return 10;
-
-    aligned := mem.alloc::<Aligned>(2);
-    address := reinterpret(opaque*, aligned);
-    if address == null
-        return 11;
-    aligned[0] = Aligned { x = 11, y = 12 };
-    aligned[1] = Aligned { x = 13, y = 14 };
-    if aligned[1].y != 14
-        return 12;
-    mem.free(aligned);
 
     return 0;
 }

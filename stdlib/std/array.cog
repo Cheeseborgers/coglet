@@ -2,35 +2,36 @@ module std.array;
 
 import std.mem as mem;
 
-// Growable manually-owned contiguous storage.
+// Growable contiguous storage using an explicit allocator.
 //
-// Array<T> is intentionally a small bootstrap container. It does not yet have
-// move-only ownership or automatic destruction, so copying an Array value is a
-// shallow alias of the same allocation. Exactly one owner must call deinit().
+// This milestone still permits shallow copies of Array<T>. Exactly one logical
+// owner must call deinit() until move-only resource semantics are added.
 export Array::<T> struct {
     data: T*;
     len: u64;
     capacity: u64;
+    allocator: mem.Allocator;
 
-    new::() -> Self {
+    new::(allocator: mem.Allocator) -> Self {
         return Self {
             data = null,
             len = 0,
-            capacity = 0
+            capacity = 0,
+            allocator = allocator
         };
     }
 
-    with_capacity::(capacity: u64) -> Self {
-        result := Self.new();
+    with_capacity::(allocator: mem.Allocator, capacity: u64) -> Self {
+        result := Self.new(allocator);
         if capacity != 0 {
-            result.data = mem.alloc::<T>(capacity);
+            result.data = mem.alloc::<T>(allocator, capacity);
             result.capacity = capacity;
         }
         return result;
     }
 
     deinit::(self: Self*) -> void {
-        mem.free((*self).data);
+        mem.free((*self).allocator, (*self).data, (*self).capacity);
         (*self).data = null;
         (*self).len = 0;
         (*self).capacity = 0;
@@ -56,7 +57,12 @@ export Array::<T> struct {
         while next_capacity < required
             next_capacity *= 2;
 
-        (*self).data = mem.resize((*self).data, next_capacity);
+        (*self).data = mem.resize(
+            (*self).allocator,
+            (*self).data,
+            (*self).capacity,
+            next_capacity
+        );
         (*self).capacity = next_capacity;
     }
 

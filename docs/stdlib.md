@@ -289,37 +289,77 @@ neither backend implements math functions itself.
 
 ## `std.mem`
 
-`std.mem` is the first explicit heap-allocation API. It is ordinary Coglet source over the reserved runtime allocator ABI and uses the compiler's target-layout queries so generic allocation respects the actual size and alignment of `T`:
+`std.mem` exposes a small explicit allocator contract. An allocator is a cheap
+copyable capability containing implementation state plus allocate/resize/free C
+ABI callbacks. The standard heap allocator is obtained explicitly:
 
 ```c
 import std.mem as mem;
 
-items := mem.alloc::<s32>(128);
+heap := mem.heap();
+items := mem.alloc::<s32>(heap, 128);
 items[0] = 42;
-items = mem.resize(items, 256);
-mem.free(items);
+items = mem.resize(heap, items, 128, 256);
+mem.free(heap, items, 256);
 ```
 
-Exports:
+The typed helpers are:
 
 ```text
-alloc<T>(count: u64) -> T*
-resize<T>(pointer: T*, count: u64) -> T*
-free<T>(pointer: T*) -> void
+alloc<T>(allocator: Allocator, count: u64) -> T*
+resize<T>(allocator: Allocator, pointer: T*, old_count: u64, new_count: u64) -> T*
+free<T>(allocator: Allocator, pointer: T*, count: u64) -> void
 ```
 
-A zero element count returns `null`; `free(null)` is valid. Allocation byte counts use ordinary checked Coglet arithmetic. Allocation or allocator-internal size/alignment failure currently prints a runtime error and aborts rather than returning a fallible result. The runtime allocator overallocates, aligns the returned pointer to `align_of::<T>()`, records the original allocation in a private header, and implements resize as allocate/copy/free so the same C source remains portable across the initial Linux/Windows x86-64/AArch64 native-host matrix.
+Sizes passed to the allocator are target-correct `size_of::<T>()` results and
+alignment is `align_of::<T>()`. Supplying old/new counts makes the allocator
+contract usable by implementations that do not keep a hidden allocation-size
+header. Zero-sized allocation returns `null`; resizing to zero frees through the
+allocator and returns `null`; freeing `null` is valid. The bootstrap heap remains
+fatal-on-OOM.
 
-`size_of::<T>()` and `align_of::<T>()` are compiler builtins rather than `std.mem` functions. They return `u64` target layout values and are described in `docs/language.md`.
+### Arenas
+
+`std.mem.Arena` is a growable region backed by any parent allocator:
+
+```c
+heap := mem.heap();
+arena := mem.Arena.new(heap); // default block size: 64 KiB
+defer arena.deinit();
+
+frame := arena.allocator();
+vertices := mem.alloc::<Vertex>(frame, 4096);
+
+// Reuse all arena blocks without individually freeing allocations.
+arena.reset();
+```
+
+`Arena.new(parent, block_size)` may select a different preferred block size.
+Individual `free` calls through an arena allocator are no-ops. `resize` allocates
+new arena storage and copies the known old byte count. `reset()` retains backing
+blocks for reuse, making the allocator suitable for frame/scratch lifetimes;
+`deinit()` returns all blocks and arena state to its parent allocator.
+
+Allocator values do not own allocator state. In particular, an allocator returned
+by `arena.allocator()` must not be used after that arena has been reset when the
+specific allocation is expected to survive, or after `arena.deinit()` at all.
+Coglet does not yet lifetime-check this relationship.
+
+`size_of::<T>()` and `align_of::<T>()` remain compiler builtins rather than
+`std.mem` functions. They return `u64` target layout values and are described in
+`docs/language.md`.
 
 ## `std.array`
 
-`std.array` provides the first growable owning container:
+`std.array.Array<T>` now receives and retains its allocator explicitly:
 
 ```c
 import std.array as array;
+import std.mem as mem;
 
-values := array.Array::<s32>.with_capacity(32);
+values := array.Array::<s32>.with_capacity(mem.heap(), 32);
+defer values.deinit();
+
 values.push(10);
 values.push(20);
 
@@ -327,22 +367,42 @@ view := values.as_slice();
 view[1] = 25;
 
 last := values.pop();
-values.deinit();
 ```
 
-`Array<T>` stores exactly the conventional bootstrap fields:
+The representation is:
 
 ```text
-data     : T*
-len      : u64
-capacity : u64
+data      : T*
+len       : u64
+capacity  : u64
+allocator : std.mem.Allocator
 ```
 
-Its initial methods are `new`, `with_capacity`, `deinit`, `is_empty`, `clear`, `reserve`, `push`, `pop`, `as_slice`, and `as_readonly_slice`. Capacity grows geometrically from a minimum allocation of eight elements. `clear` retains allocated capacity; `deinit` frees storage and resets all three fields. `pop` currently requires `len > 0`.
+Its methods are `new(allocator)`, `with_capacity(allocator, capacity)`, `deinit`,
+`is_empty`, `clear`, `reserve`, `push`, `pop`, `as_slice`, and
+`as_readonly_slice`. Capacity grows geometrically from a minimum allocation of
+eight elements. `clear` retains allocated capacity; `deinit` returns storage
+through the stored allocator and resets data/length/capacity. `pop` requires
+`len > 0`.
 
-Ownership is deliberately manual. Coglet does not yet have move-only values, destructors, or automatic resource cleanup, so copying an `Array<T>` is a shallow copy of the owning pointer. Exactly one logical owner must call `deinit()`. Slices returned by `as_slice`/`as_readonly_slice` borrow the array storage and are invalidated by a reallocation or `deinit()`. This is a known safety limitation, not hidden reference counting.
+This means the same container can live on the heap or an arena without changing
+its implementation:
 
-Array growth byte-copies existing element storage through the runtime allocator. That is valid for today's trivially movable Coglet values, but must be revisited if the language later adds destructors, nontrivial move operations, or pinned/address-sensitive values.
+```c
+arena := mem.Arena.new(mem.heap());
+defer arena.deinit();
+
+values := array.Array::<Entity>.new(arena.allocator());
+values.push(entity);
+```
+
+Until move-only resources land, `Array<T>` is still shallow-copyable and exactly
+one logical owner must call `deinit()`. Slices returned by the array remain
+non-owning views and may be invalidated by growth/reset/deinitialization.
+
+Array growth byte-copies existing element storage through the allocator. That is
+valid for today's trivially movable Coglet values, but must be revisited once
+move-only resource semantics exist.
 
 ## `std.io`
 

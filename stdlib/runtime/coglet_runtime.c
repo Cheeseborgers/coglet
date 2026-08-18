@@ -328,3 +328,211 @@ void *coglet_rt_mem_resize(void *pointer, uint64_t size, uint64_t alignment)
     coglet_rt_mem_free(pointer);
     return resized;
 }
+
+
+/* Generic allocator ABI used by std.mem. */
+typedef void *(*CogletRuntimeAllocFn)(void *, size_t, size_t);
+typedef void *(*CogletRuntimeResizeFn)(void *, void *, size_t, size_t, size_t);
+typedef void (*CogletRuntimeFreeFn)(void *, void *, size_t, size_t);
+
+typedef struct CogletRuntimeAllocator {
+    void *state;
+    CogletRuntimeAllocFn allocate;
+    CogletRuntimeResizeFn resize;
+    CogletRuntimeFreeFn free;
+} CogletRuntimeAllocator;
+
+void *coglet_rt_mem_heap_alloc(void *state, size_t size, size_t alignment)
+{
+    (void)state;
+    return coglet_rt_mem_allocate_impl(size, coglet_rt_mem_checked_alignment((uint64_t)alignment));
+}
+
+void *coglet_rt_mem_heap_resize(
+    void *state,
+    void *pointer,
+    size_t old_size,
+    size_t new_size,
+    size_t alignment
+) {
+    (void)state;
+    (void)old_size;
+    return coglet_rt_mem_resize(pointer, (uint64_t)new_size, (uint64_t)alignment);
+}
+
+void coglet_rt_mem_heap_free(void *state, void *pointer, size_t size, size_t alignment)
+{
+    (void)state;
+    (void)size;
+    (void)alignment;
+    coglet_rt_mem_free(pointer);
+}
+
+typedef struct CogletRuntimeArenaBlock {
+    struct CogletRuntimeArenaBlock *next;
+    size_t allocation_size;
+    size_t capacity;
+    size_t used;
+} CogletRuntimeArenaBlock;
+
+typedef struct CogletRuntimeArena {
+    CogletRuntimeAllocator parent;
+    size_t block_size;
+    CogletRuntimeArenaBlock *head;
+    CogletRuntimeArenaBlock *current;
+} CogletRuntimeArena;
+
+static int coglet_rt_mem_allocator_valid(CogletRuntimeAllocator allocator)
+{
+    return allocator.allocate && allocator.resize && allocator.free;
+}
+
+static uintptr_t coglet_rt_align_up_uintptr(uintptr_t value, size_t alignment)
+{
+    return (value + (uintptr_t)(alignment - 1)) & ~(uintptr_t)(alignment - 1);
+}
+
+static CogletRuntimeArenaBlock *coglet_rt_mem_arena_new_block(
+    CogletRuntimeArena *arena,
+    size_t minimum_payload,
+    size_t requested_alignment
+) {
+    size_t payload = arena->block_size;
+    size_t needed = minimum_payload;
+    if (requested_alignment > 1) {
+        if (needed > SIZE_MAX - (requested_alignment - 1))
+            coglet_rt_mem_fail();
+        needed += requested_alignment - 1;
+    }
+    if (payload < needed)
+        payload = needed;
+    if (payload > SIZE_MAX - sizeof(CogletRuntimeArenaBlock))
+        coglet_rt_mem_fail();
+
+    size_t total = sizeof(CogletRuntimeArenaBlock) + payload;
+    CogletRuntimeArenaBlock *block = (CogletRuntimeArenaBlock *)arena->parent.allocate(
+        arena->parent.state,
+        total,
+        sizeof(void *)
+    );
+    if (!block)
+        coglet_rt_mem_fail();
+    block->next = NULL;
+    block->allocation_size = total;
+    block->capacity = payload;
+    block->used = 0;
+    return block;
+}
+
+void *coglet_rt_mem_arena_create(CogletRuntimeAllocator parent, size_t block_size)
+{
+    if (!coglet_rt_mem_allocator_valid(parent))
+        coglet_rt_mem_fail();
+    if (block_size == 0)
+        block_size = 65536;
+
+    CogletRuntimeArena *arena = (CogletRuntimeArena *)parent.allocate(
+        parent.state,
+        sizeof(CogletRuntimeArena),
+        sizeof(void *)
+    );
+    if (!arena)
+        coglet_rt_mem_fail();
+    arena->parent = parent;
+    arena->block_size = block_size;
+    arena->head = NULL;
+    arena->current = NULL;
+    return arena;
+}
+
+void *coglet_rt_mem_arena_alloc(void *state, size_t size, size_t alignment)
+{
+    CogletRuntimeArena *arena = (CogletRuntimeArena *)state;
+    if (!arena || size == 0)
+        return NULL;
+    alignment = coglet_rt_mem_checked_alignment((uint64_t)alignment);
+
+    CogletRuntimeArenaBlock *block = arena->current ? arena->current : arena->head;
+    while (block) {
+        uintptr_t base = (uintptr_t)(block + 1);
+        uintptr_t current = base + (uintptr_t)block->used;
+        uintptr_t aligned = coglet_rt_align_up_uintptr(current, alignment);
+        if (aligned >= base && size <= block->capacity &&
+            aligned - base <= block->capacity - size) {
+            block->used = (size_t)(aligned - base) + size;
+            arena->current = block;
+            return (void *)aligned;
+        }
+        block = block->next;
+    }
+
+    block = coglet_rt_mem_arena_new_block(arena, size, alignment);
+    if (!arena->head) {
+        arena->head = block;
+    } else {
+        CogletRuntimeArenaBlock *tail = arena->head;
+        while (tail->next)
+            tail = tail->next;
+        tail->next = block;
+    }
+    arena->current = block;
+
+    uintptr_t base = (uintptr_t)(block + 1);
+    uintptr_t aligned = coglet_rt_align_up_uintptr(base, alignment);
+    block->used = (size_t)(aligned - base) + size;
+    return (void *)aligned;
+}
+
+void *coglet_rt_mem_arena_resize(
+    void *state,
+    void *pointer,
+    size_t old_size,
+    size_t new_size,
+    size_t alignment
+) {
+    if (!pointer)
+        return coglet_rt_mem_arena_alloc(state, new_size, alignment);
+    if (new_size == 0)
+        return NULL;
+    void *resized = coglet_rt_mem_arena_alloc(state, new_size, alignment);
+    memcpy(resized, pointer, old_size < new_size ? old_size : new_size);
+    return resized;
+}
+
+void coglet_rt_mem_arena_free(
+    void *state,
+    void *pointer,
+    size_t size,
+    size_t alignment
+) {
+    (void)state;
+    (void)pointer;
+    (void)size;
+    (void)alignment;
+    /* Individual arena frees are intentionally no-ops. */
+}
+
+void coglet_rt_mem_arena_reset(void *state)
+{
+    CogletRuntimeArena *arena = (CogletRuntimeArena *)state;
+    if (!arena)
+        return;
+    for (CogletRuntimeArenaBlock *block = arena->head; block; block = block->next)
+        block->used = 0;
+    arena->current = arena->head;
+}
+
+void coglet_rt_mem_arena_destroy(void *state)
+{
+    CogletRuntimeArena *arena = (CogletRuntimeArena *)state;
+    if (!arena)
+        return;
+    CogletRuntimeAllocator parent = arena->parent;
+    CogletRuntimeArenaBlock *block = arena->head;
+    while (block) {
+        CogletRuntimeArenaBlock *next = block->next;
+        parent.free(parent.state, block, block->allocation_size, sizeof(void *));
+        block = next;
+    }
+    parent.free(parent.state, arena, sizeof(CogletRuntimeArena), sizeof(void *));
+}

@@ -1722,7 +1722,13 @@ static int parse_parameter_group(Parser *p, Node *func)
     if (!consume(p, TOK_COLON))
         goto cleanup;
 
+    int is_pack = match(p, TOK_ELLIPSIS);
     Type *type = parse_type(p);
+
+    if (is_pack && head && head->next) {
+        error_at(p, &p->previous, "variadic generic parameter groups may contain only one name");
+        goto cleanup;
+    }
 
     if (match(p, TOK_EQUAL)) {
         error_at(p, &p->previous, "default parameters are not supported");
@@ -1740,6 +1746,7 @@ static int parse_parameter_group(Parser *p, Node *func)
             it->name.span
         );
 
+        param->as.param_decl.is_pack = is_pack;
         nodelist_push(
             p->arena,
             &func->as.func_decl.params,
@@ -1830,6 +1837,7 @@ static int parse_generic_type_parameter_list_after_less(
     }
 
     for (;;) {
+        int is_pack = match(p, TOK_ELLIPSIS);
         if (!consume(p, TOK_IDENT)) {
             synchronize(p);
             return 0;
@@ -1838,6 +1846,7 @@ static int parse_generic_type_parameter_list_after_less(
         GenericTypeParameter type_parameter = {
             .name = string_view(parameter.start, (size_t)parameter.length),
             .constraint = string_view_empty(),
+            .is_pack = is_pack,
         };
 
         if (match(p, TOK_COLON)) {
@@ -1851,6 +1860,17 @@ static int parse_generic_type_parameter_list_after_less(
         }
 
         generic_type_parameter_list_push(p->arena, out, type_parameter);
+        if (type_parameter.is_pack) {
+            if (match(p, TOK_COMMA)) {
+                error_at(p, &p->previous, "variadic generic type parameter must be last");
+                while (!check(p, TOK_GREATER) && !check(p, TOK_EOF))
+                    advance(p);
+                if (check(p, TOK_GREATER))
+                    advance(p);
+                return 0;
+            }
+            break;
+        }
         if (!match(p, TOK_COMMA))
             break;
     }

@@ -1,0 +1,4 @@
+pack_without_parameter.cog:1:1: error: generic type pack requires a final pack function parameter
+bad::<...Args>() -> s32 {
+^~~
+1 semantic error generated.

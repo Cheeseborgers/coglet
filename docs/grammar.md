@@ -470,7 +470,9 @@ generic_type_parameter_list =
     "<" generic_type_parameter {"," generic_type_parameter} ">";
 
 generic_type_parameter =
-    identifier [":" generic_builtin_constraint];
+    ["..."] identifier [":" generic_builtin_constraint];
+
+A generic type parameter beginning with `...` is a heterogeneous compile-time type pack and must be the final generic type parameter. Its corresponding function parameter must be the final parameter and uses `args: ...Args`. The pack is specialized into zero or more concrete parameter types; it is not a C ABI variadic parameter.
 
 generic_builtin_constraint =
       "integer"
@@ -484,7 +486,7 @@ parameter_list =
     parameter_group {"," parameter_group};
 
 parameter_group =
-    identifier {"," identifier} ":" type;
+    identifier {"," identifier} ":" ["..."] type;
 
 extern_c_function_declaration =
     "#" "extern" "(" "c" {"," extern_c_option} ")"

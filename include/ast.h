@@ -112,6 +112,7 @@ typedef struct {
 
 typedef struct GenericTypeParameter {
     StringView name;
+    int is_pack; /* Heterogeneous compile-time type pack; must be the final parameter. */
 
     /*
      * Optional closed builtin constraint spelling (for example `ordered`).
@@ -308,6 +309,7 @@ struct Node {
         struct {
             Type *var_type;
             StringView name;
+            int is_pack; /* Heterogeneous generic parameter pack. */
         } param_decl;
 
         struct {

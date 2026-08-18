@@ -695,6 +695,19 @@ identity::<T>(value: T) -> T {
 }
 ```
 
+A generic function may end its generic parameter list with one heterogeneous compile-time type pack:
+
+```c
+pack_noop::<...Args>(args: ...Args) -> s32 {
+    return 0;
+}
+
+pack_noop(1, true, 2.0);
+pack_noop::<s32, bool, f64>(1, true, 2.0);
+```
+
+The pack records each concrete argument type during specialization. No runtime tuple, `Any`, boxing, or C `va_list` is introduced. Pack expansion/iteration is intentionally a later layer; the current pack feature establishes specialization and concrete call-signature support. C `...` variadics remain a separate native-C ABI feature.
+
 Generic struct example:
 
 ```c

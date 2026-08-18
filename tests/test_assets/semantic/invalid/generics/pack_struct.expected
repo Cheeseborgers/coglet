@@ -1,0 +1,4 @@
+pack_struct.cog:1:1: error: heterogeneous type packs are currently supported only on generic functions
+Box::<...Args>struct {
+^~~
+1 semantic error generated.

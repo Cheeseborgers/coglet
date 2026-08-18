@@ -1,0 +1,7 @@
+bad::<...Args>() -> s32 {
+    return 0;
+}
+
+main::() -> s32 {
+    return 0;
+}

@@ -1,0 +1,23 @@
+pack_noop::<...Args>(args: ...Args) -> s32 {
+    return 0;
+}
+
+integer_pack_noop::<...Args: integer>(args: ...Args) -> s32 {
+    return 0;
+}
+
+head_and_pack::<T, ...Args>(head: T, args: ...Args) -> s32 {
+    return 0;
+}
+
+main::() -> s32 {
+    a: s32 = pack_noop(1, true, 2.0);
+    b: s32 = pack_noop::<s32, s64, bool>(1, 2, true);
+    c: s32 = pack_noop();
+    d: s32 = integer_pack_noop(1, cast(u64, 2), cast(s32, 3));
+    e: s32 = head_and_pack(9, true, 2.0);
+    f: s32 = head_and_pack::<s64, bool, f64>(9, true, 2.0);
+    if a != 0 || b != 0 || c != 0 || d != 0 || e != 0 || f != 0
+        return 1;
+    return 0;
+}

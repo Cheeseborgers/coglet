@@ -2454,6 +2454,8 @@ static void validate_repr_c_struct_layouts(SemanticContext *ctx, Node *program);
 static void validate_concrete_coglet_struct_layouts(SemanticContext *ctx);
 static int  declare_function_signature(SemanticContext *ctx, Node *node);
 static int  declare_generic_function_template(SemanticContext *ctx, Node *node);
+static int generic_pack_parameter_index(const Node *template_decl);
+static int generic_pack_param_index(const Node *template_decl);
 static int  declare_generic_struct_template(SemanticContext *ctx, Node *node);
 static void check_function_body(SemanticContext *ctx, Node *node);
 static void check_const_decl(SemanticContext *ctx, Node *node);
@@ -7165,40 +7167,41 @@ static int check_generic_type_argument_constraints(
     Node *call_site
 ) {
     GenericTypeParameterList parameters = generic_decl_type_parameters(template_decl);
-    int parameter_count = parameters.count;
-    int count = parameter_count < type_argument_count
-        ? parameter_count
-        : type_argument_count;
-
-    for (int i = 0; i < count; i++) {
-        GenericTypeParameter parameter =
-            parameters.items[i];
-        GenericBuiltinConstraint constraint =
-            generic_builtin_constraint(parameter.constraint);
-
-        /* Template declaration checking rejects unknown constraint names. */
+    for (int i = 0; i < parameters.count; i++) {
+        GenericTypeParameter parameter = parameters.items[i];
+        GenericBuiltinConstraint constraint = generic_builtin_constraint(parameter.constraint);
         assert(constraint != GENERIC_CONSTRAINT_INVALID);
 
+        if (parameter.is_pack) {
+            for (int j = i; j < type_argument_count; j++) {
+                if (type_satisfies_generic_constraint(type_arguments[j], constraint))
+                    continue;
+                char type_name[192];
+                format_type_name(type_arguments[j], type_name, sizeof(type_name));
+                semantic_error_fmt(ctx, call_site,
+                    "cannot instantiate '%.*s': pack type argument %d = %s does not satisfy constraint '%.*s'",
+                    (int)generic_decl_name(template_decl).length, generic_decl_name(template_decl).data,
+                    j - i, type_name,
+                    (int)parameter.constraint.length, parameter.constraint.data);
+                return 0;
+            }
+            return 1;
+        }
+
+        if (i >= type_argument_count)
+            return 0;
         if (type_satisfies_generic_constraint(type_arguments[i], constraint))
             continue;
 
         char type_name[192];
         format_type_name(type_arguments[i], type_name, sizeof(type_name));
-        semantic_error_fmt(
-            ctx,
-            call_site,
+        semantic_error_fmt(ctx, call_site,
             "cannot instantiate '%.*s': type argument %.*s = %s does not satisfy constraint '%.*s'",
-            (int)generic_decl_name(template_decl).length,
-            generic_decl_name(template_decl).data,
-            (int)parameter.name.length,
-            parameter.name.data,
-            type_name,
-            (int)parameter.constraint.length,
-            parameter.constraint.data
-        );
+            (int)generic_decl_name(template_decl).length, generic_decl_name(template_decl).data,
+            (int)parameter.name.length, parameter.name.data, type_name,
+            (int)parameter.constraint.length, parameter.constraint.data);
         return 0;
     }
-
     return 1;
 }
 
@@ -7261,38 +7264,35 @@ static void format_generic_bindings(
     char *buffer,
     size_t buffer_size
 ) {
-    if (!buffer || buffer_size == 0)
-        return;
-
+    if (!buffer || buffer_size == 0) return;
     buffer[0] = '\0';
     size_t used = 0;
     GenericTypeParameterList parameters = generic_decl_type_parameters(template_decl);
-    int count = parameters.count;
-    if (type_argument_count < count)
-        count = type_argument_count;
-
-    for (int i = 0; i < count; i++) {
+    for (int i = 0; i < parameters.count; i++) {
+        if (i >= type_argument_count) break;
+        if (parameters.items[i].is_pack) {
+            int written = snprintf(buffer + used, buffer_size - used, "%s%.*s = [",
+                used ? ", " : "", (int)parameters.items[i].name.length, parameters.items[i].name.data);
+            if (written < 0) return;
+            used += (size_t)written;
+            for (int j = i; j < type_argument_count; j++) {
+                char type_name[192];
+                format_type_name(type_arguments[j], type_name, sizeof(type_name));
+                written = snprintf(buffer + used, buffer_size - used, "%s%s", j == i ? "" : ", ", type_name);
+                if (written < 0) return;
+                used += (size_t)written;
+                if (used >= buffer_size) { buffer[buffer_size - 1] = '\0'; return; }
+            }
+            if (used + 1 < buffer_size) { buffer[used++] = ']'; buffer[used] = '\0'; }
+            break;
+        }
         char type_name[192];
         format_type_name(type_arguments[i], type_name, sizeof(type_name));
-        StringView parameter = parameters.items[i].name;
-
-        int written = snprintf(
-            buffer + used,
-            used < buffer_size ? buffer_size - used : 0,
-            "%s%.*s = %s",
-            i == 0 ? "" : ", ",
-            (int)parameter.length,
-            parameter.data,
-            type_name
-        );
-        if (written < 0)
-            return;
-        size_t added = (size_t)written;
-        if (used + added >= buffer_size) {
-            buffer[buffer_size - 1] = '\0';
-            return;
-        }
-        used += added;
+        int written = snprintf(buffer + used, buffer_size - used, "%s%.*s = %s",
+            used ? ", " : "", (int)parameters.items[i].name.length, parameters.items[i].name.data, type_name);
+        if (written < 0) return;
+        used += (size_t)written;
+        if (used >= buffer_size) { buffer[buffer_size - 1] = '\0'; return; }
     }
 }
 
@@ -7378,6 +7378,8 @@ static void define_generic_type_aliases(
 ) {
     GenericTypeParameterList parameters = generic_decl_type_parameters(template_decl);
     for (int i = 0; i < parameters.count; i++) {
+        if (parameters.items[i].is_pack)
+            continue;
         scope_define(ctx, parameters.items[i].name, SYMBOL_TYPE, type_arguments[i]);
     }
 }
@@ -7715,6 +7717,32 @@ static GenericSpecialization *instantiate_generic_function(
         type_arguments,
         type_argument_count
     );
+
+    int pack_param_index = generic_pack_param_index(template_decl);
+    int pack_type_index = generic_pack_parameter_index(template_decl);
+    if (pack_param_index >= 0) {
+        NodeList expanded = {0};
+        for (int i = 0; i < function->as.func_decl.params.count; i++) {
+            Node *param = function->as.func_decl.params.items[i];
+            if (!param->as.param_decl.is_pack) {
+                nodelist_push(ctx->arena, &expanded, param);
+                continue;
+            }
+            for (int j = pack_type_index; j < type_argument_count; j++) {
+                Node *copy = ast_clone(ctx->arena, param);
+                copy->as.param_decl.is_pack = 0;
+                copy->as.param_decl.var_type = type_arguments[j];
+                char generated_name[256];
+                int generated_length = snprintf(generated_name, sizeof(generated_name), "%.*s$%d",
+                    (int)param->as.param_decl.name.length, param->as.param_decl.name.data, j - pack_type_index);
+                char *name_copy = arena_alloc(ctx->arena, (size_t)generated_length + 1);
+                memcpy(name_copy, generated_name, (size_t)generated_length + 1);
+                copy->as.param_decl.name = string_view(name_copy, (size_t)generated_length);
+                nodelist_push(ctx->arena, &expanded, copy);
+            }
+        }
+        function->as.func_decl.params = expanded;
+    }
     spec->function = function;
 
     GenericInstantiationScope saved = enter_generic_instantiation_scope(
@@ -7897,37 +7925,46 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
 {
     Node *template_decl = template_symbol->declaration;
     int type_parameter_count = template_decl->as.func_decl.type_parameters.count;
+    int pack_type_index = generic_pack_parameter_index(template_decl);
+    int pack_param_index = generic_pack_param_index(template_decl);
     int parameter_count = template_decl->as.func_decl.params.count;
+    int fixed_param_count = pack_param_index >= 0 ? parameter_count - 1 : parameter_count;
 
-    if (!check_call_arity(
-            ctx,
-            call,
-            parameter_count,
-            0,
-            0,
-            string_view_empty())) {
+    if (pack_param_index >= 0) {
+        if (call->as.call.arguments.count < fixed_param_count) {
+            semantic_error_fmt(ctx, call, "too few arguments: expected at least %d, got %d",
+                fixed_param_count, call->as.call.arguments.count);
+            return NULL;
+        }
+    } else if (!check_call_arity(ctx, call, parameter_count, 0, 0, string_view_empty())) {
         return NULL;
     }
 
-    Type **type_arguments = arena_alloc(
-        ctx->arena,
-        sizeof(Type *) * (size_t)type_parameter_count
-    );
-    memset(type_arguments, 0, sizeof(Type *) * (size_t)type_parameter_count);
+    int type_argument_capacity = call->as.call.type_arguments.count > type_parameter_count
+        ? call->as.call.type_arguments.count : type_parameter_count;
+    if (pack_type_index >= 0 && type_argument_capacity < pack_type_index + 1)
+        type_argument_capacity = pack_type_index + 1;
+    Type **type_arguments = type_argument_capacity > 0
+        ? arena_alloc(ctx->arena, sizeof(Type *) * (size_t)type_argument_capacity) : NULL;
+    if (type_arguments && type_argument_capacity > 0)
+        memset(type_arguments, 0, sizeof(Type *) * (size_t)type_argument_capacity);
+    int type_argument_count = 0;
 
     if (call->as.call.type_arguments.count > 0) {
-        if (call->as.call.type_arguments.count != type_parameter_count) {
-            semantic_error_fmt(
-                ctx,
-                call,
+        if (pack_type_index < 0 && call->as.call.type_arguments.count != type_parameter_count) {
+            semantic_error_fmt(ctx, call,
                 "wrong number of generic type arguments: expected %d, got %d",
-                type_parameter_count,
-                call->as.call.type_arguments.count
-            );
+                type_parameter_count, call->as.call.type_arguments.count);
+            return NULL;
+        }
+        if (pack_type_index >= 0 && call->as.call.type_arguments.count < pack_type_index) {
+            semantic_error_fmt(ctx, call,
+                "wrong number of generic type arguments: expected at least %d, got %d",
+                pack_type_index, call->as.call.type_arguments.count);
             return NULL;
         }
 
-        for (int i = 0; i < type_parameter_count; i++) {
+        for (int i = 0; i < call->as.call.type_arguments.count; i++) {
             Type *resolved = resolve_type(ctx, call->as.call.type_arguments.items[i], call);
             if (!resolved)
                 return NULL;
@@ -7938,36 +7975,50 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
             }
             type_arguments[i] = resolved;
         }
+        type_argument_count = call->as.call.type_arguments.count;
     } else {
         int inference_ok = 1;
+        int argument_index = 0;
+        if (pack_type_index >= 0)
+            type_argument_count = pack_type_index;
         for (int i = 0; i < parameter_count; i++) {
-            Type *pattern = template_decl->as.func_decl.params.items[i]->as.param_decl.var_type;
+            Node *param = template_decl->as.func_decl.params.items[i];
+            if (param->as.param_decl.is_pack) {
+                while (argument_index < call->as.call.arguments.count) {
+                    Node *argument = call->as.call.arguments.items[argument_index++];
+                    Type *actual = check_value_expression(ctx, argument);
+                    if (!actual) { inference_ok = 0; continue; }
+                    actual = concretize_inferred_type(ctx, argument, actual);
+                    if (!actual) { inference_ok = 0; continue; }
+                    if (type_argument_count >= type_argument_capacity) {
+                        int new_capacity = type_argument_capacity == 0 ? 4 : type_argument_capacity * 2;
+                        Type **grown = arena_alloc(ctx->arena, sizeof(Type *) * (size_t)new_capacity);
+                        if (type_arguments && type_argument_count > 0)
+                            memcpy(grown, type_arguments, sizeof(Type *) * (size_t)type_argument_count);
+                        type_arguments = grown;
+                        type_argument_capacity = new_capacity;
+                    }
+                    type_arguments[type_argument_count++] = actual;
+                }
+                continue;
+            }
+
+            Node *argument = call->as.call.arguments.items[argument_index++];
+            Type *pattern = param->as.param_decl.var_type;
             if (!source_type_contains_generic_parameter(template_decl, pattern))
                 continue;
-
-            Node *argument = call->as.call.arguments.items[i];
             if (argument->type == NODE_ARRAY_LITERAL || argument->type == NODE_STRING)
                 continue;
-
             Type *actual = check_value_expression(ctx, argument);
-            if (!actual) {
+            if (!actual) { inference_ok = 0; continue; }
+            if (!infer_generic_argument_candidate(ctx, template_decl, pattern, actual, argument, type_arguments))
                 inference_ok = 0;
-                continue;
-            }
-            if (!infer_generic_argument_candidate(
-                    ctx,
-                    template_decl,
-                    pattern,
-                    actual,
-                    argument,
-                    type_arguments)) {
-                inference_ok = 0;
-            }
         }
         if (!inference_ok)
             return NULL;
 
-        for (int i = 0; i < type_parameter_count; i++) {
+        int fixed_type_count = pack_type_index >= 0 ? pack_type_index : type_parameter_count;
+        for (int i = 0; i < fixed_type_count; i++) {
             if (!type_arguments[i]) {
                 StringView parameter = template_decl->as.func_decl.type_parameters.items[i].name;
                 semantic_error_fmt(
@@ -7982,10 +8033,15 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
         }
     }
 
+    if (pack_type_index >= 0 && type_argument_count < pack_type_index)
+        type_argument_count = pack_type_index;
+    if (pack_type_index < 0)
+        type_argument_count = type_parameter_count;
+
     if (!check_generic_type_argument_abi_provenance(
             ctx,
             type_arguments,
-            type_parameter_count,
+            type_argument_count,
             call)) {
         return NULL;
     }
@@ -7994,7 +8050,7 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
             ctx,
             template_decl,
             type_arguments,
-            type_parameter_count,
+            type_argument_count,
             call)) {
         return NULL;
     }
@@ -8003,7 +8059,7 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
         ctx,
         template_symbol,
         type_arguments,
-        type_parameter_count,
+        type_argument_count,
         call
     );
     if (!spec)
@@ -8015,7 +8071,7 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
             format_generic_bindings(
                 template_decl,
                 type_arguments,
-                type_parameter_count,
+                type_argument_count,
                 bindings,
                 sizeof(bindings)
             );
@@ -13809,6 +13865,8 @@ static void validate_generic_function_export(SemanticContext *ctx, Node *node)
 
     int ok = 1;
     for (int i = 0; i < node->as.func_decl.params.count && ok; i++) {
+        if (node->as.func_decl.params.items[i]->as.param_decl.is_pack)
+            continue;
         ok = validate_generic_export_source_type(
             ctx,
             node,
@@ -14527,6 +14585,10 @@ static Type *make_function_type(SemanticContext *ctx, Node *func)
     for (int i = 0; i < type->parameter_count; i++) {
 
         Node *param      = func->as.func_decl.params.items[i];
+        if (param->as.param_decl.is_pack) {
+            semantic_error(ctx, param, "generic type packs must be specialized before function type construction");
+            return NULL;
+        }
         Type *param_type = resolve_type(ctx, param->as.param_decl.var_type, param);
 
         if (!param_type) return NULL;
@@ -14642,11 +14704,47 @@ static int validate_function_overload_set_member(
     return 1;
 }
 
+static int generic_pack_parameter_index(const Node *template_decl)
+{
+    if (!template_decl || template_decl->type != NODE_FUNC_DECL)
+        return -1;
+    GenericTypeParameterList parameters = template_decl->as.func_decl.type_parameters;
+    for (int i = 0; i < parameters.count; i++)
+        if (parameters.items[i].is_pack)
+            return i;
+    return -1;
+}
+
+static int generic_pack_param_index(const Node *template_decl)
+{
+    if (!template_decl || template_decl->type != NODE_FUNC_DECL)
+        return -1;
+    for (int i = 0; i < template_decl->as.func_decl.params.count; i++)
+        if (template_decl->as.func_decl.params.items[i]->as.param_decl.is_pack)
+            return i;
+    return -1;
+}
+
 static int validate_generic_parameter_declarations(
     SemanticContext *ctx,
     Node *node,
     GenericTypeParameterList parameters
 ) {
+    int pack_index = -1;
+    for (int i = 0; i < parameters.count; i++) {
+        if (!parameters.items[i].is_pack)
+            continue;
+        if (pack_index >= 0) {
+            semantic_error(ctx, node, "a generic declaration may contain only one type pack");
+            return 0;
+        }
+        pack_index = i;
+        if (i != parameters.count - 1) {
+            semantic_error(ctx, node, "generic type pack must be the final type parameter");
+            return 0;
+        }
+    }
+
     for (int i = 0; i < parameters.count; i++) {
         GenericTypeParameter type_parameter = parameters.items[i];
         if (generic_builtin_constraint(type_parameter.constraint) ==
@@ -14710,6 +14808,12 @@ static int declare_generic_struct_template(SemanticContext *ctx, Node *node)
     if (!validate_generic_parameter_declarations(
             ctx, node, node->as.struct_decl.type_parameters)) {
         return 0;
+    }
+    for (int i = 0; i < node->as.struct_decl.type_parameters.count; i++) {
+        if (node->as.struct_decl.type_parameters.items[i].is_pack) {
+            semantic_error(ctx, node, "heterogeneous type packs are currently supported only on generic functions");
+            return 0;
+        }
     }
 
     for (int i = 0; i < node->as.struct_decl.fields.count; i++) {
@@ -14791,8 +14895,23 @@ static int declare_generic_function_template(SemanticContext *ctx, Node *node)
         return 0;
     }
 
+    int pack_type_index = generic_pack_parameter_index(node);
+    int pack_param_index = generic_pack_param_index(node);
+    if (pack_type_index >= 0 && (pack_param_index < 0 || pack_type_index != node->as.func_decl.type_parameters.count - 1)) {
+        semantic_error(ctx, node, "generic type pack requires a final pack function parameter");
+        return 0;
+    }
+    if (pack_param_index >= 0) {
+        if (pack_type_index < 0 || pack_param_index != node->as.func_decl.params.count - 1) {
+            semantic_error(ctx, node, "generic type pack parameter must be the final function parameter");
+            return 0;
+        }
+    }
+
     for (int i = 0; i < node->as.func_decl.params.count; i++) {
         Node *param = node->as.func_decl.params.items[i];
+        if (param->as.param_decl.is_pack)
+            continue;
         if (!reject_generic_cfn_abi_shape(
                 ctx, node, param, param->as.param_decl.var_type)) {
             return 0;

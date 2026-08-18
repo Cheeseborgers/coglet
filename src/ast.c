@@ -663,6 +663,7 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.param_decl.var_type    = node->as.param_decl.var_type;
             clone->as.param_decl.name.data   = node->as.param_decl.name.data;
             clone->as.param_decl.name.length = node->as.param_decl.name.length;
+            clone->as.param_decl.is_pack     = node->as.param_decl.is_pack;
             break;
 
         case NODE_STRUCT_FIELD_DECL:

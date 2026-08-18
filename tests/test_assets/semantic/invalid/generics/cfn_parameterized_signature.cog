@@ -1,0 +1,7 @@
+bad_function::<T>(callback: cfn(T) -> T) -> T {
+    return callback(0);
+}
+
+BadHolder::<T> struct {
+    callback: cfn(T) -> T;
+}

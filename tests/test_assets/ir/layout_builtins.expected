@@ -1,11 +1,18 @@
 module target(pointer=64)
 type %t0 "Pair" = struct {tag: u8, value: u64}
-type %t7 "s32[]" = struct {data: ptr<s32>, len: u64}
-entry @f0 "main"() -> s32 [abi=coglet, linkage=internal] {
+type %t8 "s32[]" = struct {data: ptr<s32>, len: u64}
+func @f0 "callback_layout"() -> u64 [abi=coglet, linkage=internal] {
+  bb0 "entry"():
+    %0 = size_of fn(s32) -> s32
+    %1 = align_of fn(s32) -> s32
+    %2 = iadd.checked %0, %1
+    ret %2
+}
+entry @f1 "main"() -> s32 [abi=coglet, linkage=internal] {
   slots:
     $s0 : [3]s32 "values"
     $s1 : ptr<s32> "pointer"
-    $s2 : %t7 "view"
+    $s2 : %t8 "view"
   bb0 "entry"():
     %0 = local_addr $s0
     %1 = const s32 @c0(0xa)
@@ -47,7 +54,7 @@ entry @f0 "main"() -> s32 [abi=coglet, linkage=internal] {
     %29 = const s32 @c6(0x1)
     ret %29
   bb4 "if.end"():
-    %30 = function_ref @f1
+    %30 = function_ref @f2
     %31 = call %30()
     %32 = align_of %t0
     %33 = icmp.ult %31, %32
@@ -56,10 +63,21 @@ entry @f0 "main"() -> s32 [abi=coglet, linkage=internal] {
     %34 = const s32 @c7(0x2)
     ret %34
   bb6 "if.end"():
-    %35 = const s32 @c3(0x0)
-    ret %35
+    %35 = function_ref @f0
+    %36 = call %35()
+    %37 = size_of opaque_ptr
+    %38 = align_of opaque_ptr
+    %39 = iadd.checked %37, %38
+    %40 = icmp.ne %36, %39
+    cond_br %40, bb7(), bb8()
+  bb7 "if.then"():
+    %41 = const s32 @c8(0x3)
+    ret %41
+  bb8 "if.end"():
+    %42 = const s32 @c3(0x0)
+    ret %42
 }
-func @f1 "measure<Pair>"() -> u64 [abi=coglet, linkage=internal] {
+func @f2 "measure<Pair>"() -> u64 [abi=coglet, linkage=internal] {
   bb0 "entry"():
     %0 = size_of %t0
     %1 = align_of %t0

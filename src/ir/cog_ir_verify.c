@@ -177,6 +177,34 @@ static int c_vararg_argument_type_is_legal(
     return 0;
 }
 
+
+static int type_has_runtime_object_layout(const CogIrType *type)
+{
+    if (!type)
+        return 0;
+
+    switch (type->kind) {
+        case COG_IR_TYPE_VOID:
+            return 0;
+        case COG_IR_TYPE_FUNCTION:
+            return type->as.function.abi == COG_IR_ABI_C;
+        case COG_IR_TYPE_STRUCT:
+        case COG_IR_TYPE_UNION:
+            return type->as.aggregate.is_complete &&
+                   !type->as.aggregate.is_incomplete;
+        case COG_IR_TYPE_BOOL:
+        case COG_IR_TYPE_INTEGER:
+        case COG_IR_TYPE_FLOAT:
+        case COG_IR_TYPE_POINTER:
+        case COG_IR_TYPE_OPAQUE_POINTER:
+        case COG_IR_TYPE_ARRAY:
+        case COG_IR_TYPE_ENUM:
+            return 1;
+    }
+
+    return 0;
+}
+
 static int constant_matches_type(
     const CogIrModule *module,
     const CogIrConstant *constant,
@@ -391,10 +419,11 @@ static int verify_instruction(
         case COG_IR_OP_ALIGN_OF: {
             const CogIrType *result_type = cog_ir_get_type(module, instruction->result_type);
             const CogIrType *queried = cog_ir_get_type(module, instruction->as.type_query.queried_type);
-            if (!queried || !result_type || result_type->kind != COG_IR_TYPE_INTEGER ||
+            if (!type_has_runtime_object_layout(queried) || !result_type ||
+                result_type->kind != COG_IR_TYPE_INTEGER ||
                 result_type->as.integer.bits != 64 || result_type->as.integer.is_signed) {
                 ir_error(diagnostics, instruction->span,
-                    "type-layout query requires a valid queried type and u64 result");
+                    "type-layout query requires a layout-capable queried type and u64 result");
                 ok = 0;
             }
             break;

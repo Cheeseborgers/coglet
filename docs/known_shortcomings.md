@@ -166,6 +166,13 @@ should not be forgotten.
 - **Array growth assumes trivial relocation.** Runtime resize is allocate/copy/free. This is valid for current Coglet values because there are no destructors/nontrivial move operations, but must be revisited if those semantics are added.
 - **`Array.pop()` has a caller precondition.** Calling it with `len == 0` currently reaches ordinary checked unsigned subtraction rather than a dedicated optional/result API.
 - **The initial container API is intentionally small.** There is no insert/remove/swap-remove, shrink-to-fit, append-slice, iterator protocol, fallible reserve, or ownership transfer operation yet.
+- **Zero-sized element allocation/container semantics are not normalized yet.**
+  Target layout queries may legitimately report size zero for ordinary empty
+  aggregates or zero-length array values. The allocator ABI defines a zero-byte
+  request as returning `null`, so typed allocation/container code must not assume
+  such a `T` yields distinct addressable element storage. A future language/runtime
+  decision should either define zero-sized-element container behavior or reject
+  those element types explicitly; cleanup should not invent a hidden stride.
 - **Layout query results and container lengths are fixed `u64`.** `size_of::<T>()`, `align_of::<T>()`, slice lengths, and `Array` length/capacity all match the initial 64-bit target focus rather than a general target-sized `usize`.
 - **`size_of::<T>()` / `align_of::<T>()` are not semantic constant expressions yet.** They lower to target-layout constants in CogIR/backends, but cannot currently be used where the frontend requires a compile-time constant.
 - **Default parameters are intentionally not supported in the current language.** An older parser-only implementation stored default expressions on parameter AST nodes, but ordinary and method calls never consumed omitted arguments. That dead path was removed during cleanup. Reintroduce defaults only after defining declaration-scope name resolution, interaction with exact overloads/generics, and call-site evaluation semantics; use explicit convenience functions/constructors meanwhile.
@@ -173,6 +180,15 @@ should not be forgotten.
 
 ## Generics and aggregate types
 
+- **Native callback ABI provenance is not part of generic specialization yet.**
+  A generic type argument that directly contains `cfn` (including through
+  pointer/array/slice shape) is rejected, and a generic parameter cannot be nested
+  inside a `cfn` signature. Semantic type canonicalization erases exact C scalar
+  spelling inside callback signatures, while specialization cache
+  identity deliberately remains declaration plus structural concrete semantic
+  arguments. Supporting this combination requires an explicit ABI-provenance
+  design rather than allowing the first instantiation's callback spelling to leak
+  into later calls. Nominal struct fields keep their own declaration ABI metadata.
 - **Generic structs are intentionally restricted.** Ordinary top-level Coglet
   structs may be generic, but generic enums, unions, aliases, nested generic
   declarations, and generic `#repr(c)` aggregates are not implemented.

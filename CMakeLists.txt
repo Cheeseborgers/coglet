@@ -1331,6 +1331,11 @@ add_host_c_executable_test(
         "backend;backend.c;ir;slice;string;aggregate;generic"
 )
 
+add_host_c_executable_test(
+        backend_layout_memory layout_memory.cog 0
+        "backend;backend.c;ir;memory;layout;interop;callback"
+)
+
 foreach(cast_trap_case IN ITEMS integer float_integer float_narrow)
     add_host_c_trap_test(
             backend_checked_cast_${cast_trap_case}_trap
@@ -2635,6 +2640,11 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_slices
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;slice;string;aggregate;generic;codegen;object;linker;stage7")
+    add_llvm_stage7_native_test(
+        backend_llvm_layout_memory layout_memory.cog 0
+    )
+    set_tests_properties(backend_llvm_layout_memory
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;memory;layout;interop;callback;codegen;object;linker;stage7")
     add_llvm_stage7_native_test(
         backend_llvm_stage7_pic_global_link llvm/stage7_pic_global.cog 9
     )

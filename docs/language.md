@@ -1648,7 +1648,7 @@ bytes := size_of::<MyType>();
 alignment := align_of::<MyType>();
 ```
 
-Each builtin requires exactly one explicit concrete runtime object type and returns `u64`. In generic code the type argument may contain the current concrete type parameters, so `size_of::<T>()` and `align_of::<T>()` are valid after specialization. Incomplete types, `void`, function types, and other types without runtime object layout are rejected.
+Each builtin requires exactly one explicit concrete runtime object type and returns `u64`. In generic code the type argument may contain the current concrete type parameters, so `size_of::<T>()` and `align_of::<T>()` are valid after specialization. Native `cfn(...) -> T` values are runtime callback pointers and therefore have target pointer size/alignment. Incomplete types, `void`, ordinary Coglet function types, and other types without a portable host-C runtime object layout are rejected.
 
 The frontend does not guess target padding or alignment. Semantic analysis freezes the resolved concrete type, CogIR carries a backend-neutral type-layout query, and the selected backend answers using its actual target layout. These queries are not yet accepted in Coglet compile-time constant-expression contexts even though a backend can materialize them as target constants.
 
@@ -2229,11 +2229,22 @@ implicitly adapt to a `cfn`, even when their parameter and return types match.
 This prevents an accidental callback boundary from becoming ABI-compatible only
 because of the current bootstrap backend.
 
-`cfn` values are first-class callable values. They may be stored in variables,
-used as supported `#repr(c)` struct fields, passed to or returned from extern C
-functions, compared with a matching `cfn` or with `null`, and initialized from
-`null`. Integer zero is not a null callback pointer. Callback signatures are
-validated recursively against the same C ABI subset used by `#extern(c)`.
+`cfn` values are first-class callable values. They may be stored in variables
+and ordinary struct fields, used as supported `#repr(c)` struct fields, passed to
+or returned from extern C functions, compared with a matching `cfn` or with
+`null`, and initialized from `null`. Integer zero is not a null callback pointer.
+Callback signatures are validated recursively against the same C ABI subset used
+by `#extern(c)`.
+
+A `cfn`-containing type is not currently accepted as a generic type argument,
+and a generic type parameter may not appear inside a `cfn` signature. Generic
+specialization identity intentionally uses resolved semantic types, while a
+native callback additionally needs its exact recursive C spelling (for example
+`c_int` versus a fixed-width Coglet integer) at storage and indirect-call sites.
+Until generic ABI provenance is represented explicitly, semantic analysis rejects
+those combinations rather than allowing exact callback metadata to be erased
+during monomorphization. Direct `size_of::<cfn(...) -> T>()` and
+`align_of::<cfn(...) -> T>()` queries are unaffected.
 
 The current host-C backend emits C function-pointer typedefs and can pass a
 `#repr(c)` Coglet function to native C. The executable callback regression test

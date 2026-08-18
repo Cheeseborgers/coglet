@@ -1,0 +1,7 @@
+tests/test_assets/semantic/invalid/generics/cfn_parameterized_signature.cog:6:5: error: generic type parameters cannot appear inside native C function-pointer types; exact callback ABI spelling is not preserved by generic specialization
+    callback: cfn(T) -> T;
+    ^~~~~~~~
+tests/test_assets/semantic/invalid/generics/cfn_parameterized_signature.cog:1:19: error: generic type parameters cannot appear inside native C function-pointer types; exact callback ABI spelling is not preserved by generic specialization
+bad_function::<T>(callback: cfn(T) -> T) -> T {
+                  ^~~~~~~~
+2 semantic errors generated.

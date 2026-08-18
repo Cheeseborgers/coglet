@@ -6905,6 +6905,74 @@ static int source_type_contains_generic_parameter(const Node *decl, const Type *
     }
 }
 
+/*
+ * Exact native callback spelling is not encoded in resolved generic Type
+ * identity. A type parameter nested inside cfn therefore cannot be normalized
+ * safely when the template is specialized: T = s32 may have originated from
+ * either fixed-width Coglet spelling or a native C alias such as c_int.
+ */
+static int source_type_has_generic_parameter_inside_cfn(
+    const Node *decl,
+    const Type *type,
+    int inside_cfn
+) {
+    if (!type)
+        return 0;
+    if (source_type_is_generic_parameter(decl, type, NULL))
+        return inside_cfn;
+
+    switch (type->kind) {
+        case TYPE_POINTER:
+        case TYPE_ARRAY:
+        case TYPE_SLICE:
+            return source_type_has_generic_parameter_inside_cfn(
+                decl, type->element, inside_cfn);
+
+        case TYPE_FUNCTION: {
+            int nested_in_cfn = inside_cfn || type->function_abi == FUNCTION_ABI_C;
+            for (int i = 0; i < type->parameter_count; i++) {
+                if (source_type_has_generic_parameter_inside_cfn(
+                        decl, type->parameters[i], nested_in_cfn)) {
+                    return 1;
+                }
+            }
+            return source_type_has_generic_parameter_inside_cfn(
+                decl, type->return_type, nested_in_cfn);
+        }
+
+        case TYPE_NAMED:
+            for (int i = 0; i < type->type_argument_count; i++) {
+                if (source_type_has_generic_parameter_inside_cfn(
+                        decl, type->type_arguments[i], inside_cfn)) {
+                    return 1;
+                }
+            }
+            return 0;
+
+        default:
+            return 0;
+    }
+}
+
+static int reject_generic_cfn_abi_shape(
+    SemanticContext *ctx,
+    Node *template_decl,
+    Node *owner,
+    Type *source_type
+) {
+    if (!source_type_has_generic_parameter_inside_cfn(
+            template_decl, source_type, 0)) {
+        return 1;
+    }
+
+    semantic_error(
+        ctx,
+        owner,
+        "generic type parameters cannot appear inside native C function-pointer types; exact callback ABI spelling is not preserved by generic specialization"
+    );
+    return 0;
+}
+
 typedef enum GenericBuiltinConstraint {
     GENERIC_CONSTRAINT_NONE,
     GENERIC_CONSTRAINT_INTEGER,
@@ -6980,6 +7048,77 @@ static int type_satisfies_generic_constraint(
     }
 
     return 0;
+}
+
+/*
+ * Generic specialization identity intentionally uses only resolved semantic
+ * types. Native C function-pointer values additionally need exact recursive C
+ * ABI spelling (for example c_int versus a fixed-width Coglet integer) at each
+ * storage/load/call site. That spelling is not part of Type identity, so a
+ * specialization cannot safely accept a cfn-containing type argument until
+ * generic ABI provenance is designed explicitly. Reject the unsupported shape
+ * in semantic analysis instead of allowing it to fail later in CogIR lowering.
+ * Nominal structs are deliberately not expanded here: their fields carry their
+ * own declaration ABI metadata independently of generic argument identity.
+ */
+static int generic_type_argument_contains_cfn(const Type *type)
+{
+    if (!type)
+        return 0;
+
+    switch (type->kind) {
+        case TYPE_FUNCTION:
+            return type->function_abi == FUNCTION_ABI_C;
+
+        case TYPE_POINTER:
+        case TYPE_ARRAY:
+        case TYPE_SLICE:
+            return generic_type_argument_contains_cfn(type->element);
+
+        case TYPE_VOID:
+        case TYPE_BOOL:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_S64:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+        case TYPE_F32:
+        case TYPE_F64:
+        case TYPE_OPAQUE_POINTER:
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
+        case TYPE_NULL:
+        case TYPE_NAMED:
+        case TYPE_STRUCT:
+        case TYPE_ENUM:
+            return 0;
+    }
+
+    return 0;
+}
+
+static int check_generic_type_argument_abi_provenance(
+    SemanticContext *ctx,
+    Type *const *type_arguments,
+    int type_argument_count,
+    Node *use_node
+) {
+    for (int i = 0; i < type_argument_count; i++) {
+        if (!generic_type_argument_contains_cfn(type_arguments[i]))
+            continue;
+
+        semantic_error(
+            ctx,
+            use_node,
+            "generic type arguments containing native C function pointers are not supported; exact callback ABI spelling is not part of generic specialization identity"
+        );
+        return 0;
+    }
+
+    return 1;
 }
 
 static int check_generic_type_argument_constraints(
@@ -7376,6 +7515,14 @@ static Type *resolve_generic_struct_application(
             return NULL;
         }
         type_arguments[i] = resolved;
+    }
+
+    if (!check_generic_type_argument_abi_provenance(
+            ctx,
+            type_arguments,
+            source_argument_count,
+            use_node)) {
+        return NULL;
     }
 
     if (!check_generic_type_argument_constraints(
@@ -7796,6 +7943,14 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
                 return NULL;
             }
         }
+    }
+
+    if (!check_generic_type_argument_abi_provenance(
+            ctx,
+            type_arguments,
+            type_parameter_count,
+            call)) {
+        return NULL;
     }
 
     if (!check_generic_type_argument_constraints(
@@ -8707,8 +8862,13 @@ static int type_has_runtime_layout(const Type *type)
         case TYPE_UNTYPED_FLOAT:
         case TYPE_NULL:
         case TYPE_NAMED:
-        case TYPE_FUNCTION:
             return 0;
+
+        case TYPE_FUNCTION:
+            /* Native C callbacks are first-class runtime pointer values.
+             * Ordinary Coglet function values intentionally remain excluded:
+             * host-C does not expose them as native callback object types. */
+            return type->function_abi == FUNCTION_ABI_C;
 
         case TYPE_STRUCT:
             return !type->struct_is_incomplete;
@@ -14333,6 +14493,28 @@ static int declare_generic_struct_template(SemanticContext *ctx, Node *node)
         return 0;
     }
 
+    for (int i = 0; i < node->as.struct_decl.fields.count; i++) {
+        Node *field = node->as.struct_decl.fields.items[i];
+        if (!reject_generic_cfn_abi_shape(
+                ctx, node, field, field->as.struct_field_decl.var_type)) {
+            return 0;
+        }
+    }
+    for (int i = 0; i < node->as.struct_decl.methods.count; i++) {
+        Node *method = node->as.struct_decl.methods.items[i];
+        for (int j = 0; j < method->as.func_decl.params.count; j++) {
+            Node *param = method->as.func_decl.params.items[j];
+            if (!reject_generic_cfn_abi_shape(
+                    ctx, node, param, param->as.param_decl.var_type)) {
+                return 0;
+            }
+        }
+        if (!reject_generic_cfn_abi_shape(
+                ctx, node, method, method->as.func_decl.return_type)) {
+            return 0;
+        }
+    }
+
     for (int i = 0; i < node->as.struct_decl.methods.count; i++) {
         Node *method = node->as.struct_decl.methods.items[i];
         if (method->as.func_decl.type_parameters.count > 0) {
@@ -14387,6 +14569,18 @@ static int declare_generic_function_template(SemanticContext *ctx, Node *node)
 
     if (!validate_generic_parameter_declarations(
             ctx, node, node->as.func_decl.type_parameters)) {
+        return 0;
+    }
+
+    for (int i = 0; i < node->as.func_decl.params.count; i++) {
+        Node *param = node->as.func_decl.params.items[i];
+        if (!reject_generic_cfn_abi_shape(
+                ctx, node, param, param->as.param_decl.var_type)) {
+            return 0;
+        }
+    }
+    if (!reject_generic_cfn_abi_shape(
+            ctx, node, node, node->as.func_decl.return_type)) {
         return 0;
     }
 
@@ -15408,12 +15602,14 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
         SemDeclInfo *field_info =
             sem_record_decl_info(ctx, field, field_type, NULL);
 
-        if (type->struct_is_repr_c) {
-            field_info->abi_type = make_sem_abi_type(
-                ctx,
-                field->as.struct_field_decl.var_type,
-                field_type
-            );
+        SemAbiType *field_abi = make_sem_abi_type(
+            ctx,
+            field->as.struct_field_decl.var_type,
+            field_type
+        );
+        if (type->struct_is_repr_c ||
+            sem_abi_type_requires_storage_spelling(field_abi)) {
+            field_info->abi_type = field_abi;
         }
     }
 }

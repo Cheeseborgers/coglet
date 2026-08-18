@@ -342,10 +342,12 @@ new arena storage and copies the known old byte count. `reset()` retains backing
 blocks for reuse, making the allocator suitable for frame/scratch lifetimes;
 `deinit()` returns all blocks and arena state to its parent allocator.
 
-Allocator values do not own allocator state. In particular, an allocator returned
-by `arena.allocator()` must not be used after that arena has been reset when the
-specific allocation is expected to survive, or after `arena.deinit()` at all.
-Coglet does not yet lifetime-check this relationship.
+Allocator values do not own allocator state. `arena.reset()` invalidates every
+allocation/view produced before the reset but does not retire the arena itself;
+an already-copied allocator handle may be used for new post-reset allocations.
+`arena.deinit()` retires the arena state, so every copied allocator handle derived
+from it must be treated as invalid afterward. Coglet does not mechanically revoke
+those copyable handles and does not lifetime-check this relationship.
 
 ### Scratch scopes
 
@@ -366,10 +368,14 @@ defer arena.deinit();
 }
 ```
 
-Scratch scopes may be nested. They must be ended in LIFO order; Coglet deliberately
-does not borrow/lifetime-check an `Allocator`, pointer, or slice that escapes a
-scratch scope. Individual frees are the same arena no-ops as normal `Arena`
-allocation.
+Scratch scopes may be nested. They must be ended in LIFO order. Rewinding a
+scratch scope invalidates allocations/views made since its checkpoint; an
+`Allocator` copied from `scratch.allocator()` is mechanically just an arena
+handle, so the runtime cannot revoke it when the scope ends. Using such an escaped
+handle for later allocation violates the scratch-scope contract even though the
+underlying parent arena may still exist. Coglet deliberately does not
+borrow/lifetime-check these escaped handles, pointers, or slices. Individual frees
+are the same arena no-ops as normal `Arena` allocation.
 
 ### Fixed-buffer arenas
 
@@ -391,10 +397,13 @@ fixed.reset();
 
 The runtime aligns its small arena-state header within the supplied buffer, so the
 effective allocation capacity is slightly smaller than `storage.len`. `reset()`
-invalidates all outstanding allocations/views and makes the payload reusable.
-`deinit()` does not free the caller-owned buffer; it only retires the arena handle.
-Fixed-arena exhaustion currently follows the same fatal allocation policy as the
-bootstrap heap.
+invalidates all outstanding allocations/views and makes the payload reusable;
+existing allocator-handle copies may allocate again afterward. `deinit()` does
+not free or overwrite the caller-owned buffer, but it retires the `FixedArena`
+resource contract: allocator handles copied from it must not be used afterward
+even though Coglet cannot mechanically revoke those copies. Fixed-arena
+exhaustion currently follows the same fatal allocation policy as the bootstrap
+heap.
 
 ### Debug allocator
 

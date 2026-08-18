@@ -1,0 +1,7 @@
+tests/test_assets/semantic/invalid/generics/cfn_type_argument.cog:16:16: error: generic type arguments containing native C function pointers are not supported; exact callback ABI spelling is not part of generic specialization identity
+    ignored := identity::<cfn(c_int) -> c_int>(cb);
+               ^~~~~~~~
+tests/test_assets/semantic/invalid/generics/cfn_type_argument.cog:20:5: error: generic type arguments containing native C function pointers are not supported; exact callback ABI spelling is not part of generic specialization identity
+    value: Holder::<cfn(c_int) -> c_int>;
+    ^~~~~
+2 semantic errors generated.

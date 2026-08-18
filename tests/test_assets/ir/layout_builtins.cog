@@ -7,6 +7,11 @@ measure::<T>() -> u64 {
     return size_of::<T>() + align_of::<T>();
 }
 
+callback_layout::() -> u64 {
+    return size_of::<cfn(c_int) -> c_int>() +
+           align_of::<cfn(c_int) -> c_int>();
+}
+
 main::() -> s32 {
     values: s32[3] = [10, 20, 30];
     pointer: s32* = &values[0];
@@ -17,6 +22,9 @@ main::() -> s32 {
 
     if measure::<Pair>() < align_of::<Pair>()
         return 2;
+
+    if callback_layout() != size_of::<opaque*>() + align_of::<opaque*>()
+        return 3;
 
     return 0;
 }

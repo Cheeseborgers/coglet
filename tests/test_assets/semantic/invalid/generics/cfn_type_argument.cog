@@ -1,0 +1,21 @@
+identity::<T>(value: T) -> T {
+    return value;
+}
+
+Holder::<T> struct {
+    value: T;
+}
+
+#repr(c)
+callback::(value: c_int) -> c_int {
+    return value;
+}
+
+bad_function::() -> void {
+    cb: cfn(c_int) -> c_int = callback;
+    ignored := identity::<cfn(c_int) -> c_int>(cb);
+}
+
+bad_struct::() -> void {
+    value: Holder::<cfn(c_int) -> c_int>;
+}

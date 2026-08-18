@@ -1,0 +1,43 @@
+#repr(c)
+CallbackTable::struct {
+    state: opaque*;
+    first: cfn(c_int) -> c_int;
+    second: cfn(c_int) -> c_int;
+    reserved: opaque*;
+}
+
+CallbackHolder::struct {
+    callback: cfn(c_int) -> c_int;
+}
+
+#repr(c)
+identity::(value: c_int) -> c_int {
+    return value;
+}
+
+main::() -> s32 {
+    callback_size := size_of::<cfn(c_int) -> c_int>();
+    callback_align := align_of::<cfn(c_int) -> c_int>();
+    pointer_size := size_of::<opaque*>();
+    pointer_align := align_of::<opaque*>();
+
+    if callback_size != pointer_size || callback_align != pointer_align
+        return 1;
+
+    if size_of::<CallbackTable>() != 4 * pointer_size
+        return 2;
+    if align_of::<CallbackTable>() != pointer_align
+        return 3;
+
+    first: cfn(c_int) -> c_int = identity;
+    second: cfn(c_int) -> c_int = identity;
+    result := first(17) + second(25);
+    if result != 42
+        return 4;
+
+    holder := CallbackHolder { callback = identity };
+    if holder.callback(9) != 9
+        return 5;
+
+    return 0;
+}

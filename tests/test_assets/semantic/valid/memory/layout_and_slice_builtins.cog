@@ -18,3 +18,9 @@ use_memory_builtins::(data: s32*, count: u64) -> readonly s32[] {
         return view;
     return view;
 }
+
+callback_layout::() -> u64 {
+    callback_size := size_of::<cfn(c_int) -> c_int>();
+    callback_align := align_of::<cfn(c_int) -> c_int>();
+    return callback_size + callback_align;
+}

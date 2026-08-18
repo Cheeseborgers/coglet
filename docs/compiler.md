@@ -336,9 +336,10 @@ control flow, field/array-field/pointer addressing, volatile scalar loads/stores
 and checked/truncating/raw-pointer casts execute from verifier-checked IR. Native-C
 variadic promotions are explicit CogIR operations rather than an implicit host-C
 side effect. First-class `cfn` values preserve their exact recursive C ABI spelling
-through parameters, locals, loads, CFG spills, and C-call results, so indirect
-calls use the same verifier-owned ABI contract as direct extern calls, including
-variadic callbacks. String escapes are decoded using Coglet's literal rules and
+through parameters, locals, ABI-sensitive ordinary/represented struct fields,
+loads, CFG spills, and C-call results, so indirect calls use the same
+verifier-owned ABI contract as direct extern calls, including variadic callbacks.
+String escapes are decoded using Coglet's literal rules and
 lowered through IR-owned backing data at supported C ABI boundaries. Host
 executables require a source-top-level `main::() -> s32`. Semantic analysis
 validates that source contract before C aliases are canonicalized, and lowering
@@ -1311,7 +1312,7 @@ Array-to-slice conversion is likewise explicit semantic metadata: lowering takes
 
 The explicit `slice(pointer, length)` builtin is resolved in the same semantic layer. Semantic analysis requires a typed non-volatile pointer and a `u64` length, chooses the concrete mutable/readonly slice type, and lowering emits the same ordinary frozen slice aggregate used by array-to-slice conversion. No backend reconstructs a source slice rule.
 
-`size_of::<T>()` and `align_of::<T>()` deliberately do not compute byte layout in semantic analysis. The semantic table freezes the resolved concrete query type; lowering turns that decision into `size_of` / `align_of` CogIR operations carrying only a CogIR type ID. Host-C evaluates the generated target C type (`sizeof` plus a C99-compatible alignment expression), while LLVM queries the configured `LLVMTargetData`. Generic allocation therefore uses the real backend target layout without retaining a frontend `Type *` or baking host padding assumptions into semantic analysis.
+`size_of::<T>()` and `align_of::<T>()` deliberately do not compute byte layout in semantic analysis. The semantic table freezes the resolved concrete query type; lowering turns that decision into `size_of` / `align_of` CogIR operations carrying only a CogIR type ID. Native `cfn` callback values participate because their runtime representation is a native callback pointer in host-C and an opaque pointer value in LLVM; ordinary Coglet function types remain excluded from layout queries because host-C does not expose those values as native callback object types. Host-C evaluates the generated target C type (`sizeof` plus a C99-compatible alignment expression), while LLVM queries the configured `LLVMTargetData`. Generic allocation therefore uses the real backend target layout without retaining a frontend `Type *` or baking host padding assumptions into semantic analysis.
 
 Explicit casts are intentionally not represented as contextual conversions:
 their conversion kind and destination already exist explicitly in the
@@ -1382,7 +1383,13 @@ function. CogIR then retains only the resolved `module.entry_function` identity
 and verifies its backend-neutral `() -> s32` runtime signature. Ordinary Coglet
 functions do not carry source C-scalar spelling metadata. Exact C spelling
 continues to live only in normalized ABI metadata for genuine C boundaries such
-as extern declarations, callbacks, represented fields, and C variadics. The
+as extern declarations, callbacks, represented fields, and C variadics. Ordinary
+struct fields retain that metadata only when their stored value itself needs it,
+notably first-class `cfn` values. Generic specialization still keys only on
+resolved semantic type identity; cfn-containing generic type arguments and
+generic parameters nested inside cfn signatures are therefore rejected during
+semantic checking until exact callback ABI provenance can be represented without
+changing that specialization identity contract. The
 driver destroys `CompileResult` before calling the host-C backend, enforcing this
 boundary in every `--emit-c` and `-o` compilation.
 

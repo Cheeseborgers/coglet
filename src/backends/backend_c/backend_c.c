@@ -1019,6 +1019,9 @@ static int prepare_instruction_runtime_aliases(
             CogIrTypeId type = COG_IR_TYPE_INVALID;
             if (instruction->op == COG_IR_OP_PTR_REINTERPRET) {
                 type = instruction->result_type;
+            } else if (instruction->op == COG_IR_OP_SIZE_OF ||
+                       instruction->op == COG_IR_OP_ALIGN_OF) {
+                type = instruction->as.type_query.queried_type;
             } else if (instruction->op == COG_IR_OP_LOAD && instruction->as.load.is_volatile) {
                 const CogIrValue *address = cog_ir_get_value(function, instruction->as.load.address);
                 type = address ? address->type : COG_IR_TYPE_INVALID;

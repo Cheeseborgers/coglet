@@ -367,6 +367,42 @@ int main(void)
     arena_destroy(diag_arena);
     cog_ir_module_destroy(&bad_entry);
 
+    /* Negative verifier regression: target-layout queries may inspect native
+     * callback values, but ordinary Coglet function values do not have the
+     * portable runtime object layout required by host-C. */
+    CogIrModule bad_layout;
+    cog_ir_module_init(&bad_layout, &target);
+    CogIrTypeId layout_void = cog_ir_type_void(&bad_layout);
+    CogIrTypeId layout_u64 = cog_ir_type_integer(&bad_layout, 64, 0);
+    CogIrTypeId ordinary_fn_type = cog_ir_type_function(
+        &bad_layout, layout_void, NULL, 0,
+        COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
+    CogIrTypeId layout_caller_type = cog_ir_type_function(
+        &bad_layout, layout_void, NULL, 0,
+        COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
+    CogIrFunctionId layout_caller = cog_ir_add_function(
+        &bad_layout, string_view_from_cstr("layout_caller"), source_span_invalid(),
+        layout_caller_type, COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
+    CogIrBlockId layout_entry = cog_ir_add_block(
+        &bad_layout, layout_caller, string_view_from_cstr("entry"), source_span_invalid());
+    op = instruction(COG_IR_OP_SIZE_OF, layout_u64, source_span_invalid());
+    op.as.type_query.queried_type = ordinary_fn_type;
+    CogIrValueId bad_layout_value = COG_IR_VALUE_INVALID;
+    if (!cog_ir_emit(&bad_layout, layout_caller, layout_entry, &op, &bad_layout_value))
+        return fail("negative layout-query emission failed");
+    term = ret_void(source_span_invalid());
+    if (!cog_ir_set_terminator(&bad_layout, layout_caller, layout_entry, &term))
+        return fail("negative layout-query terminator emission failed");
+    cog_ir_module_freeze(&bad_layout);
+
+    diag_arena = arena_create(4096);
+    diagnostic_list_init(&diagnostics, diag_arena);
+    if (cog_ir_verify(&bad_layout, &diagnostics) || diagnostics.count == 0)
+        return fail("verifier accepted layout query for ordinary Coglet function type");
+
+    arena_destroy(diag_arena);
+    cog_ir_module_destroy(&bad_layout);
+
     /* Negative verifier regression: C variadic tails must already carry the
      * target default argument promotions before the call instruction. */
     CogIrModule bad_vararg;

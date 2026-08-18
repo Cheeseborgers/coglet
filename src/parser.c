@@ -315,6 +315,9 @@ const char *token_debug_display_name(TokenType type)
         case TOK_FOR:
             return "'for'";
 
+        case TOK_IN:
+            return "'in'";
+
         case TOK_RETURN:
             return "'return'";
 
@@ -3262,6 +3265,26 @@ static Node *parse_for_statement(Parser *p) {
     Node *post = NULL;
 
     if (match(p, TOK_LPAREN)) {
+        if (check(p, TOK_IDENT) && peek_next_token_type(p) == TOK_IN) {
+            Token item = p->current;
+            advance(p);
+            advance(p); /* in */
+            if (!consume(p, TOK_IDENT)) {
+                error_at(p, &p->current, "expected generic pack name after 'in'");
+                return ast_new_error(p->arena, p->current);
+            }
+            Token pack = p->previous;
+            if (!consume(p, TOK_RPAREN))
+                return ast_new_error(p->arena, p->current);
+            Node *body = parse_scoped_control_body(p);
+            return ast_new_pack_for(
+                p->arena,
+                string_view(item.start, (size_t)item.length),
+                ast_new_ident(p->arena, pack.start, pack.length, pack.span),
+                body,
+                source_span_join(span, body->span));
+        }
+
         int c_style = parenthesized_for_has_top_level_semicolon(p);
 
         if (c_style)
@@ -3615,6 +3638,8 @@ static Node *finish_call(Parser *p, Node *callee) {
     if (!check(p, TOK_RPAREN)) {
         do {
             Node *arg = parse_expression(p);
+            if (match(p, TOK_ELLIPSIS))
+                arg = ast_new_pack_expansion(p->arena, arg, arg->span);
             nodelist_push(p->arena, &call->as.call.arguments, arg);
         } while (match(p, TOK_COMMA));
     }

@@ -1,0 +1,4 @@
+<source>:2:5: error: pack iteration is only valid inside a specialized generic function
+    for (arg in args) {
+    ^~~~~~~~~~~~~~~~~~~
+1 semantic error generated.

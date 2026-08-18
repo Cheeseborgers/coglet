@@ -1,0 +1,7 @@
+<source>:7:17: error: pack expansion must name the current generic type-pack parameter
+    return sink(other...);
+                ^~~~~
+<source>:11:12: error: cannot instantiate 'forward' with Args = [s32, s32]: generic body is invalid for these concrete types
+    return forward(1, 2);
+           ^~~~~~~
+2 semantic errors generated.

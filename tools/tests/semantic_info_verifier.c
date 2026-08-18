@@ -73,7 +73,9 @@ static const char *node_type_name(NodeType type)
         case NODE_COMPOUND_ASSIGN:   return "compound_assign";
         case NODE_EXPR_STMT:         return "expr_stmt";
         case NODE_STATIC_ASSERT:     return "static_assert";
+        case NODE_PACK_FOR:          return "pack_for";
         case NODE_CALL:              return "call";
+        case NODE_PACK_EXPANSION:   return "pack_expansion";
         case NODE_FIELD:             return "field";
         case NODE_INDEX:             return "index";
         case NODE_TYPE_REF:          return "type_ref";
@@ -380,6 +382,10 @@ static void walk_expression(ExpressionWalker *walker, Node *expression)
             );
             break;
 
+        case NODE_PACK_EXPANSION:
+            walk_expression(walker, expression->as.pack_expansion.operand);
+            break;
+
         case NODE_FIELD:
             /*
              * Namespace/type qualifiers are not runtime value expressions.
@@ -570,12 +576,20 @@ static void walk_node(ExpressionWalker *walker, Node *node)
             );
             break;
 
+        case NODE_PACK_EXPANSION:
+            walk_expression(walker, node->as.pack_expansion.operand);
+            break;
+
         case NODE_STATIC_ASSERT:
             walk_expression(
                 walker,
                 node->as.static_assert_stmt.condition
             );
             /* The optional message is syntax-only diagnostic text. */
+            break;
+
+        case NODE_PACK_FOR:
+            walk_node(walker, node->as.pack_for.body);
             break;
 
         case NODE_IF:

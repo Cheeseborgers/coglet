@@ -15,9 +15,9 @@ approx_f64::(a: f64, b: f64, epsilon: f64) -> bool {
 }
 
 main::() -> s32 {
-    if std.math.abs_s32(-42) != 42
+    if std.math.abs(-42) != 42
         return 1;
-    if std.math.abs_s32(17) != 17
+    if std.math.abs(17) != 17
         return 2;
 
     if std.math.min(10, 20) != 10

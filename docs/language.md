@@ -704,9 +704,13 @@ pack_noop::<...Args>(args: ...Args) -> s32 {
 
 pack_noop(1, true, 2.0);
 pack_noop::<s32, bool, f64>(1, true, 2.0);
+
+forward::<...Args>(args: ...Args) -> s32 {
+    return sink(args...);
+}
 ```
 
-The pack records each concrete argument type during specialization. No runtime tuple, `Any`, boxing, or C `va_list` is introduced. Pack expansion/iteration is intentionally a later layer; the current pack feature establishes specialization and concrete call-signature support. C `...` variadics remain a separate native-C ABI feature.
+The pack records each concrete argument type during specialization. No runtime tuple, `Any`, boxing, or C `va_list` is introduced. A pack may be expanded at a function call with `args...`; expansion is compile-time and flattens the concrete specialized parameters into the call. C `...` variadics remain a separate native-C ABI feature.
 
 Generic struct example:
 

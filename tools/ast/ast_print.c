@@ -250,6 +250,9 @@ static const char *token_type_str(TokenType type)
         case TOK_FOR:
             return "FOR";
 
+        case TOK_IN:
+            return "IN";
+
         case TOK_RETURN:
             return "RETURN";
 

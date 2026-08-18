@@ -1,0 +1,6 @@
+main::() -> s32 {
+    for (arg in args) {
+        discard arg;
+    }
+    return 0;
+}

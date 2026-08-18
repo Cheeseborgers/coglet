@@ -49,7 +49,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 if(MSVC OR CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
     add_compile_options(/W4)
 else()
-    add_compile_options(-Wall -Wextra)
+    add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
 set(COMMON_SOURCES tools/ast/ast_print.c)

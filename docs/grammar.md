@@ -472,7 +472,8 @@ generic_type_parameter_list =
 generic_type_parameter =
     ["..."] identifier [":" generic_builtin_constraint];
 
-A generic type parameter beginning with `...` is a heterogeneous compile-time type pack and must be the final generic type parameter. Its corresponding function parameter must be the final parameter and uses `args: ...Args`. The pack is specialized into zero or more concrete parameter types; it is not a C ABI variadic parameter.
+A generic type parameter beginning with `...` is a heterogeneous compile-time type pack and must be the final generic type parameter. Its corresponding function parameter must be the final parameter and uses `args: ...Args`. The pack is specialized into zero or more concrete parameter types; it is not a C ABI variadic parameter. A specialized pack parameter may be expanded only in a function-call argument position with the `args...` spelling; the expansion is compile-time and produces the concrete specialized arguments directly.
+A specialized pack parameter may also be iterated with `for (item in args) { ... }`. This is compile-time unrolled during specialization: the body is checked and emitted once for each concrete pack argument, in order. An empty pack produces no iterations. The pack iteration variable is an alias for the corresponding specialized parameter and introduces no runtime container or loop.
 
 generic_builtin_constraint =
       "integer"

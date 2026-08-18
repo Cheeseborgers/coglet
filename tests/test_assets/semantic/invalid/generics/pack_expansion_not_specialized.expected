@@ -1,0 +1,4 @@
+<source>:7:12: error: pack expansion is only valid inside a specialized generic function
+    return sink(value...);
+           ^~~~
+1 semantic error generated.

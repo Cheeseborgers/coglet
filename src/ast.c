@@ -149,6 +149,20 @@ Node *ast_new_block(Arena *arena, SourceSpan span) {
     return node;
 }
 
+Node *ast_new_pack_expansion(Arena *arena, Node *operand, SourceSpan span) {
+    Node *node = new_node(arena, NODE_PACK_EXPANSION, span);
+    node->as.pack_expansion.operand = operand;
+    return node;
+}
+
+Node *ast_new_pack_for(Arena *arena, StringView item_name, Node *pack, Node *body, SourceSpan span) {
+    Node *node = new_node(arena, NODE_PACK_FOR, span);
+    node->as.pack_for.item_name = item_name;
+    node->as.pack_for.pack = pack;
+    node->as.pack_for.body = body;
+    return node;
+}
+
 Node *ast_new_call(Arena *arena, Node *callee, SourceSpan span) {
     Node *node = new_node(arena, NODE_CALL, span);
     node->as.call.callee                  = callee;
@@ -596,6 +610,16 @@ Node *ast_clone(Arena *arena, const Node *node)
                     ast_clone(arena, node->as.call.arguments.items[i])
                 );
             }
+            break;
+
+        case NODE_PACK_EXPANSION:
+            clone->as.pack_expansion.operand = ast_clone(arena, node->as.pack_expansion.operand);
+            break;
+
+        case NODE_PACK_FOR:
+            clone->as.pack_for.item_name = node->as.pack_for.item_name;
+            clone->as.pack_for.pack = ast_clone(arena, node->as.pack_for.pack);
+            clone->as.pack_for.body = ast_clone(arena, node->as.pack_for.body);
             break;
 
         case NODE_FIELD:

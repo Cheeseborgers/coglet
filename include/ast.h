@@ -59,8 +59,10 @@ typedef enum {
 
     NODE_EXPR_STMT,    // an expression used as a statement: `1 + 2;`
     NODE_STATIC_ASSERT, // compile-time assertion: static_assert(condition[, "message"]);
+    NODE_PACK_FOR,      // compile-time unrolled iteration over a specialized generic pack
 
     NODE_CALL,         // function calls
+    NODE_PACK_EXPANSION, // compile-time generic pack expansion: args...
     NODE_FIELD,
     NODE_INDEX,
     NODE_TYPE_REF,     // type used as an associated-member qualifier
@@ -252,6 +254,16 @@ struct Node {
             TypeList type_arguments; /* explicit `::<...>` arguments; empty when inferred */
             NodeList arguments;
         } call;
+
+        struct {
+            Node *operand; /* identifier naming the generic type-pack parameter */
+        } pack_expansion;
+
+        struct {
+            StringView item_name;
+            Node *pack;
+            Node *body;
+        } pack_for;
 
         struct {
             Node *object;
@@ -510,6 +522,8 @@ Node *ast_new_expr_stmt(Arena *arena, Node *expr, SourceSpan span);
 Node *ast_new_static_assert(Arena *arena, Node *condition, Node *message, SourceSpan span);
 Node *ast_new_block(Arena *arena, SourceSpan span);
 Node *ast_new_call(Arena *arena, Node *callee, SourceSpan span);
+Node *ast_new_pack_expansion(Arena *arena, Node *operand, SourceSpan span);
+Node *ast_new_pack_for(Arena *arena, StringView item_name, Node *pack, Node *body, SourceSpan span);
 Node *ast_new_field(Arena *arena, Node *object, const char *name, int length, SourceSpan span );
 Node *ast_new_index(Arena *arena,Node *object, Node *index, SourceSpan span);
 Node *ast_new_error(Arena *arena, Token token);

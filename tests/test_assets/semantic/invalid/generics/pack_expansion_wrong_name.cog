@@ -1,0 +1,12 @@
+sink::(a: s32, b: s32) -> s32 {
+    return a + b;
+}
+
+forward::<...Args>(args: ...Args) -> s32 {
+    other: s32 = 1;
+    return sink(other...);
+}
+
+main::() -> s32 {
+    return forward(1, 2);
+}

@@ -207,6 +207,7 @@ static const Keyword keywords[] = {
     {"else", TOK_ELSE},
     {"while", TOK_WHILE},
     {"for", TOK_FOR},
+    {"in", TOK_IN},
     {"return", TOK_RETURN},
     {"defer", TOK_DEFER},
     {"discard", TOK_DISCARD},
@@ -1337,6 +1338,7 @@ const char *token_type_name(TokenType type) {
         case TOK_ELSE: return "ELSE";
         case TOK_WHILE: return "WHILE";
         case TOK_FOR: return "FOR";
+        case TOK_IN: return "IN";
         case TOK_RETURN: return "RETURN";
         case TOK_DEFER: return "DEFER";
         case TOK_DISCARD: return "DISCARD";

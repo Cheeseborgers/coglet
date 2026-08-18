@@ -1,0 +1,8 @@
+sink::(value: s32) -> s32 {
+    return value;
+}
+
+main::() -> s32 {
+    value: s32 = 1;
+    return sink(value...);
+}

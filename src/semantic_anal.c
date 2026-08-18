@@ -2495,6 +2495,7 @@ static Type *check_resolved_concrete_call(
     int implicit_argument_count,
     StringView method_name
 );
+static int expand_generic_pack_arguments(SemanticContext *ctx, Node *call);
 static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 static int declare_enum_shell(SemanticContext *ctx, Node *node);
 static void fill_enum_members(SemanticContext *ctx,Node *node);
@@ -2502,6 +2503,7 @@ static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t le
 static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value);
 static Type *check_value_expression(SemanticContext *ctx, Node *node);
 static Type *check_if_expression(SemanticContext *ctx, Node *node);
+static void rebind_pack_iteration_ident(Node *node, StringView item_name, StringView replacement);
 static Type *make_function_type(SemanticContext *ctx, Node *func);
 static Type *check_checked_cast_expression(SemanticContext *ctx, Node *node);
 static Type *check_reinterpret_expression(SemanticContext *ctx, Node *node);
@@ -10675,6 +10677,9 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
             return NULL;
 
         case NODE_CALL: {
+            if (!expand_generic_pack_arguments(ctx, node))
+                return NULL;
+
             StructMethodBinding *method_binding = NULL;
             int method_status = prepare_struct_method_call(
                 ctx, node, &method_binding);
@@ -10753,6 +10758,10 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 string_view_empty()
             );
         }
+
+        case NODE_PACK_EXPANSION:
+            semantic_error(ctx, node, "pack expansion is only valid as a function-call argument");
+            return NULL;
 
         case NODE_CAST:
         {
@@ -11576,12 +11585,83 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 // ============================================================
 // statements
 // ============================================================
+static int expand_pack_for_statement(SemanticContext *ctx, Node *node, NodeList *out)
+{
+    Node *template_decl =
+        ctx->active_generic_specialization
+            ? ctx->active_generic_specialization->template_decl
+            : NULL;
+
+    if (!template_decl || template_decl->type != NODE_FUNC_DECL) {
+        semantic_error(ctx, node,
+            "pack iteration is only valid inside a specialized generic function");
+        return 0;
+    }
+
+    int pack_type_index = generic_pack_parameter_index(template_decl);
+    int pack_param_index = generic_pack_param_index(template_decl);
+    if (pack_type_index < 0 || pack_param_index < 0) {
+        semantic_error(ctx, node,
+            "pack iteration target is not a generic type pack parameter");
+        return 0;
+    }
+
+    Node *pack = node->as.pack_for.pack;
+    Node *pack_param = template_decl->as.func_decl.params.items[pack_param_index];
+    if (!pack || pack->type != NODE_IDENT ||
+        !string_view_equals(pack->as.ident, pack_param->as.param_decl.name)) {
+        semantic_error(ctx, node,
+            "pack iteration must name the current generic type-pack parameter");
+        return 0;
+    }
+
+    int pack_count = ctx->active_generic_specialization->type_argument_count - pack_type_index;
+    if (pack_count < 0)
+        pack_count = 0;
+
+    for (int i = 0; i < pack_count; i++) {
+        char generated_name[256];
+        int generated_length = snprintf(
+            generated_name, sizeof(generated_name), "%.*s$%d",
+            (int)pack->as.ident.length, pack->as.ident.data, i);
+        if (generated_length < 0 || (size_t)generated_length >= sizeof(generated_name)) {
+            semantic_error(ctx, node,
+                "pack iteration generated parameter name is too long");
+            return 0;
+        }
+
+        Node *iteration = ast_clone(ctx->arena, node->as.pack_for.body);
+        const char *owned_name = arena_strdup_len(
+            ctx->arena, generated_name, (size_t)generated_length);
+        rebind_pack_iteration_ident(
+            iteration,
+            node->as.pack_for.item_name,
+            string_view(owned_name, (size_t)generated_length));
+        nodelist_push(ctx->arena, out, iteration);
+    }
+
+    return 1;
+}
+
 static void check_block(SemanticContext *ctx, Node *node) {
 
     DeferredResourceUse *saved_deferred_resources =
         ctx->active_deferred_resources;
 
     scope_push(ctx);
+
+    /* Expand compile-time pack loops before ordinary statement checking so
+     * lowerers see only regular Coglet statements. */
+    NodeList expanded = {0};
+    for (int i = 0; i < node->as.block.statements.count; i++) {
+        Node *statement = node->as.block.statements.items[i];
+        if (statement->type == NODE_PACK_FOR) {
+            (void)expand_pack_for_statement(ctx, statement, &expanded);
+        } else {
+            nodelist_push(ctx->arena, &expanded, statement);
+        }
+    }
+    node->as.block.statements = expanded;
 
     /*
      * If this entire block was already unreachable from its parent,
@@ -11601,13 +11681,6 @@ static void check_block(SemanticContext *ctx, Node *node) {
                 "unreachable statement");
         }
 
-        /*
-         * Continue semantic checking even when the statement is
-         * unreachable so useful nested diagnostics are retained.
-         *
-         * Flow operations preserve reachable == 0 once the current
-         * path has stopped.
-         */
         check_node(ctx, statement);
     }
 
@@ -12955,6 +13028,196 @@ static int check_call_arity(
  * rewritten instance calls include the synthetic receiver in the AST, while
  * users should see counts for the arguments they actually wrote.
  */
+
+static void rebind_pack_iteration_ident(Node *node, StringView item_name, StringView replacement)
+{
+    if (!node)
+        return;
+
+    switch (node->type) {
+        case NODE_IDENT:
+            if (string_view_equals(node->as.ident, item_name))
+                node->as.ident = replacement;
+            return;
+        case NODE_UNARY: rebind_pack_iteration_ident(node->as.unary.operand, item_name, replacement); return;
+        case NODE_BINARY:
+            rebind_pack_iteration_ident(node->as.binary.left, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.binary.right, item_name, replacement);
+            return;
+        case NODE_INC_DEC: rebind_pack_iteration_ident(node->as.inc_dec.target, item_name, replacement); return;
+        case NODE_ASSIGN:
+            rebind_pack_iteration_ident(node->as.assign.target, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.assign.value, item_name, replacement);
+            return;
+        case NODE_COMPOUND_ASSIGN:
+            rebind_pack_iteration_ident(node->as.compound_assign.target, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.compound_assign.value, item_name, replacement);
+            return;
+        case NODE_EXPR_STMT: rebind_pack_iteration_ident(node->as.expr_stmt.expr, item_name, replacement); return;
+        case NODE_BLOCK:
+            for (int i = 0; i < node->as.block.statements.count; i++)
+                rebind_pack_iteration_ident(node->as.block.statements.items[i], item_name, replacement);
+            return;
+        case NODE_CALL:
+            rebind_pack_iteration_ident(node->as.call.callee, item_name, replacement);
+            for (int i = 0; i < node->as.call.arguments.count; i++)
+                rebind_pack_iteration_ident(node->as.call.arguments.items[i], item_name, replacement);
+            return;
+        case NODE_PACK_EXPANSION: rebind_pack_iteration_ident(node->as.pack_expansion.operand, item_name, replacement); return;
+        case NODE_FIELD: rebind_pack_iteration_ident(node->as.field.object, item_name, replacement); return;
+        case NODE_INDEX:
+            rebind_pack_iteration_ident(node->as.index.object, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.index.index, item_name, replacement);
+            return;
+        case NODE_CAST: rebind_pack_iteration_ident(node->as.cast_expr.expression, item_name, replacement); return;
+        case NODE_STRUCT_INIT:
+            for (int i = 0; i < node->as.struct_init.fields.count; i++)
+                rebind_pack_iteration_ident(node->as.struct_init.fields.items[i], item_name, replacement);
+            return;
+        case NODE_FIELD_INIT: rebind_pack_iteration_ident(node->as.field_init.value, item_name, replacement); return;
+        case NODE_ARRAY_LITERAL:
+            for (int i = 0; i < node->as.array_literal.elements.count; i++)
+                rebind_pack_iteration_ident(node->as.array_literal.elements.items[i], item_name, replacement);
+            return;
+        case NODE_VAR_DECL: rebind_pack_iteration_ident(node->as.var_decl.initializer, item_name, replacement); return;
+        case NODE_VAR_DECL_GROUP:
+            for (int i = 0; i < node->as.var_decl_group.declarations.count; i++)
+                rebind_pack_iteration_ident(node->as.var_decl_group.declarations.items[i], item_name, replacement);
+            return;
+        case NODE_CONST_DECL: rebind_pack_iteration_ident(node->as.const_decl.value, item_name, replacement); return;
+        case NODE_IF:
+            rebind_pack_iteration_ident(node->as.if_stmt.condition, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.if_stmt.then_branch, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.if_stmt.else_branch, item_name, replacement);
+            return;
+        case NODE_IF_EXPR:
+            rebind_pack_iteration_ident(node->as.if_expr.condition, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.if_expr.then_value, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.if_expr.else_value, item_name, replacement);
+            return;
+        case NODE_STATIC_ASSERT:
+            rebind_pack_iteration_ident(node->as.static_assert_stmt.condition, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.static_assert_stmt.message, item_name, replacement);
+            return;
+        case NODE_RETURN: rebind_pack_iteration_ident(node->as.return_stmt.value, item_name, replacement); return;
+        case NODE_DEFER: rebind_pack_iteration_ident(node->as.defer_stmt.statement, item_name, replacement); return;
+        case NODE_WHILE:
+            rebind_pack_iteration_ident(node->as.while_stmt.condition, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.while_stmt.body, item_name, replacement);
+            return;
+        case NODE_FOR:
+            rebind_pack_iteration_ident(node->as.for_stmt.condition, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.for_stmt.post, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.for_stmt.body, item_name, replacement);
+            return;
+        case NODE_SWITCH:
+            rebind_pack_iteration_ident(node->as.switch_stmt.expression, item_name, replacement);
+            for (int i = 0; i < node->as.switch_stmt.cases.count; i++)
+                rebind_pack_iteration_ident(node->as.switch_stmt.cases.items[i], item_name, replacement);
+            return;
+        case NODE_SWITCH_CASE:
+            rebind_pack_iteration_ident(node->as.switch_case.value, item_name, replacement);
+            rebind_pack_iteration_ident(node->as.switch_case.body, item_name, replacement);
+            return;
+        default:
+            return;
+    }
+}
+
+static void check_pack_for(SemanticContext *ctx, Node *node)
+{
+    /* Pack-for nodes are expanded by check_block before statement checking. */
+    semantic_error(ctx, node, "internal error: unexpanded pack iteration");
+}
+
+static int expand_generic_pack_arguments(SemanticContext *ctx, Node *call)
+{
+    assert(ctx);
+    assert(call && call->type == NODE_CALL);
+
+    int has_expansion = 0;
+    for (int i = 0; i < call->as.call.arguments.count; i++) {
+        if (call->as.call.arguments.items[i]->type == NODE_PACK_EXPANSION) {
+            has_expansion = 1;
+            break;
+        }
+    }
+    if (!has_expansion)
+        return 1;
+
+    GenericSpecialization *spec = ctx->active_generic_specialization;
+    if (!spec || !spec->template_decl || spec->template_decl->type != NODE_FUNC_DECL) {
+        semantic_error(
+            ctx,
+            call,
+            "pack expansion is only valid inside a specialized generic function"
+        );
+        return 0;
+    }
+
+    Node *template_decl = spec->template_decl;
+    int pack_type_index = generic_pack_parameter_index(template_decl);
+    int pack_param_index = generic_pack_param_index(template_decl);
+    if (pack_type_index < 0 || pack_param_index < 0) {
+        semantic_error(ctx, call, "pack expansion target is not a generic type pack parameter");
+        return 0;
+    }
+
+    Node *pack_param = template_decl->as.func_decl.params.items[pack_param_index];
+    StringView pack_name = pack_param->as.param_decl.name;
+
+    NodeList expanded = {0};
+    for (int i = 0; i < call->as.call.arguments.count; i++) {
+        Node *argument = call->as.call.arguments.items[i];
+        if (argument->type != NODE_PACK_EXPANSION) {
+            nodelist_push(ctx->arena, &expanded, argument);
+            continue;
+        }
+
+        Node *operand = argument->as.pack_expansion.operand;
+        if (!operand || operand->type != NODE_IDENT ||
+            !string_view_equals(operand->as.ident, pack_name)) {
+            semantic_error(
+                ctx,
+                argument,
+                "pack expansion must name the current generic type-pack parameter"
+            );
+            return 0;
+        }
+
+        int pack_count = spec->type_argument_count - pack_type_index;
+        if (pack_count < 0)
+            pack_count = 0;
+
+        for (int j = 0; j < pack_count; j++) {
+            char generated_name[256];
+            int generated_length = snprintf(
+                generated_name,
+                sizeof(generated_name),
+                "%.*s$%d",
+                (int)pack_name.length,
+                pack_name.data,
+                j
+            );
+            if (generated_length < 0 || (size_t)generated_length >= sizeof(generated_name)) {
+                semantic_error(ctx, argument, "pack expansion generated parameter name is too long");
+                return 0;
+            }
+
+            Node *expanded_argument = ast_new_ident(
+                ctx->arena,
+                generated_name,
+                generated_length,
+                operand->span
+            );
+            nodelist_push(ctx->arena, &expanded, expanded_argument);
+        }
+    }
+
+    call->as.call.arguments = expanded;
+    return 1;
+}
+
 static Type *check_resolved_concrete_call(
     SemanticContext *ctx,
     Node *call,
@@ -16752,6 +17015,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
         case NODE_CONST_DECL:      check_const_decl(ctx,node);       break;
         case NODE_EXPR_STMT:       check_statement_expression(ctx, node->as.expr_stmt.expr); break;
         case NODE_STATIC_ASSERT:   check_static_assert_statement(ctx, node); break;
+        case NODE_PACK_FOR:        check_pack_for(ctx, node); break;
 
         case NODE_STRUCT_DECL: {
             if (node->as.struct_decl.type_parameters.count > 0) {

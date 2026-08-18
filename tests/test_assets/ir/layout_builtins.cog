@@ -1,0 +1,22 @@
+Pair::struct {
+    tag: u8;
+    value: u64;
+}
+
+measure::<T>() -> u64 {
+    return size_of::<T>() + align_of::<T>();
+}
+
+main::() -> s32 {
+    values: s32[3] = [10, 20, 30];
+    pointer: s32* = &values[0];
+    view := slice(pointer, 3);
+
+    if view.len != 3 || view[1] != 20
+        return 1;
+
+    if measure::<Pair>() < align_of::<Pair>()
+        return 2;
+
+    return 0;
+}

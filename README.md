@@ -215,10 +215,7 @@ Import cycles are allowed because imports currently affect compile-time
 visibility only; top-level runtime initialization remains in physical input
 order. Only root-namespace `main::() -> s32` is the executable entry. Exported
 APIs may not expose private nominal types through function signatures,
-globals/constants, or exported struct fields. Package manifests, automatic multi-file package membership, richer runtime-facing standard-library modules, and
-separate compilation remain future work. Coglet ships ordinary-source `std.math` and
-`std.io` modules beneath `stdlib/std/`; installed builds copy the `std` source tree and
-the small runtime implementation beneath the configured standard-library root. Discovery does not imply runtime
+globals/constants, or exported struct fields. Package manifests, automatic multi-file package membership, and separate compilation remain future work. Coglet ships ordinary-source `std.math`, `std.io`, `std.mem`, and `std.array` modules beneath `stdlib/std/`; installed builds copy the `std` source tree and the small runtime implementation beneath the configured standard-library root. Discovery does not imply runtime
 dependency ordering: explicit inputs retain command-line order and discovered
 files are appended in deterministic first-discovery order to the existing single
 module initializer.
@@ -239,12 +236,7 @@ main::() -> s32 {
 
 `std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_s32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; floating game/application helpers such as `lerp`/`smoothstep`; generic `Vec2<T>`/`Vec3<T>`/`Vec4<T>` numeric vectors with constructors, component arithmetic, dot/cross and distance helpers; floating `Quat<T>`, `Mat3<T>`, and `Mat4<T>` transform types with quaternion interpolation/rotation and TRS composition; and runtime-backed `f32`/`f64` square-root, trigonometric, inverse-trigonometric, rounding, and floating-remainder functions. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow. Known implementation limitations and follow-up work are tracked separately in `docs/known_shortcomings.md`.
 
-`std.io` is the first runtime-backed standard module. It provides `print`/`println`
-for `readonly u8[]` byte views, `newline`, `flush`, Boolean printing,
-and explicit scalar printers for every fixed-width integer plus `f32`/`f64`.
-The public module is ordinary Coglet source; its reserved `coglet_rt_*` extern
-symbols are supplied by `<stdlib-root>/runtime/coglet_runtime.c` only when the
-frozen CogIR actually references them.
+`std.io` provides runtime-backed byte-view and scalar output. `std.mem` provides explicit typed heap allocation, resize, and free operations, while `std.array` builds a manually owned growable `Array<T>` on top of that allocator and ordinary slices. The public modules remain ordinary Coglet source; reserved `coglet_rt_*` extern symbols are supplied by `<stdlib-root>/runtime/coglet_runtime.c` only when frozen CogIR references them.
 
 ```c
 import std.io;
@@ -256,6 +248,26 @@ main::() -> s32 {
     return 0;
 }
 ```
+
+A growable array remains explicit about ownership and cleanup:
+
+```c
+import std.array as array;
+
+main::() -> s32 {
+    values := array.Array::<s32>.new();
+    values.push(10);
+    values.push(20);
+
+    view := values.as_slice();
+    view[1] = 25;
+
+    values.deinit();
+    return 0;
+}
+```
+
+`Array<T>` is manually owned in this first version. Copying the struct is a shallow alias of the same allocation because Coglet does not yet have move-only types or destructors; exactly one logical owner must call `deinit()`. Borrowed slices become invalid if the array reallocates or is deinitialized.
 
 ### Build and run from a source checkout
 
@@ -281,7 +293,7 @@ When developing from the source tree, pass the source stdlib root explicitly:
 
 On Windows the executable normally has the platform `.exe` suffix. Installed
 builds use the configured stdlib root automatically; `coglet --print-stdlib-root`
-shows it. Runtime-backed modules such as `std.io` require the matching
+shows it. Runtime-backed modules such as `std.io` and `std.mem` require the matching
 `runtime/coglet_runtime.c` beneath that root, while pure programs that do not
 reference reserved runtime symbols do not acquire a runtime link dependency.
 
@@ -1045,7 +1057,7 @@ object storage. Ordinary Coglet `bool*` is intentionally not interchangeable wit
 Near-term compiler work is backend-focused:
 
 1. Extend represented C aggregate classification beyond the current x86-64 SysV/Win64 target slice when cross-target selection is introduced.
-2. Grow the initial pure-Coglet `std.math` module deliberately, then add package manifests and define the runtime/standard-library boundary needed for allocation, I/O, and self-hosting.
+2. Grow the runtime/standard-library layer beyond the existing math, I/O, heap-allocation, and growable-array foundation with file I/O, time, allocator/arena APIs, and stronger ownership semantics.
 3. Continue improving diagnostics, tests, and documentation.
 
 ## License

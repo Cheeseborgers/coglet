@@ -225,6 +225,21 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
             result = LLVMBuildXor(backend->builder, state->values[insn->as.unary.operand], one, "");
             break;
         }
+        case COG_IR_OP_SIZE_OF:
+        case COG_IR_OP_ALIGN_OF: {
+            LLVMTypeRef queried = llvm_lower_type(
+                backend, insn->as.type_query.queried_type);
+            LLVMTypeRef result_type = llvm_lower_type(backend, insn->result_type);
+            if (!queried || !result_type) {
+                llvm_backend_error(backend, "type-layout query references unavailable LLVM type");
+                return 0;
+            }
+            uint64_t value = insn->op == COG_IR_OP_SIZE_OF
+                ? LLVMABISizeOfType(backend->target_data, queried)
+                : (uint64_t)LLVMABIAlignmentOfType(backend->target_data, queried);
+            result = LLVMConstInt(result_type, value, 0);
+            break;
+        }
         case COG_IR_OP_CALL: {
             LLVMValueRef callee = state->values[insn->as.call.callee];
             const CogIrValue *callee_value = cog_ir_get_value(function, insn->as.call.callee);

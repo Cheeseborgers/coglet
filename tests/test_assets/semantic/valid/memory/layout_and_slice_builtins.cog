@@ -1,0 +1,20 @@
+Pair::struct {
+    tag: u8;
+    value: u64;
+}
+
+layout_sum::<T>() -> u64 {
+    return size_of::<T>() + align_of::<T>();
+}
+
+use_memory_builtins::(data: s32*, count: u64) -> readonly s32[] {
+    mutable := slice(data, count);
+    readonly_data := cast(readonly s32*, mutable.data);
+    view := slice(readonly_data, mutable.len);
+    pair_size := size_of::<Pair>();
+    pair_align := align_of::<Pair>();
+    generic_layout := layout_sum::<Pair>();
+    if pair_size < pair_align || generic_layout < pair_size
+        return view;
+    return view;
+}

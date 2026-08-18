@@ -1,0 +1,83 @@
+module std.array;
+
+import std.mem as mem;
+
+// Growable manually-owned contiguous storage.
+//
+// Array<T> is intentionally a small bootstrap container. It does not yet have
+// move-only ownership or automatic destruction, so copying an Array value is a
+// shallow alias of the same allocation. Exactly one owner must call deinit().
+export Array::<T> struct {
+    data: T*;
+    len: u64;
+    capacity: u64;
+
+    new::() -> Self {
+        return Self {
+            data = null,
+            len = 0,
+            capacity = 0
+        };
+    }
+
+    with_capacity::(capacity: u64) -> Self {
+        result := Self.new();
+        if capacity != 0 {
+            result.data = mem.alloc::<T>(capacity);
+            result.capacity = capacity;
+        }
+        return result;
+    }
+
+    deinit::(self: Self*) -> void {
+        mem.free((*self).data);
+        (*self).data = null;
+        (*self).len = 0;
+        (*self).capacity = 0;
+    }
+
+    is_empty::(self: readonly Self*) -> bool {
+        return (*self).len == 0;
+    }
+
+    clear::(self: Self*) -> void {
+        (*self).len = 0;
+    }
+
+    reserve::(self: Self*, additional: u64) -> void {
+        required := (*self).len + additional;
+        if required <= (*self).capacity
+            return;
+
+        next_capacity := (*self).capacity;
+        if next_capacity < 8
+            next_capacity = 8;
+
+        while next_capacity < required
+            next_capacity *= 2;
+
+        (*self).data = mem.resize((*self).data, next_capacity);
+        (*self).capacity = next_capacity;
+    }
+
+    push::(self: Self*, value: T) -> void {
+        (*self).reserve(1);
+        (*self).data[(*self).len] = value;
+        (*self).len += 1;
+    }
+
+    // Requires len > 0.
+    pop::(self: Self*) -> T {
+        (*self).len -= 1;
+        return (*self).data[(*self).len];
+    }
+
+    as_slice::(self: Self*) -> T[] {
+        return slice((*self).data, (*self).len);
+    }
+
+    as_readonly_slice::(self: readonly Self*) -> readonly T[] {
+        data := cast(readonly T*, (*self).data);
+        return slice(data, (*self).len);
+    }
+}

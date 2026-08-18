@@ -1533,6 +1533,32 @@ Slices are deliberately non-owning and Coglet does not yet perform borrow/lifeti
 
 Slices are ordinary Coglet values and may be function arguments/returns, generic parameter shapes, locals, and fields of ordinary Coglet structs. Direct by-value slice parameters/returns are not part of the current `#extern(c)` ABI subset; FFI boundaries should pass pointer and length explicitly.
 
+
+A typed raw pointer and an explicit element count may be wrapped as a slice with the builtin `slice(pointer, length)` constructor:
+
+```c
+storage: s32* = ...;
+view: s32[] = slice(storage, 4);
+
+readonly_storage: readonly s32* = ...;
+readonly_view: readonly s32[] = slice(readonly_storage, 4);
+```
+
+The first argument must be a typed non-volatile raw pointer; `opaque*` and volatile pointer storage are rejected. The result inherits the pointer's mutable/readonly access, and the length is checked as `u64`. This is a non-owning operation: the caller remains responsible for ensuring that the pointer stays valid for the complete slice lifetime and for at least `length` elements.
+
+## Runtime Type Layout Queries
+
+Coglet provides target-layout builtins for generic allocation and low-level containers:
+
+```c
+bytes := size_of::<MyType>();
+alignment := align_of::<MyType>();
+```
+
+Each builtin requires exactly one explicit concrete runtime object type and returns `u64`. In generic code the type argument may contain the current concrete type parameters, so `size_of::<T>()` and `align_of::<T>()` are valid after specialization. Incomplete types, `void`, function types, and other types without runtime object layout are rejected.
+
+The frontend does not guess target padding or alignment. Semantic analysis freezes the resolved concrete type, CogIR carries a backend-neutral type-layout query, and the selected backend answers using its actual target layout. These queries are not yet accepted in Coglet compile-time constant-expression contexts even though a backend can materialize them as target constants.
+
 ## String Literals
 
 String literals represent immutable compile-time byte data and are now ordinary readonly byte-slice expressions.

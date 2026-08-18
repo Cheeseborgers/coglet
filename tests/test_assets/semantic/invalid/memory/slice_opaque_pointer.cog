@@ -1,0 +1,5 @@
+main::() -> s32 {
+    raw: opaque* = null;
+    slice(raw, 4);
+    return 0;
+}

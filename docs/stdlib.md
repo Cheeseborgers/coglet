@@ -7,8 +7,10 @@ installed layout:
 ```text
 stdlib/
 ├── std/
+│   ├── array.cog
 │   ├── io.cog
-│   └── math.cog
+│   ├── math.cog
+│   └── mem.cog
 └── runtime/
     └── coglet_runtime.c
 ```
@@ -285,6 +287,63 @@ capability and adds `libm`; Windows uses the normal C runtime math implementatio
 The same capability flag is used when linking an LLVM-emitted native object, so
 neither backend implements math functions itself.
 
+## `std.mem`
+
+`std.mem` is the first explicit heap-allocation API. It is ordinary Coglet source over the reserved runtime allocator ABI and uses the compiler's target-layout queries so generic allocation respects the actual size and alignment of `T`:
+
+```c
+import std.mem as mem;
+
+items := mem.alloc::<s32>(128);
+items[0] = 42;
+items = mem.resize(items, 256);
+mem.free(items);
+```
+
+Exports:
+
+```text
+alloc<T>(count: u64) -> T*
+resize<T>(pointer: T*, count: u64) -> T*
+free<T>(pointer: T*) -> void
+```
+
+A zero element count returns `null`; `free(null)` is valid. Allocation byte counts use ordinary checked Coglet arithmetic. Allocation or allocator-internal size/alignment failure currently prints a runtime error and aborts rather than returning a fallible result. The runtime allocator overallocates, aligns the returned pointer to `align_of::<T>()`, records the original allocation in a private header, and implements resize as allocate/copy/free so the same C source remains portable across the initial Linux/Windows x86-64/AArch64 native-host matrix.
+
+`size_of::<T>()` and `align_of::<T>()` are compiler builtins rather than `std.mem` functions. They return `u64` target layout values and are described in `docs/language.md`.
+
+## `std.array`
+
+`std.array` provides the first growable owning container:
+
+```c
+import std.array as array;
+
+values := array.Array::<s32>.with_capacity(32);
+values.push(10);
+values.push(20);
+
+view := values.as_slice();
+view[1] = 25;
+
+last := values.pop();
+values.deinit();
+```
+
+`Array<T>` stores exactly the conventional bootstrap fields:
+
+```text
+data     : T*
+len      : u64
+capacity : u64
+```
+
+Its initial methods are `new`, `with_capacity`, `deinit`, `is_empty`, `clear`, `reserve`, `push`, `pop`, `as_slice`, and `as_readonly_slice`. Capacity grows geometrically from a minimum allocation of eight elements. `clear` retains allocated capacity; `deinit` frees storage and resets all three fields. `pop` currently requires `len > 0`.
+
+Ownership is deliberately manual. Coglet does not yet have move-only values, destructors, or automatic resource cleanup, so copying an `Array<T>` is a shallow copy of the owning pointer. Exactly one logical owner must call `deinit()`. Slices returned by `as_slice`/`as_readonly_slice` borrow the array storage and are invalidated by a reallocation or `deinit()`. This is a known safety limitation, not hidden reference counting.
+
+Array growth byte-copies existing element storage through the runtime allocator. That is valid for today's trivially movable Coglet values, but must be revisited if the language later adds destructors, nontrivial move operations, or pinned/address-sensitive values.
+
 ## `std.io`
 
 `std.io` is the first I/O-facing runtime-backed standard module. The public API remains
@@ -346,12 +405,13 @@ The shipped integration consumers live at:
 ```text
 tests/stdlib/math/main.cog
 tests/stdlib/io/main.cog
+tests/stdlib/array/main.cog
 ```
 
 They import the modules through normal standard-library discovery. The I/O test
 also compares exact stdout while exercising every v0 scalar printer. The math
 consumer exercises both `f32` and `f64` runtime functions with tolerance-based
-checks for transcendental results and exact checks for rounding/remainder cases. Run the
+checks for transcendental results and exact checks for rounding/remainder cases. The array consumer exercises target layout queries, aligned typed allocation, growth, mutation through slice views, pop/reserve/clear, and explicit deinitialization. Run the
 shipped stdlib slice
 with:
 

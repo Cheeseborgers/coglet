@@ -1,0 +1,72 @@
+import std.array as array;
+import std.mem as mem;
+
+#repr(c, align=16)
+Aligned::struct {
+    x: u64;
+    y: u64;
+}
+
+main::() -> s32 {
+    if size_of::<s32>() != 4 || align_of::<s32>() != 4
+        return 1;
+
+    // Raw typed allocation and explicit pointer+length slice construction.
+    raw := mem.alloc::<s32>(3);
+    raw[0] = 7;
+    raw[1] = 8;
+    raw[2] = 9;
+    raw_view := slice(raw, 3);
+    if raw_view.len != 3 || raw_view[0] != 7 || raw_view[2] != 9
+        return 2;
+    mem.free(raw);
+
+    values := array.Array::<s32>.new();
+    if !values.is_empty()
+        return 3;
+
+    values.push(10);
+    values.push(20);
+    values.push(30);
+    if values.len != 3 || values.capacity < 3
+        return 4;
+
+    mutable := values.as_slice();
+    mutable[1] = 25;
+    readonly_view := values.as_readonly_slice();
+    if readonly_view.len != 3 || readonly_view[0] != 10 ||
+       readonly_view[1] != 25 || readonly_view[2] != 30 {
+        return 5;
+    }
+
+    if values.pop() != 30 || values.len != 2
+        return 6;
+
+    values.reserve(30);
+    if values.capacity < 32 || values.as_slice()[1] != 25
+        return 7;
+
+    values.clear();
+    if !values.is_empty() || values.capacity < 32
+        return 8;
+
+    values.deinit();
+    if values.data != null || values.len != 0 || values.capacity != 0
+        return 9;
+
+    // The runtime allocator honors target alignment reported by align_of.
+    if align_of::<Aligned>() != 16
+        return 10;
+
+    aligned := mem.alloc::<Aligned>(2);
+    address := reinterpret(opaque*, aligned);
+    if address == null
+        return 11;
+    aligned[0] = Aligned { x = 11, y = 12 };
+    aligned[1] = Aligned { x = 13, y = 14 };
+    if aligned[1].y != 14
+        return 12;
+    mem.free(aligned);
+
+    return 0;
+}

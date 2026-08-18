@@ -842,6 +842,21 @@ set_tests_properties(
 )
 
 add_test(
+        NAME cog_ir_layout_builtins_lowering_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/layout_builtins.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/layout_builtins.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_layout_builtins_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;memory;layout;builtin;slice"
+)
+
+add_test(
         NAME cog_ir_semantic_valid_fixture_suite
         COMMAND "${CMAKE_COMMAND}"
         -DEXE=$<TARGET_FILE:dump_ir>
@@ -1698,6 +1713,7 @@ set(COGLET_STDLIB_IO_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.cog")
 set(COGLET_STDLIB_IO_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.stdout")
 set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/math_import/main.cog")
 set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/math_import/main.stdout")
+set(COGLET_STDLIB_ARRAY_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/array/main.cog")
 
 add_test(
         NAME stdlib_math_host_c
@@ -1743,6 +1759,21 @@ add_test(
 )
 set_tests_properties(stdlib_math_transforms_host_c
         PROPERTIES LABELS "stdlib;stdlib.source;std.math;matrix;quaternion;transform;generic;method;operator;backend;backend.c;module;import;discovery;warning-free")
+
+add_test(
+        NAME stdlib_array_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_ARRAY_TEST_MAIN}"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_array_host_c${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -DBACKEND=host-c
+        -DFORBID_COMPILE_WARNINGS=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+)
+set_tests_properties(stdlib_array_host_c
+        PROPERTIES LABELS "stdlib;stdlib.source;std.array;std.mem;memory;allocation;array;generic;slice;runtime;backend;backend.c;module;import;discovery;warning-free")
 
 add_test(
         NAME stdlib_io_host_c
@@ -1863,6 +1894,21 @@ if(COGLET_HAS_LLVM_BACKEND)
         )
         set_tests_properties(stdlib_math_transforms_llvm_O${stdlib_opt_level}
             PROPERTIES LABELS "stdlib;stdlib.source;std.math;matrix;quaternion;transform;generic;method;operator;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
+
+        add_test(
+            NAME stdlib_array_llvm_O${stdlib_opt_level}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            "-DINPUTS=${COGLET_STDLIB_ARRAY_TEST_MAIN}"
+            "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_array_llvm_O${stdlib_opt_level}${CMAKE_EXECUTABLE_SUFFIX}
+            -DEXPECT_EXIT=0
+            -DBACKEND=llvm
+            -DOPT_LEVEL=${stdlib_opt_level}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+        )
+        set_tests_properties(stdlib_array_llvm_O${stdlib_opt_level}
+            PROPERTIES LABELS "stdlib;stdlib.source;std.array;std.mem;memory;allocation;array;generic;slice;runtime;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
 
         add_test(
             NAME stdlib_io_llvm_O${stdlib_opt_level}

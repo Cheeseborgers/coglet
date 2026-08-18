@@ -387,6 +387,19 @@ static int verify_instruction(
             break;
         }
 
+        case COG_IR_OP_SIZE_OF:
+        case COG_IR_OP_ALIGN_OF: {
+            const CogIrType *result_type = cog_ir_get_type(module, instruction->result_type);
+            const CogIrType *queried = cog_ir_get_type(module, instruction->as.type_query.queried_type);
+            if (!queried || !result_type || result_type->kind != COG_IR_TYPE_INTEGER ||
+                result_type->as.integer.bits != 64 || result_type->as.integer.is_signed) {
+                ir_error(diagnostics, instruction->span,
+                    "type-layout query requires a valid queried type and u64 result");
+                ok = 0;
+            }
+            break;
+        }
+
         case COG_IR_OP_LOCAL_ADDR: {
             const CogIrSlot *slot = cog_ir_get_slot(function, instruction->as.local_addr.slot);
             CogIrTypeId pointee = COG_IR_TYPE_INVALID;

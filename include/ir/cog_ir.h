@@ -335,6 +335,10 @@ typedef enum CogIrOp {
     COG_IR_OP_PTR_REINTERPRET,
     COG_IR_OP_PTR_QUALIFY,
 
+    /* Frozen target-layout queries. Backends resolve these from CogIR types. */
+    COG_IR_OP_SIZE_OF,
+    COG_IR_OP_ALIGN_OF,
+
     /* Target-C default argument promotion at a variadic call boundary. */
     COG_IR_OP_C_VARARG_PROMOTE,
 
@@ -359,6 +363,7 @@ typedef struct CogIrInstruction {
         struct { CogIrValueId lhs; CogIrValueId rhs; } binary;
         struct { CogIrValueId operand; } unary;
         struct { CogIrValueId operand; CogIrTypeId target_type; } conversion;
+        struct { CogIrTypeId queried_type; } type_query;
         struct { CogIrValueId aggregate; uint32_t index; } extract;
         struct { CogIrValueId *values; size_t value_count; } aggregate;
         struct { CogIrValueId callee; CogIrValueId *arguments; size_t argument_count; } call;

@@ -1,0 +1,41 @@
+module std.mem;
+
+// Typed heap allocation over the Coglet runtime allocator.
+//
+// Allocation is deliberately explicit and manual in this first version.
+// alloc/resize abort on allocation failure. A zero element count returns null.
+// free(null) is valid.
+
+#extern(c, name="coglet_rt_mem_alloc")
+rt_alloc::(size: u64, alignment: u64) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_resize")
+rt_resize::(pointer: opaque*, size: u64, alignment: u64) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_free")
+rt_free::(pointer: opaque*) -> void;
+
+export alloc::<T>(count: u64) -> T* {
+    if count == 0
+        return null;
+
+    bytes := count * size_of::<T>();
+    raw := rt_alloc(bytes, align_of::<T>());
+    return reinterpret(T*, raw);
+}
+
+export resize::<T>(pointer: T*, count: u64) -> T* {
+    if count == 0 {
+        free(pointer);
+        return null;
+    }
+
+    bytes := count * size_of::<T>();
+    raw := reinterpret(opaque*, pointer);
+    resized := rt_resize(raw, bytes, align_of::<T>());
+    return reinterpret(T*, resized);
+}
+
+export free::<T>(pointer: T*) -> void {
+    rt_free(reinterpret(opaque*, pointer));
+}

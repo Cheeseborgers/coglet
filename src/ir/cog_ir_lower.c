@@ -1956,6 +1956,9 @@ static CogIrValueId lower_wrapping_builtin_call(
         case BUILTIN_WRAPPING_SUB: op = COG_IR_OP_ISUB_WRAP; break;
         case BUILTIN_WRAPPING_MUL: op = COG_IR_OP_IMUL_WRAP; break;
         case BUILTIN_WRAPPING_NEG: op = COG_IR_OP_INEG_WRAP; break;
+        case BUILTIN_SIZE_OF:
+        case BUILTIN_ALIGN_OF:
+        case BUILTIN_SLICE:
         case BUILTIN_NONE:
             break;
     }
@@ -2004,6 +2007,108 @@ static CogIrValueId lower_wrapping_builtin_call(
         .as.binary = { .lhs = first, .rhs = second },
     };
     return emit_instruction_value(state, instruction);
+}
+
+static CogIrValueId lower_type_layout_builtin_call(
+    ExecLowerState *state,
+    Node *node,
+    BuiltinKind builtin_kind
+) {
+    SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
+    SemExprInfo *info = semantic_get_expr_info(sem, node);
+    if (!info || !info->builtin_type_argument) {
+        lower_error(state->lower, node->span,
+            "type-layout builtin is missing frozen semantic type metadata");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    CogIrTypeId result_type = cog_ir_lower_type(state->lower, info->type);
+    CogIrTypeId queried_type = cog_ir_lower_type(
+        state->lower, info->builtin_type_argument);
+    if (result_type == COG_IR_TYPE_INVALID || queried_type == COG_IR_TYPE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrOp op = builtin_kind == BUILTIN_SIZE_OF
+        ? COG_IR_OP_SIZE_OF
+        : COG_IR_OP_ALIGN_OF;
+    CogIrInstruction instruction = {
+        .op = op,
+        .result_type = result_type,
+        .span = node->span,
+        .as.type_query = { .queried_type = queried_type },
+    };
+    return emit_instruction_value(state, instruction);
+}
+
+static CogIrValueId lower_slice_builtin_call(
+    ExecLowerState *state,
+    Node *node
+) {
+    if (node->as.call.arguments.count != 2) {
+        lower_error(state->lower, node->span,
+            "slice builtin has invalid checked argument count during CogIR lowering");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    Node *data_node = node->as.call.arguments.items[0];
+    Node *length_node = node->as.call.arguments.items[1];
+    CogIrValueId data = lower_expression(state, data_node);
+    if (data == COG_IR_VALUE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrSlotId data_spill = COG_IR_SLOT_INVALID;
+    if (expression_may_create_cfg(state, length_node)) {
+        data_spill = spill_value(state, data, data_node->span);
+        if (data_spill == COG_IR_SLOT_INVALID)
+            return COG_IR_VALUE_INVALID;
+    }
+
+    CogIrValueId length = lower_expression(state, length_node);
+    if (length == COG_IR_VALUE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    if (data_spill != COG_IR_SLOT_INVALID) {
+        data = reload_spill(state, data_spill, data_node->span);
+        if (data == COG_IR_VALUE_INVALID)
+            return COG_IR_VALUE_INVALID;
+    }
+
+    SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
+    Type *slice_type = semantic_get_effective_expr_type(sem, node);
+    if (!slice_type || slice_type->kind != TYPE_SLICE) {
+        lower_error(state->lower, node->span,
+            "slice builtin is missing checked slice result type");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    return emit_slice_value(state, slice_type, data, length, node->span);
+}
+
+static CogIrValueId lower_builtin_call(
+    ExecLowerState *state,
+    Node *node,
+    BuiltinKind builtin_kind
+) {
+    switch (builtin_kind) {
+        case BUILTIN_WRAPPING_ADD:
+        case BUILTIN_WRAPPING_SUB:
+        case BUILTIN_WRAPPING_MUL:
+        case BUILTIN_WRAPPING_NEG:
+            return lower_wrapping_builtin_call(state, node, builtin_kind);
+
+        case BUILTIN_SIZE_OF:
+        case BUILTIN_ALIGN_OF:
+            return lower_type_layout_builtin_call(state, node, builtin_kind);
+
+        case BUILTIN_SLICE:
+            return lower_slice_builtin_call(state, node);
+
+        case BUILTIN_NONE:
+            break;
+    }
+
+    lower_error(state->lower, node->span, "unknown builtin during CogIR lowering");
+    return COG_IR_VALUE_INVALID;
 }
 
 static CogIrTypeId c_variadic_promotion_target(
@@ -2984,7 +3089,7 @@ static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
         case NODE_CALL: {
             SemExprInfo *call_info = semantic_get_expr_info(sem, node);
             if (call_info && call_info->symbol && call_info->symbol->kind == SYMBOL_BUILTIN)
-                return lower_wrapping_builtin_call(state, node, call_info->symbol->builtin_kind);
+                return lower_builtin_call(state, node, call_info->symbol->builtin_kind);
             return lower_call_expression(state, node);
         }
 

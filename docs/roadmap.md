@@ -386,13 +386,7 @@ Portable C-identifier symbols no longer require GNU symbol-label syntax; arbitra
 non-identifier linker names retain that GNU/Clang-only extension. Integration
 tests execute both default and overridden external symbols.
 
-The first runtime/platform boundary is also implemented. `std.io` and the
-runtime-backed transcendental/rounding slice of `std.math` bind a reserved
-`coglet_rt_*` ABI supplied by `stdlib/runtime/coglet_runtime.c`; host-C and LLVM
-link the same implementation based only on frozen external-symbol metadata. The
-initial native-host matrix is Linux and Windows on x86-64 and AArch64. Future
-runtime-facing work such as allocation, time, filesystem/platform services, and
-threads should reuse this boundary rather than adding backend-specific calls.
+The first runtime/platform boundary is also implemented. `std.io`, `std.mem`, and the runtime-backed transcendental/rounding slice of `std.math` bind a reserved `coglet_rt_*` ABI supplied by `stdlib/runtime/coglet_runtime.c`; host-C and LLVM link the same implementation based only on frozen external-symbol metadata. `std.mem` now provides aligned typed allocation/resize/free and `std.array.Array<T>` provides the first manually owned growable container. The initial native-host matrix is Linux and Windows on x86-64 and AArch64. Future runtime-facing work such as allocator/arena injection, time, filesystem/platform services, and threads should reuse this boundary rather than adding backend-specific calls.
 Known temporary compromises are tracked in `docs/known_shortcomings.md`.
 
 The native C scalar aliases are also implemented: `c_char`, `c_schar`,
@@ -585,7 +579,7 @@ provide executable feedback without defining Coglet semantics by C behavior.
 
 ## Self-Hosting Direction
 
-Self-hosting remains a long-term objective rather than the next milestone. The language still needs runtime and file I/O facilities, allocation support, diagnostics suitable for larger programs, and a stable module/standard-library discovery boundary before self-hosting becomes practical.
+Self-hosting remains a long-term objective rather than the next milestone. Basic runtime I/O and heap allocation now exist, but the language still needs file I/O, stronger ownership/resource cleanup, diagnostics suitable for larger programs, and a stable package/module/standard-library boundary before self-hosting becomes practical.
 
 ## Generic monomorphization milestones
 

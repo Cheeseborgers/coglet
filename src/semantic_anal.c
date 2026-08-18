@@ -1881,6 +1881,9 @@ static void register_builtin_symbols(SemanticContext *ctx) {
     scope_define_builtin(ctx, "wrapping_sub", BUILTIN_WRAPPING_SUB);
     scope_define_builtin(ctx, "wrapping_mul", BUILTIN_WRAPPING_MUL);
     scope_define_builtin(ctx, "wrapping_neg", BUILTIN_WRAPPING_NEG);
+    scope_define_builtin(ctx, "size_of", BUILTIN_SIZE_OF);
+    scope_define_builtin(ctx, "align_of", BUILTIN_ALIGN_OF);
+    scope_define_builtin(ctx, "slice", BUILTIN_SLICE);
 }
 
 /*
@@ -3249,6 +3252,9 @@ static int evaluate_wrapping_integer_binary(
             break;
 
         case BUILTIN_WRAPPING_NEG:
+        case BUILTIN_SIZE_OF:
+        case BUILTIN_ALIGN_OF:
+        case BUILTIN_SLICE:
         case BUILTIN_NONE:
             UNREACHABLE(
                 "non-binary wrapping builtin"
@@ -6432,6 +6438,9 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
                 case BUILTIN_WRAPPING_NEG:
                     break;
 
+                case BUILTIN_SIZE_OF:
+                case BUILTIN_ALIGN_OF:
+                case BUILTIN_SLICE:
                 case BUILTIN_NONE:
                     return 0;
             }
@@ -8194,6 +8203,9 @@ static const char *builtin_kind_name(BuiltinKind kind) {
         case BUILTIN_WRAPPING_SUB: return "wrapping_sub";
         case BUILTIN_WRAPPING_MUL: return "wrapping_mul";
         case BUILTIN_WRAPPING_NEG: return "wrapping_neg";
+        case BUILTIN_SIZE_OF:      return "size_of";
+        case BUILTIN_ALIGN_OF:     return "align_of";
+        case BUILTIN_SLICE:        return "slice";
     }
 
     UNREACHABLE("BuiltinKind");
@@ -8429,6 +8441,128 @@ static Type *check_wrapping_neg_builtin_call(SemanticContext *ctx, Node *call, c
     return result_type;
 }
 
+static int type_has_runtime_layout(const Type *type)
+{
+    if (!type)
+        return 0;
+
+    switch (type->kind) {
+        case TYPE_VOID:
+        case TYPE_UNTYPED_INT:
+        case TYPE_UNTYPED_FLOAT:
+        case TYPE_NULL:
+        case TYPE_NAMED:
+        case TYPE_FUNCTION:
+            return 0;
+
+        case TYPE_STRUCT:
+            return !type->struct_is_incomplete;
+
+        case TYPE_BOOL:
+        case TYPE_S8:
+        case TYPE_S16:
+        case TYPE_S32:
+        case TYPE_S64:
+        case TYPE_U8:
+        case TYPE_U16:
+        case TYPE_U32:
+        case TYPE_U64:
+        case TYPE_F32:
+        case TYPE_F64:
+        case TYPE_POINTER:
+        case TYPE_OPAQUE_POINTER:
+        case TYPE_ARRAY:
+        case TYPE_SLICE:
+        case TYPE_ENUM:
+            return 1;
+    }
+
+    return 0;
+}
+
+static Type *check_type_layout_builtin_call(
+    SemanticContext *ctx,
+    Node *call,
+    const Symbol *builtin
+) {
+    assert(builtin->builtin_kind == BUILTIN_SIZE_OF ||
+           builtin->builtin_kind == BUILTIN_ALIGN_OF);
+
+    if (!check_builtin_argument_count(ctx, call, builtin, 0))
+        return NULL;
+
+    if (call->as.call.type_arguments.count != 1) {
+        semantic_error_fmt(
+            ctx,
+            call,
+            "builtin '%s' requires exactly one explicit type argument",
+            builtin_kind_name(builtin->builtin_kind)
+        );
+        return NULL;
+    }
+
+    Type *queried = resolve_type(ctx, call->as.call.type_arguments.items[0], call);
+    if (!queried)
+        return NULL;
+
+    if (!type_has_runtime_layout(queried)) {
+        char type_name[192];
+        format_type_name(queried, type_name, sizeof(type_name));
+        semantic_error_fmt(
+            ctx,
+            call,
+            "builtin '%s' requires a complete runtime object type, got %s",
+            builtin_kind_name(builtin->builtin_kind),
+            type_name
+        );
+        return NULL;
+    }
+
+    SemExprInfo *info = sem_get_or_create_expr_info(ctx, call);
+    info->builtin_type_argument = queried;
+    return ctx->type_u64;
+}
+
+static Type *check_slice_builtin_call(
+    SemanticContext *ctx,
+    Node *call,
+    const Symbol *builtin
+) {
+    assert(builtin->builtin_kind == BUILTIN_SLICE);
+
+    if (!check_builtin_argument_count(ctx, call, builtin, 2))
+        return NULL;
+
+    if (call->as.call.type_arguments.count != 0) {
+        semantic_error(ctx, call, "builtin 'slice' infers its element type from the pointer argument");
+        return NULL;
+    }
+
+    Node *pointer_arg = call->as.call.arguments.items[0];
+    Type *pointer_type = check_value_expression(ctx, pointer_arg);
+    if (!pointer_type)
+        return NULL;
+
+    if (pointer_type->kind != TYPE_POINTER) {
+        semantic_error(ctx, pointer_arg, "builtin 'slice' requires a typed raw pointer as its first argument");
+        return NULL;
+    }
+
+    if (pointer_type->pointer_is_volatile) {
+        semantic_error(ctx, pointer_arg, "builtin 'slice' does not support volatile pointer storage");
+        return NULL;
+    }
+
+    if (!check_argument_against_parameter(
+            ctx,
+            ctx->type_u64,
+            call->as.call.arguments.items[1])) {
+        return NULL;
+    }
+
+    return intern_slice_type(ctx, pointer_type->element, pointer_type->pointer_access);
+}
+
 static Type *check_builtin_call(SemanticContext *ctx, Node *call, Symbol *builtin) {
 
     assert(call);
@@ -8452,6 +8586,15 @@ static Type *check_builtin_call(SemanticContext *ctx, Node *call, Symbol *builti
                 call,
                     builtin
                 );
+            break;
+
+        case BUILTIN_SIZE_OF:
+        case BUILTIN_ALIGN_OF:
+            result_type = check_type_layout_builtin_call(ctx, call, builtin);
+            break;
+
+        case BUILTIN_SLICE:
+            result_type = check_slice_builtin_call(ctx, call, builtin);
             break;
 
         case BUILTIN_NONE:
@@ -8884,6 +9027,12 @@ static int eval_const_builtin_call(SemanticContext *ctx, Node *call, ConstValue 
                 builtin,
                 out
             );
+
+        case BUILTIN_SIZE_OF:
+        case BUILTIN_ALIGN_OF:
+        case BUILTIN_SLICE:
+            semantic_error(ctx, call, "expression is not a compile-time constant");
+            return 0;
 
         case BUILTIN_NONE:
             UNREACHABLE(
@@ -9841,9 +9990,11 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 resolve_builtin_callee(ctx,node->as.call.callee);
 
             if (builtin) {
-                if (node->as.call.type_arguments.count > 0) {
+                if (node->as.call.type_arguments.count > 0 &&
+                    builtin->builtin_kind != BUILTIN_SIZE_OF &&
+                    builtin->builtin_kind != BUILTIN_ALIGN_OF) {
                     semantic_error(ctx, node,
-                        "explicit type arguments require a generic function");
+                        "explicit type arguments require a generic function or type-layout builtin");
                     return NULL;
                 }
                 return check_builtin_call(ctx, node, builtin);

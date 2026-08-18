@@ -142,6 +142,20 @@ should not be forgotten.
 - **I/O error reporting is not surfaced.** The v0 print/flush routines return
   `void`; write failures and stream errors are not represented in Coglet yet.
 
+## Memory and owning containers
+
+- **`Array<T>` is manually owned but still shallow-copyable.** Coglet has no move-only values, ownership checker, destructors, or automatic cleanup yet. Copying an `Array<T>` aliases the same allocation, so exactly one logical owner must call `deinit()`; treating two copies as owners can cause use-after-free or double-free. This is the highest-priority container safety debt.
+- **Borrowed array slices are not lifetime-tracked.** `as_slice()` and `as_readonly_slice()` return normal non-owning slices. Any growth that reallocates the array, or `deinit()`, invalidates outstanding views. The compiler cannot diagnose subsequent use today.
+- **Allocation failure is infallible at the Coglet API.** `std.mem.alloc`/`resize` currently print an out-of-memory diagnostic and abort. A later fallible allocation/result API and allocator injection should be designed before allocation-heavy libraries depend on this policy.
+- **There is no allocator/arena abstraction yet.** `std.array.Array<T>` always uses the process runtime heap. Games will likely need arenas, frame allocators, pools, and user-supplied allocators without changing container semantics.
+- **Array growth assumes trivial relocation.** Runtime resize is allocate/copy/free. This is valid for current Coglet values because there are no destructors/nontrivial move operations, but must be revisited if those semantics are added.
+- **`Array.pop()` has a caller precondition.** Calling it with `len == 0` currently reaches ordinary checked unsigned subtraction rather than a dedicated optional/result API.
+- **The initial container API is intentionally small.** There is no insert/remove/swap-remove, shrink-to-fit, append-slice, iterator protocol, fallible reserve, or ownership transfer operation yet.
+- **Layout query results and container lengths are fixed `u64`.** `size_of::<T>()`, `align_of::<T>()`, slice lengths, and `Array` length/capacity all match the initial 64-bit target focus rather than a general target-sized `usize`.
+- **`size_of::<T>()` / `align_of::<T>()` are not semantic constant expressions yet.** They lower to target-layout constants in CogIR/backends, but cannot currently be used where the frontend requires a compile-time constant.
+- **Standalone explicit generic calls remain parser-sensitive.** A statement beginning directly with `name::<T>();` can be confused with a generic declaration. Use the call in an ordinary expression context for now; the parser should eventually disambiguate this without a workaround.
+- **Allocator portability is implemented but not yet continuously validated on every claimed host.** The runtime allocator is architecture-neutral C for Linux/Windows x86-64/AArch64, but this environment only executes Linux x86-64; native CI remains required for the rest of the matrix.
+
 ## Generics and aggregate types
 
 - **Generic structs are intentionally restricted.** Ordinary top-level Coglet

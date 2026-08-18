@@ -105,7 +105,7 @@ global-address operations and qualified constants become ordinary CogIR constant
 CogIR copies every registered source file into its frozen source table and retains
 declaration identities/types/CFGs only. Backends therefore do not perform module
 lookup, import resolution, or export/private checks.
-The shipped `std.math` and `std.io` modules are ordinary Coglet source discovered above this boundary; CogIR and backends have no standard-library module special case. Runtime-facing declarations lower to ordinary frozen C-ABI external-symbol metadata. The command-line driver may recognize the reserved `coglet_rt_` symbol namespace after frontend destruction to decide whether to add the runtime implementation, and the narrower `coglet_rt_math_` namespace to enable native math linkage, but no runtime module object, frontend type, or source-module identity survives in CogIR.
+The shipped `std.math`, `std.io`, `std.mem`, and `std.array` modules are ordinary Coglet source discovered above this boundary; CogIR and backends have no standard-library module special case. Runtime-facing declarations lower to ordinary frozen C-ABI external-symbol metadata. The command-line driver may recognize the reserved `coglet_rt_` symbol namespace after frontend destruction to decide whether to add the runtime implementation, and the narrower `coglet_rt_math_` namespace to enable native math linkage, but no runtime module object, frontend type, or source-module identity survives in CogIR.
 
 Coglet currently permits runtime-bearing program-scope code, including global
 initializers that call functions, top-level expression/mutation statements, and
@@ -291,6 +291,19 @@ be inferred only from a backend's pointer type representation.
 Only concrete fixed-size arrays reach CogIR as array types. Source-level slices are resolved before backend emission and freeze as compiler-generated ordinary CogIR structs with exactly two fields: a typed data pointer carrying slice readonly access and a `u64` element count. No frontend `TYPE_SLICE`, AST node, or semantic type object is required by a backend.
 
 Array values do not implicitly decay to pointers. An explicit semantic array-to-slice conversion lowers to an `array_elem_addr` plus (when needed) monotonic pointer qualification, then `make_struct(data, len)`. Slice indexing extracts the frozen data pointer and uses ordinary `ptr_index_addr`. This keeps slice behavior backend-neutral.
+
+The explicit source builtin `slice(pointer, len)` also lowers to the same ordinary two-field slice aggregate after semantic analysis has fixed its concrete slice type. CogIR contains no separate ownership or allocator information for a slice.
+
+### Target layout queries
+
+Generic allocation requires the byte size and ABI alignment of a concrete target type without allowing the frontend to guess backend layout. CogIR therefore includes two backend-neutral query instructions:
+
+```text
+%size  = size_of  %ConcreteType
+%align = align_of %ConcreteType
+```
+
+The queried operand is a frozen CogIR type ID and the result is `u64`. Verification requires a valid queried type and an unsigned 64-bit result. Host-C answers from the actual generated C type; LLVM answers from `LLVMTargetData`. The operations contain no AST node, frontend `Type *`, semantic binding, or generic template state.
 
 ### Nominal aggregates
 

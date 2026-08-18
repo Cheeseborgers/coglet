@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/memory/slice_volatile_pointer.cog:4:11: error: builtin 'slice' does not support volatile pointer storage
+    slice(pointer, 1);
+          ^~~~~~~
+1 semantic error generated.

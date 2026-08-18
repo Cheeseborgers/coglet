@@ -18,6 +18,11 @@ typedef enum BuiltinKind {
     BUILTIN_WRAPPING_SUB,
     BUILTIN_WRAPPING_MUL,
     BUILTIN_WRAPPING_NEG,
+
+    /* Target-layout/type-view builtins used by the standard library. */
+    BUILTIN_SIZE_OF,
+    BUILTIN_ALIGN_OF,
+    BUILTIN_SLICE,
 } BuiltinKind;
 
 typedef enum {

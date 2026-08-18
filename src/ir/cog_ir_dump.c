@@ -157,6 +157,11 @@ static void dump_instruction(FILE *stream, const CogIrModule *module, const CogI
             fprintf(stream, ")");
             break;
         case COG_IR_OP_FUNCTION_REF: fprintf(stream, " @f%u", instruction->as.function_ref.function); break;
+        case COG_IR_OP_SIZE_OF:
+        case COG_IR_OP_ALIGN_OF:
+            fprintf(stream, " ");
+            dump_type_ref(stream, module, instruction->as.type_query.queried_type);
+            break;
         case COG_IR_OP_LOCAL_ADDR: fprintf(stream, " $s%u", instruction->as.local_addr.slot); break;
         case COG_IR_OP_GLOBAL_ADDR: fprintf(stream, " @g%u", instruction->as.global_addr.global); break;
         case COG_IR_OP_LOAD:

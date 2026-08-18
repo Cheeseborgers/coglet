@@ -3129,6 +3129,38 @@ static int emit_instruction(
                 return 0;
             }
             return 1;
+        case COG_IR_OP_SIZE_OF:
+        case COG_IR_OP_ALIGN_OF: {
+            const char *queried = runtime_type_name(
+                backend, instruction->as.type_query.queried_type, instruction->span);
+            const char *result_type = runtime_type_name(
+                backend, instruction->result_type, instruction->span);
+            if (!queried || !result_type)
+                return 0;
+
+            if (instruction->op == COG_IR_OP_SIZE_OF) {
+                fprintf(
+                    backend->out,
+                    "    %s cg_v_%u = (%s)sizeof(%s);\n",
+                    result_type,
+                    result,
+                    result_type,
+                    queried
+                );
+            } else {
+                fprintf(
+                    backend->out,
+                    "    %s cg_v_%u = (%s)offsetof(struct { char cg_pad; %s cg_value; }, cg_value);\n",
+                    result_type,
+                    result,
+                    result_type,
+                    queried
+                );
+            }
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
+            return 1;
+        }
         case COG_IR_OP_CALL: {
             const char *callee = value_expr(exprs, value_count, instruction->as.call.callee);
             const CogIrValue *callee_value = cog_ir_get_value(function, instruction->as.call.callee);

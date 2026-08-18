@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/memory/slice_opaque_pointer.cog:3:11: error: builtin 'slice' requires a typed raw pointer as its first argument
+    slice(raw, 4);
+          ^~~
+1 semantic error generated.

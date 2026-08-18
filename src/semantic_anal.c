@@ -2305,6 +2305,23 @@ static void format_type_name(Type *type, char *buffer, size_t buffer_size);
 static int source_type_is_readonly_c_char_pointer(const Type *type);
 static int check_extern_c_string_argument(SemanticContext *ctx, Type *expected, Node *argument);
 static int check_argument_against_parameter(SemanticContext *ctx, Type *expected, Node *argument);
+static int check_call_arity(
+    SemanticContext *ctx,
+    Node *call,
+    int parameter_count,
+    int is_variadic,
+    int implicit_argument_count,
+    StringView method_name
+);
+static Type *check_resolved_concrete_call(
+    SemanticContext *ctx,
+    Node *call,
+    Type *function_type,
+    Symbol *symbol,
+    Node *declaration,
+    int implicit_argument_count,
+    StringView method_name
+);
 static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer);
 static int declare_enum_shell(SemanticContext *ctx, Node *node);
 static void fill_enum_members(SemanticContext *ctx,Node *node);
@@ -7508,16 +7525,14 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
     Node *template_decl = template_symbol->declaration;
     int type_parameter_count = template_decl->as.func_decl.type_parameters.count;
     int parameter_count = template_decl->as.func_decl.params.count;
-    int argc = call->as.call.arguments.count;
 
-    if (argc != parameter_count) {
-        semantic_error_fmt(
+    if (!check_call_arity(
             ctx,
             call,
-            "wrong number of arguments: expected %d, got %d",
             parameter_count,
-            argc
-        );
+            0,
+            0,
+            string_view_empty())) {
         return NULL;
     }
 
@@ -7665,37 +7680,15 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
     if (!spec->symbol || !spec->function_type)
         return NULL;
 
-    sem_record_expr_info(
-        ctx,
-        call->as.call.callee,
-        spec->function_type,
-        spec->symbol,
-        VALUE_CATEGORY_RVALUE
-    );
-
-    int ok = 1;
-    for (int i = 0; i < argc; i++) {
-        if (!check_argument_against_parameter(
-                ctx,
-                spec->function_type->parameters[i],
-                call->as.call.arguments.items[i])) {
-            ok = 0;
-        }
-    }
-    if (!ok)
-        return NULL;
-
-    ValueCategory category = spec->function_type->return_type->kind == TYPE_VOID
-        ? VALUE_CATEGORY_NONE
-        : VALUE_CATEGORY_RVALUE;
-    sem_record_expr_info(
+    return check_resolved_concrete_call(
         ctx,
         call,
-        spec->function_type->return_type,
-        NULL,
-        category
+        spec->function_type,
+        spec->symbol,
+        spec->function,
+        0,
+        string_view_empty()
     );
-    return spec->function_type->return_type;
 }
 
 static void prepend_call_argument(SemanticContext *ctx, Node *call, Node *argument)
@@ -8021,38 +8014,15 @@ static Type *check_prepared_struct_method_call(
     if (!ensure_struct_method_body_checked(ctx, binding, call))
         return NULL;
 
-    Type *callee = binding->function_type;
-    int argc = call->as.call.arguments.count;
-    if (argc != callee->parameter_count) {
-        semantic_error_fmt(
-            ctx,
-            call,
-            "wrong number of arguments to method '%.*s': expected %d, got %d",
-            (int)binding->source_name.length,
-            binding->source_name.data,
-            callee->parameter_count - (binding->is_instance ? 1 : 0),
-            argc - (binding->is_instance ? 1 : 0)
-        );
-        return NULL;
-    }
-
-    int ok = 1;
-    for (int i = 0; i < argc; i++) {
-        if (!check_argument_against_parameter(
-                ctx,
-                callee->parameters[i],
-                call->as.call.arguments.items[i])) {
-            ok = 0;
-        }
-    }
-    if (!ok)
-        return NULL;
-
-    ValueCategory category = callee->return_type->kind == TYPE_VOID
-        ? VALUE_CATEGORY_NONE
-        : VALUE_CATEGORY_RVALUE;
-    sem_record_expr_info(ctx, call, callee->return_type, NULL, category);
-    return callee->return_type;
+    return check_resolved_concrete_call(
+        ctx,
+        call,
+        binding->function_type,
+        binding->symbol,
+        binding->function,
+        binding->is_instance ? 1 : 0,
+        binding->source_name
+    );
 }
 
 static Type *rewrite_struct_operator_call(
@@ -8932,33 +8902,15 @@ static Type *check_overloaded_function_call(
         return NULL;
     }
 
-    sem_record_expr_info(
-        ctx,
-        call->as.call.callee,
-        selected->type,
-        selected,
-        VALUE_CATEGORY_RVALUE
-    );
-
-    int ok = 1;
-    for (int i = 0; i < argc; i++) {
-        if (!check_argument_against_parameter(
-                ctx, selected->type->parameters[i], call->as.call.arguments.items[i])) {
-            ok = 0;
-        }
-    }
-    if (!ok)
-        return NULL;
-
-    Type *result_type = selected->type->return_type;
-    sem_record_expr_info(
+    return check_resolved_concrete_call(
         ctx,
         call,
-        result_type,
-        NULL,
-        result_type->kind == TYPE_VOID ? VALUE_CATEGORY_NONE : VALUE_CATEGORY_RVALUE
+        selected->type,
+        selected,
+        selected->declaration,
+        0,
+        string_view_empty()
     );
-    return result_type;
 }
 
 static int eval_const_wrapping_binary_call(SemanticContext *ctx, Node *call, Symbol *builtin, ConstValue *out) {
@@ -10160,91 +10112,28 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 return NULL;
             }
 
-            int argc = node->as.call.arguments.count;
-
-            if ((!callee->function_is_variadic && argc != callee->parameter_count) ||
-                (callee->function_is_variadic && argc < callee->parameter_count)) {
-                if (callee->function_is_variadic) {
-                    semantic_error_fmt(
-                        ctx, node,
-                        "wrong number of arguments: expected at least %d, got %d",
-                        callee->parameter_count,
-                        argc
-                    );
-                } else {
-                    semantic_error_fmt(
-                        ctx, node,
-                        "wrong number of arguments: expected %d, got %d",
-                        callee->parameter_count,
-                        argc
-                    );
-                }
-                return NULL;
-            }
-
-            int ok = 1;
-
             SemExprInfo *callee_info =
                 sem_find_expr_info(ctx, node->as.call.callee);
 
-            Node *callee_decl =
-                callee_info &&
-                callee_info->symbol &&
+            Symbol *callee_symbol =
+                callee_info && callee_info->symbol &&
                 callee_info->symbol->kind == SYMBOL_FUNCTION
-                    ? callee_info->symbol->declaration
+                    ? callee_info->symbol
                     : NULL;
 
-            const int is_extern_c =
-                callee_decl &&
-                callee_decl->type == NODE_FUNC_DECL &&
-                callee_decl->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C;
+            Node *callee_decl = callee_symbol
+                ? callee_symbol->declaration
+                : NULL;
 
-            for (int i = 0; i < argc; i++) {
-                Node *arg = node->as.call.arguments.items[i];
-
-                if (i >= callee->parameter_count) {
-                    assert(callee->function_is_variadic);
-
-                    if (!check_c_variadic_argument(ctx, arg))
-                        ok = 0;
-
-                    continue;
-                }
-
-                Type *param_type = callee->parameters[i];
-
-                if (is_extern_c &&
-                    arg->type == NODE_STRING &&
-                    source_type_is_readonly_c_char_pointer(
-                        callee_decl->as.func_decl.params.items[i]
-                            ->as.param_decl.var_type
-                    )) {
-                    if (!check_extern_c_string_argument(ctx, param_type, arg))
-                        ok = 0;
-
-                    continue;
-                }
-
-                if (!check_argument_against_parameter(ctx, param_type, arg))
-                    ok = 0;
-            }
-
-            if (!ok) return NULL;
-
-            ValueCategory category =
-                callee->return_type->kind == TYPE_VOID
-                ? VALUE_CATEGORY_NONE
-                : VALUE_CATEGORY_RVALUE;
-
-            sem_record_expr_info(
+            return check_resolved_concrete_call(
                 ctx,
                 node,
-                callee->return_type,
-                NULL,
-                category
+                callee,
+                callee_symbol,
+                callee_decl,
+                0,
+                string_view_empty()
             );
-
-            return callee->return_type;
         }
 
         case NODE_CAST:
@@ -12335,6 +12224,143 @@ static int check_argument_against_parameter(SemanticContext *ctx, Type *expected
     );
 
     return 1;
+}
+
+static int check_call_arity(
+    SemanticContext *ctx,
+    Node *call,
+    int parameter_count,
+    int is_variadic,
+    int implicit_argument_count,
+    StringView method_name
+) {
+    assert(call && call->type == NODE_CALL);
+    assert(parameter_count >= implicit_argument_count);
+
+    const int argc = call->as.call.arguments.count;
+    const int wrong_arity =
+        (!is_variadic && argc != parameter_count) ||
+        (is_variadic && argc < parameter_count);
+    if (!wrong_arity)
+        return 1;
+
+    if (method_name.length != 0) {
+        semantic_error_fmt(
+            ctx,
+            call,
+            "wrong number of arguments to method '%.*s': expected %d, got %d",
+            (int)method_name.length,
+            method_name.data,
+            parameter_count - implicit_argument_count,
+            argc - implicit_argument_count
+        );
+    } else if (is_variadic) {
+        semantic_error_fmt(
+            ctx,
+            call,
+            "wrong number of arguments: expected at least %d, got %d",
+            parameter_count,
+            argc
+        );
+    } else {
+        semantic_error_fmt(
+            ctx,
+            call,
+            "wrong number of arguments: expected %d, got %d",
+            parameter_count,
+            argc
+        );
+    }
+    return 0;
+}
+
+/*
+ * Check a call after lookup/specialization/overload resolution has selected one
+ * concrete function signature.  Candidate discovery intentionally remains in
+ * the feature-specific paths; all concrete calls share arity, argument, C ABI,
+ * resource-transfer, contextual-conversion, and result-recording semantics.
+ *
+ * implicit_argument_count is used only for source-facing method diagnostics:
+ * rewritten instance calls include the synthetic receiver in the AST, while
+ * users should see counts for the arguments they actually wrote.
+ */
+static Type *check_resolved_concrete_call(
+    SemanticContext *ctx,
+    Node *call,
+    Type *function_type,
+    Symbol *symbol,
+    Node *declaration,
+    int implicit_argument_count,
+    StringView method_name
+) {
+    assert(ctx);
+    assert(call && call->type == NODE_CALL);
+    assert(function_type && function_type->kind == TYPE_FUNCTION);
+    assert(implicit_argument_count >= 0);
+
+    const int argc = call->as.call.arguments.count;
+    const int parameter_count = function_type->parameter_count;
+    if (!check_call_arity(
+            ctx,
+            call,
+            parameter_count,
+            function_type->function_is_variadic,
+            implicit_argument_count,
+            method_name)) {
+        return NULL;
+    }
+
+    const int is_extern_c =
+        declaration &&
+        declaration->type == NODE_FUNC_DECL &&
+        declaration->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C;
+
+    int ok = 1;
+    for (int i = 0; i < argc; i++) {
+        Node *argument = call->as.call.arguments.items[i];
+
+        if (i >= parameter_count) {
+            assert(function_type->function_is_variadic);
+            if (!check_c_variadic_argument(ctx, argument))
+                ok = 0;
+            continue;
+        }
+
+        Type *parameter_type = function_type->parameters[i];
+        if (is_extern_c &&
+            argument->type == NODE_STRING &&
+            source_type_is_readonly_c_char_pointer(
+                declaration->as.func_decl.params.items[i]->as.param_decl.var_type)) {
+            if (!check_extern_c_string_argument(ctx, parameter_type, argument))
+                ok = 0;
+            continue;
+        }
+
+        if (!check_argument_against_parameter(ctx, parameter_type, argument))
+            ok = 0;
+    }
+    if (!ok)
+        return NULL;
+
+    if (symbol) {
+        sem_record_expr_info(
+            ctx,
+            call->as.call.callee,
+            function_type,
+            symbol,
+            VALUE_CATEGORY_RVALUE
+        );
+    }
+
+    Type *result_type = function_type->return_type;
+    sem_record_expr_info(
+        ctx,
+        call,
+        result_type,
+        NULL,
+        result_type->kind == TYPE_VOID ? VALUE_CATEGORY_NONE : VALUE_CATEGORY_RVALUE
+    );
+    return result_type;
 }
 
 static int check_array_initializer(SemanticContext *ctx, Type *expected, Node *initializer) {

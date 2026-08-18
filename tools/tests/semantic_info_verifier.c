@@ -93,6 +93,7 @@ static const char *node_type_name(NodeType type)
         case NODE_CONST_DECL:        return "const_decl";
         case NODE_ARRAY_LITERAL:     return "array_literal";
         case NODE_IF:                return "if";
+        case NODE_IF_EXPR:            return "if_expr";
         case NODE_SWITCH:            return "switch";
         case NODE_SWITCH_CASE:       return "switch_case";
         case NODE_RETURN:            return "return";
@@ -158,6 +159,7 @@ static int node_is_expression(NodeType type)
         case NODE_INDEX:
         case NODE_STRUCT_INIT:
         case NODE_ARRAY_LITERAL:
+        case NODE_IF_EXPR:
             return 1;
 
         default:
@@ -427,6 +429,12 @@ static void walk_expression(ExpressionWalker *walker, Node *expression)
             );
             break;
 
+        case NODE_IF_EXPR:
+            walk_expression(walker, expression->as.if_expr.condition);
+            walk_expression(walker, expression->as.if_expr.then_value);
+            walk_expression(walker, expression->as.if_expr.else_value);
+            break;
+
         case NODE_NUMBER:
         case NODE_IDENT:
         case NODE_STRING:
@@ -583,6 +591,12 @@ static void walk_node(ExpressionWalker *walker, Node *node)
                 walker,
                 node->as.if_stmt.else_branch
             );
+            break;
+
+        case NODE_IF_EXPR:
+            walk_expression(walker, node->as.if_expr.condition);
+            walk_expression(walker, node->as.if_expr.then_value);
+            walk_expression(walker, node->as.if_expr.else_value);
             break;
 
         case NODE_SWITCH:

@@ -70,6 +70,7 @@ add_library(compiler_core STATIC
         src/parser_diag.c
         src/semantic_anal.c
         src/target_info.c
+        src/target_layout.c
         src/string_decode.c
         src/compiler_driver.c
         src/ir/cog_ir.c

@@ -14,6 +14,7 @@
 static Node *parse_expression(Parser *p);
 static Node *parse_expr_statement(Parser *p);
 static Node *parse_if_statement(Parser *p);
+static Node *parse_if_expression(Parser *p);
 static Node *parse_statement(Parser *p);
 static Node *parse_block(Parser *p);
 static Node *parse_primary(Parser *p);
@@ -742,9 +743,62 @@ static Node *parse_type_layout_query(Parser *p)
     return call;
 }
 
+static Node *parse_if_expression(Parser *p)
+{
+    SourceSpan span = p->previous.span;
+
+    int saved = p->suppress_struct_init;
+    p->suppress_struct_init = 1;
+    Node *condition = parse_expression(p);
+    p->suppress_struct_init = saved;
+
+    if (!consume(p, TOK_LBRACE)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *then_value = parse_expression(p);
+    if (!consume(p, TOK_RBRACE)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    if (!consume(p, TOK_ELSE)) {
+        error_at(p, &p->current, "if expression requires an else branch");
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *else_value = NULL;
+    if (match(p, TOK_IF)) {
+        else_value = parse_if_expression(p);
+    } else {
+        if (!consume(p, TOK_LBRACE)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+        else_value = parse_expression(p);
+        if (!consume(p, TOK_RBRACE)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+    }
+
+    return ast_new_if_expr(
+        p->arena,
+        condition,
+        then_value,
+        else_value,
+        source_span_join(span, else_value->span)
+    );
+}
+
 // ===================== primary =====================
 static Node *parse_primary(Parser *p)
 {
+    if (match(p, TOK_IF))
+        return parse_if_expression(p);
+
     if (match(p, TOK_NUMBER_INT)) {
 
         Token token = p->previous;

@@ -120,6 +120,14 @@ Node *ast_new_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, SourceSpa
     return node;
 }
 
+Node *ast_new_if_expr(Arena *arena, Node *cond, Node *then_value, Node *else_value, SourceSpan span) {
+    Node *node = new_node(arena, NODE_IF_EXPR, span);
+    node->as.if_expr.condition = cond;
+    node->as.if_expr.then_value = then_value;
+    node->as.if_expr.else_value = else_value;
+    return node;
+}
+
 Node *ast_new_expr_stmt(Arena *arena, Node *expr, SourceSpan span) {
     Node *node = new_node(arena, NODE_EXPR_STMT, span);
     node->as.expr_stmt.expr = expr;
@@ -525,6 +533,12 @@ Node *ast_clone(Arena *arena, const Node *node)
 
             clone->as.if_stmt.else_branch =
                 ast_clone(arena, node->as.if_stmt.else_branch);
+            break;
+
+        case NODE_IF_EXPR:
+            clone->as.if_expr.condition = ast_clone(arena, node->as.if_expr.condition);
+            clone->as.if_expr.then_value = ast_clone(arena, node->as.if_expr.then_value);
+            clone->as.if_expr.else_value = ast_clone(arena, node->as.if_expr.else_value);
             break;
 
         case NODE_EXPR_STMT:

@@ -347,6 +347,12 @@ typedef struct SemExprInfo {
      */
     Type *builtin_type_argument;
 
+    /* Frozen result of a successful target-layout query. Layout is resolved
+     * once against TargetInfo so constant evaluation and executable lowering
+     * cannot drift to separate aggregate-layout implementations. */
+    int has_builtin_layout_value;
+    uint64_t builtin_layout_value;
+
     /*
      * Intrinsic compile-time value cached while semantic checking still has
      * lexical scope available. Retrieval applies any recorded contextual

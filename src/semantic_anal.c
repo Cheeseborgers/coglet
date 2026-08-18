@@ -1,5 +1,6 @@
 // src/semantic_anal.c
 #include "semantic_anal.h"
+#include "target_layout.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -2498,6 +2499,7 @@ static void fill_enum_members(SemanticContext *ctx,Node *node);
 static EnumMember *find_enum_member(Type *enum_type, const char *name, size_t length);
 static EnumMember *find_enum_member_by_value(Type *enum_type, IntegerValue value);
 static Type *check_value_expression(SemanticContext *ctx, Node *node);
+static Type *check_if_expression(SemanticContext *ctx, Node *node);
 static Type *make_function_type(SemanticContext *ctx, Node *func);
 static Type *check_checked_cast_expression(SemanticContext *ctx, Node *node);
 static Type *check_reinterpret_expression(SemanticContext *ctx, Node *node);
@@ -8972,8 +8974,30 @@ static Type *check_type_layout_builtin_call(
         return NULL;
     }
 
+    TargetLayout layout;
+    char layout_message[192];
+    if (!target_layout_of_type(
+            &ctx->target,
+            queried,
+            &layout,
+            layout_message,
+            sizeof(layout_message))) {
+        semantic_error_fmt(
+            ctx,
+            call,
+            "builtin '%s' could not determine target layout: %s",
+            builtin_kind_name(builtin->builtin_kind),
+            layout_message
+        );
+        return NULL;
+    }
+
     SemExprInfo *info = sem_get_or_create_expr_info(ctx, call);
     info->builtin_type_argument = queried;
+    info->has_builtin_layout_value = 1;
+    info->builtin_layout_value = builtin->builtin_kind == BUILTIN_SIZE_OF
+        ? layout.size
+        : layout.align;
     return ctx->type_usize;
 }
 
@@ -9465,7 +9489,18 @@ static int eval_const_builtin_call(SemanticContext *ctx, Node *call, ConstValue 
             );
 
         case BUILTIN_SIZE_OF:
-        case BUILTIN_ALIGN_OF:
+        case BUILTIN_ALIGN_OF: {
+            SemExprInfo *info = semantic_get_expr_info(ctx, call);
+            if (!info || !info->has_builtin_layout_value) {
+                semantic_error(ctx, call, "expression is not a compile-time constant");
+                return 0;
+            }
+            out->kind = CONST_VALUE_INT;
+            out->as.integer = integer_value_make(info->builtin_layout_value, 0);
+            out->type = ctx->type_usize;
+            return 1;
+        }
+
         case BUILTIN_SLICE:
             semantic_error(ctx, call, "expression is not a compile-time constant");
             return 0;
@@ -9615,6 +9650,92 @@ static Type *check_cast_expression(SemanticContext *ctx,Node *node) {
     UNREACHABLE("CastKind");
 }
 
+static int contextualize_if_expression_value(
+    SemanticContext *ctx,
+    Node *expression,
+    Type *target
+)
+{
+    if (!expression || !target)
+        return 0;
+
+    if (expression->type == NODE_IF_EXPR) {
+        if (!contextualize_if_expression_value(ctx, expression->as.if_expr.then_value, target) ||
+            !contextualize_if_expression_value(ctx, expression->as.if_expr.else_value, target))
+            return 0;
+
+        sem_record_context_conversion_if_needed(ctx, expression, target,
+            semantic_get_effective_expr_type(ctx, expression));
+        return 1;
+    }
+
+    Type *source = semantic_get_effective_expr_type(ctx, expression);
+    if (!source)
+        return 0;
+
+    if (!initializer_compatible(target, source))
+        return 0;
+
+    if (!check_constant_value_against_type(
+            ctx, expression, target,
+            "integer constant does not fit destination type",
+            "floating-point constant does not fit destination type"))
+        return 0;
+
+    sem_record_context_conversion_if_needed(ctx, expression, target, source);
+    return 1;
+}
+
+static Type *check_if_expression(SemanticContext *ctx, Node *node)
+{
+    Type *condition = check_value_expression(ctx, node->as.if_expr.condition);
+    if (!condition)
+        return NULL;
+
+    if (!is_bool_type(condition)) {
+        semantic_error(ctx, node->as.if_expr.condition,
+            "if expression condition must be a boolean expression");
+        return NULL;
+    }
+
+    FlowState incoming = flow_clone(ctx, &ctx->flow);
+    size_t active_variable_count = incoming.count;
+
+    ctx->flow = flow_clone(ctx, &incoming);
+    Type *then_type = check_value_expression(ctx, node->as.if_expr.then_value);
+    FlowState then_flow = ctx->flow;
+
+    ctx->flow = flow_clone(ctx, &incoming);
+    Type *else_type = check_value_expression(ctx, node->as.if_expr.else_value);
+    FlowState else_flow = ctx->flow;
+
+    ctx->flow = flow_merge_continuing_paths(
+        ctx, &then_flow, &else_flow, active_variable_count);
+
+    if (!then_type || !else_type)
+        return NULL;
+
+    Type *result = NULL;
+    if (type_equal(then_type, else_type)) {
+        result = then_type;
+    } else if (is_numeric_type(then_type) && is_numeric_type(else_type)) {
+        result = common_numeric_type(then_type, else_type);
+    } else if (initializer_compatible(then_type, else_type)) {
+        result = then_type;
+    } else if (initializer_compatible(else_type, then_type)) {
+        result = else_type;
+    }
+
+    if (!result) {
+        semantic_error(ctx, node,
+            "if expression branches have incompatible types");
+        return NULL;
+    }
+
+    sem_record_expr_info(ctx, node, result, NULL, VALUE_CATEGORY_RVALUE);
+    return result;
+}
+
 static Type *check_expression(SemanticContext *ctx, Node *node) {
 
     if (!node) return NULL;
@@ -9623,6 +9744,9 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
     {
         case NODE_IDENT:
             return check_identifier_expression(ctx, node, IDENTIFIER_USE_READ);
+
+        case NODE_IF_EXPR:
+            return check_if_expression(ctx, node);
 
         case NODE_TYPE_REF:
             semantic_error(ctx, node,
@@ -12379,6 +12503,11 @@ static int check_initializer_against_type(SemanticContext *ctx, Type *expected, 
                     "initializer type does not match declared type");
             }
 
+        return 0;
+    }
+
+    if (initializer->type == NODE_IF_EXPR &&
+        !contextualize_if_expression_value(ctx, initializer, expected)) {
         return 0;
     }
 

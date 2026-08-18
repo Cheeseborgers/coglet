@@ -57,7 +57,7 @@ static_assert(LIMIT > 0);
 static_assert(LIMIT == 4, "unexpected limit");
 ```
 
-The condition must have type `bool` and be known during semantic analysis. `static_assert` emits no runtime code. Target-layout queries such as `size_of(T)` and `align_of(T)` are not yet frontend constant expressions, so they cannot currently be used as assertion conditions.
+The condition must have type `bool` and be known during semantic analysis. `static_assert` emits no runtime code. Target-layout queries such as `size_of(T)` and `align_of(T)` are semantic compile-time constants and may be used directly in assertion conditions.
 
 ### Functions
 
@@ -1122,3 +1122,6 @@ reachability/DCE, and larger-program diagnostics/tooling.
 ## License
 
 Coglet is licensed under the Apache License, Version 2.0.
+
+
+The language also supports value-producing `if` expressions using `if { ... } else { ... }`; the branch values must have compatible types and ownership flow is merged across the selected paths.

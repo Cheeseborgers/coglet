@@ -296,7 +296,7 @@ The explicit source builtin `slice(pointer, len)` also lowers to the same ordina
 
 ### Target layout queries
 
-Generic allocation requires the byte size and ABI alignment of a concrete target type without allowing the frontend to guess backend layout. CogIR therefore includes two backend-neutral query instructions:
+CogIR retains backend-neutral `size_of` and `align_of` query instructions for IR construction and verification, while normal frontend lowering resolves language-level layout queries through the shared target-layout service and materializes their frozen results as constants. The query operations therefore remain available to validate IR contracts without making semantic and backend layout evaluation diverge.
 
 ```text
 %size  = size_of  %ConcreteType

@@ -1,0 +1,24 @@
+Handle::resource {
+    value: s32;
+}
+
+consume::(value: Handle) -> s32 {
+    return value.value;
+}
+
+choose::(cond: bool) -> Handle {
+    first := Handle { value = 10 };
+    second := Handle { value = 20 };
+
+    chosen := if cond {
+        move first
+    } else {
+        move second
+    };
+
+    return move chosen;
+}
+
+main::() -> s32 {
+    return consume(choose(true));
+}

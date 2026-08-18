@@ -1,0 +1,9 @@
+error: expected 'else' before ';'
+    };
+     ^
+error: if expression requires an else branch
+    };
+     ^
+error: expected ';' before 'return'
+    return x;
+    ^~~~~~

@@ -3,6 +3,7 @@
 #include "compiler_driver.h"
 #include "semantic_info.h"
 #include "target_info.h"
+#include "target_layout.h"
 
 static int expect_param_kind(
     CompileResult *result,
@@ -35,6 +36,25 @@ static int expect_param_kind(
         return 0;
     }
 
+    return 1;
+}
+
+
+static int verify_target_layout_aliases(const TargetInfo *target, uint64_t expected_size, const char *label) {
+    Type usize_type = {0};
+    usize_type.kind = expected_size == 8 ? TYPE_U64 : TYPE_U32;
+    TargetLayout layout;
+    char message[160];
+    if (!target_layout_of_type(target, &usize_type, &layout, message, sizeof(message))) {
+        fprintf(stderr, "%s: layout query failed: %s\n", label, message);
+        return 0;
+    }
+    if (layout.size != expected_size || layout.align == 0) {
+        fprintf(stderr, "%s: expected usize layout size %llu, got %llu/%llu\n", label,
+            (unsigned long long)expected_size, (unsigned long long)layout.size,
+            (unsigned long long)layout.align);
+        return 0;
+    }
     return 1;
 }
 
@@ -114,9 +134,13 @@ int main(int argc, char **argv) {
 
     TargetInfo target_b = target_a;
     target_b.pointer_bits = 32;
+    target_b.pointer_align_bytes = 4;
     target_b.c_char_is_signed = 0;
     target_b.c_long_bits = 64;
     target_b.c_size_bits = 32;
+
+    if (!verify_target_layout_aliases(&target_a, 8, "synthetic-llp64-like"))
+        return 1;
 
     if (!run_target_case(
             argv[1],
@@ -129,6 +153,9 @@ int main(int argc, char **argv) {
             "synthetic-llp64-like")) {
         return 1;
     }
+
+    if (!verify_target_layout_aliases(&target_b, 4, "synthetic-wide-long"))
+        return 1;
 
     if (!run_target_case(
             argv[1],

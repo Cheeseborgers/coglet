@@ -1,0 +1,4 @@
+<source>:2:10: error: if expression branches have incompatible types
+    x := if true {
+         ^~~~~~~~~
+1 semantic error generated.

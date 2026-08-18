@@ -16,10 +16,29 @@ check_static_assert::() -> void {
 }
 
 checked_identity::<T: copyable>(value: T) -> T {
-    static_assert(true, "generic specialization assertion");
+    static_assert(size_of(T) >= align_of(T), "generic specialization layout assertion");
     return value;
 }
 
 use_checked_identity::() -> s32 {
     return checked_identity::<s32>(9);
 }
+
+LayoutPair :: struct {
+    head: u8;
+    tail: u32;
+}
+
+#repr(c)
+LayoutUnion :: union {
+    small: u8;
+    large: u64;
+}
+
+static_assert(size_of(usize) == size_of(opaque*));
+static_assert(size_of(isize) == size_of(opaque*));
+static_assert(size_of(LayoutPair) % align_of(LayoutPair) == 0);
+static_assert(size_of(LayoutUnion) >= size_of(u64));
+static_assert(size_of(u16[3]) == 3 * size_of(u16));
+static_assert(align_of(u16[3]) == align_of(u16));
+static_assert(size_of(u8[]) >= size_of(opaque*) + size_of(usize));

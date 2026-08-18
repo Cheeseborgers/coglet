@@ -19,6 +19,13 @@ typedef enum TargetFloatFormat {
  */
 typedef struct TargetInfo {
     unsigned pointer_bits;
+    unsigned pointer_align_bytes;
+
+    /* Alignment facts are expressed in bytes for concrete object layout. */
+    unsigned scalar_align_8_bytes;
+    unsigned scalar_align_16_bytes;
+    unsigned scalar_align_32_bytes;
+    unsigned scalar_align_64_bytes;
 
     unsigned c_char_bits;
     int c_char_is_signed;

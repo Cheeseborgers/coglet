@@ -1,0 +1,6 @@
+main::() -> s32 {
+    x := if true {
+        1
+    };
+    return x;
+}

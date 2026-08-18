@@ -1099,6 +1099,7 @@ static CogIrValueId emit_function_reference(
 }
 
 static CogIrValueId lower_expression(ExecLowerState *state, Node *node);
+static CogIrValueId lower_if_expression(ExecLowerState *state, Node *node);
 static int expression_may_create_cfg(ExecLowerState *state, Node *node);
 static CogIrSlotId spill_value(ExecLowerState *state, CogIrValueId value, SourceSpan span);
 static CogIrValueId reload_spill(ExecLowerState *state, CogIrSlotId slot, SourceSpan span);
@@ -1839,6 +1840,11 @@ static int expression_may_create_cfg(ExecLowerState *state, Node *node)
                 if (expression_may_create_cfg(state, node->as.array_literal.elements.items[i]))
                     return 1;
             return 0;
+        case NODE_IF_EXPR:
+            return expression_may_create_cfg(state, node->as.if_expr.condition) ||
+                   expression_may_create_cfg(state, node->as.if_expr.then_value) ||
+                   expression_may_create_cfg(state, node->as.if_expr.else_value) ||
+                   1;
         case NODE_STRUCT_INIT:
             for (int i = 0; i < node->as.struct_init.fields.count; ++i)
                 if (expression_may_create_cfg(state, node->as.struct_init.fields.items[i]->as.field_init.value))
@@ -2039,30 +2045,30 @@ static CogIrValueId lower_type_layout_builtin_call(
     Node *node,
     BuiltinKind builtin_kind
 ) {
+    (void)builtin_kind;
     SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
     SemExprInfo *info = semantic_get_expr_info(sem, node);
-    if (!info || !info->builtin_type_argument) {
+    if (!info || !info->builtin_type_argument || !info->has_builtin_layout_value) {
         lower_error(state->lower, node->span,
-            "type-layout builtin is missing frozen semantic type metadata");
+            "type-layout builtin is missing frozen semantic layout metadata");
         return COG_IR_VALUE_INVALID;
     }
 
     CogIrTypeId result_type = cog_ir_lower_type(state->lower, info->type);
-    CogIrTypeId queried_type = cog_ir_lower_type(
-        state->lower, info->builtin_type_argument);
-    if (result_type == COG_IR_TYPE_INVALID || queried_type == COG_IR_TYPE_INVALID)
+    if (result_type == COG_IR_TYPE_INVALID)
         return COG_IR_VALUE_INVALID;
 
-    CogIrOp op = builtin_kind == BUILTIN_SIZE_OF
-        ? COG_IR_OP_SIZE_OF
-        : COG_IR_OP_ALIGN_OF;
-    CogIrInstruction instruction = {
-        .op = op,
-        .result_type = result_type,
-        .span = node->span,
-        .as.type_query = { .queried_type = queried_type },
-    };
-    return emit_instruction_value(state, instruction);
+    CogIrConstId constant = cog_ir_const_integer(
+        state->lower->module,
+        result_type,
+        info->builtin_layout_value
+    );
+    if (constant == COG_IR_CONST_INVALID) {
+        lower_error(state->lower, node->span,
+            "failed to materialize frozen target-layout constant");
+        return COG_IR_VALUE_INVALID;
+    }
+    return emit_constant_value(state, constant, node->span);
 }
 
 static CogIrValueId lower_slice_builtin_call(
@@ -2858,6 +2864,58 @@ static CogIrValueId lower_cast_expression(ExecLowerState *state, Node *node)
     return emit_conversion(state, op, operand, target, node->span);
 }
 
+static CogIrValueId lower_if_expression(ExecLowerState *state, Node *node)
+{
+    SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
+    CogIrValueId condition = lower_expression(state, node->as.if_expr.condition);
+    if (condition == COG_IR_VALUE_INVALID || !block_is_open(state))
+        return COG_IR_VALUE_INVALID;
+
+    Type *result_sem_type = semantic_get_effective_expr_type(sem, node);
+    CogIrTypeId result_type = cog_ir_lower_type(state->lower, result_sem_type);
+    if (result_type == COG_IR_TYPE_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrBlockId then_block = add_block(state, "if.expr.then", node->as.if_expr.then_value->span);
+    CogIrBlockId else_block = add_block(state, "if.expr.else", node->as.if_expr.else_value->span);
+    CogIrBlockId join_block = add_block(state, "if.expr.join", node->span);
+    if (then_block == COG_IR_BLOCK_INVALID || else_block == COG_IR_BLOCK_INVALID || join_block == COG_IR_BLOCK_INVALID)
+        return COG_IR_VALUE_INVALID;
+
+    CogIrValueId join_value = cog_ir_add_block_parameter(
+        state->lower->module,
+        state->function,
+        join_block,
+        result_type,
+        string_view_from_cstr("if.value"),
+        node->span
+    );
+    if (join_value == COG_IR_VALUE_INVALID) {
+        lower_error(state->lower, node->span, "failed to create if-expression block parameter");
+        return COG_IR_VALUE_INVALID;
+    }
+
+    if (!set_cond_branch(state, condition, then_block, NULL, 0, else_block, NULL, 0, node->span))
+        return COG_IR_VALUE_INVALID;
+
+    state->block = then_block;
+    CogIrValueId then_value = lower_expression(state, node->as.if_expr.then_value);
+    if (then_value == COG_IR_VALUE_INVALID || !block_is_open(state))
+        return COG_IR_VALUE_INVALID;
+    if (!set_branch_args(state, join_block, &then_value, 1, node->span))
+        return COG_IR_VALUE_INVALID;
+
+    state->block = else_block;
+    CogIrValueId else_value = lower_expression(state, node->as.if_expr.else_value);
+    if (else_value == COG_IR_VALUE_INVALID || !block_is_open(state))
+        return COG_IR_VALUE_INVALID;
+    if (!set_branch_args(state, join_block, &else_value, 1, node->span))
+        return COG_IR_VALUE_INVALID;
+
+    state->block = join_block;
+    return join_value;
+}
+
 static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
 {
     if (!node) {
@@ -3023,6 +3081,9 @@ static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
             }
             return value;
         }
+
+        case NODE_IF_EXPR:
+            return lower_if_expression(state, node);
 
         case NODE_BINARY: {
             if (node->as.binary.op == TOK_AND_AND || node->as.binary.op == TOK_OR_OR)

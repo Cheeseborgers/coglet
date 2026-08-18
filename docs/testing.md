@@ -28,7 +28,7 @@ Target/layout coverage includes synthetic 32-bit and 64-bit pointer targets for
 `size_of(T)` / `align_of(T)` forms.
 
 
-Static-assert coverage includes parser snapshots, top-level and block assertions, forward and local constants, enum/Boolean/arithmetic conditions, optional diagnostic messages, non-Boolean and runtime-value rejection, generic-specialization checking, and an explicit regression for the current rule that backend-owned layout queries are not frontend constant expressions.
+Static-assert coverage includes parser snapshots, top-level and block assertions, forward and local constants, enum/Boolean/arithmetic conditions, optional diagnostic messages, non-Boolean and runtime-value rejection, generic-specialization checking, and target-layout assertions for scalars, arrays, slices, and aggregates.
 
 Result-use coverage checks the default must-use rule for value-returning calls,
 explicit `discard`, `#discardable` ordinary/generic/method/extern declarations,
@@ -700,3 +700,8 @@ non-zero parser harness rather than being silently skipped by the successful AST
 snapshot harness.
 
 - Grouped typed mutable declarations are covered across parser, semantic, host-C, and LLVM paths.
+
+
+### Conditional expressions
+
+The semantic/IR fixture suite covers braced `if` expressions, nested `else if` chains, incompatible branch types, missing `else` diagnostics, CFG lowering, and resource ownership transfer through the selected branch.

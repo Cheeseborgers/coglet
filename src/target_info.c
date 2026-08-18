@@ -4,6 +4,9 @@
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdint.h>
+
+#define TARGET_ALIGNOF(type) offsetof(struct { char pad; type value; }, value)
 
 static TargetFloatFormat host_float_format(
     unsigned bits,
@@ -39,6 +42,11 @@ TargetInfo target_info_host(void) {
     TargetInfo target;
 
     target.pointer_bits = (unsigned)(sizeof(void *) * CHAR_BIT);
+    target.pointer_align_bytes = (unsigned)TARGET_ALIGNOF(void *);
+    target.scalar_align_8_bytes = (unsigned)TARGET_ALIGNOF(uint8_t);
+    target.scalar_align_16_bytes = (unsigned)TARGET_ALIGNOF(uint16_t);
+    target.scalar_align_32_bytes = (unsigned)TARGET_ALIGNOF(uint32_t);
+    target.scalar_align_64_bytes = (unsigned)TARGET_ALIGNOF(uint64_t);
 
     target.c_char_bits = (unsigned)(sizeof(char) * CHAR_BIT);
     target.c_char_is_signed = CHAR_MIN < 0;
@@ -84,8 +92,16 @@ int target_info_validate(
     if (!target)
         return fail(message, message_size, "target description is null");
 
-    if (target->pointer_bits == 0)
-        return fail(message, message_size, "pointer width must be non-zero");
+    if (target->pointer_bits == 0 || target->pointer_bits % CHAR_BIT != 0)
+        return fail(message, message_size, "pointer width must be a non-zero whole number of bytes");
+
+    if (target->pointer_align_bytes == 0 ||
+        target->scalar_align_8_bytes == 0 ||
+        target->scalar_align_16_bytes == 0 ||
+        target->scalar_align_32_bytes == 0 ||
+        target->scalar_align_64_bytes == 0) {
+        return fail(message, message_size, "layout alignments must be non-zero");
+    }
 
     if (target->c_char_bits == 0)
         return fail(message, message_size, "C char width must be non-zero");
@@ -124,6 +140,11 @@ int target_info_equal(const TargetInfo *a, const TargetInfo *b) {
 
     return
         a->pointer_bits == b->pointer_bits &&
+        a->pointer_align_bytes == b->pointer_align_bytes &&
+        a->scalar_align_8_bytes == b->scalar_align_8_bytes &&
+        a->scalar_align_16_bytes == b->scalar_align_16_bytes &&
+        a->scalar_align_32_bytes == b->scalar_align_32_bytes &&
+        a->scalar_align_64_bytes == b->scalar_align_64_bytes &&
         a->c_char_bits == b->c_char_bits &&
         a->c_char_is_signed == b->c_char_is_signed &&
         a->c_bool_bits == b->c_bool_bits &&

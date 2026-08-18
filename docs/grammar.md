@@ -993,6 +993,20 @@ value-required context is an error. Resource-owning values may not be discarded.
 
 Mutation operations are accepted only in statement position.
 
+## Conditional Expressions
+
+Conditional expressions use the same braced control-flow shape as `if` statements, but require an `else` value and produce a value:
+
+```c
+value := if condition {
+    when_true
+} else {
+    when_false
+};
+```
+
+The branch bodies currently contain one value expression. `else if` chains are accepted. Both branch values must have compatible types; exact matches and the language\'s existing contextual numeric/pointer compatibility rules are used. Only the selected branch is evaluated, and ownership-flow analysis merges the two branch states like ordinary conditional control flow.
+
 ## Field Access
 
 Field access uses postfix syntax:
@@ -1126,7 +1140,7 @@ static_assert_statement =
 
 `static_assert` is a reserved statement keyword and may appear at top level or wherever an ordinary statement is accepted. Its condition must have type `bool` and must be evaluable by the frontend compile-time constant evaluator. A false condition is a semantic error; when present, the string literal is appended to the diagnostic. The assertion is semantic-only and emits no runtime operation.
 
-Assertions inside generic function bodies are checked when the concrete specialization body is checked. Target-layout queries `size_of(T)` and `align_of(T)` are not yet frontend constant expressions, so they are not currently valid inside `static_assert`.
+Assertions inside generic function bodies are checked when the concrete specialization body is checked. Target-layout queries `size_of(T)` and `align_of(T)` are compile-time constants for concrete runtime object types and may be used inside `static_assert`.
 
 ## Deferred cleanup
 

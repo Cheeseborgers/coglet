@@ -1,1 +1,1 @@
-static_assert(size_of(usize) == size_of(opaque*));
+static_assert(size_of(void) == 0);

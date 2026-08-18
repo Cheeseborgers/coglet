@@ -417,6 +417,20 @@ An integer switch is exhaustive only when it contains `default`.
 
 A non-exhaustive switch has an implicit path on which no case matches. That path preserves the incoming initialization state.
 
+### Conditional expressions
+
+An `if` can also be used as a value-producing expression:
+
+```c
+value := if condition {
+    a
+} else {
+    b
+};
+```
+
+Unlike an `if` statement, an `if` expression requires an `else` branch. Each branch currently contains one value expression. Nested `else if` expressions are supported. The result type is selected using the existing exact-type, numeric, pointer, and contextual compatibility rules, and ownership flow is merged across both branches. Only the selected value expression executes.
+
 ### Control-flow bodies
 
 `if`, `else`, `while`, and `for` accept either one statement or a braced block.
@@ -1003,7 +1017,7 @@ The condition must have type `bool` and be a frontend compile-time constant. The
 
 Assertions are valid both at top level and inside statement blocks. In a generic function body, the assertion is checked with the concrete body during specialization rather than by evaluating an uninstantiated template body.
 
-`static_assert` deliberately does not lower into CogIR. The current `size_of(T)` and `align_of(T)` operations are resolved through backend target layout rather than the frontend constant evaluator, so layout-query assertions are not yet supported. Extending that capability requires one authoritative target-layout evaluation contract rather than a second semantic layout implementation.
+`static_assert` deliberately does not lower into CogIR. `size_of(T)` and `align_of(T)` are evaluated through the shared target-layout service during semantic analysis, so layout-query assertions use the same frozen target contract as executable lowering.
 
 ## Numeric Literals, Inference, and Constants
 
@@ -1727,7 +1741,7 @@ These are dedicated type-query forms, not generic function calls. Ordinary
 generics keep the `name::<T>(...)` / `Type::<T>` syntax; the old
 `size_of::<T>()` and `align_of::<T>()` spellings are rejected.
 
-The frontend does not guess target padding or alignment. Semantic analysis freezes the resolved concrete type, CogIR carries a backend-neutral type-layout query, and the selected backend answers using its actual target layout. These queries are not yet accepted in Coglet compile-time constant-expression contexts even though a backend can materialize them as target constants.
+The frontend resolves target padding and alignment through one shared target-layout service parameterized by the frozen `TargetInfo`. Semantic analysis records the resulting `size_of(T)`/`align_of(T)` value, constant evaluation reuses it, and executable lowering materializes that frozen value as a target-sized integer constant. This keeps assertion-time and runtime-visible layout queries on the same target contract.
 
 ## String Literals
 

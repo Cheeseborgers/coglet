@@ -595,6 +595,16 @@ static void print_node(Node *node)
             printf(")");
             break;
 
+        case NODE_IF_EXPR:
+            printf("(if_expr ");
+            print_node(node->as.if_expr.condition);
+            printf(" ");
+            print_node(node->as.if_expr.then_value);
+            printf(" ");
+            print_node(node->as.if_expr.else_value);
+            printf(")");
+            break;
+
         case NODE_IF:
             printf("(if ");
             print_node(node->as.if_stmt.condition);

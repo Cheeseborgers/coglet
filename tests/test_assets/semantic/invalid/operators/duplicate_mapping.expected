@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/operators/duplicate_mapping.cog:1:1: error: duplicate operator mapping for '+' on struct 'Point'
+Point::struct {
+^~~~~
+1 semantic error generated.

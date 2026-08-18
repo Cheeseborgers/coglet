@@ -237,7 +237,7 @@ main::() -> s32 {
 }
 ```
 
-`std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_s32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; floating game/application helpers such as `lerp`/`smoothstep`; generic `Vec2<T>`/`Vec3<T>`/`Vec4<T>` numeric vectors with constructors, component arithmetic, dot/cross and squared-distance helpers; and runtime-backed `f32`/`f64` square-root, trigonometric, inverse-trigonometric, rounding, and floating-remainder functions. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow. Known implementation limitations and follow-up work are tracked separately in `docs/known_shortcomings.md`.
+`std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_s32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; floating game/application helpers such as `lerp`/`smoothstep`; generic `Vec2<T>`/`Vec3<T>`/`Vec4<T>` numeric vectors with constructors, component arithmetic, dot/cross and distance helpers; floating `Quat<T>`, `Mat3<T>`, and `Mat4<T>` transform types with quaternion interpolation/rotation and TRS composition; and runtime-backed `f32`/`f64` square-root, trigonometric, inverse-trigonometric, rounding, and floating-remainder functions. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow. Known implementation limitations and follow-up work are tracked separately in `docs/known_shortcomings.md`.
 
 `std.io` is the first runtime-backed standard module. It provides `print`/`println`
 for `readonly u8[]` byte views, `newline`, `flush`, Boolean printing,
@@ -421,6 +421,35 @@ total := point.sum();
 
 Methods are frontend sugar only: semantic analysis inserts the receiver and
 lowers both forms to ordinary concrete function calls before CogIR.
+
+Structs may also opt into a deliberately small arithmetic-operator surface by
+mapping operators to existing by-value methods:
+
+```c
+Vec2::<T: numeric> struct {
+    x: T;
+    y: T;
+
+    add::(self: Self, other: Self) -> Self {
+        return Self { x = self.x + other.x, y = self.y + other.y };
+    }
+
+    scale::(self: Self, scalar: T) -> Self {
+        return Self { x = self.x * scalar, y = self.y * scalar };
+    }
+
+    operators {
+        + = add;
+        * = scale;
+    }
+}
+
+position += velocity * dt;
+```
+
+The first version supports binary `+`, `-`, `*`, `/`, unary `-`, and the matching
+compound assignments. Operator mapping is exact and left-directed; there is no
+conversion ranking, reverse dispatch, trait system, or backend operator machinery.
 
 ### Expressions
 

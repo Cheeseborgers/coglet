@@ -1,0 +1,45 @@
+program
+  struct Vec
+    struct_field_decl x: s32
+    func add -> Self
+      params:
+        param_decl self: Self
+        param_decl other: Self
+      body:
+        block
+          return
+            struct_init Self
+              field_init x
+                (+)
+                  field .x
+                    self
+                  field .x
+                    other
+    func scale -> Self
+      params:
+        param_decl self: Self
+        param_decl scalar: s32
+      body:
+        block
+          return
+            struct_init Self
+              field_init x
+                (*)
+                  field .x
+                    self
+                  scalar
+    func neg -> Self
+      params:
+        param_decl self: Self
+      body:
+        block
+          return
+            struct_init Self
+              field_init x
+                (-)
+                  field .x
+                    self
+    operators:
+      + -> add
+      * -> scale
+      unary - -> neg

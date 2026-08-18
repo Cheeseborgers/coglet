@@ -124,6 +124,19 @@ typedef struct {
     int capacity;
 } GenericTypeParameterList;
 
+typedef struct StructOperatorDecl {
+    TokenType op;
+    int is_unary;
+    StringView method_name;
+    SourceSpan span;
+} StructOperatorDecl;
+
+typedef struct {
+    StructOperatorDecl *items;
+    int count;
+    int capacity;
+} StructOperatorDeclList;
+
 typedef struct {
     Type **items;
     int count;
@@ -371,6 +384,7 @@ struct Node {
             GenericTypeParameterList type_parameters; /* source generic parameters; empty for ordinary/concrete structs */
             NodeList fields;      // list of NODE_STRUCT_FIELD_DECL
             NodeList methods;     // NODE_FUNC_DECL namespace members; never part of layout
+            StructOperatorDeclList operators; /* frontend-only mappings from source operators to methods */
 
             /*
              * Explicit native C aggregate representation contract:

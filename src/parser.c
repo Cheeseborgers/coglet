@@ -38,6 +38,7 @@ static Node *parse_generic_decl_rest(Parser *p, Token name, SourceSpan span);
 static Node *parse_attribute_decl(Parser *p);
 
 static Node *parse_struct_decl_rest(Parser *p, Token name, SourceSpan span);
+static int parse_struct_operator_block(Parser *p, Node *decl);
 static Node *finish_struct_init(Parser *p, Token type_name);
 
 static Node *parse_enum_decl_rest(Parser *p, Token name, SourceSpan span);
@@ -2253,6 +2254,86 @@ static Node *parse_attribute_decl(Parser *p)
 // ================== end proc/function parsing ===================
 
 // =================== struct declarations ========================
+static void struct_operator_list_push(
+    Parser *p,
+    StructOperatorDeclList *list,
+    StructOperatorDecl value
+) {
+    if (list->count >= list->capacity) {
+        int new_capacity = list->capacity ? list->capacity * 2 : 4;
+        StructOperatorDecl *items = arena_alloc(
+            p->arena,
+            sizeof(*items) * (size_t)new_capacity
+        );
+        if (list->items && list->count > 0) {
+            memcpy(items, list->items, sizeof(*items) * (size_t)list->count);
+        }
+        list->items = items;
+        list->capacity = new_capacity;
+    }
+    list->items[list->count++] = value;
+}
+
+static int parse_struct_operator_block(Parser *p, Node *decl)
+{
+    assert(decl && decl->type == NODE_STRUCT_DECL);
+    if (!consume(p, TOK_LBRACE))
+        return 0;
+
+    while (!check(p, TOK_RBRACE) && !check(p, TOK_EOF)) {
+        int is_unary = 0;
+        if (check(p, TOK_IDENT) && token_text_equals(p->current, "unary")) {
+            advance(p);
+            is_unary = 1;
+        }
+
+        Token op_token = p->current;
+        TokenType op = op_token.type;
+        int valid_binary = op == TOK_PLUS || op == TOK_MINUS ||
+            op == TOK_STAR || op == TOK_SLASH;
+        int valid_unary = op == TOK_MINUS;
+        if ((is_unary && !valid_unary) || (!is_unary && !valid_binary)) {
+            error_at(
+                p,
+                &p->current,
+                is_unary
+                    ? "expected unary '-' operator mapping"
+                    : "expected '+', '-', '*', or '/' operator mapping"
+            );
+            synchronize(p);
+            return 0;
+        }
+        advance(p);
+
+        if (!consume(p, TOK_EQUAL)) {
+            synchronize(p);
+            return 0;
+        }
+        if (!consume(p, TOK_IDENT)) {
+            synchronize(p);
+            return 0;
+        }
+        Token method = p->previous;
+        if (!consume(p, TOK_SEMICOLON)) {
+            synchronize(p);
+            return 0;
+        }
+
+        struct_operator_list_push(
+            p,
+            &decl->as.struct_decl.operators,
+            (StructOperatorDecl){
+                .op = op,
+                .is_unary = is_unary,
+                .method_name = string_view(method.start, (size_t)method.length),
+                .span = op_token.span,
+            }
+        );
+    }
+
+    return consume(p, TOK_RBRACE);
+}
+
 static Node *parse_struct_decl_rest(Parser *p,Token name,SourceSpan span) {
 
     int is_union = check(p, TOK_UNION);
@@ -2284,6 +2365,12 @@ static Node *parse_struct_decl_rest(Parser *p,Token name,SourceSpan span) {
         }
 
         Token member = p->previous;
+
+        if (token_text_equals(member, "operators") && check(p, TOK_LBRACE)) {
+            if (!parse_struct_operator_block(p, decl))
+                return ast_new_error(p->arena, p->current);
+            continue;
+        }
 
         if (match(p, TOK_COLON)) {
             Type *type = parse_type(p);

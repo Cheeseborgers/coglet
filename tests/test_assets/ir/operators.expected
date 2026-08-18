@@ -1,0 +1,95 @@
+module target(pointer=64)
+type %t0 "Pair" = struct {x: s32}
+func @f0 "Pair.add"(%0: %t0, %1: %t0) -> %t0 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : %t0 "self"
+    $s1 : %t0 "other"
+  bb0 "entry"():
+    %2 = local_addr $s0
+    store %2, %0
+    %3 = local_addr $s1
+    store %3, %1
+    %4 = local_addr $s0
+    %5 = field_addr %4, field 0
+    %6 = load %5
+    %7 = local_addr $s1
+    %8 = field_addr %7, field 0
+    %9 = load %8
+    %10 = iadd.checked %6, %9
+    %11 = make_struct (%10)
+    ret %11
+}
+func @f1 "Pair.scale"(%0: %t0, %1: s32) -> %t0 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : %t0 "self"
+    $s1 : s32 "scalar"
+  bb0 "entry"():
+    %2 = local_addr $s0
+    store %2, %0
+    %3 = local_addr $s1
+    store %3, %1
+    %4 = local_addr $s0
+    %5 = field_addr %4, field 0
+    %6 = load %5
+    %7 = local_addr $s1
+    %8 = load %7
+    %9 = imul.checked %6, %8
+    %10 = make_struct (%9)
+    ret %10
+}
+func @f2 "Pair.neg"(%0: %t0) -> %t0 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : %t0 "self"
+  bb0 "entry"():
+    %1 = local_addr $s0
+    store %1, %0
+    %2 = local_addr $s0
+    %3 = field_addr %2, field 0
+    %4 = load %3
+    %5 = ineg.checked %4
+    %6 = make_struct (%5)
+    ret %6
+}
+entry @f3 "main"() -> s32 [abi=coglet, linkage=internal] {
+  slots:
+    $s0 : %t0 "a"
+    $s1 : %t0 "b"
+    $s2 : %t0 "c"
+  bb0 "entry"():
+    %0 = local_addr $s0
+    %1 = const s32 @c0(0x3)
+    %2 = make_struct (%1)
+    store %0, %2
+    %3 = local_addr $s1
+    %4 = const s32 @c1(0x4)
+    %5 = make_struct (%4)
+    store %3, %5
+    %6 = local_addr $s2
+    %7 = function_ref @f1
+    %8 = function_ref @f2
+    %9 = function_ref @f0
+    %10 = local_addr $s0
+    %11 = load %10
+    %12 = local_addr $s1
+    %13 = load %12
+    %14 = call %9(%11, %13)
+    %15 = call %8(%14)
+    %16 = const s32 @c2(0x2)
+    %17 = call %7(%15, %16)
+    store %6, %17
+    %18 = local_addr $s0
+    %19 = load %18
+    %20 = local_addr $s1
+    %21 = load %20
+    %22 = function_ref @f0
+    %23 = call %22(%19, %21)
+    store %18, %23
+    %24 = local_addr $s2
+    %25 = field_addr %24, field 0
+    %26 = load %25
+    %27 = local_addr $s0
+    %28 = field_addr %27, field 0
+    %29 = load %28
+    %30 = iadd.checked %26, %29
+    ret %30
+}

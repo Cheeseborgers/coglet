@@ -57,8 +57,26 @@ static StructMethodBinding *find_struct_method_binding(
     Type *owner_type,
     StringView name
 );
+static StructOperatorBinding *find_struct_operator_binding(
+    SemanticContext *ctx,
+    Type *owner_type,
+    TokenType op,
+    int is_unary
+);
 static int register_struct_method_signatures(SemanticContext *ctx, Node *owner_decl);
+static int register_struct_operator_bindings(SemanticContext *ctx, Node *owner_decl);
 static void check_struct_method_bodies(SemanticContext *ctx, Node *owner_decl);
+
+static const char *source_operator_spelling(TokenType op)
+{
+    switch (op) {
+        case TOK_PLUS: return "+";
+        case TOK_MINUS: return "-";
+        case TOK_STAR: return "*";
+        case TOK_SLASH: return "/";
+        default: return "<operator>";
+    }
+}
 
 struct GenericSpecialization {
     SemDeclId template_id;
@@ -97,6 +115,14 @@ struct StructMethodBinding {
     Type *function_type;
     int is_instance;
     StructMethodBinding *next;
+};
+
+struct StructOperatorBinding {
+    Type *owner_type;
+    TokenType op;
+    int is_unary;
+    StructMethodBinding *method;
+    StructOperatorBinding *next;
 };
 
 static Type *new_type(SemanticContext *ctx, TypeKind kind)
@@ -353,6 +379,7 @@ static SemExprInfo *sem_get_or_create_expr_info(SemanticContext *ctx, Node *node
     info->value_category = VALUE_CATEGORY_NONE;
     info->value_access   = VALUE_ACCESS_NONE;
     info->value_is_volatile = 0;
+    info->resolved_operator_function_id = INVALID_SEM_DECL_ID;
     info->has_constant_value = 0;
 
     info->next = ctx->expr_infos;
@@ -7935,6 +7962,43 @@ static Type *check_prepared_struct_method_call(
     return callee->return_type;
 }
 
+static Type *rewrite_struct_operator_call(
+    SemanticContext *ctx,
+    Node *node,
+    StructOperatorBinding *operator_binding,
+    Node *left,
+    Node *right
+) {
+    assert(node);
+    assert(operator_binding && operator_binding->method);
+    StructMethodBinding *method = operator_binding->method;
+    SourceSpan span = node->span;
+
+    Node *callee = ast_new_ident(
+        ctx->arena,
+        method->function->as.func_decl.name.data,
+        (int)method->function->as.func_decl.name.length,
+        span
+    );
+    sem_record_expr_info(
+        ctx,
+        callee,
+        method->function_type,
+        method->symbol,
+        VALUE_CATEGORY_RVALUE
+    );
+
+    memset(&node->as, 0, sizeof(node->as));
+    node->type = NODE_CALL;
+    node->span = span;
+    node->as.call.callee = callee;
+    nodelist_push(ctx->arena, &node->as.call.arguments, left);
+    if (right)
+        nodelist_push(ctx->arena, &node->as.call.arguments, right);
+
+    return check_prepared_struct_method_call(ctx, node, method);
+}
+
 static Type *check_identifier_expression(SemanticContext *ctx, Node *node,IdentifierUse use) {
 
     assert(node);
@@ -9104,6 +9168,30 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                 case TOK_MINUS:
                 {
 
+                    if (operand->kind == TYPE_STRUCT) {
+                        StructOperatorBinding *binding =
+                            find_struct_operator_binding(
+                                ctx, operand, TOK_MINUS, 1);
+                        if (!binding) {
+                            char type_name[128];
+                            format_type_name(operand, type_name, sizeof(type_name));
+                            semantic_error_fmt(
+                                ctx,
+                                node,
+                                "unary operator '-' is not defined for %s",
+                                type_name
+                            );
+                            return NULL;
+                        }
+                        return rewrite_struct_operator_call(
+                            ctx,
+                            node,
+                            binding,
+                            node->as.unary.operand,
+                            NULL
+                        );
+                    }
+
                     /*
                      * Numeric negation is defined for signed integers,
                      * floating-point values, and untyped numeric literals.
@@ -9210,6 +9298,37 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
         {
             Type *left = check_value_expression(ctx, node->as.binary.left);
             if (!left) return NULL;
+
+            if (left->kind == TYPE_STRUCT &&
+                (node->as.binary.op == TOK_PLUS ||
+                 node->as.binary.op == TOK_MINUS ||
+                 node->as.binary.op == TOK_STAR ||
+                 node->as.binary.op == TOK_SLASH)) {
+                TokenType op = node->as.binary.op;
+                Node *left_node = node->as.binary.left;
+                Node *right_node = node->as.binary.right;
+                StructOperatorBinding *binding =
+                    find_struct_operator_binding(ctx, left, op, 0);
+                if (!binding) {
+                    char type_name[128];
+                    format_type_name(left, type_name, sizeof(type_name));
+                    semantic_error_fmt(
+                        ctx,
+                        node,
+                        "operator '%s' is not defined for %s",
+                        source_operator_spelling(op),
+                        type_name
+                    );
+                    return NULL;
+                }
+                return rewrite_struct_operator_call(
+                    ctx,
+                    node,
+                    binding,
+                    left_node,
+                    right_node
+                );
+            }
 
             Type *right = check_value_expression(ctx, node->as.binary.right);
             if (!right) return NULL;
@@ -11205,6 +11324,51 @@ static int check_compound_assignment_statement(SemanticContext *ctx,Node *node) 
     if (!require_writable_lvalue(ctx, node, target_node, "compound assignment target"))
         return 0;
 
+    if (target_type->kind == TYPE_STRUCT) {
+        TokenType binary_op = TOK_EOF;
+        switch (operation) {
+            case TOK_PLUS_EQUAL:  binary_op = TOK_PLUS;  break;
+            case TOK_MINUS_EQUAL: binary_op = TOK_MINUS; break;
+            case TOK_STAR_EQUAL:  binary_op = TOK_STAR;  break;
+            case TOK_SLASH_EQUAL: binary_op = TOK_SLASH; break;
+            default: break;
+        }
+
+        if (binary_op != TOK_EOF) {
+            StructOperatorBinding *binding = find_struct_operator_binding(
+                ctx, target_type, binary_op, 0);
+            if (!binding) {
+                char type_name[128];
+                format_type_name(target_type, type_name, sizeof(type_name));
+                semantic_error_fmt(
+                    ctx,
+                    node,
+                    "operator '%s' is not defined for %s",
+                    source_operator_spelling(binary_op),
+                    type_name
+                );
+                return 0;
+            }
+
+            if (!ensure_struct_method_body_checked(ctx, binding->method, node))
+                return 0;
+
+            Type *function_type = binding->method->function_type;
+            assert(function_type->parameter_count == 2);
+            if (!check_argument_against_parameter(
+                    ctx, function_type->parameters[1], value_node)) {
+                return 0;
+            }
+
+            sem_record_no_value(ctx, node);
+            SemExprInfo *info = sem_find_expr_info(ctx, node);
+            assert(info);
+            info->resolved_operator_function_id =
+                binding->method->symbol->declaration_id;
+            return 1;
+        }
+    }
+
     Type *value_type =
         check_value_expression(ctx, value_node);
 
@@ -12904,6 +13068,7 @@ static void check_program(SemanticContext *ctx, Node *node)
 
         semantic_select_source_module(ctx, stmt->span.file_id);
         register_struct_method_signatures(ctx, stmt);
+        register_struct_operator_bindings(ctx, stmt);
     }
 
     /* Pass 3b: register all top-level function signatures. */
@@ -13856,6 +14021,24 @@ static StructMethodBinding *find_struct_method_binding(
     return NULL;
 }
 
+static StructOperatorBinding *find_struct_operator_binding(
+    SemanticContext *ctx,
+    Type *owner_type,
+    TokenType op,
+    int is_unary
+) {
+    for (StructOperatorBinding *binding = ctx->struct_operators;
+         binding;
+         binding = binding->next) {
+        if (binding->owner_type == owner_type &&
+            binding->op == op &&
+            binding->is_unary == !!is_unary) {
+            return binding;
+        }
+    }
+    return NULL;
+}
+
 static StringView make_struct_method_function_name(
     SemanticContext *ctx,
     Type *owner_type,
@@ -14047,6 +14230,131 @@ static int register_struct_method_signatures(SemanticContext *ctx, Node *owner_d
             ok = 0;
         }
     }
+    return ok;
+}
+
+static int register_struct_operator_bindings(SemanticContext *ctx, Node *owner_decl)
+{
+    if (!owner_decl || owner_decl->type != NODE_STRUCT_DECL ||
+        owner_decl->as.struct_decl.operators.count == 0) {
+        return 1;
+    }
+
+    Type *owner_type = owner_decl->as.struct_decl.resolved_type;
+    if (!owner_type || owner_type->kind != TYPE_STRUCT)
+        return 0;
+
+    if (owner_decl->as.struct_decl.is_repr_c || owner_decl->as.struct_decl.is_union ||
+        owner_decl->as.struct_decl.is_incomplete) {
+        semantic_error(
+            ctx,
+            owner_decl,
+            "operators are currently supported only on ordinary complete Coglet structs"
+        );
+        return 0;
+    }
+
+    int ok = 1;
+    for (int i = 0; i < owner_decl->as.struct_decl.operators.count; i++) {
+        StructOperatorDecl declaration = owner_decl->as.struct_decl.operators.items[i];
+
+        if (find_struct_operator_binding(
+                ctx, owner_type, declaration.op, declaration.is_unary)) {
+            semantic_error_fmt(
+                ctx,
+                owner_decl,
+                "duplicate %soperator mapping for '%s' on struct '%.*s'",
+                declaration.is_unary ? "unary " : "",
+                source_operator_spelling(declaration.op),
+                (int)owner_type->struct_name.length,
+                owner_type->struct_name.data
+            );
+            ok = 0;
+            continue;
+        }
+
+        StructMethodBinding *method = find_struct_method_binding(
+            ctx, owner_type, declaration.method_name);
+        if (!method) {
+            semantic_error_fmt(
+                ctx,
+                owner_decl,
+                "operator '%s' refers to unknown method '%.*s'",
+                source_operator_spelling(declaration.op),
+                (int)declaration.method_name.length,
+                declaration.method_name.data
+            );
+            ok = 0;
+            continue;
+        }
+
+        if (!method->is_instance) {
+            semantic_error_fmt(
+                ctx,
+                method->function,
+                "operator '%s' must map to an instance method",
+                source_operator_spelling(declaration.op)
+            );
+            ok = 0;
+            continue;
+        }
+
+        Type *function_type = method->function_type;
+        int expected_parameter_count = declaration.is_unary ? 1 : 2;
+        if (function_type->parameter_count != expected_parameter_count) {
+            if (declaration.is_unary) {
+                semantic_error_fmt(
+                    ctx,
+                    method->function,
+                    "unary operator '%s' method must have only the 'self' parameter",
+                    source_operator_spelling(declaration.op)
+                );
+            } else {
+                semantic_error_fmt(
+                    ctx,
+                    method->function,
+                    "binary operator '%s' method must take exactly one right-hand operand",
+                    source_operator_spelling(declaration.op)
+                );
+            }
+            ok = 0;
+            continue;
+        }
+
+        /* Operators are pure value transformations in this first version. */
+        if (!type_equal(function_type->parameters[0], owner_type)) {
+            semantic_error_fmt(
+                ctx,
+                method->function,
+                "operator '%s' receiver must be 'self: Self' by value",
+                source_operator_spelling(declaration.op)
+            );
+            ok = 0;
+            continue;
+        }
+
+        if (!type_equal(function_type->return_type, owner_type)) {
+            semantic_error_fmt(
+                ctx,
+                method->function,
+                "operator '%s' method must return Self",
+                source_operator_spelling(declaration.op)
+            );
+            ok = 0;
+            continue;
+        }
+
+        StructOperatorBinding *binding = arena_new(ctx->arena, StructOperatorBinding);
+        *binding = (StructOperatorBinding){
+            .owner_type = owner_type,
+            .op = declaration.op,
+            .is_unary = declaration.is_unary,
+            .method = method,
+            .next = ctx->struct_operators,
+        };
+        ctx->struct_operators = binding;
+    }
+
     return ok;
 }
 
@@ -14534,6 +14842,7 @@ static GenericStructSpecialization *instantiate_generic_struct(
         ctx->active_generic_struct_specialization = spec;
         fill_struct_fields(ctx, decl);
         register_struct_method_signatures(ctx, decl);
+        register_struct_operator_bindings(ctx, decl);
         /*
          * Concrete generic-struct method signatures are resolved here, but
          * bodies are checked lazily on first call. This mirrors generic

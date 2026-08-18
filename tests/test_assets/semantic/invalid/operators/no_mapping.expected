@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/operators/no_mapping.cog:5:5: error: operator '+' is not defined for Point
+    a + b;
+    ^~~~~
+1 semantic error generated.

@@ -755,8 +755,63 @@ cached and lower normally.
 Associated and instance calls are resolved semantically and rewritten to ordinary
 concrete function calls with an explicit receiver before CogIR lowering. CogIR and
 both backends contain no method-dispatch concept. There is no virtual dispatch,
-method overloading, extension-method mechanism, generic method type parameter list,
-or operator overloading in this first version.
+method overloading, extension-method mechanism, or generic method type parameter list
+in this first version.
+
+## Struct Operators
+
+Ordinary complete Coglet structs may explicitly map a small arithmetic-operator set
+to existing instance methods. The mapping is declared once inside the struct instead
+of defining C++-style `operator+` functions or introducing a trait/implementation
+block:
+
+```c
+Vec2::<T: numeric> struct {
+    x: T;
+    y: T;
+
+    add::(self: Self, other: Self) -> Self {
+        return Self { x = self.x + other.x, y = self.y + other.y };
+    }
+
+    scale::(self: Self, scalar: T) -> Self {
+        return Self { x = self.x * scalar, y = self.y * scalar };
+    }
+
+    neg::(self: Self) -> Self {
+        return Self { x = -self.x, y = -self.y };
+    }
+
+    operators {
+        + = add;
+        * = scale;
+        unary - = neg;
+    }
+}
+```
+
+The first operator facility supports binary `+`, `-`, `*`, `/`, unary `-`, and
+the corresponding `+=`, `-=`, `*=`, `/=` compound assignments. An operator target
+must be an instance method whose receiver is exactly `self: Self` by value and whose
+return type is `Self`. A unary mapping has only the receiver parameter; a binary
+mapping has exactly one right-hand operand parameter. This deliberately prevents
+operator syntax from hiding mutation through a pointer receiver.
+
+Binary dispatch is left-directed and exact: the concrete left-hand struct selects
+one explicit mapping, then the right operand is checked against that method's one
+parameter using Coglet's ordinary contextual constant rules. There is no conversion
+ranking, commutativity rule, reverse dispatch, or search for a second operator
+candidate. For example, if a vector maps `*` to `scale(self, scalar)`, then
+`vector * 0.5` is valid while `0.5 * vector` is not implicitly invented.
+
+Compound assignment uses the same binary mapping and writes the returned `Self`
+back to the original target. The target place is evaluated once, so indexed/field
+targets retain ordinary compound-assignment evaluation semantics.
+
+Operator expressions are rewritten during semantic analysis to ordinary concrete
+method-function calls. Compound assignment retains its statement node but records
+the resolved concrete operator function for lowering. CogIR and both backends do
+not contain a user-defined operator dispatch mechanism.
 
 ## Void-Returning Calls
 

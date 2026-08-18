@@ -619,6 +619,14 @@ so fluent value-call chains such as `v.add(other).scale(0.5)` remain valid.
 dot products, `Vec3.cross`, squared length/distance, component min/max/clamp, and
 floating-specialization `length`, `distance`, and `normalized` methods.
 
+A restricted struct-operator facility is now implemented on top of methods rather
+than a separate trait/dispatch system. Structs explicitly map binary `+`, `-`, `*`,
+`/` and unary `-` to by-value `Self` methods; the corresponding compound assignments
+reuse those mappings while evaluating the target place once. `std.math` vectors use
+this for vector addition/subtraction, scalar multiply/divide, negation, and common
+gameplay forms such as `position += velocity * dt`. Component-wise multiply remains
+the explicit `.mul(...)` method.
+
 A deliberately strict exact-overload facility now provides type-directed runtime math
 without stdlib compiler magic: ordinary non-generic functions may share a name when
 their concrete parameter lists differ, and calls select only an exact match after
@@ -626,9 +634,16 @@ normal untyped-numeric defaulting. Generic-struct method bodies are checked lazi
 first concrete use, so integer vector specializations remain valid while a floating-
 only body is diagnosed only if called for an integer specialization.
 
+The first transform-math layer is also implemented entirely as ordinary standard-
+library source: `Quat<T: floating>`, `Mat3<T: floating>`, and `Mat4<T: floating>`
+provide quaternion composition/interpolation/vector rotation, matrix rotation/scaling/
+translation/TRS construction, matrix multiplication, and point/vector transforms.
+Matrices use a documented column-vector convention with `A * B` applying `B` first.
+Projection helpers remain deferred until handedness and clip-depth conventions can be
+made explicit rather than hidden behind an ambiguous default.
+
 Remaining generic/type-system design work includes generic enums/aliases, generic
 represented-C aggregates if justified, generic methods, user-defined
-traits/constraints, operator overloading, specialization, dynamic dispatch, type
-erasure, and separate generic compilation. Vector/matrix and container APIs should
-drive the next method/operator design decisions rather than adding syntax in the
-abstract.
+traits/constraints, broader operator categories/equality, specialization, dynamic
+dispatch, type erasure, and separate generic compilation. Vector/matrix and container
+APIs should continue to drive any expansion of the deliberately narrow operator set.

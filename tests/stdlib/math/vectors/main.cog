@@ -7,6 +7,28 @@ main::() -> s32 {
     if chained.x != 8 || chained.y != 10
         return 1;
 
+    operator_chained := (a + b) * 2;
+    if operator_chained.x != 8 || operator_chained.y != 10
+        return 16;
+
+    difference := a - b;
+    if difference.x != 2 || difference.y != 3
+        return 21;
+
+    mutable_a := a;
+    mutable_a += b;
+    mutable_a *= 2;
+    if mutable_a.x != 8 || mutable_a.y != 10
+        return 17;
+
+    mutable_a -= b;
+    if mutable_a.x != 7 || mutable_a.y != 9
+        return 22;
+
+    negative_a := -a;
+    if negative_a.x != -3 || negative_a.y != -4
+        return 18;
+
     if a.dot(a) != 25
         return 2;
     if a.length_squared() != 25
@@ -53,6 +75,17 @@ main::() -> s32 {
        unit.y < 0.6665 || unit.y > 0.6668 ||
        unit.z < 0.6665 || unit.z > 0.6668
         return 15;
+
+    half_f := f / 2.0;
+    if half_f.x != 0.5 || half_f.y != 1.0 || half_f.z != 1.0
+        return 19;
+
+    position := std.math.Vec3::<f32> { x = 10.0, y = 5.0, z = 2.0 };
+    velocity := std.math.Vec3::<f32> { x = 1.0, y = 0.0, z = -2.0 };
+    dt: f32 = 0.5;
+    position += velocity * dt;
+    if position.x != 10.5 || position.y != 5.0 || position.z != 1.0
+        return 20;
 
     color := std.math.Vec4::<f32>.splat(0.5);
     if color.dot(color) != 1.0

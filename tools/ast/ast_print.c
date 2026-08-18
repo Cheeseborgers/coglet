@@ -1001,6 +1001,24 @@ static void print_node(Node *node)
                 print_node(node->as.struct_decl.methods.items[i]);
             }
 
+            if (node->as.struct_decl.operators.count > 0) {
+                if (node->as.struct_decl.fields.count > 0 ||
+                    node->as.struct_decl.methods.count > 0)
+                    printf(" ");
+                printf("(operators");
+                for (int i = 0; i < node->as.struct_decl.operators.count; i++) {
+                    StructOperatorDecl mapping =
+                        node->as.struct_decl.operators.items[i];
+                    printf(" (");
+                    if (mapping.is_unary)
+                        printf("unary ");
+                    printf("%s ", token_type_str(mapping.op));
+                    print_string_view(mapping.method_name);
+                    printf(")");
+                }
+                printf(")");
+            }
+
             printf(")");
 
             break;
@@ -1684,6 +1702,21 @@ static void print_node_pretty(Node *node, int depth)
                     node->as.struct_decl.methods.items[i],
                     depth + 1
                 );
+            }
+
+            if (node->as.struct_decl.operators.count > 0) {
+                indent(depth + 1);
+                printf("operators:\n");
+                for (int i = 0; i < node->as.struct_decl.operators.count; i++) {
+                    StructOperatorDecl mapping =
+                        node->as.struct_decl.operators.items[i];
+                    indent(depth + 2);
+                    if (mapping.is_unary)
+                        printf("unary ");
+                    printf("%s -> ", token_type_str(mapping.op));
+                    print_string_view(mapping.method_name);
+                    printf("\n");
+                }
             }
 
             break;

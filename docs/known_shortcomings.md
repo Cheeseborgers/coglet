@@ -67,16 +67,44 @@ should not be forgotten.
   current vectors are ordinary Coglet structs. They have no guaranteed packed/SIMD
   ABI, no shader-vector ABI promise, and no automatic vector instruction mapping.
   Optimize only after profiling and after a target/ABI policy is designed.
-- **No vector operators or swizzles yet.** Explicit methods (`add`, `sub`, `mul`,
-  `scale`, `dot`, `cross`) keep semantics clear while operator overloading remains
-  undesigned. Swizzles such as `.xy`/`.xyz` are also deferred rather than added as
-  compiler magic.
+- **Vector operators are intentionally narrow.** `+`/`-` map to vector add/sub,
+  `*`/`/` map to scalar multiply/divide, and unary `-` maps to component negation.
+  Component-wise multiplication remains `.mul(other)`, reverse scalar multiplication
+  (`scalar * vector`) is not synthesized, and swizzles such as `.xy`/`.xyz` remain
+  deferred rather than compiler magic.
 - **Unsigned vector subtraction/cross products retain ordinary checked scalar
   semantics.** `numeric` includes unsigned integers, so operations that mathematically
   require a negative component can trigger the same checked underflow behavior as
   equivalent scalar Coglet code. A future richer constraint vocabulary may allow
   APIs to distinguish signed-or-floating vector operations without inventing one-off
   vector rules.
+
+## Matrix and quaternion math
+
+- **Matrices and quaternions are ordinary scalar structs, not SIMD or graphics-ABI types.**
+  `Mat3<T>`, `Mat4<T>`, and `Quat<T>` intentionally reuse generic structs and
+  methods. There is no guaranteed packed/SIMD layout, shader ABI, vector-register
+  calling convention, or automatic backend vectorization contract.
+- **The matrix convention is fixed but projection conventions are not yet exposed.**
+  Matrices use column-vector transforms with `A * B` applying `B` first. The
+  library currently omits perspective/orthographic/look-at helpers rather than
+  silently selecting handedness and clip-depth conventions. Future helpers should
+  use explicit convention-bearing names where the distinction matters.
+- **`Mat4` is currently affine-transform oriented.** `transform_point` includes
+  translation but does not perform a homogeneous perspective divide. Add a
+  separate projective point operation when projection matrices are introduced.
+- **General matrix inverses are not implemented yet.** `Mat3` exposes a
+  determinant, but neither `Mat3` nor `Mat4` currently exposes general `inverse`
+  or singularity/error handling. Rigid/affine specialized inverses may be more
+  useful for games and should be designed alongside the error policy.
+- **Quaternion constructors and interpolation have explicit validity preconditions.**
+  `from_axis_angle` requires a non-zero axis, `rotate_vector` assumes a normalized
+  quaternion for a pure rotation, `inverse` requires a non-zero quaternion, and
+  `slerp` expects normalized inputs. There are no checked/try variants or epsilon
+  policy yet.
+- **Euler-angle conversion is intentionally absent.** Rotation order and angle
+  convention are easy to make ambiguous. Add explicitly named Euler helpers only
+  after choosing and documenting their order semantics.
 
 ## Compiler/build hygiene
 
@@ -145,9 +173,13 @@ should not be forgotten.
   are checked lazily on first use. That permits specialization-specific body
   validity without declaring the requirement in the method signature. There is
   still no explicit method-specific generic constraint mechanism.
-- **Operator overloading is still absent.** Vector/matrix and container code should
-  drive that design now that ordinary methods exist, rather than introducing a
-  separate trait or dispatch system prematurely.
+- **User-defined operators are deliberately restricted.** Only binary `+`, `-`, `*`,
+  `/`, unary `-`, and matching arithmetic compound assignments are supported. A
+  mapping names one instance method with a by-value `Self` receiver and `Self` return;
+  there are no operator overload sets, conversion ranking, reverse/symmetric dispatch,
+  comparison/equality operators, indexing/call operators, custom precedence, or
+  logical/bitwise operator hooks. Expand this only when concrete stdlib/game APIs
+  demonstrate a need.
 - **Builtin generic constraints are closed.** The current constraint set is a
   small compiler-defined vocabulary, not a user-extensible trait/interface
   system. Do not grow it into an accidental trait system one special case at a

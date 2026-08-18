@@ -541,13 +541,23 @@ generic_struct_declaration =
 
 struct_member =
       struct_field_decl
-    | struct_method_decl;
+    | struct_method_decl
+    | struct_operator_block;
 
 struct_method_decl =
     identifier "::"
     "(" [parameter_list] ")"
     ["->" type]
     block;
+
+struct_operator_block =
+    "operators" "{" {struct_operator_mapping} "}";
+
+struct_operator_mapping =
+      binary_struct_operator "=" identifier ";"
+    | "unary" "-" "=" identifier ";";
+
+binary_struct_operator = "+" | "-" | "*" | "/";
 
 generic_type_application =
     named_type "::" "<" type {"," type} ">";
@@ -558,6 +568,11 @@ method declaration with first parameter `self` is an instance method; one withou
 `self` is an associated function. `Self` denotes the concrete owner inside method
 signatures and bodies. Generic methods (`method::<U>(...)`) are not part of the
 initial method grammar.
+
+The identifier `operators` is contextual: it starts an operator-mapping block only
+when followed by `{` in a struct body, so it is not a globally reserved keyword.
+`unary` is likewise contextual inside that block. Semantic analysis resolves each
+mapping to a method on the same concrete struct and validates the method signature.
 
 Calls use:
 

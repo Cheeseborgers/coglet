@@ -65,6 +65,9 @@ gcd_u64                       : (u64, u64) -> u64
 Vec2<T: numeric>
 Vec3<T: numeric>
 Vec4<T: numeric>
+Quat<T: floating>
+Mat3<T: floating>
+Mat4<T: floating>
 
 sqrt(f32) / sqrt(f64)
 sin(f32) / sin(f64)
@@ -125,7 +128,7 @@ all arithmetic, overflow, precision, and conversion behavior.
 ```c
 position := std.math.Vec3::<f32>.new(10.0, 5.0, 2.0);
 velocity := std.math.Vec3::<f32>.new(1.0, 0.0, -2.0);
-next := position.add(velocity).scale(0.5);
+next := position + velocity * 0.5;
 
 tile := std.math.Vec2::<s32>.new(12, 7);
 ```
@@ -138,6 +141,8 @@ add(other)              component addition
 sub(other)              component subtraction
 mul(other)              component-wise multiplication
 scale(scalar)           scalar multiplication
+divide(scalar)          scalar division
+neg() internally        component negation used by unary `-`
 dot(other)              dot product
 length_squared()         squared Euclidean length
 distance_squared(other) squared Euclidean distance
@@ -148,6 +153,25 @@ min(other)              component-wise minimum
 max(other)              component-wise maximum
 clamp(low, high)         component-wise clamp
 ```
+
+The vectors explicitly map arithmetic syntax to those methods:
+
+```c
+sum := a + b;
+difference := a - b;
+scaled := a * scalar;
+divided := a / scalar;
+backward := -a;
+
+position += velocity * dt;
+```
+
+`*` deliberately means scalar multiplication. Component-wise multiplication stays
+the explicit `a.mul(b)` method so one operator spelling does not have two competing
+right-hand meanings. Reverse scalar multiplication (`scalar * vector`) is not
+implicitly synthesized. Unary negation follows the ordinary scalar rules of the
+concrete element type, so it is invalid when instantiated with an unsigned integer
+element type.
 
 `Vec3<T>` additionally provides `cross(other)`. Because the vectors admit every
 `numeric` type, integer and unsigned arithmetic follows the normal Coglet scalar
@@ -162,6 +186,84 @@ operations; attempting to call one of these floating-only-by-body-validity metho
 on `VecN<s32>` or another integer specialization produces a semantic diagnostic at
 the call and invalid operation. `normalized()` requires a non-zero vector; no safe
 zero-length normalization helper is provided yet.
+
+### Quaternions and matrices
+
+`std.math` also exports ordinary generic `Quat<T>`, `Mat3<T>`, and `Mat4<T>`
+structs for floating-point game transforms. As with vectors, these are library
+source types rather than compiler/SIMD intrinsics and have no promised graphics-
+API ABI or packing.
+
+Matrices use explicit row/column element names (`m00`, `m01`, ...), but the
+mathematical convention is **column-vector transforms**:
+
+```text
+result = matrix * vector
+```
+
+Translation therefore occupies the final matrix column. Matrix composition
+follows the same convention: `A * B` applies `B` first and then `A`. This rule is
+part of the public math API and should not be changed merely to match a renderer's
+preferred memory layout.
+
+`Quat<T: floating>` provides:
+
+```text
+new(x, y, z, w)
+identity()
+from_axis_angle(axis, angle)
+add(other)
+scale(scalar)
+dot(other)
+length_squared()
+length()
+normalized()
+conjugate()
+inverse()
+multiply(other)
+rotate_vector(value)
+slerp(other, t)
+```
+
+Quaternion `*` maps to the Hamilton product and unary `-` negates all four
+components. `from_axis_angle` requires a non-zero axis because it normalizes the
+input. `rotate_vector` expects a normalized quaternion for a pure rotation.
+`slerp` follows the shortest quaternion arc, does not clamp `t`, and expects
+normalized inputs.
+
+`Mat3<T: floating>` provides identity/zero construction, row construction,
+3D scaling, X/Y/Z rotations, quaternion conversion, transpose, determinant,
+matrix multiplication, and `transform_vector`. `*` is matrix multiplication.
+
+`Mat4<T: floating>` provides identity/zero construction, translation, 3D
+scaling, X/Y/Z rotations, quaternion conversion, TRS construction, transpose,
+matrix multiplication, `transform_point`, and `transform_vector`. For example:
+
+```c
+import std.math as math;
+
+rotation := math.Quat::<f32>.from_axis_angle(
+    math.Vec3::<f32>.new(0.0, 0.0, 1.0),
+    math.half_pi
+);
+
+world := math.Mat4::<f32>.from_trs(
+    math.Vec3::<f32>.new(10.0, 20.0, 30.0),
+    rotation,
+    math.Vec3::<f32>.new(2.0, 2.0, 2.0)
+);
+
+point := world.transform_point(math.Vec3::<f32>.new(1.0, 0.0, 0.0));
+direction := world.transform_vector(math.Vec3::<f32>.new(1.0, 0.0, 0.0));
+```
+
+`from_trs(position, rotation, scale)` composes `translation * rotation * scale`,
+so scaling is applied first, then rotation, then translation. `transform_vector`
+deliberately ignores translation; `transform_point` includes it. The current
+`Mat4` API is affine-transform oriented and does not perform a perspective divide.
+Projection and camera helpers are deferred until their handedness and clip-depth
+conventions can be encoded explicitly in their names instead of hiding an
+OpenGL/Vulkan/Direct3D choice behind one ambiguous `perspective()` function.
 
 Runtime-backed math has a type-directed public API implemented with Coglet's
 strict exact overload resolution. For example, `sin(x)` selects `sin(f32)` for an

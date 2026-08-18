@@ -1,0 +1,9 @@
+Point::struct {
+    x: s32;
+    add::(self: Self, other: Self) -> Self { return self; }
+    sub::(self: Self, other: Self) -> Self { return other; }
+    operators {
+        + = add;
+        + = sub;
+    }
+}

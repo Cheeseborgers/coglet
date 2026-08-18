@@ -1,0 +1,4 @@
+Point::struct {
+    x: s32;
+    operators { + = missing; }
+}

@@ -1,0 +1,41 @@
+Vec::<T: numeric> struct {
+    x: T;
+    y: T;
+
+    add::(self: Self, other: Self) -> Self {
+        return Self { x = self.x + other.x, y = self.y + other.y };
+    }
+
+    sub::(self: Self, other: Self) -> Self {
+        return Self { x = self.x - other.x, y = self.y - other.y };
+    }
+
+    scale::(self: Self, scalar: T) -> Self {
+        return Self { x = self.x * scalar, y = self.y * scalar };
+    }
+
+    divide::(self: Self, scalar: T) -> Self {
+        return Self { x = self.x / scalar, y = self.y / scalar };
+    }
+
+    neg::(self: Self) -> Self {
+        return Self { x = -self.x, y = -self.y };
+    }
+
+    operators {
+        + = add;
+        - = sub;
+        * = scale;
+        / = divide;
+        unary - = neg;
+    }
+}
+
+use::() -> s32 {
+    a := Vec::<s32> { x = 3, y = 4 };
+    b := Vec::<s32> { x = 1, y = 2 };
+    c := -(a + b) * 2;
+    a += b;
+    a *= 3;
+    return c.x + c.y + a.x + a.y;
+}

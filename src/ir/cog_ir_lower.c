@@ -3158,6 +3158,57 @@ static int lower_compound_assignment_statement(ExecLowerState *state, Node *node
             return 0;
     }
 
+    SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
+    SemExprInfo *statement_info = semantic_get_expr_info(sem, node);
+    if (statement_info &&
+        statement_info->resolved_operator_function_id != INVALID_SEM_DECL_ID) {
+        CogIrLowerDeclBinding *function_binding = get_decl_binding_mut(
+            state->lower,
+            statement_info->resolved_operator_function_id
+        );
+        if (!function_binding || function_binding->kind != COG_IR_LOWER_DECL_FUNCTION) {
+            lower_error(
+                state->lower,
+                node->span,
+                "resolved compound operator has no concrete function binding"
+            );
+            return 0;
+        }
+
+        CogIrValueId callee = emit_function_reference(
+            state, function_binding, node->span);
+        if (callee == COG_IR_VALUE_INVALID)
+            return 0;
+
+        CogIrValueId arguments[2] = { lhs, rhs };
+        CogIrInstruction call = {
+            .op = COG_IR_OP_CALL,
+            .result_type = place.type,
+            .span = node->span,
+            .as.call = {
+                .callee = callee,
+                .arguments = arguments,
+                .argument_count = 2,
+            },
+        };
+        CogIrValueId result = COG_IR_VALUE_INVALID;
+        if (!cog_ir_emit(
+                state->lower->module,
+                state->function,
+                state->block,
+                &call,
+                &result)) {
+            lower_error(
+                state->lower,
+                node->span,
+                "failed to emit user-defined compound operator call"
+            );
+            return 0;
+        }
+        return result != COG_IR_VALUE_INVALID &&
+            emit_store(state, address, result, place.is_volatile, node->span);
+    }
+
     CogIrOp op = compound_assignment_op(state->lower->module, place.type, node->as.compound_assign.op);
     if ((int)op < 0) {
         lower_error(state->lower, node->span, "compound assignment is outside the current CogIR lowering slice");

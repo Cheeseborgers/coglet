@@ -812,6 +812,21 @@ set_tests_properties(
 )
 
 add_test(
+        NAME cog_ir_operators_lowering_dump
+        COMMAND "${CMAKE_COMMAND}"
+        -DEXE=$<TARGET_FILE:dump_ir>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/operators.cog
+        -DEXPECTED=${CMAKE_SOURCE_DIR}/tests/test_assets/ir/operators.expected
+        -DEXPECT_EXIT=0
+        -DOUTPUT_STREAM=stdout
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_diff_test.cmake"
+)
+set_tests_properties(
+        cog_ir_operators_lowering_dump
+        PROPERTIES LABELS "ir;ir.lowering;ir.dump;operator;method;struct;semantic;desugar"
+)
+
+add_test(
         NAME cog_ir_slices_lowering_dump
         COMMAND "${CMAKE_COMMAND}"
         -DEXE=$<TARGET_FILE:dump_ir>
@@ -1282,6 +1297,11 @@ add_host_c_executable_test(
 )
 
 add_host_c_executable_test(
+        backend_operators operators.cog 42
+        "backend;backend.c;ir;operator;method;struct;semantic;desugar;compound-assignment"
+)
+
+add_host_c_executable_test(
         backend_slices slices.cog 0
         "backend;backend.c;ir;slice;string;aggregate;generic"
 )
@@ -1673,6 +1693,7 @@ add_host_c_library_test(
 set(COGLET_STDLIB_SOURCE_ROOT "${CMAKE_SOURCE_DIR}/stdlib")
 set(COGLET_STDLIB_MATH_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/math/main.cog")
 set(COGLET_STDLIB_MATH_VECTORS_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/math/vectors/main.cog")
+set(COGLET_STDLIB_MATH_TRANSFORMS_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/math/transforms/main.cog")
 set(COGLET_STDLIB_IO_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.cog")
 set(COGLET_STDLIB_IO_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.stdout")
 set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/math_import/main.cog")
@@ -1707,6 +1728,21 @@ add_test(
 )
 set_tests_properties(stdlib_math_vectors_host_c
         PROPERTIES LABELS "stdlib;stdlib.source;std.math;vector;generic;method;backend;backend.c;module;import;discovery;warning-free")
+
+add_test(
+        NAME stdlib_math_transforms_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_MATH_TRANSFORMS_TEST_MAIN}"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_math_transforms_host_c${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -DBACKEND=host-c
+        -DFORBID_COMPILE_WARNINGS=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+)
+set_tests_properties(stdlib_math_transforms_host_c
+        PROPERTIES LABELS "stdlib;stdlib.source;std.math;matrix;quaternion;transform;generic;method;operator;backend;backend.c;module;import;discovery;warning-free")
 
 add_test(
         NAME stdlib_io_host_c
@@ -1812,6 +1848,21 @@ if(COGLET_HAS_LLVM_BACKEND)
         )
         set_tests_properties(stdlib_math_vectors_llvm_O${stdlib_opt_level}
             PROPERTIES LABELS "stdlib;stdlib.source;std.math;vector;generic;method;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
+
+        add_test(
+            NAME stdlib_math_transforms_llvm_O${stdlib_opt_level}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            "-DINPUTS=${COGLET_STDLIB_MATH_TRANSFORMS_TEST_MAIN}"
+            "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_math_transforms_llvm_O${stdlib_opt_level}${CMAKE_EXECUTABLE_SUFFIX}
+            -DEXPECT_EXIT=0
+            -DBACKEND=llvm
+            -DOPT_LEVEL=${stdlib_opt_level}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+        )
+        set_tests_properties(stdlib_math_transforms_llvm_O${stdlib_opt_level}
+            PROPERTIES LABELS "stdlib;stdlib.source;std.math;matrix;quaternion;transform;generic;method;operator;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
 
         add_test(
             NAME stdlib_io_llvm_O${stdlib_opt_level}
@@ -2446,6 +2497,11 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_methods
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;method;generic;struct;semantic;desugar;codegen;object;linker;stage7")
+    add_llvm_stage7_native_test(
+        backend_llvm_operators operators.cog 42
+    )
+    set_tests_properties(backend_llvm_operators
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;operator;method;struct;semantic;desugar;compound-assignment;codegen;object;linker;stage7")
     add_llvm_stage7_native_test(
         backend_llvm_slices slices.cog 0
     )

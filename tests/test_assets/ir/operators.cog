@@ -1,0 +1,29 @@
+Pair::struct {
+    x: s32;
+
+    add::(self: Self, other: Self) -> Self {
+        return Self { x = self.x + other.x };
+    }
+
+    scale::(self: Self, scalar: s32) -> Self {
+        return Self { x = self.x * scalar };
+    }
+
+    neg::(self: Self) -> Self {
+        return Self { x = -self.x };
+    }
+
+    operators {
+        + = add;
+        * = scale;
+        unary - = neg;
+    }
+}
+
+main::() -> s32 {
+    a := Pair { x = 3 };
+    b := Pair { x = 4 };
+    c := -(a + b) * 2;
+    a += b;
+    return c.x + a.x;
+}

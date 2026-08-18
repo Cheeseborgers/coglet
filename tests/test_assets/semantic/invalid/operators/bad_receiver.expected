@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/operators/bad_receiver.cog:3:5: error: operator '+' receiver must be 'self: Self' by value
+    add::(self: Self*, other: Self) -> Self {
+    ^~~
+1 semantic error generated.

@@ -1,0 +1,62 @@
+Pair::struct {
+    x: s32;
+    y: s32;
+
+    add::(self: Self, other: Self) -> Self {
+        return Self { x = self.x + other.x, y = self.y + other.y };
+    }
+
+    sub::(self: Self, other: Self) -> Self {
+        return Self { x = self.x - other.x, y = self.y - other.y };
+    }
+
+    scale::(self: Self, scalar: s32) -> Self {
+        return Self { x = self.x * scalar, y = self.y * scalar };
+    }
+
+    divide::(self: Self, scalar: s32) -> Self {
+        return Self { x = self.x / scalar, y = self.y / scalar };
+    }
+
+    neg::(self: Self) -> Self {
+        return Self { x = -self.x, y = -self.y };
+    }
+
+    operators {
+        + = add;
+        - = sub;
+        * = scale;
+        / = divide;
+        unary - = neg;
+    }
+}
+
+index_calls := 0;
+
+next_index::() -> u64 {
+    index_calls += 1;
+    return 0;
+}
+
+main::() -> s32 {
+    a := Pair { x = 3, y = 4 };
+    b := Pair { x = 1, y = 2 };
+
+    c := -(a + b) * 2;
+    if c.x != -8 || c.y != -12
+        return 1;
+
+    values: Pair[2] = [a, b];
+    values[next_index()] += b;
+    if index_calls != 1
+        return 2;
+    if values[0].x != 4 || values[0].y != 6
+        return 3;
+
+    values[0] *= 3;
+    values[0] /= 2;
+    if values[0].x != 6 || values[0].y != 9
+        return 4;
+
+    return 42;
+}

@@ -1182,6 +1182,22 @@ dispatch in CogIR or either backend. Concrete method display/debug names are
 deterministic (`Point.new`, `Vec2<f32>.sum`) but symbol text is not used as semantic
 identity.
 
+Restricted user-defined operators reuse this exact method boundary. A struct's
+frontend-only `operators { ... }` declarations are resolved after the concrete method
+signatures have been registered. Each mapping records the concrete owner type,
+operator token/arity, and concrete method declaration identity. Mapping validation
+requires a by-value `Self` receiver and `Self` return so operator syntax remains a
+pure value transformation.
+
+Binary and unary operator expression nodes are rewritten during semantic checking to
+ordinary calls of the mapped concrete method. Compound assignment cannot simply be
+rewritten to `target = target op rhs`, because that could evaluate a complex target
+twice. Instead semantic metadata records the resolved operator declaration ID; CogIR
+lowering evaluates the target place once, loads its value, calls the concrete method,
+and stores the returned value back through the original address. The resulting CogIR
+still contains only ordinary function references/calls and stores, not an operator
+dispatch opcode.
+
 ## Contextual Conversion Metadata
 
 Semantic analysis now records implicit/contextual expression adaptation

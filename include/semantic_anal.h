@@ -101,6 +101,7 @@ typedef struct GenericSpecialization GenericSpecialization;
 typedef struct GenericStructSpecialization GenericStructSpecialization;
 typedef struct SliceTypeIntern SliceTypeIntern;
 typedef struct StructMethodBinding StructMethodBinding;
+typedef struct StructOperatorBinding StructOperatorBinding;
 
 typedef struct SemanticImportBinding {
     SemanticModule *module;
@@ -208,6 +209,9 @@ typedef struct {
 
     /* Frontend-only methods attached to concrete nominal struct types. */
     StructMethodBinding *struct_methods;
+
+    /* Frontend-only explicit operator mappings attached to struct methods. */
+    StructOperatorBinding *struct_operators;
 
     /* Canonical structural slice types, frontend-only. */
     SliceTypeIntern *slice_types;

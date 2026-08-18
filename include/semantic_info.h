@@ -327,6 +327,13 @@ typedef struct SemExprInfo {
     int value_is_volatile;
 
     /*
+     * Frontend-only resolved user-defined operator target for statement forms
+     * that remain syntactically compound assignments through CogIR lowering.
+     * Expression operators are rewritten to ordinary calls before lowering.
+     */
+    SemDeclId resolved_operator_function_id;
+
+    /*
      * Intrinsic compile-time value cached while semantic checking still has
      * lexical scope available. Retrieval applies any recorded contextual
      * conversion without re-running name lookup or constant evaluation.

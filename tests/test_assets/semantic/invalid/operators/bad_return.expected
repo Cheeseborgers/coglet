@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/operators/bad_return.cog:3:5: error: operator '+' method must return Self
+    add::(self: Self, other: Self) -> s32 {
+    ^~~
+1 semantic error generated.

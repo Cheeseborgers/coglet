@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/operators/unknown_method.cog:1:1: error: operator '+' refers to unknown method 'missing'
+Point::struct {
+^~~~~
+1 semantic error generated.

@@ -360,6 +360,10 @@ Node *ast_new_struct_decl(Arena *arena, const char *name, int name_length, Sourc
     node->as.struct_decl.methods.count    = 0;
     node->as.struct_decl.methods.capacity = 0;
 
+    node->as.struct_decl.operators.items    = NULL;
+    node->as.struct_decl.operators.count    = 0;
+    node->as.struct_decl.operators.capacity = 0;
+
     return node;
 }
 
@@ -715,6 +719,24 @@ Node *ast_clone(Arena *arena, const Node *node)
                     &clone->as.struct_decl.methods,
                     ast_clone(arena, node->as.struct_decl.methods.items[i])
                 );
+            }
+
+            clone->as.struct_decl.operators.items = NULL;
+            clone->as.struct_decl.operators.count = 0;
+            clone->as.struct_decl.operators.capacity = 0;
+            if (node->as.struct_decl.operators.count > 0) {
+                size_t bytes = sizeof(StructOperatorDecl) *
+                    (size_t)node->as.struct_decl.operators.count;
+                clone->as.struct_decl.operators.items = arena_alloc(arena, bytes);
+                memcpy(
+                    clone->as.struct_decl.operators.items,
+                    node->as.struct_decl.operators.items,
+                    bytes
+                );
+                clone->as.struct_decl.operators.count =
+                    node->as.struct_decl.operators.count;
+                clone->as.struct_decl.operators.capacity =
+                    node->as.struct_decl.operators.count;
             }
             break;
 

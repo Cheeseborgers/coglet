@@ -52,7 +52,7 @@ typedef enum {
 #define INVALID_VARIABLE_ID ((size_t)-1)
 #define INVALID_FLOW_OWNER_ID ((size_t)-1)
 
-typedef struct Symbol {
+struct Symbol {
     StringView name;
 
     SymbolKind kind;
@@ -87,7 +87,7 @@ typedef struct Symbol {
     size_t variable_id;
 
     struct Symbol *next;
-} Symbol;
+};
 
 typedef struct Scope {
     Symbol *symbols;

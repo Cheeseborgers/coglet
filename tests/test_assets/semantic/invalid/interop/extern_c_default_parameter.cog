@@ -1,2 +1,0 @@
-#extern(c)
-bad_default::(value: s32 = 1) -> s32;

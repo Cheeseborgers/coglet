@@ -60,7 +60,6 @@ Supported features include:
 
 * typed parameters
 * grouped parameter declarations
-* optional default parameter values
 * explicit return types
 * omitted return types defaulting to `void`
 * argument type checking

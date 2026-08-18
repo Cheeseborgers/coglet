@@ -108,15 +108,10 @@ should not be forgotten.
 
 ## Compiler/build hygiene
 
-- **Clang currently reports repeated typedef-redefinition warnings in existing
-  frontend headers.** A Clang build succeeds and the stdlib runtime tests pass,
-  but `Parser`, `Type`, and `Symbol` forward/full typedef declarations trigger
-  `-Wtypedef-redefinition`. This predates the runtime-math work and should be
-  cleaned up so the project's warning-free policy holds across both GCC and
-  Clang, not only the normal GCC configuration.
 
 ## Code generation and linking
 
+- **Host-C can warn for discarded non-void call results.** A standalone value-returning call such as `identity::<s32>(1);` lowers to a CogIR call whose result is unused, but the host-C backend currently materializes that result as a temporary local. Native C compilation can therefore report `-Wunused-variable`. A backend/lowering cleanup should emit discarded calls without an unnecessary C temporary while preserving the call side effect.
 - **No whole-program reachability/DCE yet.** Importing a module can emit unused
   concrete internal functions in host-C output. Generated C marks such functions
   as intentionally maybe-unused to keep normal builds warning-free; a later
@@ -173,8 +168,7 @@ should not be forgotten.
 - **The initial container API is intentionally small.** There is no insert/remove/swap-remove, shrink-to-fit, append-slice, iterator protocol, fallible reserve, or ownership transfer operation yet.
 - **Layout query results and container lengths are fixed `u64`.** `size_of::<T>()`, `align_of::<T>()`, slice lengths, and `Array` length/capacity all match the initial 64-bit target focus rather than a general target-sized `usize`.
 - **`size_of::<T>()` / `align_of::<T>()` are not semantic constant expressions yet.** They lower to target-layout constants in CogIR/backends, but cannot currently be used where the frontend requires a compile-time constant.
-- **Method default arguments are parsed but omitted defaults are not yet applied at calls.** Standard-library APIs should use explicit convenience methods/constructors until method default-argument call lowering is implemented; `Arena.new(parent)` and `Arena.with_block_size(parent, size)` avoid relying on that gap.
-- **Standalone explicit generic calls remain parser-sensitive.** A statement beginning directly with `name::<T>();` can be confused with a generic declaration. Use the call in an ordinary expression context for now; the parser should eventually disambiguate this without a workaround.
+- **Default parameters are intentionally not supported in the current language.** An older parser-only implementation stored default expressions on parameter AST nodes, but ordinary and method calls never consumed omitted arguments. That dead path was removed during cleanup. Reintroduce defaults only after defining declaration-scope name resolution, interaction with exact overloads/generics, and call-site evaluation semantics; use explicit convenience functions/constructors meanwhile.
 - **Allocator portability is implemented but not yet continuously validated on every claimed host.** The runtime allocator is architecture-neutral C for Linux/Windows x86-64/AArch64, but this environment only executes Linux x86-64; native CI remains required for the rest of the matrix.
 
 ## Generics and aggregate types

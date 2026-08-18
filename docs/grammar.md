@@ -469,6 +469,12 @@ generic_builtin_constraint =
     | "numeric"
     | "ordered";
 
+parameter_list =
+    parameter_group {"," parameter_group};
+
+parameter_group =
+    identifier {"," identifier} ":" type;
+
 extern_c_function_declaration =
     "#" "extern" "(" "c" {"," extern_c_option} ")"
     identifier "::"

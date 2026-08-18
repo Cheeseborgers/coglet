@@ -21,7 +21,6 @@
  *     - a compiler builtin identifier used as a resolved call target.
  */
 
-typedef struct Type Type;
 typedef struct Symbol Symbol;
 
 /*

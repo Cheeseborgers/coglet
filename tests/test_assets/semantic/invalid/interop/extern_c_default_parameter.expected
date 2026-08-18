@@ -1,4 +1,0 @@
-tests/test_assets/semantic/invalid/interop/extern_c_default_parameter.cog:2:15: error: #extern(c) parameters cannot have default values
-bad_default::(value: s32 = 1) -> s32;
-              ^~~~~
-1 semantic error generated.

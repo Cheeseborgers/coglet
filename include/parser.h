@@ -7,7 +7,7 @@
 #include "parser_diag.h"
 #include "utils/arena.h"
 
-typedef struct Parser {
+struct Parser {
     Lexer lexer;
 
     Token current;   // next token not yet consumed (1-token lookahead)
@@ -30,7 +30,7 @@ typedef struct Parser {
     size_t diagnostic_count;
 
     int suppress_struct_init;   // true while parsing a bare if/while/for condition
-} Parser;
+};
 
 void parser_init(Parser *p, const char *filename, const char *source, Arena *arena, Arena *scratch);
 

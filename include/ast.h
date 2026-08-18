@@ -300,7 +300,6 @@ struct Node {
         struct {
             Type *var_type;
             StringView name;
-            Node *default_value;   // NULL if none
         } param_decl;
 
         struct {
@@ -496,7 +495,7 @@ Node *ast_new_var_decl(Arena *arena, Type *type, const char *name, int length, N
 Node *ast_new_var_decl_group(Arena *arena, SourceSpan span);
 Node *ast_new_struct_field_decl(Arena *arena, Type *type, const char *name, int length, SourceSpan span);
 Node *ast_new_type_ref(Arena *arena, Type *source_type, SourceSpan span);
-Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, SourceSpan span);
+Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, SourceSpan span);
 Node *ast_new_return(Arena *arena, Node *value, SourceSpan span);
 Node *ast_new_defer(Arena *arena, Node *statement, SourceSpan span);
 Node *ast_new_while(Arena *arena, Node *cond, Node *body, SourceSpan span);

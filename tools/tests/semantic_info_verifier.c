@@ -477,10 +477,6 @@ static void walk_node(ExpressionWalker *walker, Node *node)
             break;
 
         case NODE_FUNC_PARAM_DECL:
-            walk_expression(
-                walker,
-                node->as.param_decl.default_value
-            );
             break;
 
         case NODE_FUNC_DECL:

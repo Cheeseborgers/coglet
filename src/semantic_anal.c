@@ -12632,33 +12632,6 @@ static void check_param_decl(SemanticContext *ctx, Node *node) {
         }
     }
 
-    Node *default_value = node->as.param_decl.default_value;
-
-    if (default_value) {
-        if (type) {
-
-            if (!check_initializer_against_type(ctx,type, default_value)) {
-                return;
-            }
-
-        } else {
-            Type *default_type =
-                check_value_expression(ctx, default_value);
-
-            if (!default_type)
-                return;
-
-            type = concretize_inferred_type(
-                ctx,
-                default_value,
-                default_type
-            );
-
-            if (!type)
-                return;
-        }
-    }
-
     if (!type) {
         semantic_error(ctx, node,
             "could not determine parameter type");
@@ -13812,16 +13785,6 @@ static int validate_c_abi_function_signature(
 
     for (int i = 0; i < type->parameter_count; i++) {
         Node *param = func->as.func_decl.params.items[i];
-
-        if (param->as.param_decl.default_value) {
-            semantic_error_fmt(
-                ctx,
-                param,
-                "%s parameters cannot have default values",
-                annotation
-            );
-            ok = 0;
-        }
 
         if (extern_c_type_supported(type->parameters[i], 0))
             continue;

@@ -738,11 +738,6 @@ static void print_node(Node *node)
             print_string_view(node->as.param_decl.name);
 
 
-            if (node->as.param_decl.default_value) {
-                printf(" = ");
-                print_node(node->as.param_decl.default_value);
-            }
-
             printf(")");
 
             break;
@@ -1331,18 +1326,6 @@ static void print_node_pretty(Node *node, int depth)
 
             print_type(node->as.param_decl.var_type);
             printf("\n");
-
-            if (node->as.param_decl.default_value)
-            {
-                indent(depth + 1);
-                printf("default:\n");
-
-                print_node_pretty(
-                    node->as.param_decl.default_value,
-                    depth + 2
-                );
-            }
-
             break;
 
         case NODE_STRUCT_FIELD_DECL:

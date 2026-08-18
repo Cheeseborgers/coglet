@@ -85,7 +85,7 @@ static Node *finish_field(Parser *p, Node *object);
 static Node *finish_index(Parser *p, Node *object);
 
 static int is_assignable(Node *n);
-static int generic_suffix_followed_by_dot(Parser *p);
+static int generic_suffix_starts_expression(Parser *p);
 
 static void error_at(Parser *p, Token *tok, const char *msg);
 static void add_diagnostic(Parser *p, Token token, const char *message);
@@ -1563,40 +1563,19 @@ static int parse_parameter_group(Parser *p, Node *func)
 
     Type *type = parse_type(p);
 
-    // One default expression parsed for the whole parameter group:
-    //
-    // (x, y, z: s32 = 10)
-    //
-    // group_default_value -> NODE_NUMBER(10)
-    //
-    Node *group_default_value = NULL;
-
     if (match(p, TOK_EQUAL)) {
-        group_default_value = parse_assignment(p);
+        error_at(p, &p->previous, "default parameters are not supported");
+        /* Consume the old parser-only spelling so one unsupported feature does
+         * not cascade into unrelated function-body diagnostics. */
+        (void)parse_assignment(p);
     }
 
     for (PendingParamName *it = head; it; it = it->next) {
-
-        // Each parameter receives its own AST copy.
-        //
-        // x.default_value -> NODE_NUMBER(10)
-        // y.default_value -> NODE_NUMBER(10)
-        //
-        Node *param_default_value = NULL;
-
-        if (group_default_value) {
-            param_default_value = ast_clone(
-                p->arena,
-                group_default_value
-            );
-        }
-
         Node *param = ast_new_func_param_decl(
             p->arena,
             type,
             it->name.start,
             it->name.length,
-            param_default_value,
             it->name.span
         );
 
@@ -2743,7 +2722,7 @@ static Node *parse_decl_or_expr_statement(Parser *p)
         }
 
         if (match(p, TOK_COLON_COLON)) {
-            if (check(p, TOK_LESS) && generic_suffix_followed_by_dot(p)) {
+            if (check(p, TOK_LESS) && generic_suffix_starts_expression(p)) {
                 Node *base = ast_new_ident(
                     p->arena,
                     name.start,
@@ -3387,27 +3366,59 @@ static int parse_explicit_type_arguments(Parser *p, TypeList *out, const char *s
     return consume_generic_greater(p, "expected '>' after generic type arguments");
 }
 
-static int generic_suffix_followed_by_dot(Parser *p)
+static int generic_suffix_starts_expression(Parser *p)
 {
     if (!p || p->current.type != TOK_LESS)
         return 0;
 
+    /*
+     * At statement start, both a generic declaration and an explicit generic
+     * call begin with `name::<...>`. Look past the generic argument list and,
+     * when necessary, the following parenthesized list before deciding which
+     * grammar to enter. A declaration is uniquely identified by `struct` /
+     * `resource`, or by a function parameter list followed by `->` / `{`.
+     * Everything else is an expression application. This keeps ordinary
+     * expression-level shift tokenization unchanged and avoids reparsing AST.
+     */
     Lexer lookahead = p->lexer;
-    int depth = 1;
-    while (depth > 0) {
+    int generic_depth = 1;
+    while (generic_depth > 0) {
         Token token = lexer_next(&lookahead);
         if (token.type == TOK_EOF || token.type == TOK_ERROR)
             return 0;
         if (token.type == TOK_LESS) {
-            depth++;
+            generic_depth++;
         } else if (token.type == TOK_GREATER) {
-            depth--;
+            generic_depth--;
         } else if (token.type == TOK_SHIFT_RIGHT) {
-            depth -= 2;
+            generic_depth -= 2;
         }
     }
 
-    return lexer_next(&lookahead).type == TOK_DOT;
+    Token after_generic = lexer_next(&lookahead);
+    if (after_generic.type == TOK_DOT || after_generic.type == TOK_LBRACE)
+        return 1;
+
+    if (after_generic.type == TOK_STRUCT || after_generic.type == TOK_RESOURCE)
+        return 0;
+
+    if (after_generic.type != TOK_LPAREN)
+        return 0;
+
+    int paren_depth = 1;
+    while (paren_depth > 0) {
+        Token token = lexer_next(&lookahead);
+        if (token.type == TOK_EOF || token.type == TOK_ERROR)
+            return 0;
+        if (token.type == TOK_LPAREN)
+            paren_depth++;
+        else if (token.type == TOK_RPAREN)
+            paren_depth--;
+    }
+
+    Token after_parens = lexer_next(&lookahead);
+    return after_parens.type != TOK_ARROW &&
+           after_parens.type != TOK_LBRACE;
 }
 
 static int generic_callee_dotted_name(

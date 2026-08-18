@@ -1,0 +1,26 @@
+program
+  func identity<T> -> T
+    params:
+      param_decl value: T
+    body:
+      block
+        return
+          value
+  struct Box<T>
+    struct_field_decl value: T
+  func main -> s32
+    body:
+      block
+        call::<s32>
+          identity
+          1
+        var_decl box: <inferred>
+          init:
+            struct_init Box::<s32>
+              field_init value
+                2
+        return
+          (-)
+            field .value
+              box
+            2

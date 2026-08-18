@@ -1,0 +1,13 @@
+identity::<T>(value: T) -> T {
+    return value;
+}
+
+Box::<T> struct {
+    value: T;
+}
+
+main::() -> s32 {
+    identity::<s32>(1);
+    box := Box::<s32> { value = 2 };
+    return box.value - 2;
+}

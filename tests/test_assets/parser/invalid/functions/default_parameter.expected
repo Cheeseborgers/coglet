@@ -1,0 +1,3 @@
+error: default parameters are not supported
+add::(a: s32, b: s32 = 1) -> s32 {
+                     ^

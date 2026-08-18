@@ -252,12 +252,11 @@ Node *ast_new_type_ref(Arena *arena, Type *source_type, SourceSpan span) {
     return node;
 }
 
-Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, Node *default_value, SourceSpan span) {
+Node *ast_new_func_param_decl(Arena *arena, Type *type, const char *name, int length, SourceSpan span) {
     Node *node = new_node(arena, NODE_FUNC_PARAM_DECL, span);
-    node->as.param_decl.var_type      = type;
-    node->as.param_decl.name.data     = name;
-    node->as.param_decl.name.length   = length;
-    node->as.param_decl.default_value = default_value;
+    node->as.param_decl.var_type    = type;
+    node->as.param_decl.name.data   = name;
+    node->as.param_decl.name.length = length;
     return node;
 }
 
@@ -632,11 +631,9 @@ Node *ast_clone(Arena *arena, const Node *node)
             break;
 
         case NODE_FUNC_PARAM_DECL:
-            clone->as.param_decl.var_type      = node->as.param_decl.var_type;
-            clone->as.param_decl.name.data     = node->as.param_decl.name.data;
-            clone->as.param_decl.name.length   = node->as.param_decl.name.length;
-            clone->as.param_decl.default_value =
-                ast_clone(arena, node->as.param_decl.default_value);
+            clone->as.param_decl.var_type    = node->as.param_decl.var_type;
+            clone->as.param_decl.name.data   = node->as.param_decl.name.data;
+            clone->as.param_decl.name.length = node->as.param_decl.name.length;
             break;
 
         case NODE_STRUCT_FIELD_DECL:

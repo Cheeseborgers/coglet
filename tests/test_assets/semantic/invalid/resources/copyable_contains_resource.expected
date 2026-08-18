@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/copyable_contains_resource.cog:2:17: error: copyable struct 'Owner' cannot contain resource field 'handle'; declare the owner as resource
+Owner::struct { handle: Handle; }
+                ^~~~~~
+1 semantic error generated.

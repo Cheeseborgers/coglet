@@ -1,0 +1,25 @@
+Handle::resource {
+    value: s32;
+
+    new::(value: s32) -> Self {
+        return Self { value = value };
+    }
+
+    get::(self: readonly Self*) -> s32 {
+        return (*self).value;
+    }
+}
+
+consume::(handle: Handle) -> s32 {
+    return handle.get();
+}
+
+main::() -> s32 {
+    first := Handle.new(40);
+    second := move first;
+
+    // A moved local becomes uninitialized but may be assigned a fresh owner.
+    first = Handle.new(2);
+
+    return consume(move second) + consume(move first);
+}

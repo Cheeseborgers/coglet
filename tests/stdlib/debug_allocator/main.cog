@@ -1,0 +1,64 @@
+import std.array as array;
+import std.mem as mem;
+
+main::() -> s32 {
+    debug := mem.DebugAllocator.new(mem.heap());
+    defer debug.deinit();
+    alloc := debug.allocator();
+
+    if debug.live_allocations() != 0 || debug.live_bytes() != 0
+        return 1;
+    if !debug.check()
+        return 2;
+
+    values := mem.alloc::<s32>(alloc, 4);
+    values[0] = 10;
+    values[1] = 20;
+    values[2] = 30;
+    values[3] = 40;
+
+    if debug.live_allocations() != 1 || debug.live_bytes() != 16
+        return 3;
+
+    values = mem.resize(alloc, values, 4, 8);
+    if values[0] != 10 || values[3] != 40
+        return 4;
+    if debug.live_allocations() != 1 || debug.live_bytes() != 32
+        return 5;
+    if debug.total_allocations() < 2 || debug.total_bytes() < 48
+        return 6;
+
+    mem.free(alloc, values, 8);
+    if debug.live_allocations() != 0 || debug.live_bytes() != 0
+        return 7;
+
+    list := array.Array::<s32>.new(alloc);
+    list.push(1);
+    list.push(2);
+    list.push(3);
+    if debug.live_allocations() != 1
+        return 8;
+    list.deinit();
+    if debug.live_allocations() != 0
+        return 9;
+
+    // Guard checking catches writes immediately beyond an allocation. Restore
+    // the byte before freeing so the normal cleanup path remains quiet.
+    guarded := mem.alloc::<u8>(alloc, 4);
+    if guarded[0] != 0xCD || guarded[1] != 0xCD
+        return 10;
+    guarded[4] = 0;
+    if debug.check()
+        return 11;
+    guarded[4] = 0xA5;
+    if !debug.check()
+        return 12;
+    mem.free(alloc, guarded, 4);
+
+    if debug.error_count() != 0
+        return 13;
+    if debug.report_leaks() != 0
+        return 14;
+
+    return 0;
+}

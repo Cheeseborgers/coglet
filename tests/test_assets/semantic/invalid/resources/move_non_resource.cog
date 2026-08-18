@@ -1,0 +1,5 @@
+main::() -> s32 {
+    value := 42;
+    other := move value;
+    return other;
+}

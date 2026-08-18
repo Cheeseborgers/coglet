@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/overwrite.cog:4:5: error: resource assignment would overwrite an initialized owner; move or deinitialize it first
+    value = Handle { value = 2 };
+    ^~~~~
+1 semantic error generated.

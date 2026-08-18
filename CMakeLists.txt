@@ -1322,6 +1322,11 @@ add_host_c_executable_test(
 )
 
 add_host_c_executable_test(
+        backend_resources resources.cog 42
+        "backend;backend.c;ir;resource;move;ownership;semantic;desugar"
+)
+
+add_host_c_executable_test(
         backend_slices slices.cog 0
         "backend;backend.c;ir;slice;string;aggregate;generic"
 )
@@ -1719,6 +1724,8 @@ set(COGLET_STDLIB_IO_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.stdou
 set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/math_import/main.cog")
 set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/math_import/main.stdout")
 set(COGLET_STDLIB_ARRAY_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/array/main.cog")
+set(COGLET_STDLIB_MEMORY_PATTERNS_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/memory/main.cog")
+set(COGLET_STDLIB_DEBUG_ALLOCATOR_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/debug_allocator/main.cog")
 
 add_test(
         NAME stdlib_math_host_c
@@ -1779,6 +1786,36 @@ add_test(
 )
 set_tests_properties(stdlib_array_host_c
         PROPERTIES LABELS "stdlib;stdlib.source;std.array;std.mem;memory;allocation;array;generic;slice;runtime;backend;backend.c;module;import;discovery;warning-free")
+
+add_test(
+        NAME stdlib_memory_patterns_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_MEMORY_PATTERNS_TEST_MAIN}"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_memory_patterns_host_c${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -DBACKEND=host-c
+        -DFORBID_COMPILE_WARNINGS=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+)
+set_tests_properties(stdlib_memory_patterns_host_c
+        PROPERTIES LABELS "stdlib;stdlib.source;std.mem;std.pool;memory;allocator;arena;scratch;pool;resource;generic;runtime;backend;backend.c;module;import;discovery;warning-free")
+
+add_test(
+        NAME stdlib_debug_allocator_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_DEBUG_ALLOCATOR_TEST_MAIN}"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_debug_allocator_host_c${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -DBACKEND=host-c
+        -DFORBID_COMPILE_WARNINGS=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+)
+set_tests_properties(stdlib_debug_allocator_host_c
+        PROPERTIES LABELS "stdlib;stdlib.source;std.mem;memory;allocator;debug;guard;poison;resource;runtime;backend;backend.c;module;import;discovery;warning-free")
 
 add_test(
         NAME stdlib_io_host_c
@@ -1914,6 +1951,36 @@ if(COGLET_HAS_LLVM_BACKEND)
         )
         set_tests_properties(stdlib_array_llvm_O${stdlib_opt_level}
             PROPERTIES LABELS "stdlib;stdlib.source;std.array;std.mem;memory;allocation;array;generic;slice;runtime;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
+
+        add_test(
+            NAME stdlib_memory_patterns_llvm_O${stdlib_opt_level}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            "-DINPUTS=${COGLET_STDLIB_MEMORY_PATTERNS_TEST_MAIN}"
+            "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_memory_patterns_llvm_O${stdlib_opt_level}${CMAKE_EXECUTABLE_SUFFIX}
+            -DEXPECT_EXIT=0
+            -DBACKEND=llvm
+            -DOPT_LEVEL=${stdlib_opt_level}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+        )
+        set_tests_properties(stdlib_memory_patterns_llvm_O${stdlib_opt_level}
+            PROPERTIES LABELS "stdlib;stdlib.source;std.mem;std.pool;memory;allocator;arena;scratch;pool;resource;generic;runtime;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
+
+        add_test(
+            NAME stdlib_debug_allocator_llvm_O${stdlib_opt_level}
+            COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:coglet>
+            "-DINPUTS=${COGLET_STDLIB_DEBUG_ALLOCATOR_TEST_MAIN}"
+            "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+            -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_debug_allocator_llvm_O${stdlib_opt_level}${CMAKE_EXECUTABLE_SUFFIX}
+            -DEXPECT_EXIT=0
+            -DBACKEND=llvm
+            -DOPT_LEVEL=${stdlib_opt_level}
+            -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+        )
+        set_tests_properties(stdlib_debug_allocator_llvm_O${stdlib_opt_level}
+            PROPERTIES LABELS "stdlib;stdlib.source;std.mem;memory;allocator;debug;guard;poison;resource;runtime;backend;backend.llvm;module;import;discovery;O${stdlib_opt_level}")
 
         add_test(
             NAME stdlib_io_llvm_O${stdlib_opt_level}
@@ -2558,6 +2625,11 @@ if(COGLET_HAS_LLVM_BACKEND)
     )
     set_tests_properties(backend_llvm_defer
         PROPERTIES LABELS "backend;backend.llvm;ir;llvm;defer;control-flow;cleanup;codegen;object;linker;stage7")
+    add_llvm_stage7_native_test(
+        backend_llvm_resources resources.cog 42
+    )
+    set_tests_properties(backend_llvm_resources
+        PROPERTIES LABELS "backend;backend.llvm;ir;llvm;resource;move;ownership;semantic;desugar;codegen;object;linker;stage7")
     add_llvm_stage7_native_test(
         backend_llvm_slices slices.cog 0
     )

@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/by_value_method.cog:3:11: error: resource instance methods must use a pointer receiver
+    get::(self: Self) -> s32 { return self.value; }
+          ^~~~
+1 semantic error generated.

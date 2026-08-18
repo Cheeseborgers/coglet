@@ -26,6 +26,11 @@ struct LoopFlowContext {
     LoopFlowContext *parent;
 };
 
+struct DeferredResourceUse {
+    Symbol *symbol;
+    DeferredResourceUse *next;
+};
+
 typedef enum GenericSpecializationState {
     GENERIC_SPECIALIZATION_CHECKING,
     GENERIC_SPECIALIZATION_VALID,
@@ -706,6 +711,17 @@ static void flow_mark_variable_initialized(SemanticContext *ctx, const Symbol *s
     assert(symbol->variable_id < ctx->flow.count);
 
     ctx->flow.initialized[symbol->variable_id] = 1;
+}
+
+static void flow_mark_variable_uninitialized(SemanticContext *ctx, const Symbol *symbol) {
+
+    if (!symbol_has_flow_state(symbol))
+        return;
+
+    assert(symbol_belongs_to_flow(symbol, &ctx->flow));
+    assert(symbol->variable_id < ctx->flow.count);
+
+    ctx->flow.initialized[symbol->variable_id] = 0;
 }
 
 static int flow_variable_is_initialized(const SemanticContext *ctx, const Symbol *symbol) {
@@ -2726,6 +2742,68 @@ static int type_equal(const Type *a, const Type *b) {
 }
 
 static int invalid_value_type(Type *type) { return contains_void_type(type); }
+
+static int is_resource_type(const Type *type)
+{
+    return type &&
+           type->kind == TYPE_STRUCT &&
+           type->struct_is_resource;
+}
+
+static int contains_resource_by_value(const Type *type)
+{
+    if (!type)
+        return 0;
+
+    if (is_resource_type(type))
+        return 1;
+
+    if (type->kind == TYPE_ARRAY)
+        return contains_resource_by_value(type->element);
+
+    return 0;
+}
+
+static int deferred_resource_list_contains(
+    const DeferredResourceUse *list,
+    const Symbol *symbol
+) {
+    for (const DeferredResourceUse *it = list; it; it = it->next) {
+        if (it->symbol == symbol)
+            return 1;
+    }
+    return 0;
+}
+
+static void capture_deferred_resource_use(SemanticContext *ctx, Symbol *symbol)
+{
+    if (!ctx || ctx->defer_depth <= 0 || !symbol ||
+        !symbol_has_flow_state(symbol) ||
+        !contains_resource_by_value(symbol->type) ||
+        deferred_resource_list_contains(ctx->captured_deferred_resources, symbol)) {
+        return;
+    }
+
+    DeferredResourceUse *use = arena_new(ctx->arena, DeferredResourceUse);
+    use->symbol = symbol;
+    use->next = ctx->captured_deferred_resources;
+    ctx->captured_deferred_resources = use;
+}
+
+static void activate_captured_deferred_resources(SemanticContext *ctx)
+{
+    DeferredResourceUse *captured = ctx->captured_deferred_resources;
+    while (captured) {
+        DeferredResourceUse *next = captured->next;
+        if (!deferred_resource_list_contains(
+                ctx->active_deferred_resources, captured->symbol)) {
+            captured->next = ctx->active_deferred_resources;
+            ctx->active_deferred_resources = captured;
+        }
+        captured = next;
+    }
+    ctx->captured_deferred_resources = NULL;
+}
 
 /*
  * Incomplete #repr(c) structs model foreign object types whose layout is not
@@ -6672,6 +6750,7 @@ typedef enum GenericBuiltinConstraint {
     GENERIC_CONSTRAINT_FLOATING,
     GENERIC_CONSTRAINT_NUMERIC,
     GENERIC_CONSTRAINT_ORDERED,
+    GENERIC_CONSTRAINT_COPYABLE,
     GENERIC_CONSTRAINT_INVALID,
 } GenericBuiltinConstraint;
 
@@ -6691,6 +6770,8 @@ static GenericBuiltinConstraint generic_builtin_constraint(StringView name)
         return GENERIC_CONSTRAINT_NUMERIC;
     if (string_view_equals_cstr(name, "ordered"))
         return GENERIC_CONSTRAINT_ORDERED;
+    if (string_view_equals_cstr(name, "copyable"))
+        return GENERIC_CONSTRAINT_COPYABLE;
     return GENERIC_CONSTRAINT_INVALID;
 }
 
@@ -6727,6 +6808,9 @@ static int type_satisfies_generic_constraint(
              */
             return is_concrete_integer_kind(type->kind) ||
                    is_concrete_float_kind(type->kind);
+
+        case GENERIC_CONSTRAINT_COPYABLE:
+            return !contains_resource_by_value(type);
 
         case GENERIC_CONSTRAINT_INVALID:
             return 0;
@@ -8124,6 +8208,8 @@ static Type *check_identifier_expression(SemanticContext *ctx, Node *node,Identi
         }
     }
 
+    capture_deferred_resource_use(ctx, sym);
+
     ValueCategory category =
         VALUE_CATEGORY_RVALUE;
 
@@ -8170,13 +8256,23 @@ static Type *check_identifier_expression(SemanticContext *ctx, Node *node,Identi
                     ctx,
                     sym
                 )) {
-                semantic_error_fmt(
-                    ctx,
-                    node,
-                    "variable '%.*s' may be uninitialized",
-                    (int)node->as.ident.length,
-                    node->as.ident.data
-                );
+                if (contains_resource_by_value(sym->type)) {
+                    semantic_error_fmt(
+                        ctx,
+                        node,
+                        "resource '%.*s' may be uninitialized or moved",
+                        (int)node->as.ident.length,
+                        node->as.ident.data
+                    );
+                } else {
+                    semantic_error_fmt(
+                        ctx,
+                        node,
+                        "variable '%.*s' may be uninitialized",
+                        (int)node->as.ident.length,
+                        node->as.ident.data
+                    );
+                }
 
                 return NULL;
                 }
@@ -9201,6 +9297,52 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
             switch(node->as.unary.op)
             {
+                case TOK_MOVE:
+                {
+                    Node *operand_node = node->as.unary.operand;
+                    SemExprInfo *operand_info = sem_find_expr_info(ctx, operand_node);
+
+                    if (!contains_resource_by_value(operand)) {
+                        semantic_error(ctx, node,
+                            "move requires a resource value");
+                        return NULL;
+                    }
+
+                    if (operand_node->type != NODE_IDENT ||
+                        !operand_info ||
+                        !operand_info->symbol ||
+                        operand_info->symbol->kind != SYMBOL_VARIABLE ||
+                        !symbol_has_flow_state(operand_info->symbol)) {
+                        semantic_error(ctx, node,
+                            "move currently requires a local or parameter resource variable");
+                        return NULL;
+                    }
+
+                    if (deferred_resource_list_contains(
+                            ctx->active_deferred_resources,
+                            operand_info->symbol)) {
+                        semantic_error_fmt(
+                            ctx,
+                            node,
+                            "cannot move resource '%.*s' after a defer has registered cleanup using it",
+                            (int)operand_info->symbol->name.length,
+                            operand_info->symbol->name.data
+                        );
+                        return NULL;
+                    }
+
+                    flow_mark_variable_uninitialized(ctx, operand_info->symbol);
+
+                    sem_record_expr_info(
+                        ctx,
+                        node,
+                        operand,
+                        NULL,
+                        VALUE_CATEGORY_RVALUE
+                    );
+                    return operand;
+                }
+
                 case TOK_AND:
                 {
                     Node *operand_node =
@@ -10929,6 +11071,9 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 // ============================================================
 static void check_block(SemanticContext *ctx, Node *node) {
 
+    DeferredResourceUse *saved_deferred_resources =
+        ctx->active_deferred_resources;
+
     scope_push(ctx);
 
     /*
@@ -10960,6 +11105,7 @@ static void check_block(SemanticContext *ctx, Node *node) {
     }
 
     scope_pop(ctx);
+    ctx->active_deferred_resources = saved_deferred_resources;
 }
 
 static void check_const_decl(SemanticContext *ctx, Node *node) {
@@ -11444,11 +11590,25 @@ static int check_assignment_statement(SemanticContext *ctx, Node *node) {
     if (!require_writable_lvalue(ctx, node, target_node, "assignment target"))
         return 0;
 
-    if (!check_initializer_against_type(ctx, target_type, value_node))
-        return 0;
-
     Symbol *target_symbol =
         direct_assignment_target_symbol(ctx, target_node);
+
+    if (contains_resource_by_value(target_type)) {
+        if (!target_symbol || !symbol_has_flow_state(target_symbol)) {
+            semantic_error(ctx, target_node,
+                "resource assignment currently requires a direct local or parameter variable");
+            return 0;
+        }
+
+        if (flow_variable_is_initialized(ctx, target_symbol)) {
+            semantic_error(ctx, target_node,
+                "resource assignment would overwrite an initialized owner; move or deinitialize it first");
+            return 0;
+        }
+    }
+
+    if (!check_initializer_against_type(ctx, target_type, value_node))
+        return 0;
 
     flow_mark_variable_initialized(ctx, target_symbol);
 
@@ -11767,6 +11927,31 @@ static Type *check_value_expression(SemanticContext *ctx, Node *node
     return type;
 }
 
+static int check_resource_transfer_expression(
+    SemanticContext *ctx,
+    Type *type,
+    Node *expression
+) {
+    if (!contains_resource_by_value(type) || !expression)
+        return 1;
+
+    SemExprInfo *info = sem_find_expr_info(ctx, expression);
+
+    /*
+     * Fresh resource temporaries already denote a new owner. Existing
+     * addressable resource values must transfer ownership explicitly with
+     * `move`, which records the expression as an rvalue and invalidates the
+     * source variable in flow state.
+     */
+    if (info && info->value_category == VALUE_CATEGORY_LVALUE) {
+        semantic_error(ctx, expression,
+            "resource value cannot be copied; use move to transfer ownership");
+        return 0;
+    }
+
+    return 1;
+}
+
 static int check_initializer_against_type(SemanticContext *ctx, Type *expected, Node *initializer) {
 
     if (!expected || !initializer)
@@ -11805,6 +11990,9 @@ static int check_initializer_against_type(SemanticContext *ctx, Type *expected, 
     Type *actual = check_value_expression(ctx, initializer);
 
     if (!actual)
+        return 0;
+
+    if (!check_resource_transfer_expression(ctx, actual, initializer))
         return 0;
 
     if (!initializer_compatible(expected, actual)) {
@@ -12085,6 +12273,10 @@ static int check_argument_against_parameter(SemanticContext *ctx, Type *expected
         return 0;
     }
 
+
+    if (!check_resource_transfer_expression(ctx, actual, argument))
+        return 0;
+
     if (!initializer_compatible(expected, actual)) {
         if (is_integer_zero_to_pointer(expected, argument)) {
             semantic_error(ctx, argument,
@@ -12260,6 +12452,9 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
 
             if (!init_type) return;
 
+            if (!check_resource_transfer_expression(ctx, init_type, init))
+                return;
+
             type = concretize_inferred_type(
                 ctx,
                 init,
@@ -12289,6 +12484,12 @@ static void check_var_decl(SemanticContext *ctx, Node *node) {
         ctx->function_depth > 0
             ? VARIABLE_STORAGE_LOCAL
             : VARIABLE_STORAGE_GLOBAL;
+
+    if (storage == VARIABLE_STORAGE_GLOBAL && contains_resource_by_value(type)) {
+        semantic_error(ctx, node,
+            "resource variables are currently supported only as locals and parameters");
+        return;
+    }
 
     Symbol *symbol = existing;
     if (!symbol) {
@@ -13810,7 +14011,7 @@ static int validate_generic_parameter_declarations(
             semantic_error_fmt(
                 ctx,
                 node,
-                "unknown generic type constraint '%.*s'; expected one of: integer, signed_integer, unsigned_integer, floating, numeric, ordered",
+                "unknown generic type constraint '%.*s'; expected one of: integer, signed_integer, unsigned_integer, floating, numeric, ordered, copyable",
                 (int)type_parameter.constraint.length,
                 type_parameter.constraint.data
             );
@@ -14080,12 +14281,19 @@ static void check_function_body(SemanticContext *ctx, Node *node)
     int saved_loop_depth        = ctx->loop_depth;
     int saved_defer_depth       = ctx->defer_depth;
 
+    DeferredResourceUse *saved_active_deferred_resources =
+        ctx->active_deferred_resources;
+    DeferredResourceUse *saved_captured_deferred_resources =
+        ctx->captured_deferred_resources;
+
     LoopFlowContext *saved_loop = ctx->current_loop;
 
     Type *saved_return_type     = ctx->current_return_type;
 
     ctx->loop_depth = 0;
     ctx->defer_depth = 0;
+    ctx->active_deferred_resources = NULL;
+    ctx->captured_deferred_resources = NULL;
     ctx->current_loop = NULL;
     ctx->current_return_type = func_type->return_type;
 
@@ -14120,6 +14328,8 @@ static void check_function_body(SemanticContext *ctx, Node *node)
     ctx->current_return_type = saved_return_type;
     ctx->loop_depth          = saved_loop_depth;
     ctx->defer_depth         = saved_defer_depth;
+    ctx->active_deferred_resources = saved_active_deferred_resources;
+    ctx->captured_deferred_resources = saved_captured_deferred_resources;
     ctx->current_loop        = saved_loop;
 
     scope_pop(ctx);
@@ -14306,6 +14516,16 @@ static int record_struct_method_signature(
             );
             return 0;
         }
+
+
+        if (owner_type->struct_is_resource && type_equal(receiver, owner_type)) {
+            semantic_error(
+                ctx,
+                method->as.func_decl.params.items[0],
+                "resource instance methods must use a pointer receiver"
+            );
+            return 0;
+        }
     }
 
     method->as.func_decl.name = make_struct_method_function_name(
@@ -14397,6 +14617,15 @@ static int register_struct_operator_bindings(SemanticContext *ctx, Node *owner_d
     Type *owner_type = owner_decl->as.struct_decl.resolved_type;
     if (!owner_type || owner_type->kind != TYPE_STRUCT)
         return 0;
+
+    if (owner_type->struct_is_resource) {
+        semantic_error(
+            ctx,
+            owner_decl,
+            "resource structs cannot define value operators"
+        );
+        return 0;
+    }
 
     if (owner_decl->as.struct_decl.is_repr_c || owner_decl->as.struct_decl.is_union ||
         owner_decl->as.struct_decl.is_incomplete) {
@@ -14534,6 +14763,15 @@ static void check_struct_method_bodies(SemanticContext *ctx, Node *owner_decl)
 
 static int declare_struct_shell(SemanticContext *ctx, Node *node) {
 
+    if (node->as.struct_decl.is_resource &&
+        (node->as.struct_decl.is_repr_c ||
+         node->as.struct_decl.is_union ||
+         node->as.struct_decl.is_incomplete)) {
+        semantic_error(ctx, node,
+            "resource declarations must be ordinary complete Coglet structs");
+        return 0;
+    }
+
     if (node->as.struct_decl.is_union && !node->as.struct_decl.is_repr_c) {
         semantic_error(ctx, node, "union declarations currently require #repr(c)");
         return 0;
@@ -14556,6 +14794,7 @@ static int declare_struct_shell(SemanticContext *ctx, Node *node) {
     type->struct_name.data   = node->as.struct_decl.name.data;
     type->struct_name.length = node->as.struct_decl.name.length;
     type->struct_is_repr_c       = node->as.struct_decl.is_repr_c;
+    type->struct_is_resource     = node->as.struct_decl.is_resource;
     type->struct_repr_c_packed   = node->as.struct_decl.repr_c_packed;
     type->struct_repr_c_align    = node->as.struct_decl.repr_c_align;
     type->struct_is_union        = node->as.struct_decl.is_union;
@@ -14863,6 +15102,21 @@ static void fill_struct_fields(SemanticContext *ctx, Node *node) {
         if (contains_incomplete_struct_by_value(field_type)) {
             semantic_error(ctx, field,
                 "incomplete C struct cannot be stored by value; use a pointer");
+
+            type->fields[i].type = NULL;
+            continue;
+        }
+
+        if (contains_resource_by_value(field_type) && !type->struct_is_resource) {
+            semantic_error_fmt(
+                ctx,
+                field,
+                "copyable struct '%.*s' cannot contain resource field '%.*s'; declare the owner as resource",
+                (int)type->struct_name.length,
+                type->struct_name.data,
+                (int)field->as.struct_field_decl.name.length,
+                field->as.struct_field_decl.name.data
+            );
 
             type->fields[i].type = NULL;
             continue;
@@ -15719,9 +15973,14 @@ static void check_node(SemanticContext *ctx,Node *node) {
             }
 
             FlowState saved_flow = ctx->flow;
+            DeferredResourceUse *saved_capture =
+                ctx->captured_deferred_resources;
+            ctx->captured_deferred_resources = NULL;
             ctx->defer_depth++;
             check_node(ctx, node->as.defer_stmt.statement);
             ctx->defer_depth--;
+            activate_captured_deferred_resources(ctx);
+            ctx->captured_deferred_resources = saved_capture;
             ctx->flow = saved_flow;
             break;
         }
@@ -15800,6 +16059,8 @@ void semantic_check(
     ctx->loop_depth         = 0;
     ctx->function_depth     = 0;
     ctx->defer_depth        = 0;
+    ctx->active_deferred_resources = NULL;
+    ctx->captured_deferred_resources = NULL;
     ctx->error_count        = 0;
     ctx->next_flow_owner_id = 0;
     ctx->next_variable_id   = 0;

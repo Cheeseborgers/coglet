@@ -3067,6 +3067,9 @@ static CogIrValueId lower_expression_raw(ExecLowerState *state, Node *node)
         }
 
         case NODE_UNARY: {
+            if (node->as.unary.op == TOK_MOVE)
+                return lower_expression(state, node->as.unary.operand);
+
             if (node->as.unary.op == TOK_AND) {
                 LoweredPlace place;
                 if (!lower_place(state, node->as.unary.operand, &place))

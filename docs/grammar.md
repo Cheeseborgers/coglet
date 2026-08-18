@@ -195,6 +195,7 @@ unary_expression =
     | "~" unary_expression
     | "&" unary_expression
     | "*" unary_expression
+    | "move" unary_expression
     | primary_expression;
 ```
 
@@ -537,7 +538,7 @@ Conceptually, generic structs and struct members are:
 ```ebnf
 generic_struct_declaration =
     identifier "::" generic_type_parameter_list
-    "struct" "{" {struct_member} "}";
+    ("struct" | "resource") "{" {struct_member} "}";
 
 struct_member =
       struct_field_decl
@@ -573,6 +574,19 @@ The identifier `operators` is contextual: it starts an operator-mapping block on
 when followed by `{` in a struct body, so it is not a globally reserved keyword.
 `unary` is likewise contextual inside that block. Semantic analysis resolves each
 mapping to a method on the same concrete struct and validates the method signature.
+
+Move-only owning aggregates use the same member grammar as ordinary structs:
+
+```ebnf
+resource_declaration =
+    identifier "::" "resource" "{" {struct_member} "}";
+```
+
+Generic resources use `resource` in place of `struct`, for example
+`Array::<T> resource { ... }`. `move value` is a prefix expression that explicitly
+transfers an existing owner. The first implementation requires `move` to name a
+direct local or parameter whose type is a resource (or a fixed array containing
+resources); moving out of fields and globals is intentionally deferred.
 
 Calls use:
 

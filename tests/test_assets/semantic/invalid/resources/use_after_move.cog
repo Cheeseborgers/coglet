@@ -1,0 +1,6 @@
+Handle::resource { value: s32; }
+main::() -> s32 {
+    first := Handle { value = 1 };
+    second := move first;
+    return first.value + second.value;
+}

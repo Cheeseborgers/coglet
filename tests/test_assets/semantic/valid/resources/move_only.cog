@@ -1,0 +1,35 @@
+Handle::resource {
+    value: s32;
+
+    new::(value: s32) -> Self {
+        return Self { value = value };
+    }
+
+    get::(self: readonly Self*) -> s32 {
+        return (*self).value;
+    }
+}
+
+Owner::resource {
+    handle: Handle;
+
+    new::(handle: Handle) -> Self {
+        return Self { handle = move handle };
+    }
+}
+
+consume::(handle: Handle) -> s32 {
+    return handle.get();
+}
+
+main::() -> s32 {
+    first := Handle.new(10);
+    second := move first;
+    first = Handle.new(20);
+
+    owner := Owner.new(move first);
+    if owner.handle.get() != 20
+        return 1;
+
+    return consume(move second) - 10;
+}

@@ -1,0 +1,11 @@
+Handle::resource {
+    value: s32;
+    deinit::(self: Self*) -> void {}
+}
+consume::(value: Handle) -> void {}
+main::() -> s32 {
+    value := Handle { value = 1 };
+    defer value.deinit();
+    consume(move value);
+    return 0;
+}

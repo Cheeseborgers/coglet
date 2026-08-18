@@ -43,7 +43,7 @@ main::() -> s32 {
     }
     mem.free(heap, aligned, 2);
 
-    arena := mem.Arena.new(heap, 128);
+    arena := mem.Arena.with_block_size(heap, 128);
     defer arena.deinit();
     arena_alloc := arena.allocator();
 

@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/generics/copyable_constraint_resource.cog:9:15: error: cannot instantiate 'identity': type argument T = Owner does not satisfy constraint 'copyable'
+    unused := identity(move owner);
+              ^~~~~~~~
+1 semantic error generated.

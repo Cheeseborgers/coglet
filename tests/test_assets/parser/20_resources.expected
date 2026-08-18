@@ -1,0 +1,50 @@
+program
+  resource Handle
+    struct_field_decl value: s32
+    func new -> Self
+      params:
+        param_decl value: s32
+      body:
+        block
+          return
+            struct_init Self
+              field_init value
+                value
+    func get -> s32
+      params:
+        param_decl self: readonly Self*
+      body:
+        block
+          return
+            field .value
+              (*)
+                self
+  resource Box<T>
+    struct_field_decl value: T
+  func consume -> s32
+    params:
+      param_decl handle: Handle
+    body:
+      block
+        return
+          call
+            field .get
+              handle
+  func main -> s32
+    body:
+      block
+        var_decl handle: <inferred>
+          init:
+            call
+              field .new
+                Handle
+              42
+        var_decl moved: <inferred>
+          init:
+            (MOVE)
+              handle
+        return
+          call
+            consume
+            (MOVE)
+              moved

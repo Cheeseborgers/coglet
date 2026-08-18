@@ -103,7 +103,7 @@ ctest --test-dir cmake-build-debug -L stdlib --output-on-failure
 
 ## Shipped standard-library source tests
 
-The actual shipped standard-library source lives under `stdlib/`. `std.math`, `std.io`, and `std.array` have ordinary consumer programs under `tests/stdlib/`. These tests use
+The actual shipped standard-library source lives under `stdlib/`. `std.math`, `std.io`, `std.array`, and the memory-pattern modules (`std.mem`/`std.pool`) have ordinary consumer programs under `tests/stdlib/`. These tests use
 the `stdlib.source` label so they are distinct from the lower-level stdlib-root/
 discovery-policy fixtures. The `std.io` integration test links the runtime through
 the same executable path users invoke and compares its complete stdout, covering
@@ -114,7 +114,7 @@ and floating-remainder functions. A dedicated vector consumer instantiates
 checks fluent method chaining, component arithmetic, dot/cross products, squared
 length/distance, and component min/max/clamp. LLVM-enabled configurations run the
 same vector consumer at `-O0` and `-O3`. Transcendental comparisons use tolerances;
-rounding/remainder cases use exact expected values. The `std.array` consumer covers target `size_of`/`align_of`, aligned typed allocation, geometric growth, mutable/readonly slice views, pop/reserve/clear, and explicit deinitialization. Separate failure-path tests verify that runtime-backed modules diagnose a selected stdlib root that omits `runtime/coglet_runtime.c`.
+rounding/remainder cases use exact expected values. The `std.array` consumer covers target `size_of`/`align_of`, aligned typed allocation, geometric growth, mutable/readonly slice views, pop/reserve/clear, and explicit deinitialization. A dedicated memory-pattern consumer covers nested scratch checkpoint/rewind, caller-owned `FixedArena` storage/reset, and generation-checked fixed-capacity `Pool<T>` handles. A separate debug-allocator consumer checks live/total accounting, allocate/resize/free preservation, use through `Array<T>`, allocation poisoning, and front/back guard validation. Separate failure-path tests verify that runtime-backed modules diagnose a selected stdlib root that omits `runtime/coglet_runtime.c`.
 
 Run them with:
 

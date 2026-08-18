@@ -250,6 +250,7 @@ static void synchronize(Parser *p)
             case TOK_FOR:
             case TOK_RETURN:
             case TOK_DEFER:
+            case TOK_RESOURCE:
                 return;
 
             default:
@@ -320,6 +321,9 @@ const char *token_debug_display_name(TokenType type)
         case TOK_STRUCT:
             return "'struct'";
 
+        case TOK_RESOURCE:
+            return "'resource'";
+
         case TOK_UNION:
             return "'union'";
 
@@ -349,6 +353,9 @@ const char *token_debug_display_name(TokenType type)
 
         case TOK_REINTERPRET:
             return "'reinterpret'";
+
+        case TOK_MOVE:
+            return "'move'";
 
         case TOK_READONLY:
             return "'readonly'";
@@ -897,6 +904,7 @@ static Node *parse_unary(Parser *p)
         check(p, TOK_MINUS) ||
         check(p, TOK_BANG) ||
         check(p, TOK_TILDE) ||
+        check(p, TOK_MOVE) ||
         check(p, TOK_AND) ||
         check(p, TOK_STAR)) {
         Token op = p->current;
@@ -1740,7 +1748,7 @@ static Node *parse_generic_decl_rest(Parser *p, Token name, SourceSpan span)
         return func;
     }
 
-    if (check(p, TOK_STRUCT)) {
+    if (check(p, TOK_STRUCT) || check(p, TOK_RESOURCE)) {
         Node *decl = parse_struct_decl_rest(p, name, span);
         if (decl && decl->type == NODE_STRUCT_DECL)
             decl->as.struct_decl.type_parameters = parameters;
@@ -2342,14 +2350,18 @@ static int parse_struct_operator_block(Parser *p, Node *decl)
 static Node *parse_struct_decl_rest(Parser *p,Token name,SourceSpan span) {
 
     int is_union = check(p, TOK_UNION);
+    int is_resource = check(p, TOK_RESOURCE);
 
     if (is_union)
         consume(p, TOK_UNION);
+    else if (is_resource)
+        consume(p, TOK_RESOURCE);
     else
         consume(p, TOK_STRUCT);
 
     Node *decl = ast_new_struct_decl(p->arena, name.start,name.length, span);
     decl->as.struct_decl.is_union = is_union;
+    decl->as.struct_decl.is_resource = is_resource;
 
     /*
      * A semicolon spells an incomplete named struct. Semantic analysis
@@ -2703,7 +2715,7 @@ static Node *parse_decl_after_name(Parser *p, Token name) {
 
     if (check(p, TOK_LESS))  return parse_generic_decl_rest(p, name, span);
     if (check(p, TOK_LPAREN)) return parse_proc_decl_rest(p, name, span);
-    if (check(p, TOK_STRUCT) || check(p, TOK_UNION))
+    if (check(p, TOK_STRUCT) || check(p, TOK_RESOURCE) || check(p, TOK_UNION))
         return parse_struct_decl_rest(p, name, span);
     if (check(p, TOK_ENUM))   return parse_enum_decl_rest(p, name, span);
 

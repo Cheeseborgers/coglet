@@ -262,6 +262,9 @@ static const char *token_type_str(TokenType type)
         case TOK_STRUCT:
             return "STRUCT";
 
+        case TOK_RESOURCE:
+            return "RESOURCE";
+
         case TOK_UNION:
             return "UNION";
 
@@ -291,6 +294,9 @@ static const char *token_type_str(TokenType type)
 
         case TOK_REINTERPRET:
             return "REINTERPRET";
+
+        case TOK_MOVE:
+            return "MOVE";
 
         case TOK_READONLY:
             return "READONLY";
@@ -966,7 +972,11 @@ static void print_node(Node *node)
             break;
 
         case NODE_STRUCT_DECL:
-            printf(node->as.struct_decl.is_union ? "(union " : "(struct ");
+            printf(node->as.struct_decl.is_union
+                ? "(union "
+                : node->as.struct_decl.is_resource
+                    ? "(resource "
+                    : "(struct ");
             if (node->as.struct_decl.is_repr_c) {
                 printf("#repr(c");
                 if (node->as.struct_decl.repr_c_packed)
@@ -1681,7 +1691,11 @@ static void print_node_pretty(Node *node, int depth)
                     printf(", align=%d", node->as.struct_decl.repr_c_align);
                 printf(") ");
             }
-            printf(node->as.struct_decl.is_union ? "union " : "struct ");
+            printf(node->as.struct_decl.is_union
+                ? "union "
+                : node->as.struct_decl.is_resource
+                    ? "resource "
+                    : "struct ");
             print_string_view(node->as.struct_decl.name);
             if (node->as.struct_decl.type_parameters.count > 0) {
                 printf("<");

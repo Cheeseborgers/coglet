@@ -498,6 +498,59 @@ the registration point, so values they read must already satisfy normal definite
 assignment rules there. `defer` has no ownership/lifetime semantics by itself; it
 is only deterministic lexical cleanup.
 
+### Move-only resources
+
+An ordinary `struct` is a copyable value. A `resource` has the same concrete
+field layout and method model, but represents a unique owner and may not be
+copied:
+
+```c
+File::resource {
+    handle: opaque*;
+
+    close::(self: Self*) -> void {
+        // ...
+    }
+}
+```
+
+Ownership transfer is explicit:
+
+```c
+first := make_file();
+second := move first;
+```
+
+After `move first`, `first` is uninitialized for normal definite-assignment
+analysis. It may later receive a fresh resource value, but reading it first is an
+error. Passing an existing resource to a by-value resource parameter or returning
+an existing resource local likewise requires `move`; fresh resource temporaries
+can flow directly into their destination.
+
+Resource instance methods use pointer receivers so an ordinary method call borrows
+the owner's address without transferring ownership:
+
+```c
+file.flush();        // pointer receiver; ownership stays with file
+consume(move file); // by-value parameter; ownership transfers
+```
+
+Resource values are currently local/parameter values rather than globals, and a
+copyable struct may not contain a resource by value. A resource may contain other
+resources. Assignment cannot overwrite an already-initialized resource owner;
+move/deinitialize the old owner first, then assign a fresh value.
+
+`defer owner.deinit()` and explicit move cooperate conservatively. Once a defer in
+the current lexical scope has directly referenced a resource owner, that owner may
+not subsequently be moved from that scope, preventing the common double-cleanup
+mistake. This is not a borrow checker: pointers and slices remain freely copyable
+non-owning aliases and Coglet performs no general alias or lifetime analysis.
+
+`resource` and `move` are semantic/frontend concepts only. Concrete resource
+layout is ordinary struct layout, and `move` does not imply a runtime copy helper,
+reference count, tracing, or automatic destructor. Cleanup remains explicit,
+normally through `defer value.deinit()`.
+
 A loop whose Boolean condition is known at compile time to be `true` and has no reachable `break` does not continue to the statement following the loop. This includes the literal `true`, named/local constants, and other checked constant Boolean expressions:
 
 ```c
@@ -677,7 +730,9 @@ The builtin constraints are deliberately small:
 - `floating`: `f32` or `f64`;
 - `numeric`: any concrete integer or floating-point type;
 - `ordered`: the concrete types accepted by Coglet's ordered comparisons,
-  currently the same integer and floating-point domain as `numeric`.
+  currently the same integer and floating-point domain as `numeric`;
+- `copyable`: any concrete value type that does not contain a move-only `resource`
+  by value. Pointers and slices to resources remain copyable non-owning views.
 
 A constraint is an early admissibility contract, not permission to bypass the
 ordinary type system. Generic function bodies are still checked under concrete

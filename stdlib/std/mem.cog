@@ -93,10 +93,14 @@ export free::<T>(allocator: Allocator, pointer: T*, count: u64) -> void {
 // Growable region allocator. Allocations are individually addressable but
 // individual free operations are no-ops; reset() releases all allocations for
 // reuse and deinit() returns every backing block to the parent allocator.
-export Arena::struct {
+export Arena::resource {
     state: opaque*;
 
-    new::(parent: Allocator, block_size: u64 = 65536) -> Self {
+    new::(parent: Allocator) -> Self {
+        return Self.with_block_size(parent, 65536);
+    }
+
+    with_block_size::(parent: Allocator, block_size: u64) -> Self {
         return Self {
             state = arena_create(parent, cast(c_size, block_size))
         };
@@ -117,6 +121,206 @@ export Arena::struct {
 
     deinit::(self: Self*) -> void {
         arena_destroy((*self).state);
+        (*self).state = null;
+    }
+}
+
+#extern(c, name="coglet_rt_mem_arena_mark")
+arena_mark::(state: opaque*, out_block: opaque**, out_used: c_size*) -> void;
+
+#extern(c, name="coglet_rt_mem_arena_rewind")
+arena_rewind::(state: opaque*, mark_block: opaque*, mark_used: c_size) -> void;
+
+#extern(c, name="coglet_rt_mem_fixed_arena_create")
+fixed_arena_create::(buffer: opaque*, size: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_fixed_arena_reset")
+fixed_arena_reset::(state: opaque*) -> void;
+
+#extern(c, name="coglet_rt_mem_fixed_arena_alloc")
+fixed_arena_alloc::(state: opaque*, size: c_size, alignment: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_fixed_arena_resize")
+fixed_arena_resize::(state: opaque*, pointer: opaque*, old_size: c_size, new_size: c_size, alignment: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_fixed_arena_free")
+fixed_arena_free::(state: opaque*, pointer: opaque*, size: c_size, alignment: c_size) -> void;
+
+#extern(c, name="coglet_rt_mem_fixed_arena_used")
+fixed_arena_used::(state: opaque*) -> c_size;
+
+#extern(c, name="coglet_rt_mem_fixed_arena_remaining")
+fixed_arena_remaining::(state: opaque*) -> c_size;
+
+// Non-owning checkpoint over a growable Arena. deinit() rewinds the arena to
+// the checkpoint captured by begin(). Scratch scopes may be nested when they
+// are ended in LIFO order.
+export Scratch::resource {
+    arena_state: opaque*;
+    mark_block: opaque*;
+    mark_used: c_size;
+
+    begin::(arena: Arena*) -> Self {
+        block: opaque* = null;
+        used: c_size = 0;
+        arena_mark((*arena).state, &block, &used);
+        return Self {
+            arena_state = (*arena).state,
+            mark_block = block,
+            mark_used = used
+        };
+    }
+
+    allocator::(self: readonly Self*) -> Allocator {
+        return Allocator {
+            state = (*self).arena_state,
+            allocate = arena_alloc,
+            resize = arena_resize,
+            free = arena_free
+        };
+    }
+
+    deinit::(self: Self*) -> void {
+        if (*self).arena_state == null
+            return;
+        arena_rewind((*self).arena_state, (*self).mark_block, (*self).mark_used);
+        (*self).arena_state = null;
+        (*self).mark_block = null;
+        (*self).mark_used = 0;
+    }
+}
+
+// Caller-owned fixed-buffer arena. The runtime bookkeeping lives inside the
+// supplied mutable byte buffer; this type performs no heap allocation.
+export FixedArena::resource {
+    state: opaque*;
+
+    from_buffer::(buffer: u8[]) -> Self {
+        return Self {
+            state = fixed_arena_create(
+                reinterpret(opaque*, buffer.data),
+                cast(c_size, buffer.len)
+            )
+        };
+    }
+
+    allocator::(self: readonly Self*) -> Allocator {
+        return Allocator {
+            state = (*self).state,
+            allocate = fixed_arena_alloc,
+            resize = fixed_arena_resize,
+            free = fixed_arena_free
+        };
+    }
+
+    reset::(self: Self*) -> void {
+        fixed_arena_reset((*self).state);
+    }
+
+    used::(self: readonly Self*) -> u64 {
+        return cast(u64, fixed_arena_used((*self).state));
+    }
+
+    remaining::(self: readonly Self*) -> u64 {
+        return cast(u64, fixed_arena_remaining((*self).state));
+    }
+
+    deinit::(self: Self*) -> void {
+        // The caller owns the backing buffer. There is nothing to free.
+        (*self).state = null;
+    }
+}
+
+#extern(c, name="coglet_rt_mem_debug_create")
+debug_create::(parent: Allocator) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_debug_destroy")
+debug_destroy::(state: opaque*) -> void;
+
+#extern(c, name="coglet_rt_mem_debug_alloc")
+debug_alloc::(state: opaque*, size: c_size, alignment: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_debug_resize")
+debug_resize::(state: opaque*, pointer: opaque*, old_size: c_size, new_size: c_size, alignment: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_mem_debug_free")
+debug_free::(state: opaque*, pointer: opaque*, size: c_size, alignment: c_size) -> void;
+
+#extern(c, name="coglet_rt_mem_debug_check")
+debug_check::(state: opaque*) -> bool;
+
+#extern(c, name="coglet_rt_mem_debug_live_allocations")
+debug_live_allocations::(state: opaque*) -> u64;
+
+#extern(c, name="coglet_rt_mem_debug_live_bytes")
+debug_live_bytes::(state: opaque*) -> u64;
+
+#extern(c, name="coglet_rt_mem_debug_total_allocations")
+debug_total_allocations::(state: opaque*) -> u64;
+
+#extern(c, name="coglet_rt_mem_debug_total_bytes")
+debug_total_bytes::(state: opaque*) -> u64;
+
+#extern(c, name="coglet_rt_mem_debug_error_count")
+debug_error_count::(state: opaque*) -> u64;
+
+#extern(c, name="coglet_rt_mem_debug_report_leaks")
+debug_report_leaks::(state: opaque*) -> u64;
+
+// Debug wrapper over any existing allocator. It tracks live allocations,
+// validates fixed front/back guards, poisons allocated/freed storage, and can
+// report outstanding blocks. The returned Allocator is a non-owning handle and
+// becomes invalid after DebugAllocator.deinit().
+export DebugAllocator::resource {
+    state: opaque*;
+
+    new::(parent: Allocator) -> Self {
+        return Self {
+            state = debug_create(parent)
+        };
+    }
+
+    allocator::(self: readonly Self*) -> Allocator {
+        return Allocator {
+            state = (*self).state,
+            allocate = debug_alloc,
+            resize = debug_resize,
+            free = debug_free
+        };
+    }
+
+    check::(self: readonly Self*) -> bool {
+        return debug_check((*self).state);
+    }
+
+    live_allocations::(self: readonly Self*) -> u64 {
+        return debug_live_allocations((*self).state);
+    }
+
+    live_bytes::(self: readonly Self*) -> u64 {
+        return debug_live_bytes((*self).state);
+    }
+
+    total_allocations::(self: readonly Self*) -> u64 {
+        return debug_total_allocations((*self).state);
+    }
+
+    total_bytes::(self: readonly Self*) -> u64 {
+        return debug_total_bytes((*self).state);
+    }
+
+    error_count::(self: readonly Self*) -> u64 {
+        return debug_error_count((*self).state);
+    }
+
+    report_leaks::(self: readonly Self*) -> u64 {
+        return debug_report_leaks((*self).state);
+    }
+
+    deinit::(self: Self*) -> void {
+        if (*self).state == null
+            return;
+        debug_destroy((*self).state);
         (*self).state = null;
     }
 }

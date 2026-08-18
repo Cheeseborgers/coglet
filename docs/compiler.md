@@ -1093,7 +1093,7 @@ template type-parameter names to concrete semantic types in a temporary scope,
 resolves the concrete signature, and checks the cloned body with the ordinary
 operator/call/flow/type rules. A source type parameter may additionally name one
 closed builtin constraint (`integer`, `signed_integer`, `unsigned_integer`,
-`floating`, `numeric`, or `ordered`). Semantic analysis checks that admissibility
+`floating`, `numeric`, `ordered`, or `copyable`). Semantic analysis checks that admissibility
 contract after type-argument inference/resolution and before specialization. A
 satisfied constraint never grants operators: the cloned body is still checked
 under ordinary rules, which remains the final validity requirement. There is no
@@ -1193,6 +1193,30 @@ lowering evaluates the target place once, loads its value, calls the concrete me
 and stores the returned value back through the original address. The resulting CogIR
 still contains only ordinary function references/calls and stores, not an operator
 dispatch opcode.
+
+Move-only resources are likewise a frontend semantic property rather than a new
+runtime representation. `resource` declarations produce ordinary nominal semantic
+struct layouts with a frontend `struct_is_resource` ownership flag. Copy/transfer
+contexts use that flag during semantic checking; `move local` marks the source
+variable uninitialized in the existing definite-assignment flow state and records
+the move expression as an rvalue. Copyable structs are rejected when a by-value
+field recursively contains a resource owner, while resource structs may contain
+resource fields.
+
+Resource methods must use pointer receivers and resource structs cannot define the
+current by-value operator mappings. Assignment to a resource local is accepted only
+when that owner is currently uninitialized, preventing silent overwrite/leak of an
+existing owner. Globals are excluded from the initial resource model. A lexical
+defer that directly references a resource owner also records that owner as active
+cleanup state; a later `move` in the same active lexical scope is rejected to avoid
+double cleanup.
+
+Lowering erases `move`: after semantic ownership validity has been established, the
+operand lowers exactly as the corresponding ordinary concrete value. CogIR has no
+resource type flag, move instruction, destructor instruction, reference count, or
+lifetime metadata, and neither backend performs ownership analysis. This preserves
+the frontend/CogIR lifetime boundary while keeping pointers and slices as ordinary
+non-owning aliases.
 
 ## Contextual Conversion Metadata
 

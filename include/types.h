@@ -122,6 +122,7 @@ struct Type {
     StructField *fields;
     int field_count;
     int struct_is_repr_c;
+    int struct_is_resource;
     int struct_repr_c_packed;
     int struct_repr_c_align;
     int struct_is_union;

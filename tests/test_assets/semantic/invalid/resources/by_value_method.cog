@@ -1,0 +1,5 @@
+Handle::resource {
+    value: s32;
+    get::(self: Self) -> s32 { return self.value; }
+}
+main::() -> s32 { return 0; }

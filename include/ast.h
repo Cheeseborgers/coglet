@@ -398,6 +398,7 @@ struct Node {
              *     Point::struct { ... }
              */
             int is_repr_c;
+            int is_resource;
 
             /*
              * Optional native-C layout controls for represented aggregates:

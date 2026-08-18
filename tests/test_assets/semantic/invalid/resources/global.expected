@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/global.cog:2:1: error: resource variables are currently supported only as locals and parameters
+global := Handle { value = 1 };
+^~~~~~
+1 semantic error generated.

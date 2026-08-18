@@ -1,0 +1,3 @@
+Handle::resource { value: s32; }
+Owner::struct { handle: Handle; }
+main::() -> s32 { return 0; }

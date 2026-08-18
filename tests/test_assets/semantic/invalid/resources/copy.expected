@@ -1,0 +1,7 @@
+tests/test_assets/semantic/invalid/resources/copy.cog:4:15: error: resource value cannot be copied; use move to transfer ownership
+    second := first;
+              ^~~~~
+tests/test_assets/semantic/invalid/resources/copy.cog:5:12: error: undefined identifier 'second'
+    return second.value;
+           ^~~~~~
+2 semantic errors generated.

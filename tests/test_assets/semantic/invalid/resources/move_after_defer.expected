@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/move_after_defer.cog:9:13: error: cannot move resource 'value' after a defer has registered cleanup using it
+    consume(move value);
+            ^~~~~~~~~~
+1 semantic error generated.

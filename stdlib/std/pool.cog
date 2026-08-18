@@ -1,0 +1,172 @@
+module std.pool;
+
+import std.mem as mem;
+
+pool_invalid_index :: 0xffffffffffffffff;
+pool_live_index :: 0xfffffffffffffffe;
+
+// Stable slot identifier. Generation changes whenever a slot is released so
+// stale handles do not silently refer to a later occupant of the same index.
+export PoolHandle::struct {
+    index: u64;
+    generation: u64;
+
+    invalid::() -> Self {
+        return Self {
+            index = pool_invalid_index,
+            generation = 0
+        };
+    }
+
+    is_invalid::(self: readonly Self*) -> bool {
+        return (*self).index == pool_invalid_index;
+    }
+}
+
+// Fixed-capacity stable-address pool for copyable values. The pool owns its
+// backing storage, but never relocates it after construction.
+export Pool::<T: copyable> resource {
+    data: T*;
+    next_free: u64*;
+    generations: u64*;
+    capacity: u64;
+    free_head: u64;
+    live_count: u64;
+    allocator: mem.Allocator;
+
+    with_capacity::(allocator: mem.Allocator, capacity: u64) -> Self {
+        result := Self {
+            data = null,
+            next_free = null,
+            generations = null,
+            capacity = capacity,
+            free_head = pool_invalid_index,
+            live_count = 0,
+            allocator = allocator
+        };
+
+        if capacity == 0
+            return move result;
+
+        result.data = mem.alloc::<T>(allocator, capacity);
+        result.next_free = mem.alloc::<u64>(allocator, capacity);
+        result.generations = mem.alloc::<u64>(allocator, capacity);
+        result.free_head = 0;
+
+        i: u64 = 0;
+        while i < capacity {
+            result.generations[i] = 1;
+            if i + 1 < capacity
+                result.next_free[i] = i + 1;
+            else
+                result.next_free[i] = pool_invalid_index;
+            i += 1;
+        }
+
+        return move result;
+    }
+
+    deinit::(self: Self*) -> void {
+        mem.free((*self).allocator, (*self).data, (*self).capacity);
+        mem.free((*self).allocator, (*self).next_free, (*self).capacity);
+        mem.free((*self).allocator, (*self).generations, (*self).capacity);
+        (*self).data = null;
+        (*self).next_free = null;
+        (*self).generations = null;
+        (*self).capacity = 0;
+        (*self).free_head = pool_invalid_index;
+        (*self).live_count = 0;
+    }
+
+    is_empty::(self: readonly Self*) -> bool {
+        return (*self).live_count == 0;
+    }
+
+    is_full::(self: readonly Self*) -> bool {
+        return (*self).live_count == (*self).capacity;
+    }
+
+    available::(self: readonly Self*) -> u64 {
+        return (*self).capacity - (*self).live_count;
+    }
+
+    contains::(self: readonly Self*, handle: PoolHandle) -> bool {
+        if handle.index >= (*self).capacity
+            return false;
+        if (*self).next_free[handle.index] != pool_live_index
+            return false;
+        return (*self).generations[handle.index] == handle.generation;
+    }
+
+    insert::(self: Self*, value: T) -> PoolHandle {
+        if (*self).free_head == pool_invalid_index
+            return PoolHandle.invalid();
+
+        index := (*self).free_head;
+        (*self).free_head = (*self).next_free[index];
+        (*self).next_free[index] = pool_live_index;
+        (*self).data[index] = value;
+        (*self).live_count += 1;
+
+        return PoolHandle {
+            index = index,
+            generation = (*self).generations[index]
+        };
+    }
+
+    get::(self: Self*, handle: PoolHandle) -> T* {
+        if !(*self).contains(handle)
+            return null;
+        return &(*self).data[handle.index];
+    }
+
+    get_readonly::(self: readonly Self*, handle: PoolHandle) -> readonly T* {
+        if !(*self).contains(handle)
+            return null;
+        return &(*self).data[handle.index];
+    }
+
+    remove::(self: Self*, handle: PoolHandle) -> bool {
+        if !(*self).contains(handle)
+            return false;
+
+        index := handle.index;
+        generation := (*self).generations[index];
+        if generation == 0xffffffffffffffff {
+            (*self).generations[index] = 1;
+        } else {
+            (*self).generations[index] = generation + 1;
+        }
+
+        (*self).next_free[index] = (*self).free_head;
+        (*self).free_head = index;
+        (*self).live_count -= 1;
+        return true;
+    }
+
+    clear::(self: Self*) -> void {
+        i: u64 = 0;
+        while i < (*self).capacity {
+            generation := (*self).generations[i];
+            if generation == 0xffffffffffffffff {
+                (*self).generations[i] = 1;
+            } else {
+                (*self).generations[i] = generation + 1;
+            }
+
+            if i + 1 < (*self).capacity {
+                (*self).next_free[i] = i + 1;
+            } else {
+                (*self).next_free[i] = pool_invalid_index;
+            }
+            i += 1;
+        }
+
+        if (*self).capacity == 0 {
+            (*self).free_head = pool_invalid_index;
+        } else {
+            (*self).free_head = 0;
+        }
+        (*self).live_count = 0;
+    }
+}

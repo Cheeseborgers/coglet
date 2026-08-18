@@ -1,0 +1,16 @@
+Plain::struct { value: s32; }
+Owner::resource { value: s32; }
+
+identity::<T: copyable>(value: T) -> T {
+    return value;
+}
+
+main::() -> s32 {
+    plain := Plain { value = 42 };
+    ptr: Owner* = null;
+    if identity(plain).value != 42
+        return 1;
+    if identity(ptr) != null
+        return 2;
+    return 0;
+}

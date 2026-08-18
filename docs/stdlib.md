@@ -10,7 +10,8 @@ stdlib/
 │   ├── array.cog
 │   ├── io.cog
 │   ├── math.cog
-│   └── mem.cog
+│   ├── mem.cog
+│   └── pool.cog
 └── runtime/
     └── coglet_runtime.c
 ```
@@ -320,11 +321,12 @@ fatal-on-OOM.
 
 ### Arenas
 
-`std.mem.Arena` is a growable region backed by any parent allocator:
+`std.mem.Arena` is a move-only `resource` representing a growable region backed by
+any parent allocator:
 
 ```c
 heap := mem.heap();
-arena := mem.Arena.new(heap); // default block size: 64 KiB
+arena := mem.Arena.new(heap); // 64 KiB preferred block size
 defer arena.deinit();
 
 frame := arena.allocator();
@@ -334,7 +336,7 @@ vertices := mem.alloc::<Vertex>(frame, 4096);
 arena.reset();
 ```
 
-`Arena.new(parent, block_size)` may select a different preferred block size.
+`Arena.with_block_size(parent, block_size)` selects a different preferred block size.
 Individual `free` calls through an arena allocator are no-ops. `resize` allocates
 new arena storage and copies the known old byte count. `reset()` retains backing
 blocks for reuse, making the allocator suitable for frame/scratch lifetimes;
@@ -345,13 +347,105 @@ by `arena.allocator()` must not be used after that arena has been reset when the
 specific allocation is expected to survive, or after `arena.deinit()` at all.
 Coglet does not yet lifetime-check this relationship.
 
+### Scratch scopes
+
+`std.mem.Scratch` captures a checkpoint in a growable `Arena` and rewinds to it
+when the scratch resource is deinitialized:
+
+```c
+arena := mem.Arena.new(mem.heap());
+defer arena.deinit();
+
+{
+    scratch := mem.Scratch.begin(&arena);
+    defer scratch.deinit();
+
+    temporary := scratch.allocator();
+    work := mem.alloc::<WorkItem>(temporary, 4096);
+    // work is invalid after the scratch scope rewinds
+}
+```
+
+Scratch scopes may be nested. They must be ended in LIFO order; Coglet deliberately
+does not borrow/lifetime-check an `Allocator`, pointer, or slice that escapes a
+scratch scope. Individual frees are the same arena no-ops as normal `Arena`
+allocation.
+
+### Fixed-buffer arenas
+
+`std.mem.FixedArena` uses a caller-owned mutable byte slice as both bookkeeping and
+allocation storage. It performs no heap allocation:
+
+```c
+storage: u8[64 * 1024] = {0};
+fixed := mem.FixedArena.from_buffer(storage);
+defer fixed.deinit();
+
+alloc := fixed.allocator();
+vertices := mem.alloc::<Vertex>(alloc, 256);
+
+used := fixed.used();
+remaining := fixed.remaining();
+fixed.reset();
+```
+
+The runtime aligns its small arena-state header within the supplied buffer, so the
+effective allocation capacity is slightly smaller than `storage.len`. `reset()`
+invalidates all outstanding allocations/views and makes the payload reusable.
+`deinit()` does not free the caller-owned buffer; it only retires the arena handle.
+Fixed-arena exhaustion currently follows the same fatal allocation policy as the
+bootstrap heap.
+
+### Debug allocator
+
+`std.mem.DebugAllocator` is a move-only wrapper over any existing `Allocator`.
+It leaves the public allocator ABI unchanged, so arrays and other allocator-aware
+code can be debugged simply by passing the wrapper's allocator handle:
+
+```c
+tracker := mem.DebugAllocator.new(mem.heap());
+defer tracker.deinit();
+
+alloc := tracker.allocator();
+values := array.Array::<s32>.new(alloc);
+defer values.deinit();
+```
+
+For every live allocation the runtime records its requested byte size, alignment,
+and a monotonic allocation ID. A 16-byte `0xA5` guard is placed immediately before
+and after the user region. New user storage is poisoned with `0xCD`; storage is
+filled with `0xDD` before it is returned to the parent allocator.
+
+The initial inspection API is:
+
+```text
+check() -> bool
+live_allocations() -> u64
+live_bytes() -> u64
+total_allocations() -> u64
+total_bytes() -> u64
+error_count() -> u64
+report_leaks() -> u64
+```
+
+`check()` scans all live guards without mutating allocator state. Invalid/double
+frees, size/alignment mismatches, and guard corruption observed during free/resize
+are reported to stderr and increment `error_count()`. `report_leaks()` prints each
+live block using its stable allocation ID and returns the live allocation count.
+`deinit()` reports any remaining allocations and releases their backing blocks
+through the parent allocator before destroying the debug state.
+
+The first version intentionally has no source file/line capture, quarantine,
+stack traces, or platform page guards. Those are diagnostic extensions rather than
+changes to the allocator contract.
+
 `size_of::<T>()` and `align_of::<T>()` remain compiler builtins rather than
 `std.mem` functions. They return `u64` target layout values and are described in
 `docs/language.md`.
 
 ## `std.array`
 
-`std.array.Array<T>` now receives and retains its allocator explicitly:
+`std.array.Array<T: copyable>` now receives and retains its allocator explicitly:
 
 ```c
 import std.array as array;
@@ -396,13 +490,60 @@ values := array.Array::<Entity>.new(arena.allocator());
 values.push(entity);
 ```
 
-Until move-only resources land, `Array<T>` is still shallow-copyable and exactly
-one logical owner must call `deinit()`. Slices returned by the array remain
-non-owning views and may be invalidated by growth/reset/deinitialization.
+`Array<T>` is a move-only `resource`. Existing arrays cannot be shallow-copied;
+ownership transfer is explicit:
 
-Array growth byte-copies existing element storage through the allocator. That is
-valid for today's trivially movable Coglet values, but must be revisited once
-move-only resource semantics exist.
+```c
+consume::(values: array.Array::<s32>) -> void {
+    defer values.deinit();
+    // ...
+}
+
+values := array.Array::<s32>.new(mem.heap());
+consume(move values);
+```
+
+After the move, the source local is uninitialized until assigned a fresh array.
+Slices returned by the array remain ordinary non-owning views and may still be
+invalidated by growth/reset/deinitialization; Coglet intentionally does not
+lifetime-check those aliases.
+
+Array growth byte-copies existing element storage through the allocator. `Array<T>` therefore now requires the closed builtin `copyable` constraint and rejects resource-valued elements until an element-wise move/destruction contract exists.
+
+## `std.pool`
+
+`std.pool.Pool<T: copyable>` is fixed-capacity stable-address storage intended for
+entities, particles, transient handles, and other game objects that should not move
+when unrelated slots are inserted/removed. The pool owns three fixed allocations
+(data, free-list state, and generations) and never relocates them after construction:
+
+```c
+import std.mem as mem;
+import std.pool as pool;
+
+entities := pool.Pool::<Entity>.with_capacity(mem.heap(), 1024);
+defer entities.deinit();
+
+handle := entities.insert(entity);
+if !handle.is_invalid() {
+    ptr := entities.get(handle);
+    if ptr != null
+        (*ptr).health -= 1;
+}
+
+entities.remove(handle);
+```
+
+`PoolHandle` contains an index plus a generation. Releasing or clearing a live slot
+increments that generation, so stale handles fail `contains()`/`get()` after the
+same index is reused. `insert()` returns `PoolHandle.invalid()` when the fixed pool
+is full. `remove()` returns `false` for stale/invalid handles. `get()` returns a
+mutable pointer and `get_readonly()` a readonly pointer; both return `null` for an
+invalid handle. `clear()` invalidates all outstanding handles without reallocating.
+
+The first pool deliberately accepts only `copyable` elements. Resource-valued
+elements need explicit move-in/move-out/destruction semantics before a container can
+own them safely.
 
 ## `std.io`
 

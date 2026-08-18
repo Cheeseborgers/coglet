@@ -1,0 +1,11 @@
+Owner::resource { value: s32; }
+
+identity::<T: copyable>(value: T) -> T {
+    return value;
+}
+
+main::() -> s32 {
+    owner := Owner { value = 1 };
+    unused := identity(move owner);
+    return 0;
+}

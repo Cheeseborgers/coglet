@@ -210,6 +210,7 @@ static const Keyword keywords[] = {
     {"return", TOK_RETURN},
     {"defer", TOK_DEFER},
     {"struct", TOK_STRUCT},
+    {"resource", TOK_RESOURCE},
     {"union", TOK_UNION},
     {"break", TOK_BREAK},
     {"continue", TOK_CONTINUE},
@@ -223,6 +224,7 @@ static const Keyword keywords[] = {
     {"cast", TOK_CAST},
     {"truncate", TOK_TRUNCATE},
     {"reinterpret", TOK_REINTERPRET},
+    {"move", TOK_MOVE},
     {"readonly", TOK_READONLY},
     {"volatile", TOK_VOLATILE},
     {"opaque", TOK_OPAQUE},
@@ -1333,6 +1335,7 @@ const char *token_type_name(TokenType type) {
         case TOK_DEFER: return "DEFER";
         case TOK_VOID: return "VOID";
         case TOK_STRUCT: return "STRUCT";
+        case TOK_RESOURCE: return "RESOURCE";
         case TOK_UNION: return "UNION";
         case TOK_BREAK: return "BREAK";
         case TOK_CONTINUE: return "CONTINUE";
@@ -1343,6 +1346,7 @@ const char *token_type_name(TokenType type) {
         case TOK_CAST: return "CAST";
         case TOK_TRUNCATE: return "TRUNCATE";
         case TOK_REINTERPRET: return "REINTERPRET";
+        case TOK_MOVE: return "MOVE";
         case TOK_READONLY: return "READONLY";
         case TOK_VOLATILE: return "VOLATILE";
         case TOK_OPAQUE: return "OPAQUE";

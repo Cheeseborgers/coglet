@@ -696,6 +696,7 @@ Node *ast_clone(Arena *arena, const Node *node)
             clone->as.struct_decl.name.length = node->as.struct_decl.name.length;
             clone->as.struct_decl.type_parameters = node->as.struct_decl.type_parameters;
             clone->as.struct_decl.is_repr_c       = node->as.struct_decl.is_repr_c;
+            clone->as.struct_decl.is_resource     = node->as.struct_decl.is_resource;
             clone->as.struct_decl.repr_c_packed    = node->as.struct_decl.repr_c_packed;
             clone->as.struct_decl.repr_c_align     = node->as.struct_decl.repr_c_align;
             clone->as.struct_decl.is_union         = node->as.struct_decl.is_union;

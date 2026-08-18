@@ -215,7 +215,7 @@ Import cycles are allowed because imports currently affect compile-time
 visibility only; top-level runtime initialization remains in physical input
 order. Only root-namespace `main::() -> s32` is the executable entry. Exported
 APIs may not expose private nominal types through function signatures,
-globals/constants, or exported struct fields. Package manifests, automatic multi-file package membership, and separate compilation remain future work. Coglet ships ordinary-source `std.math`, `std.io`, `std.mem`, and `std.array` modules beneath `stdlib/std/`; installed builds copy the `std` source tree and the small runtime implementation beneath the configured standard-library root. Discovery does not imply runtime
+globals/constants, or exported struct fields. Package manifests, automatic multi-file package membership, and separate compilation remain future work. Coglet ships ordinary-source `std.math`, `std.io`, `std.mem`, `std.array`, and `std.pool` modules beneath `stdlib/std/`; installed builds copy the `std` source tree and the small runtime implementation beneath the configured standard-library root. Discovery does not imply runtime
 dependency ordering: explicit inputs retain command-line order and discovered
 files are appended in deterministic first-discovery order to the existing single
 module initializer.
@@ -236,7 +236,7 @@ main::() -> s32 {
 
 `std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_s32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; floating game/application helpers such as `lerp`/`smoothstep`; generic `Vec2<T>`/`Vec3<T>`/`Vec4<T>` numeric vectors with constructors, component arithmetic, dot/cross and distance helpers; floating `Quat<T>`, `Mat3<T>`, and `Mat4<T>` transform types with quaternion interpolation/rotation and TRS composition; and runtime-backed `f32`/`f64` square-root, trigonometric, inverse-trigonometric, rounding, and floating-remainder functions. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow. Known implementation limitations and follow-up work are tracked separately in `docs/known_shortcomings.md`.
 
-`std.io` provides runtime-backed byte-view and scalar output. `std.mem` provides explicit allocator values, the process heap allocator, typed allocation, and growable arenas; `std.array` stores an allocator inside each growable `Array<T>`. The public modules remain ordinary Coglet source; reserved `coglet_rt_*` extern symbols are supplied by `<stdlib-root>/runtime/coglet_runtime.c` only when frozen CogIR references them.
+`std.io` provides runtime-backed byte-view and scalar output. `std.mem` provides explicit allocator values, the process heap allocator, typed allocation, growable arenas, caller-buffer fixed arenas, scoped scratch checkpoints, and a guard/poison/tracking `DebugAllocator`; `std.array` stores an allocator inside each growable `Array<T>`, while `std.pool` provides fixed-capacity stable slots with generation-checked handles. The public modules remain ordinary Coglet source; reserved `coglet_rt_*` extern symbols are supplied by `<stdlib-root>/runtime/coglet_runtime.c` only when frozen CogIR references them.
 
 ```c
 import std.io;
@@ -269,7 +269,71 @@ main::() -> s32 {
 }
 ```
 
-`Array<T>` is manually owned in this first version. Copying the struct is a shallow alias of the same allocation because Coglet does not yet have move-only types or destructors; exactly one logical owner must call `deinit()`. Borrowed slices become invalid if the array reallocates or is deinitialized.
+
+For allocation-heavy game code, the same allocator handle can describe heap, arena,
+or fixed-buffer storage:
+
+```c
+import std.mem as mem;
+import std.pool as pool;
+
+storage: u8[64 * 1024] = {0};
+fixed := mem.FixedArena.from_buffer(storage);
+defer fixed.deinit();
+
+frame := mem.Arena.new(mem.heap());
+defer frame.deinit();
+
+{
+    scratch := mem.Scratch.begin(&frame);
+    defer scratch.deinit();
+    temporary := scratch.allocator();
+    // allocations made through temporary are rewound at scope exit
+}
+
+entities := pool.Pool::<Entity>.with_capacity(mem.heap(), 1024);
+defer entities.deinit();
+```
+
+For allocator diagnostics, wrap the allocator used by a subsystem rather than changing the container API:
+
+```c
+import std.array as array;
+import std.mem as mem;
+
+tracker := mem.DebugAllocator.new(mem.heap());
+defer tracker.deinit();
+
+alloc := tracker.allocator();
+values := array.Array::<s32>.new(alloc);
+defer values.deinit();
+
+// Live allocation/byte counters and guard validation are queryable.
+if !tracker.check()
+    return 1;
+```
+
+`DebugAllocator` places fixed guards around live allocations, fills newly allocated storage with `0xCD`, fills storage with `0xDD` before returning it to the parent allocator, and can report outstanding blocks using stable allocation IDs. It does not yet attach source file/line metadata because Coglet has no source-location intrinsic in ordinary allocator calls.
+
+`Array<T>` and `Pool<T>` currently require `T: copyable`; resource-valued elements
+are rejected until the container layer has element-wise move/destruction semantics.
+
+`Array<T>` and `std.mem.Arena` are move-only `resource` values. Existing owners
+cannot be copied; ownership transfer is explicit with `move`. Cleanup remains
+explicit and normally pairs naturally with `defer`:
+
+```c
+values := array.Array::<s32>.new(mem.heap());
+defer values.deinit();
+
+// Passing ownership requires an explicit transfer.
+consume(move values);
+```
+
+After a successful move, the source local is treated as uninitialized and may not
+be read until assigned a fresh resource. Coglet intentionally does not perform
+borrow/lifetime checking for pointers or slices; borrowed views can still be
+invalidated by reallocation, arena reset, or resource destruction.
 
 ### Build and run from a source checkout
 

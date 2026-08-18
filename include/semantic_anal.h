@@ -146,6 +146,7 @@ typedef struct {
 } FlowState;
 
 typedef struct LoopFlowContext LoopFlowContext;
+typedef struct DeferredResourceUse DeferredResourceUse;
 
 typedef struct {
     Arena *arena;
@@ -174,6 +175,15 @@ typedef struct {
 
     int function_depth;
     int defer_depth;
+
+    /*
+     * Resource variables referenced directly by active lexical defers may not
+     * subsequently transfer ownership. This protects the common
+     * `defer value.deinit(); ... move value` mistake without introducing
+     * general pointer/slice alias or lifetime analysis.
+     */
+    DeferredResourceUse *active_deferred_resources;
+    DeferredResourceUse *captured_deferred_resources;
 
     /*
     * Flow-owner IDs are unique for the complete semantic check.

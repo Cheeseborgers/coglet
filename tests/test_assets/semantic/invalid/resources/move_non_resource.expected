@@ -1,0 +1,7 @@
+tests/test_assets/semantic/invalid/resources/move_non_resource.cog:3:14: error: move requires a resource value
+    other := move value;
+             ^~~~~~~~~~
+tests/test_assets/semantic/invalid/resources/move_non_resource.cog:4:12: error: undefined identifier 'other'
+    return other;
+           ^~~~~
+2 semantic errors generated.

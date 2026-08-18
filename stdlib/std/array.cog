@@ -4,9 +4,9 @@ import std.mem as mem;
 
 // Growable contiguous storage using an explicit allocator.
 //
-// This milestone still permits shallow copies of Array<T>. Exactly one logical
-// owner must call deinit() until move-only resource semantics are added.
-export Array::<T> struct {
+// Array<T> owns its allocation and is therefore move-only. Use `move value`
+// when transferring ownership to another variable, parameter, or return.
+export Array::<T: copyable> resource {
     data: T*;
     len: u64;
     capacity: u64;
@@ -27,7 +27,7 @@ export Array::<T> struct {
             result.data = mem.alloc::<T>(allocator, capacity);
             result.capacity = capacity;
         }
-        return result;
+        return move result;
     }
 
     deinit::(self: Self*) -> void {

@@ -1,0 +1,103 @@
+import std.array as array;
+import std.mem as mem;
+import std.pool as pool;
+
+Point::struct {
+    x: s32;
+    y: s32;
+}
+
+main::() -> s32 {
+    heap := mem.heap();
+
+    // Growable arena scratch scopes rewind to the captured checkpoint.
+    arena := mem.Arena.with_block_size(heap, 128);
+    defer arena.deinit();
+    arena_alloc := arena.allocator();
+
+    first := mem.alloc::<s32>(arena_alloc, 1);
+    first[0] = 1;
+
+    scratch_ptr: s32* = null;
+    {
+        scratch := mem.Scratch.begin(&arena);
+        defer scratch.deinit();
+        scratch_alloc := scratch.allocator();
+        scratch_ptr = mem.alloc::<s32>(scratch_alloc, 4);
+        scratch_ptr[0] = 42;
+
+        nested_ptr: s32* = null;
+        {
+            nested := mem.Scratch.begin(&arena);
+            defer nested.deinit();
+            nested_ptr = mem.alloc::<s32>(nested.allocator(), 2);
+            nested_ptr[0] = 7;
+        }
+
+        nested_reuse := mem.alloc::<s32>(scratch_alloc, 2);
+        if nested_reuse != nested_ptr
+            return 1;
+    }
+
+    scratch_reuse := mem.alloc::<s32>(arena_alloc, 4);
+    if scratch_reuse != scratch_ptr
+        return 2;
+
+    // FixedArena stores all bookkeeping and allocations inside caller storage.
+    storage: u8[512] = {0};
+    fixed := mem.FixedArena.from_buffer(storage);
+    defer fixed.deinit();
+    fixed_alloc := fixed.allocator();
+    if fixed.used() != 0 || fixed.remaining() == 0
+        return 3;
+
+    fixed_values := array.Array::<s32>.with_capacity(fixed_alloc, 4);
+    defer fixed_values.deinit();
+    fixed_values.push(10);
+    fixed_values.push(20);
+    if fixed_values.len != 2 || fixed.used() == 0
+        return 4;
+
+    fixed.reset();
+    if fixed.used() != 0
+        return 5;
+
+    raw := mem.alloc::<u64>(fixed_alloc, 2);
+    raw[0] = 11;
+    raw[1] = 22;
+    if raw[1] != 22
+        return 6;
+
+    // Fixed-capacity pool preserves element addresses and detects stale handles.
+    points := pool.Pool::<Point>.with_capacity(heap, 2);
+    defer points.deinit();
+
+    a := points.insert(Point { x = 10, y = 20 });
+    b := points.insert(Point { x = 30, y = 40 });
+    if a.is_invalid() || b.is_invalid() || !points.is_full()
+        return 7;
+
+    full := points.insert(Point { x = 50, y = 60 });
+    if !full.is_invalid()
+        return 8;
+
+    a_ptr := points.get(a);
+    if a_ptr == null || (*a_ptr).x != 10
+        return 9;
+
+    if !points.remove(a) || points.get(a) != null
+        return 10;
+
+    c := points.insert(Point { x = 70, y = 80 });
+    if c.is_invalid() || c.index != a.index || c.generation == a.generation
+        return 11;
+    c_ptr := points.get(c);
+    if c_ptr == null || (*c_ptr).x != 70 || (*c_ptr).y != 80
+        return 12;
+
+    points.clear();
+    if !points.is_empty() || points.contains(b) || points.contains(c)
+        return 13;
+
+    return 0;
+}

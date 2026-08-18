@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/use_after_move.cog:5:12: error: resource 'first' may be uninitialized or moved
+    return first.value + second.value;
+           ^~~~~
+1 semantic error generated.

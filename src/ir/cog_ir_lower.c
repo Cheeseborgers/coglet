@@ -3717,6 +3717,17 @@ static int lower_statement_expression(ExecLowerState *state, Node *node)
                     return 1; /* discarded adaptable compile-time value has no runtime effect */
             }
             CogIrValueId value = lower_expression(state, node);
+            if (type && type->kind != TYPE_VOID &&
+                value != COG_IR_VALUE_INVALID &&
+                !cog_ir_mark_value_discarded(
+                    state->lower->module, state->function, value)) {
+                lower_error(
+                    state->lower,
+                    node->span,
+                    "failed to mark discarded CogIR expression result"
+                );
+                return 0;
+            }
             return (type && type->kind == TYPE_VOID) || value != COG_IR_VALUE_INVALID;
         }
     }

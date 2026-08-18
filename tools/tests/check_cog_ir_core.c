@@ -313,6 +313,58 @@ int main(void)
     arena_destroy(diag_arena);
     cog_ir_module_destroy(&module);
 
+    /* Frozen modules derive runtime capabilities once from their external C
+     * symbol metadata. The driver consumes this bitset instead of rescanning
+     * extern declarations for each backend/link capability. */
+    CogIrModule runtime_meta;
+    cog_ir_module_init(&runtime_meta, &target);
+    CogIrTypeId runtime_void = cog_ir_type_void(&runtime_meta);
+    CogIrTypeId runtime_fn_type = cog_ir_type_function(
+        &runtime_meta, runtime_void, NULL, 0,
+        COG_IR_ABI_C, COG_IR_CALL_DEFAULT, 0);
+    CogIrAbiTypeId runtime_void_abi =
+        cog_ir_abi_type_semantic(&runtime_meta, runtime_void);
+    const char *runtime_symbols[] = {
+        "coglet_rt_io_probe",
+        "coglet_rt_math_probe",
+        "coglet_rt_mem_probe",
+        "coglet_rt_future_probe",
+    };
+    for (size_t i = 0; i < sizeof(runtime_symbols) / sizeof(runtime_symbols[0]); ++i) {
+        CogIrFunctionAbi runtime_abi = {
+            .abi = COG_IR_ABI_C,
+            .calling_convention = COG_IR_CALL_DEFAULT,
+            .is_variadic = 0,
+            .external_symbol = string_view_from_cstr(runtime_symbols[i]),
+            .return_abi_type = runtime_void_abi,
+            .parameter_abi_types = NULL,
+            .parameter_count = 0,
+        };
+        if (cog_ir_add_function(
+                &runtime_meta,
+                string_view_from_cstr(runtime_symbols[i]),
+                source_span_invalid(),
+                runtime_fn_type,
+                COG_IR_FUNCTION_DECLARATION,
+                COG_IR_LINKAGE_EXTERNAL,
+                0,
+                &runtime_abi) == COG_IR_FUNCTION_INVALID)
+            return fail("runtime-requirement external declaration construction failed");
+    }
+    if (cog_ir_module_runtime_requirements(&runtime_meta) !=
+        COG_IR_RUNTIME_REQUIREMENT_NONE)
+        return fail("mutable CogIR exposed runtime requirements before freeze");
+    cog_ir_module_freeze(&runtime_meta);
+    unsigned expected_runtime_requirements =
+        COG_IR_RUNTIME_REQUIREMENT_IO |
+        COG_IR_RUNTIME_REQUIREMENT_MATH |
+        COG_IR_RUNTIME_REQUIREMENT_MEMORY |
+        COG_IR_RUNTIME_REQUIREMENT_UNKNOWN;
+    if (cog_ir_module_runtime_requirements(&runtime_meta) !=
+        expected_runtime_requirements)
+        return fail("frozen CogIR runtime requirement derivation failed");
+    cog_ir_module_destroy(&runtime_meta);
+
     /* Negative verifier regression: declared nominal type + unterminated body. */
     CogIrModule bad;
     cog_ir_module_init(&bad, &target);
@@ -334,6 +386,40 @@ int main(void)
 
     arena_destroy(diag_arena);
     cog_ir_module_destroy(&bad);
+
+    /* Negative verifier regression: a value explicitly marked discarded is
+     * terminal metadata; later CogIR users must not consume it. */
+    CogIrModule bad_discard;
+    cog_ir_module_init(&bad_discard, &target);
+    CogIrTypeId discard_s32 = cog_ir_type_integer(&bad_discard, 32, 1);
+    CogIrTypeId discard_fn_type = cog_ir_type_function(
+        &bad_discard, discard_s32, NULL, 0,
+        COG_IR_ABI_COGLET, COG_IR_CALL_DEFAULT, 0);
+    CogIrFunctionId discard_fn = cog_ir_add_function(
+        &bad_discard, string_view_from_cstr("discard_use"), source_span_invalid(),
+        discard_fn_type, COG_IR_FUNCTION_DEFINITION, COG_IR_LINKAGE_INTERNAL, 0, NULL);
+    CogIrBlockId discard_block = cog_ir_add_block(
+        &bad_discard, discard_fn, string_view_from_cstr("entry"), source_span_invalid());
+    CogIrConstId discard_one = cog_ir_const_integer(&bad_discard, discard_s32, 1);
+    op = instruction(COG_IR_OP_CONST, discard_s32, source_span_invalid());
+    op.as.constant.constant = discard_one;
+    CogIrValueId discarded_value = COG_IR_VALUE_INVALID;
+    if (discard_block == COG_IR_BLOCK_INVALID ||
+        !cog_ir_emit(&bad_discard, discard_fn, discard_block, &op, &discarded_value) ||
+        !cog_ir_mark_value_discarded(&bad_discard, discard_fn, discarded_value))
+        return fail("discarded-result negative construction failed");
+    term = ret_value(discarded_value, source_span_invalid());
+    if (!cog_ir_set_terminator(&bad_discard, discard_fn, discard_block, &term))
+        return fail("discarded-result negative terminator construction failed");
+    cog_ir_module_freeze(&bad_discard);
+
+    diag_arena = arena_create(4096);
+    diagnostic_list_init(&diagnostics, diag_arena);
+    if (cog_ir_verify(&bad_discard, &diagnostics) || diagnostics.count == 0)
+        return fail("verifier did not reject use of a discarded instruction result");
+
+    arena_destroy(diag_arena);
+    cog_ir_module_destroy(&bad_discard);
 
     /* Negative verifier regression: the resolved executable entry has a
      * backend-neutral Coglet () -> s32 contract. */

@@ -38,7 +38,8 @@ LlvmBackendStatus llvm_backend_build_executable(
     );
     if (status == LLVM_BACKEND_STATUS_OK) {
         CogNativeToolchainLinkOptions native_options = {
-            .runtime_source = link_options ? link_options->runtime_source : NULL,
+            .runtime_sources = link_options ? link_options->runtime_sources : NULL,
+            .runtime_source_count = link_options ? link_options->runtime_source_count : 0,
             .runtime_math = link_options ? link_options->runtime_math : 0,
             .library_dirs = link_options ? link_options->library_dirs : NULL,
             .library_dir_count = link_options ? link_options->library_dir_count : 0,

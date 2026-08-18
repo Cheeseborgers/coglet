@@ -63,7 +63,6 @@ static int args_push(ArgVector *args, const char *value)
     return 1;
 }
 
-#if COGLET_CONFIGURED_NATIVE_C_COMPILER_MSVC_STYLE
 static int args_push_owned_concat(ArgVector *args, const char *prefix, const char *value, const char *suffix)
 {
     size_t prefix_len = strlen(prefix);
@@ -83,7 +82,6 @@ static int args_push_owned_concat(ArgVector *args, const char *prefix, const cha
     args->owned[args->owned_count++] = joined;
     return args_push(args, joined);
 }
-#endif
 
 static const char *temp_directory(void)
 {
@@ -243,7 +241,6 @@ static CogNativeToolchainStatus run_process(char *const *argv)
 #endif
 }
 
-#if !COGLET_CONFIGURED_NATIVE_C_COMPILER_MSVC_STYLE
 static int append_gnu_link_options(ArgVector *args, const CogNativeToolchainLinkOptions *options)
 {
     if (!options)
@@ -259,9 +256,6 @@ static int append_gnu_link_options(ArgVector *args, const CogNativeToolchainLink
     return 1;
 }
 
-#endif
-
-#if COGLET_CONFIGURED_NATIVE_C_COMPILER_MSVC_STYLE
 static int append_msvc_link_options(ArgVector *args, const CogNativeToolchainLinkOptions *options)
 {
     if (!options || (options->library_dir_count == 0 && options->library_count == 0))
@@ -280,9 +274,6 @@ static int append_msvc_link_options(ArgVector *args, const CogNativeToolchainLin
     return 1;
 }
 
-#endif
-
-#if !COGLET_CONFIGURED_NATIVE_C_COMPILER_MSVC_STYLE
 static CogNativeToolchainStatus build_gnu_style(
     const char *output_path,
     const char *primary_input,
@@ -300,13 +291,11 @@ static CogNativeToolchainStatus build_gnu_style(
     }
     if (ok)
         ok = args_push(&args, primary_input);
-    if (ok && options && options->runtime_source) {
+    if (ok && options && options->runtime_source_count > 0) {
         if (!primary_is_c)
             ok = args_push(&args, "-std=c99") && args_push(&args, "-Wall") && args_push(&args, "-Wextra");
-        if (ok && options->runtime_math)
-            ok = args_push(&args, "-DCOGLET_RUNTIME_MATH=1");
-        if (ok)
-            ok = args_push(&args, options->runtime_source);
+        for (int i = 0; ok && i < options->runtime_source_count; ++i)
+            ok = args_push(&args, options->runtime_sources[i]);
     }
     if (ok)
         ok = args_push(&args, "-o") && args_push(&args, output_path);
@@ -327,9 +316,6 @@ static CogNativeToolchainStatus build_gnu_style(
     return status;
 }
 
-#endif
-
-#if COGLET_CONFIGURED_NATIVE_C_COMPILER_MSVC_STYLE
 static CogNativeToolchainStatus build_msvc_style(
     const char *output_path,
     const char *primary_input,
@@ -347,10 +333,10 @@ static CogNativeToolchainStatus build_msvc_style(
         else
             ok = args_push(&args, primary_input);
     }
-    if (ok && options && options->runtime_math)
-        ok = args_push(&args, "/DCOGLET_RUNTIME_MATH=1");
-    if (ok && options && options->runtime_source)
-        ok = args_push_owned_concat(&args, "/Tc", options->runtime_source, "");
+    if (ok && options) {
+        for (int i = 0; ok && i < options->runtime_source_count; ++i)
+            ok = args_push_owned_concat(&args, "/Tc", options->runtime_sources[i], "");
+    }
     if (ok)
         ok = args_push_owned_concat(&args, "/Fe:", output_path, "");
     if (ok)
@@ -366,8 +352,6 @@ static CogNativeToolchainStatus build_msvc_style(
     return status;
 }
 
-#endif
-
 static CogNativeToolchainStatus build_executable(
     const char *output_path,
     const char *primary_input,
@@ -378,11 +362,9 @@ static CogNativeToolchainStatus build_executable(
         fprintf(stderr, "error: native toolchain requires an input and executable output path\n");
         return COG_NATIVE_TOOLCHAIN_IO_ERROR;
     }
-#if COGLET_CONFIGURED_NATIVE_C_COMPILER_MSVC_STYLE
-    return build_msvc_style(output_path, primary_input, primary_is_c, options);
-#else
+    if (COGLET_CONFIGURED_NATIVE_C_COMPILER_MSVC_STYLE)
+        return build_msvc_style(output_path, primary_input, primary_is_c, options);
     return build_gnu_style(output_path, primary_input, primary_is_c, options);
-#endif
 }
 
 CogNativeToolchainStatus cog_native_build_c_executable(

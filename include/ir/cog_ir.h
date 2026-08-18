@@ -349,6 +349,7 @@ typedef struct CogIrInstruction {
     CogIrOp op;
     CogIrValueId result;
     CogIrTypeId result_type;
+    int result_is_discarded;
     SourceSpan span;
 
     union {
@@ -477,6 +478,14 @@ typedef struct CogIrFunction {
     CogIrBlockId entry_block;
 } CogIrFunction;
 
+typedef enum CogIrRuntimeRequirement {
+    COG_IR_RUNTIME_REQUIREMENT_NONE = 0,
+    COG_IR_RUNTIME_REQUIREMENT_IO = 1u << 0,
+    COG_IR_RUNTIME_REQUIREMENT_MATH = 1u << 1,
+    COG_IR_RUNTIME_REQUIREMENT_MEMORY = 1u << 2,
+    COG_IR_RUNTIME_REQUIREMENT_UNKNOWN = 1u << 3,
+} CogIrRuntimeRequirement;
+
 typedef struct CogIrModule {
     Arena *arena;
     TargetInfo target;
@@ -505,6 +514,9 @@ typedef struct CogIrModule {
     /* Optional source-language executable entry declaration. */
     CogIrFunctionId entry_function;
     CogIrFunctionId init_function;
+
+    /* Derived only from frozen external-symbol metadata. */
+    unsigned runtime_requirements;
     int is_frozen;
 } CogIrModule;
 
@@ -515,6 +527,7 @@ int cog_ir_module_add_source(CogIrModule *module, const char *filename, const ch
 int cog_ir_module_copy_sources(CogIrModule *module, const SourceManager *sources);
 void cog_ir_module_freeze(CogIrModule *module);
 int cog_ir_module_is_frozen(const CogIrModule *module);
+unsigned cog_ir_module_runtime_requirements(const CogIrModule *module);
 
 /* Runtime type builder. Structural types are interned; nominal types are not. */
 CogIrTypeId cog_ir_type_void(CogIrModule *module);
@@ -621,6 +634,7 @@ CogIrSlotId cog_ir_add_slot(
 );
 int cog_ir_set_slot_abi_type(CogIrModule *module, CogIrFunctionId function, CogIrSlotId slot, CogIrAbiTypeId abi_type);
 int cog_ir_set_value_abi_type(CogIrModule *module, CogIrFunctionId function, CogIrValueId value, CogIrAbiTypeId abi_type);
+int cog_ir_mark_value_discarded(CogIrModule *module, CogIrFunctionId function, CogIrValueId value);
 CogIrBlockId cog_ir_add_block(CogIrModule *module, CogIrFunctionId function, StringView debug_name, SourceSpan span);
 CogIrValueId cog_ir_add_block_parameter(CogIrModule *module, CogIrFunctionId function, CogIrBlockId block, CogIrTypeId type, StringView debug_name, SourceSpan span);
 int cog_ir_emit(CogIrModule *module, CogIrFunctionId function, CogIrBlockId block, const CogIrInstruction *instruction, CogIrValueId *out_result);

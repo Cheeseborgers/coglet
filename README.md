@@ -235,7 +235,7 @@ main::() -> s32 {
 
 `std.math` provides adaptable hexadecimal floating-point constants including `pi`, `tau`, `e`, angle-conversion factors, and common derived constants; concrete integer helpers `abs_s32`/`gcd_u64`; generic `min<T: ordered>`/`max<T: ordered>`/`clamp<T: ordered>`; floating game/application helpers such as `lerp`/`smoothstep`; generic `Vec2<T>`/`Vec3<T>`/`Vec4<T>` numeric vectors with constructors, component arithmetic, dot/cross and distance helpers; floating `Quat<T>`, `Mat3<T>`, and `Mat4<T>` transform types with quaternion interpolation/rotation and TRS composition; and runtime-backed `f32`/`f64` square-root, trigonometric, inverse-trigonometric, rounding, and floating-remainder functions. The constants remain compile-time `untyped-float` values, so `f32` and `f64` contexts materialize the appropriate precision without a use-site cast. See `docs/stdlib.md` for the API, semantics, installation layout, and stdlib testing workflow. Known implementation limitations and follow-up work are tracked separately in `docs/known_shortcomings.md`.
 
-`std.io` provides runtime-backed byte-view and scalar output. `std.mem` provides explicit allocator values, the process heap allocator, typed allocation, growable arenas, caller-buffer fixed arenas, scoped scratch checkpoints, and a guard/poison/tracking `DebugAllocator`; `std.array` stores an allocator inside each growable `Array<T>`, while `std.pool` provides fixed-capacity stable slots with generation-checked handles. The public modules remain ordinary Coglet source; reserved `coglet_rt_*` extern symbols are supplied by `<stdlib-root>/runtime/coglet_runtime.c` only when frozen CogIR references them.
+`std.io` provides runtime-backed byte-view and scalar output. `std.mem` provides explicit allocator values, the process heap allocator, typed allocation, growable arenas, caller-buffer fixed arenas, scoped scratch checkpoints, and a guard/poison/tracking `DebugAllocator`; `std.array` stores an allocator inside each growable `Array<T>`, while `std.pool` provides fixed-capacity stable slots with generation-checked handles. The public modules remain ordinary Coglet source. During CogIR freeze, reserved `coglet_rt_*` extern declarations are summarized into runtime requirements; executable links then compile only the required `<stdlib-root>/runtime/coglet_runtime_{io,math,mem}.c` components.
 
 ```c
 import std.io;
@@ -358,9 +358,12 @@ When developing from the source tree, pass the source stdlib root explicitly:
 
 On Windows the executable normally has the platform `.exe` suffix. Installed
 builds use the configured stdlib root automatically; `coglet --print-stdlib-root`
-shows it. Runtime-backed modules such as `std.io` and `std.mem` require the matching
-`runtime/coglet_runtime.c` beneath that root, while pure programs that do not
-reference reserved runtime symbols do not acquire a runtime link dependency.
+shows it. Runtime-backed modules require the matching `runtime/coglet_runtime_io.c`,
+`runtime/coglet_runtime_math.c`, and/or `runtime/coglet_runtime_mem.c` component
+beneath that root. Pure programs that do not declare reserved runtime symbols do
+not acquire a runtime link dependency. `runtime/coglet_runtime.c` remains a
+compatibility umbrella for consumers that intentionally compile the v0 runtime
+as one translation unit; the Coglet driver links components directly.
 
 For the current executable slice:
 

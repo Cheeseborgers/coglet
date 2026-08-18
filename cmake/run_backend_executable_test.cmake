@@ -31,6 +31,17 @@ if(NOT compile_result EQUAL 0)
     )
 endif()
 
+if(DEFINED FORBID_COMPILE_WARNINGS AND FORBID_COMPILE_WARNINGS)
+    string(TOLOWER "${compile_stderr}" compile_stderr_lower)
+    if(compile_stderr_lower MATCHES "warning")
+        message(FATAL_ERROR
+            "Coglet backend compilation produced a warning\n"
+            "stdout:\n${compile_stdout}\n"
+            "stderr:\n${compile_stderr}"
+        )
+    endif()
+endif()
+
 execute_process(
     COMMAND "${OUTPUT}"
     RESULT_VARIABLE run_result

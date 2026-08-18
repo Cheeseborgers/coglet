@@ -13,7 +13,10 @@ stdlib/
 │   ├── mem.cog
 │   └── pool.cog
 └── runtime/
-    └── coglet_runtime.c
+    ├── coglet_runtime_io.c
+    ├── coglet_runtime_math.c
+    ├── coglet_runtime_mem.c
+    └── coglet_runtime.c        # compatibility umbrella
 ```
 
 A normal installation places both trees beneath `COGLET_STDLIB_INSTALL_DIR`, so
@@ -277,7 +280,7 @@ remain only as the standard library's bridge to distinct reserved runtime ABI
 symbols. There is no stdlib-specific backend or compiler intrinsic for these calls.
 
 The transcendental functions delegate to the host C math implementation through
-`stdlib/runtime/coglet_runtime.c`. `floor`, `ceil`, `trunc`, and `fmod` follow the
+`stdlib/runtime/coglet_runtime_math.c`. `floor`, `ceil`, `trunc`, and `fmod` follow the
 corresponding C semantics; `round` rounds halfway cases away from zero. Domain and
 range behavior, NaN/infinity propagation, and last-bit transcendental results are
 therefore currently the host C library's behavior. Tests use tolerances for
@@ -558,7 +561,7 @@ own them safely.
 
 `std.io` is the first I/O-facing runtime-backed standard module. The public API remains
 ordinary Coglet source in `stdlib/std/io.cog`; it declares a small reserved C ABI
-implemented by `stdlib/runtime/coglet_runtime.c`. User code imports only the
+implemented by `stdlib/runtime/coglet_runtime_io.c`. User code imports only the
 module:
 
 ```c
@@ -590,15 +593,16 @@ print_f32/f64
 `print_f32` uses enough significant decimal digits to round-trip a binary32 value;
 `print_f64` does the corresponding binary64 formatting.
 
-Runtime implementation symbols use the reserved `coglet_rt_` prefix. After
-frontend state is destroyed, the driver scans frozen CogIR C-ABI symbol metadata;
-a compilation unit containing those declarations causes
-`<stdlib-root>/runtime/coglet_runtime.c` to be compiled/linked. Math symbols use
-the narrower `coglet_rt_math_` prefix to enable the runtime's math capability and
-its platform-specific native math-library linkage. CogIR contains no
-`std.io` or runtime-module special case, and both host-C and LLVM executables link
-the same runtime source through the shared native-toolchain layer. `--emit-c`
-continues to emit the translation unit without embedding the runtime implementation.
+Runtime implementation symbols use the reserved `coglet_rt_` prefix. During
+CogIR freeze, external C declarations in the `coglet_rt_io_`, `coglet_rt_math_`,
+and `coglet_rt_mem_` namespaces are summarized into an immutable runtime
+requirement. After frontend state is destroyed, the driver maps that requirement
+to only the matching runtime component sources. Math requirements additionally
+enable platform-specific native math-library linkage. CogIR contains no `std.io`
+or runtime-module object, and both host-C and LLVM executables pass the same
+component set through the shared native-toolchain layer. `coglet_runtime.c` is a
+compatibility umbrella for external/manual v0-runtime builds; `--emit-c` continues
+to emit the program translation unit without embedding any runtime implementation.
 
 The v0 runtime ABI deliberately uses ISO C scalar/pointer types and stdio. The
 native-host support target is Linux and Windows on x86-64 and AArch64. Coglet does

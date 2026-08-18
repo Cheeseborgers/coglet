@@ -1268,6 +1268,23 @@ add_host_c_executable_test(
         backend_scalar_ops scalar_ops.cog 0
         "backend;backend.c;ir;scalar;bitwise;float;pointer"
 )
+add_test(
+        NAME backend_discarded_expression_warning_free
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/discarded_expression.cog
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_discarded_expression_warning_free${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -DFORBID_COMPILE_WARNINGS=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(backend_discarded_expression_warning_free
+        PROPERTIES LABELS "backend;backend.c;ir;expression;call;warning-free")
+add_host_c_failure_test(
+        backend_reserved_runtime_symbol reserved_runtime_symbol.cog 3
+        "unsupported symbol in the reserved 'coglet_rt_' runtime namespace"
+        "backend;backend.c;runtime;driver;invalid"
+)
 add_host_c_library_test(
         backend_data_address_casts data_address_casts.cog 0 joined
         "backend;backend.c;ir;data;address;cast;volatile"

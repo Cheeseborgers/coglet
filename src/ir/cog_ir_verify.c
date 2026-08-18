@@ -317,8 +317,15 @@ static int value_available(
             return 1;
         case COG_IR_VALUE_BLOCK_PARAMETER:
             return value->block == block;
-        case COG_IR_VALUE_INSTRUCTION:
-            return value->block == block && value->ordinal < instruction_ordinal;
+        case COG_IR_VALUE_INSTRUCTION: {
+            if (value->block != block || value->ordinal >= instruction_ordinal ||
+                (size_t)value->block >= function->block_count)
+                return 0;
+            const CogIrBlock *producer_block = &function->blocks[value->block];
+            if (value->ordinal >= producer_block->instruction_count)
+                return 0;
+            return !producer_block->instructions[value->ordinal].result_is_discarded;
+        }
     }
     return 0;
 }
@@ -381,6 +388,10 @@ static int verify_instruction(
     if (instruction->result_type == COG_IR_TYPE_INVALID) {
         if (instruction->result != COG_IR_VALUE_INVALID) {
             ir_error(diagnostics, instruction->span, "void instruction %zu in block %u has a result value", ordinal, block->id);
+            ok = 0;
+        }
+        if (instruction->result_is_discarded) {
+            ir_error(diagnostics, instruction->span, "void instruction %zu in block %u cannot discard a result", ordinal, block->id);
             ok = 0;
         }
     } else if (!result || result->type != instruction->result_type ||

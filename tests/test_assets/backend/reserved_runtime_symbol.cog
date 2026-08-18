@@ -1,0 +1,7 @@
+#extern(c, name="coglet_rt_future_probe")
+runtime_probe::() -> void;
+
+main::() -> s32 {
+    runtime_probe();
+    return 0;
+}

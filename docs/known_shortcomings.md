@@ -15,16 +15,13 @@ should not be forgotten.
 - **Coglet is still native-host only.** `TargetInfo` can describe synthetic
   frontend targets, but the CLI cannot yet select a target triple, backend data
   layout, SDK/sysroot, or cross linker/toolchain.
-- **Runtime dependency detection is declaration-based.** The driver currently
-  scans frozen external function declarations for the reserved `coglet_rt_*`
-  namespace. Importing a module that declares runtime entry points can therefore
-  add the runtime even when a particular program does not call them. A later
-  reachability/dead-code pass should derive runtime capabilities from reachable
-  calls instead.
-- **The runtime is one C source file.** Capability macros keep math-only code and
-  libraries out of I/O-only links, but the implementation should be split into
-  maintainable runtime components once more services (memory, time, filesystem,
-  threads) arrive.
+- **Runtime dependency detection is declaration-based.** CogIR now derives its
+  frozen runtime requirement once from reserved `coglet_rt_*` external
+  declarations, and the driver links only the corresponding runtime components.
+  Importing a module that declares runtime entry points can still add a component
+  even when a particular program does not call those declarations. A later
+  reachability/dead-code pass should derive requirements from reachable calls
+  instead.
 
 ## `std.math`
 
@@ -111,7 +108,6 @@ should not be forgotten.
 
 ## Code generation and linking
 
-- **Host-C can warn for discarded non-void call results.** A standalone value-returning call such as `identity::<s32>(1);` lowers to a CogIR call whose result is unused, but the host-C backend currently materializes that result as a temporary local. Native C compilation can therefore report `-Wunused-variable`. A backend/lowering cleanup should emit discarded calls without an unnecessary C temporary while preserving the call side effect.
 - **No whole-program reachability/DCE yet.** Importing a module can emit unused
   concrete internal functions in host-C output. Generated C marks such functions
   as intentionally maybe-unused to keep normal builds warning-free; a later

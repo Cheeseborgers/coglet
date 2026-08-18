@@ -3184,11 +3184,14 @@ static int emit_instruction(
                 }
             }
 
-            if (instruction->result_type != COG_IR_TYPE_INVALID) {
+            if (instruction->result_type != COG_IR_TYPE_INVALID &&
+                !instruction->result_is_discarded) {
                 const char *result_type = value_type_name(backend, function, result, instruction->span);
                 if (!result_type)
                     return 0;
                 fprintf(backend->out, "    %s cg_v_%u = %s(", result_type, result, callee);
+            } else if (instruction->result_type != COG_IR_TYPE_INVALID) {
+                fprintf(backend->out, "    (void)%s(", callee);
             } else {
                 fprintf(backend->out, "    %s(", callee);
             }
@@ -3225,6 +3228,7 @@ static int emit_instruction(
             }
             fputs(");\n", backend->out);
             if (instruction->result_type != COG_IR_TYPE_INVALID &&
+                !instruction->result_is_discarded &&
                 !set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
                 goto invalid_result;
             return 1;
@@ -3650,8 +3654,16 @@ static int emit_function_body(CBackend *backend, const CogIrFunction *function)
         const CogIrBlock *block = &function->blocks[b];
         fprintf(backend->out, "cg_bb_%u: ;\n", block->id);
         for (size_t i = 0; i < block->instruction_count; ++i) {
-            if (!emit_instruction(backend, function, &block->instructions[i], exprs))
+            const CogIrInstruction *instruction = &block->instructions[i];
+            if (!emit_instruction(backend, function, instruction, exprs))
                 goto fail;
+            if (instruction->result_is_discarded &&
+                instruction->result_type != COG_IR_TYPE_INVALID) {
+                const char *discarded = value_expr(
+                    exprs, function->value_count, instruction->result);
+                if (discarded)
+                    fprintf(backend->out, "    (void)(%s);\n", discarded);
+            }
         }
         if (!emit_terminator(backend, function, block, exprs))
             goto fail;
@@ -3831,7 +3843,8 @@ CBackendStatus c_backend_build_executable(
     }
 
     CogNativeToolchainLinkOptions native_options = {
-        .runtime_source = link_options ? link_options->runtime_source : NULL,
+        .runtime_sources = link_options ? link_options->runtime_sources : NULL,
+        .runtime_source_count = link_options ? link_options->runtime_source_count : 0,
         .runtime_math = link_options ? link_options->runtime_math : 0,
         .library_dirs = link_options ? link_options->library_dirs : NULL,
         .library_dir_count = link_options ? link_options->library_dir_count : 0,

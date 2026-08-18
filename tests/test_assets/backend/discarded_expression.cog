@@ -1,0 +1,10 @@
+value::() -> s32 {
+    return 42;
+}
+
+main::() -> s32 {
+    x := 1;
+    value();
+    x + 2;
+    return 0;
+}

@@ -53,81 +53,88 @@ static int parse_optimization_level(const char *value, CogOptimizationLevel *lev
 }
 
 
-static int cog_string_view_starts_with_cstr(StringView value, const char *prefix)
-{
-    size_t prefix_length = strlen(prefix);
-    return value.length >= prefix_length &&
-           memcmp(value.data, prefix, prefix_length) == 0;
-}
+typedef struct RuntimeSourceSet {
+    char paths[3][4096];
+    const char *sources[3];
+    int count;
+    int runtime_math;
+} RuntimeSourceSet;
 
-static int cog_ir_requires_runtime(const CogIrModule *module)
-{
-    if (!module)
-        return 0;
-
-    for (size_t i = 0; i < module->function_count; ++i) {
-        const CogIrFunction *function = &module->functions[i];
-        if (function->linkage != COG_IR_LINKAGE_EXTERNAL ||
-            function->abi.abi != COG_IR_ABI_C) {
-            continue;
-        }
-        if (cog_string_view_starts_with_cstr(function->abi.external_symbol, "coglet_rt_"))
-            return 1;
-    }
-    return 0;
-}
-
-static int cog_ir_requires_runtime_math(const CogIrModule *module)
-{
-    if (!module)
-        return 0;
-
-    for (size_t i = 0; i < module->function_count; ++i) {
-        const CogIrFunction *function = &module->functions[i];
-        if (function->linkage != COG_IR_LINKAGE_EXTERNAL ||
-            function->abi.abi != COG_IR_ABI_C) {
-            continue;
-        }
-        if (cog_string_view_starts_with_cstr(function->abi.external_symbol, "coglet_rt_math_"))
-            return 1;
-    }
-    return 0;
-}
-
-static int resolve_runtime_source(
+static int append_runtime_source(
+    RuntimeSourceSet *set,
     const char *stdlib_root,
-    char *buffer,
-    size_t buffer_size
+    const char *filename
 ) {
-    if (!stdlib_root || !stdlib_root[0]) {
-        fprintf(stderr, "error: Coglet runtime support requires a standard-library root\n");
+    if (!set || !stdlib_root || !stdlib_root[0] || !filename)
         return 0;
-    }
+    if (set->count >= (int)(sizeof(set->sources) / sizeof(set->sources[0])))
+        return 0;
 
     size_t length = strlen(stdlib_root);
     int separator = stdlib_root[length - 1] != '/' && stdlib_root[length - 1] != '\\';
+    char *path = set->paths[set->count];
     int written = snprintf(
-        buffer,
-        buffer_size,
-        "%s%sruntime/coglet_runtime.c",
+        path,
+        sizeof(set->paths[set->count]),
+        "%s%sruntime/%s",
         stdlib_root,
-        separator ? "/" : ""
+        separator ? "/" : "",
+        filename
     );
-    if (written < 0 || (size_t)written >= buffer_size) {
+    if (written < 0 || (size_t)written >= sizeof(set->paths[set->count])) {
         fprintf(stderr, "error: Coglet runtime support path is too long\n");
         return 0;
     }
 
-    FILE *file = fopen(buffer, "rb");
+    FILE *file = fopen(path, "rb");
     if (!file) {
         fprintf(
             stderr,
             "error: program requires Coglet runtime support, but '%s' could not be opened\n",
-            buffer
+            path
         );
         return 0;
     }
     fclose(file);
+
+    set->sources[set->count++] = path;
+    return 1;
+}
+
+static int resolve_runtime_sources(
+    const char *stdlib_root,
+    unsigned requirements,
+    RuntimeSourceSet *set
+) {
+    if (!set)
+        return 0;
+    memset(set, 0, sizeof(*set));
+
+    if (requirements == COG_IR_RUNTIME_REQUIREMENT_NONE)
+        return 1;
+    if (!stdlib_root || !stdlib_root[0]) {
+        fprintf(stderr, "error: Coglet runtime support requires a standard-library root\n");
+        return 0;
+    }
+    if (requirements & COG_IR_RUNTIME_REQUIREMENT_UNKNOWN) {
+        fprintf(
+            stderr,
+            "error: program references an unsupported symbol in the reserved 'coglet_rt_' runtime namespace\n"
+        );
+        return 0;
+    }
+
+    if ((requirements & COG_IR_RUNTIME_REQUIREMENT_IO) &&
+        !append_runtime_source(set, stdlib_root, "coglet_runtime_io.c"))
+        return 0;
+    if ((requirements & COG_IR_RUNTIME_REQUIREMENT_MATH) &&
+        !append_runtime_source(set, stdlib_root, "coglet_runtime_math.c"))
+        return 0;
+    if ((requirements & COG_IR_RUNTIME_REQUIREMENT_MEMORY) &&
+        !append_runtime_source(set, stdlib_root, "coglet_runtime_mem.c"))
+        return 0;
+
+    set->runtime_math = (requirements & COG_IR_RUNTIME_REQUIREMENT_MATH) != 0;
     return 1;
 }
 
@@ -450,16 +457,15 @@ int main(int argc, char **argv)
         return 3;
     }
 
-    char runtime_source_path[4096];
-    const char *runtime_source = NULL;
-    int runtime_math = output_path && cog_ir_requires_runtime_math(&ir);
-    if (output_path && cog_ir_requires_runtime(&ir)) {
-        if (!resolve_runtime_source(stdlib_root, runtime_source_path, sizeof(runtime_source_path))) {
+    RuntimeSourceSet runtime_sources;
+    memset(&runtime_sources, 0, sizeof(runtime_sources));
+    if (output_path) {
+        unsigned runtime_requirements = cog_ir_module_runtime_requirements(&ir);
+        if (!resolve_runtime_sources(stdlib_root, runtime_requirements, &runtime_sources)) {
             cog_ir_module_destroy(&ir);
             arena_destroy(ir_diag_arena);
             return 3;
         }
-        runtime_source = runtime_source_path;
     }
 
     if (emit_c_path) {
@@ -519,8 +525,9 @@ int main(int argc, char **argv)
     if (exit_code == 0 && output_path) {
         if (executable_backend == EXECUTABLE_BACKEND_HOST_C) {
             CBackendLinkOptions link_options = {
-                .runtime_source = runtime_source,
-                .runtime_math = runtime_math,
+                .runtime_sources = runtime_sources.sources,
+                .runtime_source_count = runtime_sources.count,
+                .runtime_math = runtime_sources.runtime_math,
                 .library_dirs = library_dirs,
                 .library_dir_count = library_dir_count,
                 .libraries = libraries,
@@ -542,8 +549,9 @@ int main(int argc, char **argv)
                 .debug_info = debug_info,
             };
             LlvmBackendLinkOptions link_options = {
-                .runtime_source = runtime_source,
-                .runtime_math = runtime_math,
+                .runtime_sources = runtime_sources.sources,
+                .runtime_source_count = runtime_sources.count,
+                .runtime_math = runtime_sources.runtime_math,
                 .library_dirs = library_dirs,
                 .library_dir_count = library_dir_count,
                 .libraries = libraries,

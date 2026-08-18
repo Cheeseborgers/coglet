@@ -171,15 +171,57 @@ int cog_ir_module_copy_sources(CogIrModule *module, const SourceManager *sources
     return 1;
 }
 
+static int ir_string_view_starts_with_cstr(StringView value, const char *prefix)
+{
+    size_t length = strlen(prefix);
+    return value.length >= length && memcmp(value.data, prefix, length) == 0;
+}
+
+static unsigned derive_runtime_requirements(const CogIrModule *module)
+{
+    unsigned requirements = COG_IR_RUNTIME_REQUIREMENT_NONE;
+    if (!module)
+        return requirements;
+
+    for (size_t i = 0; i < module->function_count; ++i) {
+        const CogIrFunction *function = &module->functions[i];
+        if (function->linkage != COG_IR_LINKAGE_EXTERNAL ||
+            function->abi.abi != COG_IR_ABI_C ||
+            !ir_string_view_starts_with_cstr(function->abi.external_symbol, "coglet_rt_")) {
+            continue;
+        }
+
+        if (ir_string_view_starts_with_cstr(function->abi.external_symbol, "coglet_rt_io_"))
+            requirements |= COG_IR_RUNTIME_REQUIREMENT_IO;
+        else if (ir_string_view_starts_with_cstr(function->abi.external_symbol, "coglet_rt_math_"))
+            requirements |= COG_IR_RUNTIME_REQUIREMENT_MATH;
+        else if (ir_string_view_starts_with_cstr(function->abi.external_symbol, "coglet_rt_mem_"))
+            requirements |= COG_IR_RUNTIME_REQUIREMENT_MEMORY;
+        else
+            requirements |= COG_IR_RUNTIME_REQUIREMENT_UNKNOWN;
+    }
+    return requirements;
+}
+
 void cog_ir_module_freeze(CogIrModule *module)
 {
-    if (module)
-        module->is_frozen = 1;
+    if (!module || module->is_frozen)
+        return;
+
+    module->runtime_requirements = derive_runtime_requirements(module);
+    module->is_frozen = 1;
 }
 
 int cog_ir_module_is_frozen(const CogIrModule *module)
 {
     return module && module->is_frozen;
+}
+
+unsigned cog_ir_module_runtime_requirements(const CogIrModule *module)
+{
+    return module && module->is_frozen
+        ? module->runtime_requirements
+        : COG_IR_RUNTIME_REQUIREMENT_NONE;
 }
 
 const CogIrType *cog_ir_get_type(const CogIrModule *module, CogIrTypeId id)
@@ -1185,6 +1227,38 @@ int cog_ir_set_value_abi_type(
     if (!abi || abi->runtime_type != value->type)
         return 0;
     value->abi_type = abi_type;
+    return 1;
+}
+
+int cog_ir_mark_value_discarded(
+    CogIrModule *module,
+    CogIrFunctionId function_id,
+    CogIrValueId value_id
+) {
+    if (!module_mutable(module))
+        return 0;
+
+    CogIrFunction *function = get_function_mut(module, function_id);
+    if (!function || value_id == COG_IR_VALUE_INVALID ||
+        (size_t)value_id >= function->value_count)
+        return 0;
+
+    CogIrValue *value = &function->values[value_id];
+    if (value->kind != COG_IR_VALUE_INSTRUCTION ||
+        value->block == COG_IR_BLOCK_INVALID ||
+        (size_t)value->block >= function->block_count)
+        return 0;
+
+    CogIrBlock *block = &function->blocks[value->block];
+    if (value->ordinal >= block->instruction_count)
+        return 0;
+
+    CogIrInstruction *instruction = &block->instructions[value->ordinal];
+    if (instruction->result != value_id ||
+        instruction->result_type == COG_IR_TYPE_INVALID)
+        return 0;
+
+    instruction->result_is_discarded = 1;
     return 1;
 }
 

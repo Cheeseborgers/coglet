@@ -29,8 +29,10 @@ facilities, typed heap allocation, arenas/scratch/fixed arenas, debug allocation
 `Array<T>`, and generation-checked `Pool<T>`.
 
 The language includes exact overloads, restricted generic functions/structs,
-methods/operators, slices, raw pointers, `defer`, move-only `resource` values, and a
-substantial explicit C interop surface. Ownership flow is control-flow-aware for
+methods/operators, slices, raw pointers, target-sized `usize`/`isize` integer aliases,
+`size_of(T)` / `align_of(T)` target-layout queries, `defer`, move-only `resource`
+values, and a substantial explicit C interop surface. Slice lengths and core
+container/allocator counts use `usize`. Ownership flow is control-flow-aware for
 direct local/parameter owners; raw pointers and slices deliberately remain outside a
 borrow/lifetime checker.
 
@@ -73,8 +75,6 @@ are treated as a stronger safety boundary:
 
 - choose checked versus unchecked runtime slice indexing and specify failure
   behavior;
-- decide whether lengths/layout results remain `u64` or move to a target-sized
-  `usize`-style type;
 - define or reject zero-sized element allocation/container behavior;
 - add recoverable allocation APIs alongside the current infallible allocation path;
 - decide whether resource field moves, resource globals, or resource-valued
@@ -136,7 +136,7 @@ These are design items, not implied near-term commitments:
 
 ### Slices and text
 
-- bounds policy, reslicing, and target-sized lengths;
+- bounds policy and reslicing/subviews;
 - a first-class string/text type only after encoding, ownership, mutation, and C
   interop are specified.
 

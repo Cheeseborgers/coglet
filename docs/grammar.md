@@ -99,6 +99,13 @@ type =
 cfn_call_option = "call" "=" c_calling_convention;
 ```
 
+The reserved scalar type spellings include `bool`, `s8`/`s16`/`s32`/`s64`,
+`u8`/`u16`/`u32`/`u64`, `isize`, `usize`, `f32`, `f64`, and `void`. `isize` and
+`usize` resolve to the signed/unsigned fixed-width integer matching the selected
+target pointer width; they do not introduce separate nominal integer kinds. The
+`c_*` ABI aliases described below remain semantic builtin identifiers rather than
+lexer keywords.
+
 `T[N]` is fixed-size owned array storage. `T[]` is a non-owning mutable slice, represented semantically as a pointer-and-length view; `readonly T[]` is the corresponding readonly view. A slice has no capacity or ownership semantics in this first version.
 
 `readonly` and `volatile` still qualify the first pointer layer when a pointer follows the base type. When no pointer layer consumes `readonly`, it may instead qualify an empty `[]` slice suffix. `volatile` slices are not supported.
@@ -1002,6 +1009,27 @@ interprets them using the target signedness.
 typed raw pointer and a top-level opaque raw pointer. It preserves address bits,
 never removes readonly or volatile access, and is not a general `T*`-to-`U*` cast.
 
+## Runtime Type Layout Queries
+
+Layout queries use dedicated type-query syntax rather than ordinary generic-call
+syntax:
+
+```ebnf
+layout_query_expression =
+    ("size_of" | "align_of") "(" type ")";
+```
+
+```c
+bytes := size_of(Packet);
+alignment := align_of(Packet);
+```
+
+The operand is a type, not a runtime expression, and the result type is `usize`.
+Generic code may name an in-scope type parameter (`size_of(T)`), while ordinary
+generic functions and generic types continue to use `::<...>`. The legacy-looking
+`size_of::<T>()` / `align_of::<T>()` spelling is rejected with a migration
+diagnostic.
+
 ## Control-Flow Statement Bodies and `for` Headers
 
 `if`, `else`, `while`, and `for` control one statement. A lexical block is one
@@ -1141,15 +1169,17 @@ Color :: enum(u16) {
 
 A compile-time integer-to-enum cast must name a declared value. Runtime integer-to-enum conversion is currently rejected. Enum-to-integer conversion is allowed.
 
-A future representation annotation may use syntax such as:
+C-compatible enum representation uses the implemented `#repr(c)` annotation
+and requires an explicit native C integer backing alias:
 
 ```c
 #repr(c)
-Color :: enum(u16) {
+Color :: enum(c_uint) {
     Red = 0,
     Green = 1,
     Blue = 2,
 }
 ```
 
-The annotation is not currently implemented and will concern ABI representation, not enum openness.
+`#repr(c)` changes the ABI representation contract, not enum openness: represented
+enums remain closed to their declared runtime values.

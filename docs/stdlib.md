@@ -452,8 +452,8 @@ stack traces, or platform page guards. Those are diagnostic extensions rather th
 changes to the allocator contract.
 
 `size_of(T)` and `align_of(T)` remain compiler builtins rather than
-`std.mem` functions. They return target-sized `usize` layout values and are described in
-`docs/language.md`.
+`std.mem` functions. They return target-sized `usize` layout values and are
+described in `docs/language.md`.
 
 ## `std.array`
 
@@ -546,7 +546,9 @@ if !handle.is_invalid() {
 entities.remove(handle);
 ```
 
-`PoolHandle` contains an index plus a generation. Releasing or clearing a live slot
+`PoolHandle` contains a `usize` index plus a `u64` generation. Pool capacity,
+free-list indices, and live counts are likewise target-sized `usize`; generations
+remain fixed `u64` counters. Releasing or clearing a live slot
 increments that generation, so stale handles fail `contains()`/`get()` after the
 same index is reused. `insert()` returns `PoolHandle.invalid()` when the fixed pool
 is full. `remove()` returns `false` for stale/invalid handles. `get()` returns a

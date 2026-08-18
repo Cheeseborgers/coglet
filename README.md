@@ -454,6 +454,11 @@ Primitive and built-in types:
 - `f32`, `f64`
 - `void`
 
+`usize`/`isize` resolve to the unsigned/signed fixed-width integer matching the
+selected target pointer width. The built-in type queries `size_of(T)` and
+`align_of(T)` return `usize`; ordinary generic calls keep the `name::<T>(...)`
+syntax.
+
 `null` is a dedicated contextual pointer literal. It is not integer zero and is
 not a user-declarable storage type.
 
@@ -761,7 +766,10 @@ Typed mutable declarations may group names (`a, b: u64 = 0;`). The initializer i
 
 ### Slices and String Literals
 
-A slice is a non-owning pointer-and-length view. `T[]` permits mutation through the view; `readonly T[]` permits reads only. Fixed, addressable arrays adapt to matching slices, and mutable slices may weaken to readonly slices.
+A slice is a non-owning pointer-and-length view. `T[]` permits mutation through
+the view; `readonly T[]` permits reads only. Fixed, addressable arrays adapt to
+matching slices, and mutable slices may weaken to readonly slices. Slice lengths
+use target-sized `usize`.
 
 ```c
 values: s32[3] = [1, 2, 3];
@@ -1096,7 +1104,8 @@ or lifetimes for raw pointers and slices.
 Near-term work is tracked in `docs/roadmap.md` and prioritized debt in
 `docs/known_shortcomings.md`. The main directions are explicit cross-target/toolchain
 selection and native CI, package/platform standard-library growth, unresolved slice
-and allocation contracts such as bounds/`usize`/zero-sized elements, whole-program
+and allocation contracts such as bounds/reslicing, zero-sized elements, and
+recoverable allocation, whole-program
 reachability/DCE, and larger-program diagnostics/tooling.
 
 ## License

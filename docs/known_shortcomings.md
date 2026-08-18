@@ -15,8 +15,8 @@ order is:
    selection/toolchain policy, continuous Windows/AArch64 coverage, and target ABI
    expansion where required.
 2. **P1 — memory/slice contracts:** bounds policy, zero-sized element behavior,
-   target-sized lengths/layout values, recoverable allocation, and clearly specified
-   invalidation behavior for non-owning views.
+   recoverable allocation, and clearly specified invalidation behavior for non-owning
+   views.
 3. **P2 — reachability/build scaling:** whole-program DCE, reachable-call runtime
    requirements, package/build metadata, and eventual separate-compilation identity.
 4. **P2 — diagnostics/tooling:** secondary spans/recovery, machine-readable
@@ -143,7 +143,6 @@ from another systems language.
 
 - **Slices are non-owning and have no lifetime/escape analysis.** `T[]` / `readonly T[]` prevent immediate array-temporary conversion, but the compiler does not yet prove that a slice cannot outlive local backing storage. String-literal slices are safe because their backing storage is compiler-owned static data.
 - **Slice indexing is currently unchecked at runtime.** Constant fixed-array indexes retain compile-time bounds checks, but a slice index does not yet trap/check `index < len`. Decide the language's checked/unchecked indexing policy before slices become a safety boundary.
-- **Slice length is fixed `u64`, not a target-sized `usize`.** This matches the current 64-bit Linux/Windows x86-64/AArch64 target focus but should be revisited before 32-bit targets or a general target-sized integer type are supported.
 - **Slice syntax cannot independently qualify an enclosing slice when its element is itself a qualified pointer.** Prefix `readonly` retains the existing first-pointer-layer binding. A future qualifier grammar may need a clearer nested-type spelling.
 - **There is no reslicing/subview syntax yet.** `.data`, `.len`, indexing, array-to-slice conversion, and mutable-to-readonly weakening exist, but operations such as `view[a:b]` are deferred.
 - **There is no distinct first-class text/string type yet.** `readonly u8[]` is the general byte-string view. Encoding/UTF-8 policy, owned strings, and text-specific APIs remain separate design work.
@@ -189,8 +188,7 @@ from another systems language.
   such a `T` yields distinct addressable element storage. A future language/runtime
   decision should either define zero-sized-element container behavior or reject
   those element types explicitly; cleanup should not invent a hidden stride.
-- **Layout query results and container lengths are fixed `u64`.** `size_of::<T>()`, `align_of::<T>()`, slice lengths, and `Array` length/capacity all match the initial 64-bit target focus rather than a general target-sized `usize`.
-- **`size_of::<T>()` / `align_of::<T>()` are not semantic constant expressions yet.** They lower to target-layout constants in CogIR/backends, but cannot currently be used where the frontend requires a compile-time constant.
+- **`size_of(T)` / `align_of(T)` are not semantic constant expressions yet.** They lower to target-layout constants in CogIR/backends, but cannot currently be used where the frontend requires a compile-time constant.
 - **Default parameters are intentionally not supported in the current language.** Reintroduce them only after defining declaration-scope name resolution, interaction with exact overloads/generics, and call-site evaluation semantics; use explicit convenience functions/constructors meanwhile.
 
 ## Generics and aggregate types

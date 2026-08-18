@@ -303,7 +303,12 @@ Generic allocation requires the byte size and ABI alignment of a concrete target
 %align = align_of %ConcreteType
 ```
 
-The queried operand is a frozen CogIR type ID and the result is `u64`. Verification requires a valid queried type and an unsigned 64-bit result. Host-C answers from the actual generated C type; LLVM answers from `LLVMTargetData`. The operations contain no AST node, frontend `Type *`, semantic binding, or generic template state.
+The queried operand is a frozen CogIR type ID and the result is the unsigned
+integer whose width matches `module.target.pointer_bits`, which is the frozen
+CogIR representation of source `usize`. Verification requires a layout-capable
+queried type and that target-width unsigned result. Host-C answers from the actual
+generated C type; LLVM answers from `LLVMTargetData`. The operations contain no
+AST node, frontend `Type *`, semantic binding, or generic template state.
 
 ### Nominal aggregates
 

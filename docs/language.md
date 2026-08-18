@@ -1654,6 +1654,10 @@ alignment := align_of(MyType);
 
 Each builtin takes exactly one concrete runtime object type operand and returns `usize`. In generic code the type argument may contain the current concrete type parameters, so `size_of(T)` and `align_of(T)` are valid after specialization. Native `cfn(...) -> T` values are runtime callback pointers and therefore have target pointer size/alignment. Incomplete types, `void`, ordinary Coglet function types, and other types without a portable host-C runtime object layout are rejected.
 
+These are dedicated type-query forms, not generic function calls. Ordinary
+generics keep the `name::<T>(...)` / `Type::<T>` syntax; the old
+`size_of::<T>()` and `align_of::<T>()` spellings are rejected.
+
 The frontend does not guess target padding or alignment. Semantic analysis freezes the resolved concrete type, CogIR carries a backend-neutral type-layout query, and the selected backend answers using its actual target layout. These queries are not yet accepted in Coglet compile-time constant-expression contexts even though a backend can materialize them as target constants.
 
 ## String Literals

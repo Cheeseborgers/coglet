@@ -22,6 +22,11 @@ ctest \
 The exact number of tests changes as coverage is added. Do not treat a previously recorded total as
 authoritative.
 
+Target/layout coverage includes synthetic 32-bit and 64-bit pointer targets for
+`usize`/`isize`, parser rejection of the obsolete `size_of::<T>()` /
+`align_of::<T>()` spelling, and semantic/CogIR/backend coverage for the current
+`size_of(T)` / `align_of(T)` forms.
+
 ## Test Categories
 
 The test suite includes:

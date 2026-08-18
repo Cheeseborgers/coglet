@@ -37,12 +37,28 @@ typedef enum GenericSpecializationState {
     GENERIC_SPECIALIZATION_INVALID,
 } GenericSpecializationState;
 
+enum { GENERIC_SPECIALIZATION_RECURSION_LIMIT = 32 };
+
+typedef struct GenericInstantiationScope {
+    Scope *scope;
+    SemanticModule *module;
+    SourceFileId source_id;
+} GenericInstantiationScope;
+
 struct SliceTypeIntern {
     Type *type;
     SliceTypeIntern *next;
 };
 
 static int type_equal(const Type *a, const Type *b);
+static int generic_specialization_key_matches(
+    SemDeclId specialization_template_id,
+    Type *const *specialization_arguments,
+    int specialization_argument_count,
+    SemDeclId template_id,
+    Type *const *type_arguments,
+    int type_argument_count
+);
 static Type *resolve_generic_struct_application(
     SemanticContext *ctx,
     Symbol *symbol,
@@ -7025,20 +7041,15 @@ static GenericSpecialization *find_generic_specialization(
     int type_argument_count
 ) {
     for (GenericSpecialization *spec = ctx->generic_specializations; spec; spec = spec->next) {
-        if (spec->template_id != template_id ||
-            spec->type_argument_count != type_argument_count) {
-            continue;
-        }
-
-        int equal = 1;
-        for (int i = 0; i < type_argument_count; i++) {
-            if (!type_equal(spec->type_arguments[i], type_arguments[i])) {
-                equal = 0;
-                break;
-            }
-        }
-        if (equal)
+        if (generic_specialization_key_matches(
+                spec->template_id,
+                spec->type_arguments,
+                spec->type_argument_count,
+                template_id,
+                type_arguments,
+                type_argument_count)) {
             return spec;
+        }
     }
     return NULL;
 }
@@ -7066,6 +7077,74 @@ static void define_generic_type_aliases(
     }
 }
 
+
+static int generic_specialization_key_matches(
+    SemDeclId specialization_template_id,
+    Type *const *specialization_arguments,
+    int specialization_argument_count,
+    SemDeclId template_id,
+    Type *const *type_arguments,
+    int type_argument_count
+) {
+    if (specialization_template_id != template_id ||
+        specialization_argument_count != type_argument_count) {
+        return 0;
+    }
+
+    for (int i = 0; i < type_argument_count; i++) {
+        if (!type_equal(specialization_arguments[i], type_arguments[i]))
+            return 0;
+    }
+    return 1;
+}
+
+static Type **copy_generic_type_arguments(
+    SemanticContext *ctx,
+    Type *const *type_arguments,
+    int type_argument_count
+) {
+    if (type_argument_count <= 0)
+        return NULL;
+
+    Type **copy = arena_alloc(
+        ctx->arena,
+        sizeof(Type *) * (size_t)type_argument_count
+    );
+    memcpy(
+        copy,
+        type_arguments,
+        sizeof(Type *) * (size_t)type_argument_count
+    );
+    return copy;
+}
+
+static GenericInstantiationScope enter_generic_instantiation_scope(
+    SemanticContext *ctx,
+    const Node *template_decl,
+    Type *const *type_arguments
+) {
+    GenericInstantiationScope saved = {
+        .scope = ctx->current_scope,
+        .module = ctx->current_module,
+        .source_id = ctx->current_source_id,
+    };
+
+    semantic_select_source_module(ctx, template_decl->span.file_id);
+    scope_push(ctx);
+    define_generic_type_aliases(ctx, template_decl, type_arguments);
+    return saved;
+}
+
+static void leave_generic_instantiation_scope(
+    SemanticContext *ctx,
+    GenericInstantiationScope saved
+) {
+    scope_pop(ctx);
+    ctx->current_scope = saved.scope;
+    ctx->current_module = saved.module;
+    ctx->current_source_id = saved.source_id;
+}
+
 static GenericStructSpecialization *find_generic_struct_specialization(
     SemanticContext *ctx,
     SemDeclId template_id,
@@ -7075,19 +7154,15 @@ static GenericStructSpecialization *find_generic_struct_specialization(
     for (GenericStructSpecialization *spec = ctx->generic_struct_specializations;
          spec;
          spec = spec->next) {
-        if (spec->template_id != template_id ||
-            spec->type_argument_count != type_argument_count) {
-            continue;
-        }
-        int equal = 1;
-        for (int i = 0; i < type_argument_count; i++) {
-            if (!type_equal(spec->type_arguments[i], type_arguments[i])) {
-                equal = 0;
-                break;
-            }
-        }
-        if (equal)
+        if (generic_specialization_key_matches(
+                spec->template_id,
+                spec->type_arguments,
+                spec->type_argument_count,
+                template_id,
+                type_arguments,
+                type_argument_count)) {
             return spec;
+        }
     }
     return NULL;
 }
@@ -7283,7 +7358,6 @@ static GenericSpecialization *instantiate_generic_function(
     if (cached)
         return cached;
 
-    enum { GENERIC_SPECIALIZATION_RECURSION_LIMIT = 32 };
     if (active_generic_template_depth(ctx, template_id) >=
         GENERIC_SPECIALIZATION_RECURSION_LIMIT) {
         char bindings[1024];
@@ -7312,15 +7386,8 @@ static GenericSpecialization *instantiate_generic_function(
     spec->template_decl = template_decl;
     spec->type_argument_count = type_argument_count;
     spec->state = GENERIC_SPECIALIZATION_CHECKING;
-    spec->type_arguments = arena_alloc(
-        ctx->arena,
-        sizeof(Type *) * (size_t)type_argument_count
-    );
-    memcpy(
-        spec->type_arguments,
-        type_arguments,
-        sizeof(Type *) * (size_t)type_argument_count
-    );
+    spec->type_arguments = copy_generic_type_arguments(
+        ctx, type_arguments, type_argument_count);
     spec->next = ctx->generic_specializations;
     ctx->generic_specializations = spec;
 
@@ -7337,13 +7404,8 @@ static GenericSpecialization *instantiate_generic_function(
     );
     spec->function = function;
 
-    Scope *saved_scope = ctx->current_scope;
-    SemanticModule *saved_module = ctx->current_module;
-    SourceFileId saved_source_id = ctx->current_source_id;
-
-    semantic_select_source_module(ctx, template_decl->span.file_id);
-    scope_push(ctx);
-    define_generic_type_aliases(ctx, template_decl, type_arguments);
+    GenericInstantiationScope saved = enter_generic_instantiation_scope(
+        ctx, template_decl, type_arguments);
 
     int errors_before = ctx->error_count;
     Type *function_type = make_function_type(ctx, function);
@@ -7363,10 +7425,7 @@ static GenericSpecialization *instantiate_generic_function(
         ? GENERIC_SPECIALIZATION_VALID
         : GENERIC_SPECIALIZATION_INVALID;
 
-    scope_pop(ctx);
-    ctx->current_scope = saved_scope;
-    ctx->current_module = saved_module;
-    ctx->current_source_id = saved_source_id;
+    leave_generic_instantiation_scope(ctx, saved);
 
     return spec;
 }
@@ -15162,9 +15221,8 @@ static GenericStructSpecialization *instantiate_generic_struct(
     if (cached)
         return cached;
 
-    enum { MAX_ACTIVE_GENERIC_STRUCT_SPECIALIZATIONS = 32 };
     if (active_generic_struct_template_depth(ctx, template_id) >=
-        MAX_ACTIVE_GENERIC_STRUCT_SPECIALIZATIONS) {
+        GENERIC_SPECIALIZATION_RECURSION_LIMIT) {
         semantic_error_fmt(
             ctx,
             use_node,
@@ -15182,15 +15240,8 @@ static GenericStructSpecialization *instantiate_generic_struct(
     spec->template_decl = template_decl;
     spec->type_argument_count = type_argument_count;
     spec->state = GENERIC_SPECIALIZATION_CHECKING;
-    spec->type_arguments = arena_alloc(
-        ctx->arena,
-        sizeof(Type *) * (size_t)type_argument_count
-    );
-    memcpy(
-        spec->type_arguments,
-        type_arguments,
-        sizeof(Type *) * (size_t)type_argument_count
-    );
+    spec->type_arguments = copy_generic_type_arguments(
+        ctx, type_arguments, type_argument_count);
     spec->next = ctx->generic_struct_specializations;
     ctx->generic_struct_specializations = spec;
 
@@ -15207,13 +15258,8 @@ static GenericStructSpecialization *instantiate_generic_struct(
     );
     spec->declaration = decl;
 
-    Scope *saved_scope = ctx->current_scope;
-    SemanticModule *saved_module = ctx->current_module;
-    SourceFileId saved_source_id = ctx->current_source_id;
-
-    semantic_select_source_module(ctx, template_decl->span.file_id);
-    scope_push(ctx);
-    define_generic_type_aliases(ctx, template_decl, type_arguments);
+    GenericInstantiationScope saved = enter_generic_instantiation_scope(
+        ctx, template_decl, type_arguments);
 
     int errors_before = ctx->error_count;
     if (declare_struct_shell(ctx, decl)) {
@@ -15253,10 +15299,7 @@ static GenericStructSpecialization *instantiate_generic_struct(
         ? GENERIC_SPECIALIZATION_VALID
         : GENERIC_SPECIALIZATION_INVALID;
 
-    scope_pop(ctx);
-    ctx->current_scope = saved_scope;
-    ctx->current_module = saved_module;
-    ctx->current_source_id = saved_source_id;
+    leave_generic_instantiation_scope(ctx, saved);
 
     return spec;
 }

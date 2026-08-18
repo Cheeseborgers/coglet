@@ -33,8 +33,8 @@ exercise_contexts::(runtime: s32, pointer: s32*) -> s32 {
             arithmetic = 10;
     }
 
-    puts("ok");
-    printf("%d %f\n", 11, 2.5);
+    discard puts("ok");
+    discard printf("%d %f\n", 11, 2.5);
 
     if comparison {
         return arithmetic + selected + inferred + cast(s32, wide) + cast(s32, from_integer) + cast(s32, from_float);

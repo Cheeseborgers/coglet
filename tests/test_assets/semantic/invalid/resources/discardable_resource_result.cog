@@ -1,0 +1,8 @@
+Handle::resource {
+    value: s32;
+}
+
+#discardable
+make_handle::() -> Handle {
+    return Handle { value = 1 };
+}

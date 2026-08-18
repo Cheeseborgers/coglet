@@ -3,6 +3,6 @@ shift_value::(value: s8, count: u32) -> s8 {
 }
 
 main::() -> s32 {
-    shift_value(-1, 8);
+    discard shift_value(-1, 8);
     return 91;
 }

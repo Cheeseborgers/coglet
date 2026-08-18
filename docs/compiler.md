@@ -767,6 +767,37 @@ address-of result <- operand storage access
 Assignment, compound assignment, increment, and decrement require a writable
 lvalue. Address-of requires an lvalue but does not require writable access.
 
+## Must-Use Result Semantics
+
+Statement-expression checking is the frontend policy boundary for function-result
+use. Mutations and `void` calls already produce no value. A source-level call that
+returns a value is rejected when its result is unused unless one of two forms makes
+the discard intentional:
+
+- an explicit `discard expression` around the call; or
+- a direct call whose resolved declaration is marked `#discardable`.
+
+Other value-producing statement expressions, such as arithmetic and comparisons,
+retain the ordinary C-like statement-expression behavior and do not require
+`discard`.
+
+`#discardable` is stored on `NODE_FUNC_DECL` and copied onto concrete generic
+specializations. Call semantic metadata records the resolved declaration policy in
+`SemExprInfo.result_is_discardable`; it is deliberately absent from `Type` and C ABI
+metadata. Consequently, indirect calls through function values remain must-use.
+
+`discard` is represented as `NODE_UNARY` with `TOK_DISCARD`, but the parser binds it
+at assignment-expression level so it consumes the complete following statement
+expression rather than behaving like an arithmetic unary operator. Semantic
+checking requires its operand to produce a non-resource value and records the outer
+node as no-value. Using `discard` in a value-required context is therefore an error.
+
+After semantic acceptance, lowering reuses CogIR's existing discarded-result
+metadata. The frontend marks the outermost runtime result as having no consumer;
+verification forbids a later use, and backends may avoid materializing a dead host
+temporary while preserving side effects. Backends do not recover `#discardable`
+policy from function types or declarations.
+
 ## Definite Assignment and Control-Flow Analysis
 
 Semantic analysis performs definite-assignment and reachability analysis while traversing function bodies. Flow-sensitive information is stored separately from lexical symbols so that one symbol may have different initialization states at different program points.

@@ -17,7 +17,7 @@ forward::(
     double_value: c_double,
     raw: opaque*
 ) -> c_int {
-    callback(1, small, true, unsigned_small, single, tiny, wide, double_value, raw);
+    discard callback(1, small, true, unsigned_small, single, tiny, wide, double_value, raw);
 
     return sink(
         2,

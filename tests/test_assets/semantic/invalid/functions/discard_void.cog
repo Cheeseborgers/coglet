@@ -1,0 +1,6 @@
+noop::() -> void {
+}
+
+bad::() -> void {
+    discard noop();
+}

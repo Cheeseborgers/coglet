@@ -46,7 +46,7 @@ data_address::() -> s64 {
     narrowed: u8 = truncate(u8, widened);
     widened2: s64 = cast(s64, narrowed);
 
-    puts("hello");
+    discard puts("hello");
 
     return widened + widened2 + cast(s64, ch) + cast(s64, copy[0]) + cast(s64, point2.x) + cast(s64, name[0]);
 }

@@ -1,0 +1,14 @@
+program
+  #discardable func status -> s32
+    body:
+      block
+        return
+          1
+  func run -> void
+    body:
+      block
+        call
+          status
+        (DISCARD)
+          call
+            status

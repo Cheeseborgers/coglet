@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/functions/discard_value_context.cog:6:15: error: discard is only valid in statement position
+    result := discard value();
+              ^~~~~~~~~~~~~
+1 semantic error generated.

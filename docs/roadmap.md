@@ -30,11 +30,12 @@ facilities, typed heap allocation, arenas/scratch/fixed arenas, debug allocation
 
 The language includes exact overloads, restricted generic functions/structs,
 methods/operators, slices, raw pointers, target-sized `usize`/`isize` integer aliases,
-`size_of(T)` / `align_of(T)` target-layout queries, `defer`, move-only `resource`
-values, and a substantial explicit C interop surface. Slice lengths and core
-container/allocator counts use `usize`. Ownership flow is control-flow-aware for
-direct local/parameter owners; raw pointers and slices deliberately remain outside a
-borrow/lifetime checker.
+`size_of(T)` / `align_of(T)` target-layout queries, must-use function results with
+explicit `discard` and declaration-level `#discardable`, `defer`, move-only
+`resource` values, and a substantial explicit C interop surface. Slice lengths and
+core container/allocator counts use `usize`. Ownership flow is control-flow-aware
+for direct local/parameter owners; raw pointers and slices deliberately remain
+outside a borrow/lifetime checker.
 
 ## Priority 1: target, toolchain, and CI
 

@@ -438,12 +438,17 @@ basic blocks
 ```
 
 Function parameters and instruction results are immutable `CogIrValueId`
-values. Mutable source variables use explicit storage. Statement expressions that
-produce a runtime value may mark their outermost instruction result as discarded.
-That frozen bit records that the value has no CogIR consumer while preserving the
-instruction's side effects; verification rejects later uses of a discarded value.
-Backends may therefore suppress unnecessary result materialization or host-language
-unused-result warnings without recovering source AST context.
+values. Mutable source variables use explicit storage. The semantic frontend first
+enforces Coglet's function-result must-use policy: a value-returning source-level
+call must be consumed, explicitly written as `discard call()`, or be a direct call
+allowed by a `#discardable` declaration. Other value-producing statement
+expressions remain legal without `discard`. Only after that source-level decision
+may lowering mark the outermost runtime instruction result as discarded. That
+frozen bit records that
+the value has no CogIR consumer while preserving the instruction's side effects;
+verification rejects later uses of a discarded value. Backends may therefore
+suppress unnecessary result materialization or host-language unused-result warnings
+without recovering source AST context or declaration attributes.
 
 ### Local slots
 

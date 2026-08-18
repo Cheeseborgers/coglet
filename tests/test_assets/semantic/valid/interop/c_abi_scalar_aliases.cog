@@ -13,7 +13,7 @@ increment_c_int::(value: c_int) -> c_int {
 
 use_c_abi_aliases::(s: readonly c_char*, size: c_size, value: c_uint) -> c_int {
     consume_uint(value);
-    malloc(size);
+    discard malloc(size);
     return puts(s);
 }
 
@@ -64,6 +64,6 @@ use_c_scalar_family::(
     single_value: c_float,
     double_value: c_double
 ) -> c_double {
-    consume_c_scalar_family(flag, single_value, double_value);
+    discard consume_c_scalar_family(flag, single_value, double_value);
     return double_value;
 }

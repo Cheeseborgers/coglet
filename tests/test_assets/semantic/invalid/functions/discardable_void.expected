@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/functions/discardable_void.cog:2:1: error: #discardable requires a value-returning function
+noop::() -> void {
+^~~~
+1 semantic error generated.

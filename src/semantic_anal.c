@@ -2466,6 +2466,8 @@ static int check_statement_expression(SemanticContext *ctx, Node *node);
 static int check_assignment_statement(SemanticContext *ctx, Node *node);
 static int check_compound_assignment_statement(SemanticContext *ctx, Node *node);
 static int check_inc_dec_statement(SemanticContext *ctx, Node *node);
+static int validate_discardable_function_result(
+    SemanticContext *ctx, Node *node, Type *function_type);
 static int check_initializer_against_type(SemanticContext *ctx, Type *expected, Node *initializer);
 static int check_c_variadic_argument(SemanticContext *ctx, Node *argument);
 static void format_type_name(Type *type, char *buffer, size_t buffer_size);
@@ -7717,7 +7719,8 @@ static GenericSpecialization *instantiate_generic_function(
 
     int errors_before = ctx->error_count;
     Type *function_type = make_function_type(ctx, function);
-    if (function_type) {
+    if (function_type &&
+        validate_discardable_function_result(ctx, function, function_type)) {
         Symbol *symbol = new_specialization_symbol(ctx, function, function_type);
         spec->function_type = function_type;
         spec->symbol = symbol;
@@ -8047,6 +8050,10 @@ static Type *check_generic_call(SemanticContext *ctx, Node *call, Symbol *templa
                 NULL,
                 category
             );
+            SemExprInfo *call_info = sem_find_expr_info(ctx, call);
+            if (call_info && spec->function)
+                call_info->result_is_discardable =
+                    spec->function->as.func_decl.is_discardable;
             return spec->function_type->return_type;
         }
         return NULL;
@@ -9629,6 +9636,10 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
             switch(node->as.unary.op)
             {
+                case TOK_DISCARD:
+                    semantic_error(ctx, node, "discard is only valid in statement position");
+                    return NULL;
+
                 case TOK_MOVE:
                 {
                     Node *operand_node = node->as.unary.operand;
@@ -12212,10 +12223,10 @@ static int check_inc_dec_statement(SemanticContext *ctx, Node *node) {
 }
 
 // Entry point for expressions in statement position: a bare
-// expression-statement, or a for-loop's post clause. The only place
-// assignment/compound-assignment/increment/decrement are legal.
-// Everything else -- calls, any other value-producing expression --
-// delegates to check_expression with its value discarded.
+// expression-statement, a defer expression, or a for-loop's post clause.
+// Only source-level function calls returning values are must-use by default.
+// Other value-producing expressions remain ordinary statement expressions.
+// A direct call may opt out through #discardable.
 static int check_statement_expression(SemanticContext *ctx, Node *node) {
     if (!node) return 0;
 
@@ -12223,8 +12234,50 @@ static int check_statement_expression(SemanticContext *ctx, Node *node) {
         case NODE_ASSIGN:          return check_assignment_statement(ctx, node);
         case NODE_COMPOUND_ASSIGN: return check_compound_assignment_statement(ctx, node);
         case NODE_INC_DEC:         return check_inc_dec_statement(ctx, node);
-        default:                   return check_expression(ctx, node) != NULL;
+        default:                   break;
     }
+
+    if (node->type == NODE_UNARY && node->as.unary.op == TOK_DISCARD) {
+        Type *discarded = check_value_expression(ctx, node->as.unary.operand);
+        if (!discarded)
+            return 0;
+
+        if (contains_resource_by_value(discarded)) {
+            semantic_error(
+                ctx,
+                node,
+                "resource-owning values cannot be discarded; bind or transfer the owner and manage it explicitly"
+            );
+            return 0;
+        }
+
+        sem_record_no_value(ctx, node);
+        return 1;
+    }
+
+    NodeType source_form = node->type;
+    Type *type = check_expression(ctx, node);
+    if (!type)
+        return 0;
+
+    SemExprInfo *info = sem_find_expr_info(ctx, node);
+    if (type->kind == TYPE_VOID ||
+        (info && info->value_category == VALUE_CATEGORY_NONE)) {
+        return 1;
+    }
+
+    if (source_form != NODE_CALL)
+        return 1;
+
+    if (info && info->result_is_discardable)
+        return 1;
+
+    semantic_error(
+        ctx,
+        node,
+        "function result must be used or explicitly discarded with 'discard'"
+    );
+    return 0;
 }
 
 static Type *check_value_expression(SemanticContext *ctx, Node *node
@@ -12792,6 +12845,11 @@ static Type *check_resolved_concrete_call(
         NULL,
         result_type->kind == TYPE_VOID ? VALUE_CATEGORY_NONE : VALUE_CATEGORY_RVALUE
     );
+
+    SemExprInfo *call_info = sem_find_expr_info(ctx, call);
+    if (call_info && declaration && declaration->type == NODE_FUNC_DECL)
+        call_info->result_is_discardable = declaration->as.func_decl.is_discardable;
+
     return result_type;
 }
 
@@ -14627,6 +14685,30 @@ static int declare_generic_function_template(SemanticContext *ctx, Node *node)
     return 1;
 }
 
+static int validate_discardable_function_result(
+    SemanticContext *ctx, Node *node, Type *function_type)
+{
+    assert(ctx);
+    assert(node && node->type == NODE_FUNC_DECL);
+    assert(function_type && function_type->kind == TYPE_FUNCTION);
+
+    if (!node->as.func_decl.is_discardable)
+        return 1;
+
+    Type *result = function_type->return_type;
+    if (!result || result->kind == TYPE_VOID) {
+        semantic_error(ctx, node, "#discardable requires a value-returning function");
+        return 0;
+    }
+
+    if (contains_resource_by_value(result)) {
+        semantic_error(ctx, node, "#discardable cannot be used on a function returning a resource-owning value");
+        return 0;
+    }
+
+    return 1;
+}
+
 static int declare_function_signature(SemanticContext *ctx, Node *node)
 {
     node->as.func_decl.resolved_type = NULL;
@@ -14634,6 +14716,9 @@ static int declare_function_signature(SemanticContext *ctx, Node *node)
     Type *func_type = make_function_type(ctx, node);
 
     if (!func_type)
+        return 0;
+
+    if (!validate_discardable_function_result(ctx, node, func_type))
         return 0;
 
     if (!validate_function_overload_set_member(ctx, node, func_type))
@@ -14989,6 +15074,9 @@ static int record_struct_method_signature(
     Type *function_type = make_function_type(ctx, method);
     scope_pop(ctx);
     if (!function_type)
+        return 0;
+
+    if (!validate_discardable_function_result(ctx, method, function_type))
         return 0;
 
     if (is_instance) {

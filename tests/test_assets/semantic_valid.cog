@@ -33,15 +33,15 @@ p := Point {
 {
     lhs: s64 = 10;
 
-    lhs == 10;
-    lhs != 20;
-    lhs < 30;
-    lhs >= 5;
+    discard lhs == 10;
+    discard lhs != 20;
+    discard lhs < 30;
+    discard lhs >= 5;
 }
 
 {
     lhs: s64 = 10;
-    lhs % 3;
+    discard lhs % 3;
 }
 
 foo::() -> void {
@@ -70,8 +70,8 @@ favorite: Color = Color.Red;
 
 other_color := Color.Green;
 
-Color.Red == Color.Blue;
-Color.Red != Color.Green;
+discard Color.Red == Color.Blue;
+discard Color.Red != Color.Green;
 
 use_color::(c: Color) -> Color {
     return Color.Blue;
@@ -459,8 +459,8 @@ returns_s32 :: () -> s32 {
 }
 
 discarded_values_are_valid :: () {
-    returns_s32();
-    1 + 2;
+    discard returns_s32();
+    discard 1 + 2;
 }
 
 does_nothing :: () -> void {

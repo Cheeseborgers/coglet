@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/functions/must_use_call.cog:6:5: error: function result must be used or explicitly discarded with 'discard'
+    value();
+    ^~~~~
+1 semantic error generated.

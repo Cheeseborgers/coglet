@@ -1,0 +1,11 @@
+Handle::resource {
+    value: s32;
+}
+
+make_handle::() -> Handle {
+    return Handle { value = 1 };
+}
+
+bad::() -> void {
+    discard make_handle();
+}

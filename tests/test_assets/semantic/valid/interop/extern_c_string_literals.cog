@@ -5,7 +5,7 @@ puts::(s: readonly c_char*) -> c_int;
 print_line::(s: readonly c_char*) -> c_int;
 
 use_c_strings::() -> void {
-    puts("hello");
-    print_line("line\nnext");
-    puts("");
+    discard puts("hello");
+    discard print_line("line\nnext");
+    discard puts("");
 }

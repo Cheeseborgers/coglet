@@ -1527,6 +1527,16 @@ static int verify_value_info(Verifier *verifier, Node *expression, SemExprInfo *
         return valid;
     }
 
+    if (expression->type == NODE_UNARY &&
+        expression->as.unary.op == TOK_DISCARD) {
+        if (info->type != NULL || info->value_category != VALUE_CATEGORY_NONE) {
+            verifier_error(verifier, expression,
+                "discard expression unexpectedly produces a value");
+            return 0;
+        }
+        return valid;
+    }
+
     if (!info->type) {
         verifier_error(verifier, expression,
             "value expression has no type");

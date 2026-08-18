@@ -367,6 +367,14 @@ struct Node {
             int is_repr_c;
 
             /*
+             * Call-site result policy. A value-returning function is must-use
+             * by default; #discardable opts this declaration into allowing a
+             * bare call expression statement. Resource-owning results cannot
+             * be discardable.
+             */
+            int is_discardable;
+
+            /*
              * Optional explicit native C calling convention. C_CALL_DEFAULT
              * means the platform/default C ABI. Meaningful only for
              * #extern(c) or #repr(c) functions.

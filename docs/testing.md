@@ -27,6 +27,14 @@ Target/layout coverage includes synthetic 32-bit and 64-bit pointer targets for
 `align_of::<T>()` spelling, and semantic/CogIR/backend coverage for the current
 `size_of(T)` / `align_of(T)` forms.
 
+Result-use coverage checks the default must-use rule for value-returning calls,
+explicit `discard`, `#discardable` ordinary/generic/method/extern declarations,
+`discard` in loop-post and deferred statement positions, rejection of `discard` in
+value contexts, the resource-result prohibition, and preservation of ordinary bare
+arithmetic/comparison statement expressions. Backend fixtures also keep
+intentionally discarded call results warning-free without weakening CogIR
+result-use verification.
+
 ## Test Categories
 
 The test suite includes:

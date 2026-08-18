@@ -19,4 +19,4 @@ touch::(x: s32) -> void {
 
 counter = bump(counter);
 touch(seed);
-add(seed, 5);
+discard add(seed, 5);

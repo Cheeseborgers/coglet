@@ -482,6 +482,9 @@ expression statement and a block are supported:
 file := open_file();
 defer file.close();
 
+status := 0;
+defer discard close_with_status(status);
+
 arena := make_arena();
 defer {
     arena.deinit();
@@ -490,7 +493,9 @@ defer {
 
 Deferred cleanup also runs before `return`, `break`, and `continue` leave the
 relevant scope. A return expression is evaluated before its deferred cleanup is
-executed, so cleanup cannot change the already selected return value.
+executed, so cleanup cannot change the already selected return value. A deferred
+expression is still a statement expression: if its call returns a must-use value,
+write `defer discard call();` unless the called declaration is `#discardable`.
 
 The first version deliberately forbids `return`, `break`, `continue`, and nested
 `defer` inside a deferred body. Deferred expressions are semantically checked at
@@ -906,17 +911,16 @@ method-function calls. Compound assignment retains its statement node but record
 the resolved concrete operator function for lowering. CogIR and both backends do
 not contain a user-defined operator dispatch mechanism.
 
-## Void-Returning Calls
+## Result Use, `discard`, and `#discardable`
 
-A call to a function returning `void` is a successful no-value expression.
-
-Valid when discarded:
+A call to a function returning `void` is a successful no-value expression and may
+appear as a bare statement:
 
 ```c
 does_nothing();
 ```
 
-Invalid when a value is required:
+It is invalid where a value is required:
 
 ```c
 x := does_nothing();
@@ -929,12 +933,61 @@ bad::() -> s32 {
 x := does_nothing() + 1;
 ```
 
-This differs from mutation operations:
+A function call returning a value is must-use by default. Use the result in a
+value context or discard that call explicitly:
 
-- a void call remains an expression with type `void`
-- a mutation statement has no expression type
-- both have value category `none`
+```c
+value := compute();
+discard compute();
+```
 
+Other value-producing expressions retain ordinary C-like statement-expression
+behavior and may stand alone without `discard`:
+
+```c
+1 + 2;
+a == b;
+ptr[index];
+```
+
+`discard` may still be used when an explicit statement-level consumption is useful,
+but it is not required for those non-call expressions.
+
+`discard` is a statement-position prefix form that consumes the complete following
+assignment-level expression. It is valid anywhere a statement expression is
+accepted, including a `for` post clause and a deferred expression:
+
+```c
+for running : discard poll_status() {
+}
+
+defer discard close_with_status();
+```
+
+`discard` itself produces no value, so it cannot appear where a value is required.
+A resource-owning result cannot be discarded: callers must bind or transfer the
+owner and manage it explicitly.
+
+A function whose non-resource result is intentionally optional may opt in to bare
+direct-call statements with `#discardable`:
+
+```c
+#discardable
+try_flush::() -> s32 {
+    return 0;
+}
+
+try_flush(); // valid
+```
+
+`#discardable` is declaration policy rather than function-type or ABI identity. It
+is rejected on `void` functions and functions returning resource-owning values.
+When combined with `#extern(c)` or `#repr(c)`, write `#discardable` first. Because
+the policy belongs to the resolved declaration, indirect function-pointer calls
+remain must-use unless the caller writes `discard`.
+
+Mutation operations remain no-value statements. A void call remains an expression
+with type `void`; both have value category `none`.
 
 ## Numeric Literals, Inference, and Constants
 

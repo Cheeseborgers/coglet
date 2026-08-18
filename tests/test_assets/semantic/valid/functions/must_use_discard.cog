@@ -1,0 +1,49 @@
+#discardable
+status::(value: s32) -> s32 {
+    return value;
+}
+
+plain::() -> s32 {
+    return 7;
+}
+
+#discardable
+identity::<T: copyable>(value: T) -> T {
+    return value;
+}
+
+Counter::struct {
+    value: s32;
+
+    #discardable
+    peek::(self: Counter*) -> s32 {
+        return (*self).value;
+    }
+}
+
+#discardable
+#extern(c)
+external_status::() -> c_int;
+
+#discardable
+#repr(c)
+native_status::(value: c_int) -> c_int {
+    return value;
+}
+
+exercise_must_use::() -> void {
+    counter := Counter { value = 3 };
+
+    status(1);
+    identity::<s32>(2);
+    counter.peek();
+    external_status();
+
+    discard plain();
+    discard 1 + 2;
+
+    for false : discard plain() {
+    }
+
+    defer discard plain();
+}

@@ -14,8 +14,9 @@ would expect:
   interoperability;
 - exact overloads, restricted generic functions/structs, methods, and restricted
   user-defined arithmetic operators;
-- structured control flow, `defer`, definite assignment, unified reachability, and
-  move-only resource flow for direct local/parameter owners;
+- structured control flow, `defer`, definite assignment, unified reachability,
+  must-use function results with explicit `discard`/`#discardable`, and move-only
+  resource flow for direct local/parameter owners;
 - compile-time constants, checked/wrapping numeric semantics, casts, target-sized
   `usize`/`isize` aliases, target-layout queries, and deterministic semantic metadata;
 - multi-file named modules/imports with private-by-default visibility and source

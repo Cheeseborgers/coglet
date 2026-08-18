@@ -3,6 +3,8 @@ returns_s32::() -> s32 {
 }
 
 discarded_values_are_valid::() {
-    returns_s32();
+    discard returns_s32();
     1 + 2;
+    1 == 2;
+    true != false;
 }

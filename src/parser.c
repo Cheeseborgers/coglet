@@ -252,6 +252,7 @@ static void synchronize(Parser *p)
             case TOK_FOR:
             case TOK_RETURN:
             case TOK_DEFER:
+            case TOK_DISCARD:
             case TOK_RESOURCE:
                 return;
 
@@ -316,6 +317,9 @@ const char *token_debug_display_name(TokenType type)
 
         case TOK_DEFER:
             return "'defer'";
+
+        case TOK_DISCARD:
+            return "'discard'";
 
         case TOK_VOID:
             return "'void'";
@@ -1105,7 +1109,20 @@ static Node *parse_assignment_from(Parser *p, Node *left)
     );
 }
 
-static Node *parse_assignment(Parser *p) { return parse_assignment_from(p, parse_binary(p, PREC_LOGICAL_OR)); }
+static Node *parse_assignment(Parser *p) {
+    if (match(p, TOK_DISCARD)) {
+        Token op = p->previous;
+        Node *operand = parse_assignment(p);
+        return ast_new_unary(
+            p->arena,
+            TOK_DISCARD,
+            operand,
+            source_span_join(op.span, operand->span)
+        );
+    }
+
+    return parse_assignment_from(p, parse_binary(p, PREC_LOGICAL_OR));
+}
 
 // ===================== types =====================
 
@@ -2041,6 +2058,51 @@ static Node *parse_attribute_decl(Parser *p)
 
     Token attribute = p->previous;
 
+    if (token_text_equals(attribute, "discardable")) {
+        Node *decl = NULL;
+
+        /*
+         * #discardable is declaration policy rather than ABI metadata. Keep
+         * it outermost when combined with another declaration attribute:
+         *
+         *     #discardable
+         *     #extern(c)
+         *     poll::() -> c_int;
+         */
+        if (check(p, TOK_HASH)) {
+            decl = parse_attribute_decl(p);
+        } else {
+            if (!consume(p, TOK_IDENT)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
+            }
+
+            Token name = p->previous;
+            if (!consume(p, TOK_COLON_COLON)) {
+                synchronize(p);
+                return ast_new_error(p->arena, p->current);
+            }
+
+            decl = parse_decl_after_name(p, name);
+        }
+
+        if (!decl || decl->type == NODE_ERROR)
+            return decl;
+
+        if (decl->type != NODE_FUNC_DECL) {
+            error_at(p, &attribute, "#discardable applies only to function declarations");
+            return ast_new_error(p->arena, attribute);
+        }
+
+        if (decl->as.func_decl.is_discardable) {
+            error_at(p, &attribute, "duplicate #discardable attribute");
+            return ast_new_error(p->arena, attribute);
+        }
+
+        decl->as.func_decl.is_discardable = 1;
+        return decl;
+    }
+
     if (token_text_equals(attribute, "repr")) {
         int repr_packed = 0;
         int repr_align = 0;
@@ -2219,7 +2281,7 @@ static Node *parse_attribute_decl(Parser *p)
     }
 
     if (!token_text_equals(attribute, "extern")) {
-        error_at(p, &attribute, "unknown declaration attribute; expected '#extern(c)' or '#repr(c)'");
+        error_at(p, &attribute, "unknown declaration attribute; expected '#extern(c)', '#repr(c)', or '#discardable'");
         synchronize(p);
         return ast_new_error(p->arena, attribute);
     }
@@ -2440,6 +2502,18 @@ static Node *parse_struct_decl_rest(Parser *p,Token name,SourceSpan span) {
     consume(p, TOK_LBRACE);
 
     while (!check(p, TOK_RBRACE) && !check(p, TOK_EOF)) {
+        if (check(p, TOK_HASH)) {
+            Node *method = parse_attribute_decl(p);
+            if (!method || method->type == NODE_ERROR)
+                return method;
+            if (method->type != NODE_FUNC_DECL) {
+                error_at(p, &p->previous, "struct attributes may only introduce methods");
+                return ast_new_error(p->arena, p->previous);
+            }
+            nodelist_push(p->arena, &decl->as.struct_decl.methods, method);
+            continue;
+        }
+
         if (!consume(p, TOK_IDENT)) {
             synchronize(p);
             return ast_new_error(p->arena, p->current);

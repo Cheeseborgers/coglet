@@ -1,0 +1,7 @@
+value::() -> s32 {
+    return 1;
+}
+
+bad::() -> void {
+    result := discard value();
+}

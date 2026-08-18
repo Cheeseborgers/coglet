@@ -1,0 +1,9 @@
+#discardable
+status::() -> s32 {
+    return 1;
+}
+
+run::() -> void {
+    status();
+    discard status();
+}

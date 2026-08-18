@@ -256,6 +256,9 @@ static const char *token_type_str(TokenType type)
         case TOK_DEFER:
             return "DEFER";
 
+        case TOK_DISCARD:
+            return "DISCARD";
+
         case TOK_VOID:
             return "VOID";
 
@@ -915,6 +918,8 @@ static void print_node(Node *node)
         case NODE_FUNC_DECL:
             if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C) {
                 printf("(extern-func c ");
+                if (node->as.func_decl.is_discardable)
+                    printf("#discardable ");
 
                 if (!string_view_is_empty(node->as.func_decl.external_name)) {
                     printf("name=");
@@ -927,6 +932,8 @@ static void print_node(Node *node)
                     printf("call=%s ", call);
             } else {
                 printf("(func ");
+                if (node->as.func_decl.is_discardable)
+                    printf("#discardable ");
                 if (node->as.func_decl.is_repr_c) {
                     const char *call = c_calling_convention_name(node->as.func_decl.c_call_conv);
                     if (call)
@@ -1594,6 +1601,8 @@ static void print_node_pretty(Node *node, int depth)
 
             if (node->is_exported)
                 printf("export ");
+            if (node->as.func_decl.is_discardable)
+                printf("#discardable ");
             if (node->as.func_decl.linkage == FUNCTION_LINKAGE_EXTERN_C) {
                 const char *call = c_calling_convention_name(node->as.func_decl.c_call_conv);
                 if (string_view_is_empty(node->as.func_decl.external_name) && !call) {

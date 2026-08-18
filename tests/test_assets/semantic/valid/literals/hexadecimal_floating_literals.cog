@@ -15,8 +15,8 @@ main::() -> s32 {
     tau32: f32 = TAU;
     tau64: f64 = TAU;
 
-    use_f32(PI);
-    use_f64(PI);
+    discard use_f32(PI);
+    discard use_f64(PI);
 
     if ps32 <= tau32 && ps64 <= tau64
         return 0;

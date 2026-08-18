@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/functions/discard_void.cog:5:13: error: expression does not produce a value
+    discard noop();
+            ^~~~
+1 semantic error generated.

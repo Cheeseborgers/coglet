@@ -29,6 +29,6 @@ qualifiers::(
     same := plain == volatile_plain;
     same_both := plain == readonly_volatile;
 
-    read_register(readonly_volatile);
+    discard read_register(readonly_volatile);
     write_register(volatile_plain, 1);
 }

@@ -3712,6 +3712,10 @@ static int lower_statement_expression(ExecLowerState *state, Node *node)
             return lower_compound_assignment_statement(state, node);
         case NODE_INC_DEC:
             return lower_inc_dec_statement(state, node);
+        case NODE_UNARY:
+            if (node->as.unary.op == TOK_DISCARD)
+                return lower_statement_expression(state, node->as.unary.operand);
+            /* fall through */
         default: {
             SemanticContext *sem = (SemanticContext *)&state->lower->frontend->sem;
             Type *type = semantic_get_effective_expr_type(sem, node);

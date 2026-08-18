@@ -333,6 +333,13 @@ typedef struct SemExprInfo {
     SemDeclId resolved_operator_function_id;
 
     /*
+     * True only for a successfully resolved direct call whose declaration
+     * carries #discardable. This is call-site policy metadata, not part of
+     * function type identity or ABI.
+     */
+    int result_is_discardable;
+
+    /*
      * Resolved type operand for type queries such as size_of(T) and
      * align_of(T). This freezes the semantic type choice while frontend
      * generic bindings are still available so CogIR lowering never needs to

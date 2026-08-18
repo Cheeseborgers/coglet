@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/functions/discardable_indirect_call.cog:9:5: error: function result must be used or explicitly discarded with 'discard'
+    callback(1);
+    ^~~~~~~~
+1 semantic error generated.

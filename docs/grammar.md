@@ -439,11 +439,12 @@ p := Person {
 };
 ```
 
-Standalone string literals are ordinary readonly byte-slice expressions:
+Standalone string literals are ordinary readonly byte-slice expressions and,
+like other non-call value expressions, may appear as standalone statements:
 
 ```c
 name := "hello";        // readonly u8[]
-"hello";                // valid discarded expression
+"hello";                // valid standalone expression
 ```
 
 ## Function Declarations and Calls
@@ -454,6 +455,9 @@ Function declarations have two forms:
 function_declaration =
       coglet_function_declaration
     | extern_c_function_declaration;
+
+discardable_function_declaration =
+    "#" "discardable" function_declaration;
 
 coglet_function_declaration =
     identifier "::"
@@ -715,19 +719,39 @@ A missing return type defaults to `void`.
 
 Call arguments are checked against parameter types as contextual initializers. This allows contextual array and string literals in argument position.
 
-A call returning `void` is valid only where its result is discarded.
+A call returning `void` is a no-value expression and is valid as a bare
+statement:
 
 ```c
 does_nothing(); // valid
 ```
 
-Invalid:
+It is invalid where a value is required:
 
 ```c
 x := does_nothing();
 takes_s32(does_nothing());
 does_nothing() + 1;
 ```
+
+A non-void function-call result is must-use by default. A direct call may appear
+bare only when its declaration carries `#discardable`; otherwise the caller must
+use the value or write an explicit statement-position `discard`:
+
+```c
+value := compute();
+discard compute();
+
+#discardable
+probe::() -> s32 { return 0; }
+probe(); // valid
+```
+
+`#discardable` is allowed only on value-returning functions whose return type does
+not contain a move-only resource. It is declaration metadata rather than function
+type/ABI identity. When combined with `#extern(c)` or `#repr(c)`, it precedes that
+ABI attribute. Indirect calls therefore remain must-use unless explicitly
+discarded.
 
 ### Nested Function Semantics
 
@@ -956,8 +980,16 @@ Statement position includes:
 
 - expression statements
 - `for` post clauses
+- the expression form registered by `defer`
 
 Void-returning calls are accepted in statement position but rejected in value-required contexts.
+
+Value-returning function calls are must-use in statement position unless the
+source form is a direct call to a `#discardable` function. Other value-producing
+expressions, including arithmetic and comparisons, remain valid statement
+expressions without `discard`. `discard` explicitly consumes the complete following
+assignment-level expression and itself produces no value; using it inside a
+value-required context is an error. Resource-owning values may not be discarded.
 
 Mutation operations are accepted only in statement position.
 
@@ -1093,9 +1125,11 @@ defer_statement =
 ```
 
 Deferred bodies execute in reverse registration order when their lexical block
-is left, including exits through `return`, `break`, and `continue`. The first
-version rejects nested `defer` and control-transfer statements inside a deferred
-body.
+is left, including exits through `return`, `break`, and `continue`. A deferred
+value-returning call follows the function-result must-use rule, so use
+`defer discard call();` unless the direct target is `#discardable`. The first
+version rejects nested `defer` and control-transfer
+statements inside a deferred body.
 
 ## Switch
 

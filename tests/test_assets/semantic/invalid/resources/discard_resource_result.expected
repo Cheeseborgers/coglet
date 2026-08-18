@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/discard_resource_result.cog:10:5: error: resource-owning values cannot be discarded; bind or transfer the owner and manage it explicitly
+    discard make_handle();
+    ^~~~~~~~~~~~~~~~~~~
+1 semantic error generated.

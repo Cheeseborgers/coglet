@@ -2,9 +2,9 @@
 puts::(s: readonly c_char*) -> c_int;
 
 main::() -> s32 {
-    puts("Hello from Coglet");
-    puts("line\nnext");
-    puts("quote: \"Coglet\"");
-    puts("slash: \\");
+    discard puts("Hello from Coglet");
+    discard puts("line\nnext");
+    discard puts("quote: \"Coglet\"");
+    discard puts("slash: \\");
     return 0;
 }

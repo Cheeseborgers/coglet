@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/resources/discardable_resource_result.cog:6:1: error: #discardable cannot be used on a function returning a resource-owning value
+make_handle::() -> Handle {
+^~~~~~~~~~~
+1 semantic error generated.

@@ -1,0 +1,10 @@
+#discardable
+#repr(c)
+status::(value: c_int) -> c_int {
+    return value;
+}
+
+run::() -> void {
+    callback: cfn(c_int) -> c_int = status;
+    callback(1);
+}

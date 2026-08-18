@@ -230,7 +230,8 @@ CogIrTypeId cog_ir_lower_type(CogIrLowerContext *ctx, const Type *type)
                 type->pointer_access == POINTER_ACCESS_READONLY,
                 0
             );
-            CogIrTypeId length_type = cog_ir_type_integer(ctx->module, 64, 0);
+            CogIrTypeId length_type = cog_ir_lower_type(
+                ctx, ctx->frontend->sem.type_usize);
             if (data_type == COG_IR_TYPE_INVALID || length_type == COG_IR_TYPE_INVALID)
                 break;
 
@@ -1559,7 +1560,8 @@ static CogIrValueId lower_array_to_slice_conversion(
         target_slice->pointer_access == POINTER_ACCESS_READONLY,
         0
     );
-    CogIrTypeId length_type = cog_ir_type_integer(state->lower->module, 64, 0);
+    CogIrTypeId length_type = cog_ir_lower_type(
+        state->lower, state->lower->frontend->sem.type_usize);
     if (element == COG_IR_TYPE_INVALID || data_type == COG_IR_TYPE_INVALID ||
         length_type == COG_IR_TYPE_INVALID)
         return COG_IR_VALUE_INVALID;
@@ -1647,7 +1649,8 @@ static CogIrValueId lower_slice_qualification_conversion(
         target_slice->pointer_access == POINTER_ACCESS_READONLY,
         0
     );
-    CogIrTypeId length_type = cog_ir_type_integer(state->lower->module, 64, 0);
+    CogIrTypeId length_type = cog_ir_lower_type(
+        state->lower, state->lower->frontend->sem.type_usize);
     if (element == COG_IR_TYPE_INVALID || source_data_type == COG_IR_TYPE_INVALID ||
         target_data_type == COG_IR_TYPE_INVALID || length_type == COG_IR_TYPE_INVALID)
         return COG_IR_VALUE_INVALID;
@@ -2470,7 +2473,8 @@ static CogIrValueId lower_string_literal(ExecLowerState *state, Node *node)
         }
 
         CogIrValueId base = emit_global_address(state, global, array_type, 1, node->span);
-        CogIrTypeId index_type = cog_ir_type_integer(state->lower->module, 64, 0);
+        CogIrTypeId index_type = cog_ir_lower_type(
+            state->lower, state->lower->frontend->sem.type_usize);
         CogIrConstId zero = cog_ir_const_integer(state->lower->module, index_type, 0);
         CogIrValueId index = emit_constant_value(state, zero, node->span);
         if (base == COG_IR_VALUE_INVALID || index == COG_IR_VALUE_INVALID)

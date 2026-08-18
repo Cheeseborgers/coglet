@@ -737,8 +737,8 @@ Vec3::<T: floating> struct {
 The builtin constraints are deliberately small:
 
 - `integer`: any concrete signed or unsigned integer type;
-- `signed_integer`: `s8`, `s16`, `s32`, or `s64`;
-- `unsigned_integer`: `u8`, `u16`, `u32`, or `u64`;
+- `signed_integer`: `s8`, `s16`, `s32`, `s64`, or the target-sized `isize` alias;
+- `unsigned_integer`: `u8`, `u16`, `u32`, `u64`, or the target-sized `usize` alias;
 - `floating`: `f32` or `f64`;
 - `numeric`: any concrete integer or floating-point type;
 - `ordered`: the concrete types accepted by Coglet's ordered comparisons,
@@ -1590,7 +1590,7 @@ values := [1, 2, 3];
 
 ## Slices
 
-A slice is a non-owning view over contiguous storage. `T[]` grants mutable element access and `readonly T[]` grants readonly element access. The first representation is exactly two machine-independent Coglet values: a typed data pointer and a `u64` element count. There is no capacity, allocator, or ownership field.
+A slice is a non-owning view over contiguous storage. `T[]` grants mutable element access and `readonly T[]` grants readonly element access. The representation is exactly two target-level Coglet values: a typed data pointer and a `usize` element count. There is no capacity, allocator, or ownership field.
 
 ```c
 values: s32[3] = [1, 2, 3];
@@ -1637,18 +1637,22 @@ readonly_storage: readonly s32* = ...;
 readonly_view: readonly s32[] = slice(readonly_storage, 4);
 ```
 
-The first argument must be a typed non-volatile raw pointer; `opaque*` and volatile pointer storage are rejected. The result inherits the pointer's mutable/readonly access, and the length is checked as `u64`. This is a non-owning operation: the caller remains responsible for ensuring that the pointer stays valid for the complete slice lifetime and for at least `length` elements.
+The first argument must be a typed non-volatile raw pointer; `opaque*` and volatile pointer storage are rejected. The result inherits the pointer's mutable/readonly access, and the length is checked as `usize`. This is a non-owning operation: the caller remains responsible for ensuring that the pointer stays valid for the complete slice lifetime and for at least `length` elements.
+
+## Target-Sized Integers
+
+`usize` and `isize` are compiler-provided integer aliases selected from the fixed-width integer types to match the target pointer width. `usize` is unsigned and `isize` is signed. They are intended for object sizes, element counts, indices, and pointer-width arithmetic; `u64`/`s64` remain ordinary fixed-width integers. Conversions retain Coglet's existing exact/conversion rules rather than gaining special implicit narrowing behavior.
 
 ## Runtime Type Layout Queries
 
 Coglet provides target-layout builtins for generic allocation and low-level containers:
 
 ```c
-bytes := size_of::<MyType>();
-alignment := align_of::<MyType>();
+bytes := size_of(MyType);
+alignment := align_of(MyType);
 ```
 
-Each builtin requires exactly one explicit concrete runtime object type and returns `u64`. In generic code the type argument may contain the current concrete type parameters, so `size_of::<T>()` and `align_of::<T>()` are valid after specialization. Native `cfn(...) -> T` values are runtime callback pointers and therefore have target pointer size/alignment. Incomplete types, `void`, ordinary Coglet function types, and other types without a portable host-C runtime object layout are rejected.
+Each builtin takes exactly one concrete runtime object type operand and returns `usize`. In generic code the type argument may contain the current concrete type parameters, so `size_of(T)` and `align_of(T)` are valid after specialization. Native `cfn(...) -> T` values are runtime callback pointers and therefore have target pointer size/alignment. Incomplete types, `void`, ordinary Coglet function types, and other types without a portable host-C runtime object layout are rejected.
 
 The frontend does not guess target padding or alignment. Semantic analysis freezes the resolved concrete type, CogIR carries a backend-neutral type-layout query, and the selected backend answers using its actual target layout. These queries are not yet accepted in Coglet compile-time constant-expression contexts even though a backend can materialize them as target constants.
 
@@ -2066,6 +2070,7 @@ The currently accepted frontend type subset is:
 bool
 s8 s16 s32 s64
 u8 u16 u32 u64
+isize usize
 f32 f64
 c_char c_schar c_uchar
 c_short c_ushort c_int c_uint
@@ -2080,6 +2085,10 @@ additional raw-pointer layers such as opaque**
 cfn(...) -> T native C function pointers with recursively supported signatures
 void as a return type only
 ```
+
+`usize`/`isize` retain their target-pointer-width Coglet meaning at an FFI
+boundary; they are not C spelling aliases. Use `c_size` when the native API
+specifically requires C `size_t`.
 
 Arrays, ordinary Coglet structs, ordinary Coglet enums, and ordinary Coglet
 function types remain rejected in `#extern(c)` signatures. Structs, unions, and
@@ -2243,8 +2252,8 @@ native callback additionally needs its exact recursive C spelling (for example
 `c_int` versus a fixed-width Coglet integer) at storage and indirect-call sites.
 Until generic ABI provenance is represented explicitly, semantic analysis rejects
 those combinations rather than allowing exact callback metadata to be erased
-during monomorphization. Direct `size_of::<cfn(...) -> T>()` and
-`align_of::<cfn(...) -> T>()` queries are unaffected.
+during monomorphization. Direct `size_of(cfn(...) -> T)` and
+`align_of(cfn(...) -> T)` queries are unaffected.
 
 The current host-C backend emits C function-pointer typedefs and can pass a
 `#repr(c)` Coglet function to native C. The executable callback regression test

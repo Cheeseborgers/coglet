@@ -1,0 +1,4 @@
+main::() -> s32 {
+    value := size_of::<s32>();
+    return 0;
+}

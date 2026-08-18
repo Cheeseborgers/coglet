@@ -1,4 +1,4 @@
-tests/test_assets/semantic/invalid/memory/layout_incomplete_type.cog:5:22: error: builtin 'size_of' requires a complete runtime object type, got ForeignHandle
-    return cast(s32, size_of::<ForeignHandle>());
-                     ^~~~~~~
+<source>:5:22: error: builtin 'size_of' requires a complete runtime object type, got ForeignHandle
+    return cast(s32, size_of(ForeignHandle));
+                     ^~~~~~~~~~~~~~~~~~~~~~
 1 semantic error generated.

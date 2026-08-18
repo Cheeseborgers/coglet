@@ -46,47 +46,47 @@ export heap::() -> Allocator {
     };
 }
 
-export alloc::<T>(allocator: Allocator, count: u64) -> T* {
+export alloc::<T>(allocator: Allocator, count: usize) -> T* {
     if count == 0
         return null;
 
-    bytes := count * size_of::<T>();
+    bytes := count * size_of(T);
     raw := allocator.allocate(
         allocator.state,
         cast(c_size, bytes),
-        cast(c_size, align_of::<T>())
+        cast(c_size, align_of(T))
     );
     return reinterpret(T*, raw);
 }
 
-export resize::<T>(allocator: Allocator, pointer: T*, old_count: u64, new_count: u64) -> T* {
+export resize::<T>(allocator: Allocator, pointer: T*, old_count: usize, new_count: usize) -> T* {
     if new_count == 0 {
         free(allocator, pointer, old_count);
         return null;
     }
 
-    old_bytes := old_count * size_of::<T>();
-    new_bytes := new_count * size_of::<T>();
+    old_bytes := old_count * size_of(T);
+    new_bytes := new_count * size_of(T);
     raw := allocator.resize(
         allocator.state,
         reinterpret(opaque*, pointer),
         cast(c_size, old_bytes),
         cast(c_size, new_bytes),
-        cast(c_size, align_of::<T>())
+        cast(c_size, align_of(T))
     );
     return reinterpret(T*, raw);
 }
 
-export free::<T>(allocator: Allocator, pointer: T*, count: u64) -> void {
+export free::<T>(allocator: Allocator, pointer: T*, count: usize) -> void {
     if pointer == null
         return;
 
-    bytes := count * size_of::<T>();
+    bytes := count * size_of(T);
     allocator.free(
         allocator.state,
         reinterpret(opaque*, pointer),
         cast(c_size, bytes),
-        cast(c_size, align_of::<T>())
+        cast(c_size, align_of(T))
     );
 }
 
@@ -100,7 +100,7 @@ export Arena::resource {
         return Self.with_block_size(parent, 65536);
     }
 
-    with_block_size::(parent: Allocator, block_size: u64) -> Self {
+    with_block_size::(parent: Allocator, block_size: usize) -> Self {
         return Self {
             state = arena_create(parent, cast(c_size, block_size))
         };
@@ -217,12 +217,12 @@ export FixedArena::resource {
         fixed_arena_reset((*self).state);
     }
 
-    used::(self: readonly Self*) -> u64 {
-        return cast(u64, fixed_arena_used((*self).state));
+    used::(self: readonly Self*) -> usize {
+        return cast(usize, fixed_arena_used((*self).state));
     }
 
-    remaining::(self: readonly Self*) -> u64 {
-        return cast(u64, fixed_arena_remaining((*self).state));
+    remaining::(self: readonly Self*) -> usize {
+        return cast(usize, fixed_arena_remaining((*self).state));
     }
 
     deinit::(self: Self*) -> void {

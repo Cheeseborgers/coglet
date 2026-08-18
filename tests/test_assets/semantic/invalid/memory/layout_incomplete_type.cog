@@ -2,5 +2,5 @@
 ForeignHandle::struct;
 
 main::() -> s32 {
-    return cast(s32, size_of::<ForeignHandle>());
+    return cast(s32, size_of(ForeignHandle));
 }

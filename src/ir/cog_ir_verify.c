@@ -432,9 +432,10 @@ static int verify_instruction(
             const CogIrType *queried = cog_ir_get_type(module, instruction->as.type_query.queried_type);
             if (!type_has_runtime_object_layout(queried) || !result_type ||
                 result_type->kind != COG_IR_TYPE_INTEGER ||
-                result_type->as.integer.bits != 64 || result_type->as.integer.is_signed) {
+                result_type->as.integer.bits != module->target.pointer_bits ||
+                result_type->as.integer.is_signed) {
                 ir_error(diagnostics, instruction->span,
-                    "type-layout query requires a layout-capable queried type and u64 result");
+                    "type-layout query requires a layout-capable queried type and usize-width unsigned result");
                 ok = 0;
             }
             break;

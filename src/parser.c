@@ -17,6 +17,8 @@ static Node *parse_if_statement(Parser *p);
 static Node *parse_statement(Parser *p);
 static Node *parse_block(Parser *p);
 static Node *parse_primary(Parser *p);
+static Node *parse_type_layout_query(Parser *p);
+static void type_list_push(Arena *arena, TypeList *list, Type *value);
 static Node *parse_postfix(Parser *p);
 static Node *parse_postfix_from(Parser *p, Node *expr);
 static Node *parse_unary(Parser *p);
@@ -369,6 +371,12 @@ const char *token_debug_display_name(TokenType type)
         case TOK_CFN:
             return "'cfn'";
 
+        case TOK_SIZE_OF:
+            return "'size_of'";
+
+        case TOK_ALIGN_OF:
+            return "'align_of'";
+
         // Types
         case TOK_BOOL:
             return "'bool'";
@@ -402,6 +410,12 @@ const char *token_debug_display_name(TokenType type)
 
         case TOK_U64:
             return "'u64'";
+
+        case TOK_ISIZE:
+            return "'isize'";
+
+        case TOK_USIZE:
+            return "'usize'";
 
         case TOK_F32:
             return "'f32'";
@@ -656,6 +670,69 @@ void parser_init(Parser *p, const char *filename, const char *source, Arena *are
     parser_init_common(p, &p->local_sources, source_id, arena, scratch);
 }
 
+static Node *parse_type_layout_query(Parser *p)
+{
+    Token keyword = p->current;
+    assert(keyword.type == TOK_SIZE_OF || keyword.type == TOK_ALIGN_OF);
+    advance(p);
+
+    if (match(p, TOK_COLON_COLON)) {
+        error_at(
+            p,
+            &p->previous,
+            keyword.type == TOK_SIZE_OF
+                ? "'size_of' uses size_of(T), not generic syntax"
+                : "'align_of' uses align_of(T), not generic syntax"
+        );
+        while (!check(p, TOK_SEMICOLON) &&
+               !check(p, TOK_RBRACE) &&
+               !check(p, TOK_EOF)) {
+            advance(p);
+        }
+        return ast_new_error(p->arena, keyword);
+    }
+
+    if (!consume(p, TOK_LPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    if (match(p, TOK_RPAREN)) {
+        Node *callee = ast_new_ident(
+            p->arena,
+            keyword.start,
+            keyword.length,
+            keyword.span
+        );
+        return ast_new_call(
+            p->arena,
+            callee,
+            source_span_join(keyword.span, p->previous.span)
+        );
+    }
+
+    Type *queried = parse_type(p);
+
+    if (!consume(p, TOK_RPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Node *callee = ast_new_ident(
+        p->arena,
+        keyword.start,
+        keyword.length,
+        keyword.span
+    );
+    Node *call = ast_new_call(
+        p->arena,
+        callee,
+        source_span_join(keyword.span, p->previous.span)
+    );
+    type_list_push(p->arena, &call->as.call.type_arguments, queried);
+    return call;
+}
+
 // ===================== primary =====================
 static Node *parse_primary(Parser *p)
 {
@@ -709,6 +786,9 @@ static Node *parse_primary(Parser *p)
         Token t = p->previous;
         return ast_new_char(p->arena, t.start + 1, t.length - 2, t.span);
     }
+
+    if (check(p, TOK_SIZE_OF) || check(p, TOK_ALIGN_OF))
+        return parse_type_layout_query(p);
 
     /*
     * Conversion keywords are parsed before identifiers because their
@@ -1226,6 +1306,11 @@ static Type *parse_type(Parser *p)
         base->kind = TYPE_U32;
     } else if (match(p, TOK_U64) || match(p, TOK_UINT_KW)) {
         base->kind = TYPE_U64;
+    } else if (match(p, TOK_ISIZE) || match(p, TOK_USIZE)) {
+        Token alias = p->previous;
+        base->kind = TYPE_NAMED;
+        base->named_module = string_view_empty();
+        base->named_name = string_view(alias.start, (size_t)alias.length);
     } else if (match(p, TOK_F32)) {
         base->kind = TYPE_F32;
     } else if (match(p, TOK_F64)) {

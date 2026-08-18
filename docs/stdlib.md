@@ -310,13 +310,13 @@ mem.free(heap, items, 256);
 The typed helpers are:
 
 ```text
-alloc<T>(allocator: Allocator, count: u64) -> T*
-resize<T>(allocator: Allocator, pointer: T*, old_count: u64, new_count: u64) -> T*
-free<T>(allocator: Allocator, pointer: T*, count: u64) -> void
+alloc<T>(allocator: Allocator, count: usize) -> T*
+resize<T>(allocator: Allocator, pointer: T*, old_count: usize, new_count: usize) -> T*
+free<T>(allocator: Allocator, pointer: T*, count: usize) -> void
 ```
 
-Sizes passed to the allocator are target-correct `size_of::<T>()` results and
-alignment is `align_of::<T>()`. Supplying old/new counts makes the allocator
+Sizes passed to the allocator are target-correct `size_of(T)` results and
+alignment is `align_of(T)`. Supplying old/new counts makes the allocator
 contract usable by implementations that do not keep a hidden allocation-size
 header. Zero-sized allocation returns `null`; resizing to zero frees through the
 allocator and returns `null`; freeing `null` is valid. The bootstrap heap remains
@@ -451,8 +451,8 @@ The first version intentionally has no source file/line capture, quarantine,
 stack traces, or platform page guards. Those are diagnostic extensions rather than
 changes to the allocator contract.
 
-`size_of::<T>()` and `align_of::<T>()` remain compiler builtins rather than
-`std.mem` functions. They return `u64` target layout values and are described in
+`size_of(T)` and `align_of(T)` remain compiler builtins rather than
+`std.mem` functions. They return target-sized `usize` layout values and are described in
 `docs/language.md`.
 
 ## `std.array`
@@ -479,8 +479,8 @@ The representation is:
 
 ```text
 data      : T*
-len       : u64
-capacity  : u64
+len       : usize
+capacity  : usize
 allocator : std.mem.Allocator
 ```
 

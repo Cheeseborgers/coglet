@@ -44,6 +44,8 @@ static int run_target_case(
     TypeKind expected_long,
     TypeKind expected_size,
     TypeKind expected_char,
+    TypeKind expected_usize,
+    TypeKind expected_isize,
     const char *label
 ) {
     CompileResult result;
@@ -76,7 +78,9 @@ static int run_target_case(
     int ok =
         expect_param_kind(&result, function, 0, expected_long, label) &&
         expect_param_kind(&result, function, 1, expected_size, label) &&
-        expect_param_kind(&result, function, 2, expected_char, label);
+        expect_param_kind(&result, function, 2, expected_char, label) &&
+        expect_param_kind(&result, function, 3, expected_usize, label) &&
+        expect_param_kind(&result, function, 4, expected_isize, label);
 
     if (result.sem.target.c_long_bits != target->c_long_bits ||
         result.sem.target.c_size_bits != target->c_size_bits ||
@@ -109,6 +113,7 @@ int main(int argc, char **argv) {
     target_a.c_double_format = TARGET_FLOAT_FORMAT_IEEE_BINARY64;
 
     TargetInfo target_b = target_a;
+    target_b.pointer_bits = 32;
     target_b.c_char_is_signed = 0;
     target_b.c_long_bits = 64;
     target_b.c_size_bits = 32;
@@ -119,6 +124,8 @@ int main(int argc, char **argv) {
             TYPE_S32,
             TYPE_U64,
             TYPE_S8,
+            TYPE_U64,
+            TYPE_S64,
             "synthetic-llp64-like")) {
         return 1;
     }
@@ -129,6 +136,8 @@ int main(int argc, char **argv) {
             TYPE_S64,
             TYPE_U32,
             TYPE_U8,
+            TYPE_U32,
+            TYPE_S32,
             "synthetic-wide-long")) {
         return 1;
     }

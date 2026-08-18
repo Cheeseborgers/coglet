@@ -1,3 +1,9 @@
-probe::(long_value: c_long, size_value: c_size, char_value: c_char) -> c_int {
+probe::(
+    long_value: c_long,
+    size_value: c_size,
+    char_value: c_char,
+    usize_value: usize,
+    isize_value: isize
+) -> c_int {
     return 0;
 }

@@ -8,8 +8,8 @@ import std.mem as mem;
 // when transferring ownership to another variable, parameter, or return.
 export Array::<T: copyable> resource {
     data: T*;
-    len: u64;
-    capacity: u64;
+    len: usize;
+    capacity: usize;
     allocator: mem.Allocator;
 
     new::(allocator: mem.Allocator) -> Self {
@@ -21,7 +21,7 @@ export Array::<T: copyable> resource {
         };
     }
 
-    with_capacity::(allocator: mem.Allocator, capacity: u64) -> Self {
+    with_capacity::(allocator: mem.Allocator, capacity: usize) -> Self {
         result := Self.new(allocator);
         if capacity != 0 {
             result.data = mem.alloc::<T>(allocator, capacity);
@@ -45,7 +45,7 @@ export Array::<T: copyable> resource {
         (*self).len = 0;
     }
 
-    reserve::(self: Self*, additional: u64) -> void {
+    reserve::(self: Self*, additional: usize) -> void {
         required := (*self).len + additional;
         if required <= (*self).capacity
             return;

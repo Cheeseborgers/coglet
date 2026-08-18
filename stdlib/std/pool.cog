@@ -2,13 +2,13 @@ module std.pool;
 
 import std.mem as mem;
 
-pool_invalid_index :: 0xffffffffffffffff;
-pool_live_index :: 0xfffffffffffffffe;
+pool_invalid_index :: truncate(usize, 0xffffffffffffffff);
+pool_live_index :: truncate(usize, 0xfffffffffffffffe);
 
 // Stable slot identifier. Generation changes whenever a slot is released so
 // stale handles do not silently refer to a later occupant of the same index.
 export PoolHandle::struct {
-    index: u64;
+    index: usize;
     generation: u64;
 
     invalid::() -> Self {
@@ -27,14 +27,14 @@ export PoolHandle::struct {
 // backing storage, but never relocates it after construction.
 export Pool::<T: copyable> resource {
     data: T*;
-    next_free: u64*;
+    next_free: usize*;
     generations: u64*;
-    capacity: u64;
-    free_head: u64;
-    live_count: u64;
+    capacity: usize;
+    free_head: usize;
+    live_count: usize;
     allocator: mem.Allocator;
 
-    with_capacity::(allocator: mem.Allocator, capacity: u64) -> Self {
+    with_capacity::(allocator: mem.Allocator, capacity: usize) -> Self {
         result := Self {
             data = null,
             next_free = null,
@@ -49,11 +49,11 @@ export Pool::<T: copyable> resource {
             return move result;
 
         result.data = mem.alloc::<T>(allocator, capacity);
-        result.next_free = mem.alloc::<u64>(allocator, capacity);
+        result.next_free = mem.alloc::<usize>(allocator, capacity);
         result.generations = mem.alloc::<u64>(allocator, capacity);
         result.free_head = 0;
 
-        i: u64 = 0;
+        i: usize = 0;
         while i < capacity {
             result.generations[i] = 1;
             if i + 1 < capacity
@@ -86,7 +86,7 @@ export Pool::<T: copyable> resource {
         return (*self).live_count == (*self).capacity;
     }
 
-    available::(self: readonly Self*) -> u64 {
+    available::(self: readonly Self*) -> usize {
         return (*self).capacity - (*self).live_count;
     }
 
@@ -145,7 +145,7 @@ export Pool::<T: copyable> resource {
     }
 
     clear::(self: Self*) -> void {
-        i: u64 = 0;
+        i: usize = 0;
         while i < (*self).capacity {
             generation := (*self).generations[i];
             if generation == 0xffffffffffffffff {

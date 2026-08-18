@@ -310,6 +310,12 @@ static const char *token_type_str(TokenType type)
         case TOK_CFN:
             return "CFN";
 
+        case TOK_SIZE_OF:
+            return "SIZE_OF";
+
+        case TOK_ALIGN_OF:
+            return "ALIGN_OF";
+
         // Types
         case TOK_BOOL:
             return "BOOL";
@@ -337,6 +343,12 @@ static const char *token_type_str(TokenType type)
 
         case TOK_U64:
             return "U64";
+
+        case TOK_ISIZE:
+            return "ISIZE";
+
+        case TOK_USIZE:
+            return "USIZE";
 
         case TOK_F32:
             return "F32";

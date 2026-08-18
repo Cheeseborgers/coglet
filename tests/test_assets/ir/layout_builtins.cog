@@ -3,13 +3,13 @@ Pair::struct {
     value: u64;
 }
 
-measure::<T>() -> u64 {
-    return size_of::<T>() + align_of::<T>();
+measure::<T>() -> usize {
+    return size_of(T) + align_of(T);
 }
 
-callback_layout::() -> u64 {
-    return size_of::<cfn(c_int) -> c_int>() +
-           align_of::<cfn(c_int) -> c_int>();
+callback_layout::() -> usize {
+    return size_of(cfn(c_int) -> c_int) +
+           align_of(cfn(c_int) -> c_int);
 }
 
 main::() -> s32 {
@@ -20,10 +20,10 @@ main::() -> s32 {
     if view.len != 3 || view[1] != 20
         return 1;
 
-    if measure::<Pair>() < align_of::<Pair>()
+    if measure::<Pair>() < align_of(Pair)
         return 2;
 
-    if callback_layout() != size_of::<opaque*>() + align_of::<opaque*>()
+    if callback_layout() != size_of(opaque*) + align_of(opaque*)
         return 3;
 
     return 0;

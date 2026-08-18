@@ -450,6 +450,7 @@ Primitive and built-in types:
 - `bool`
 - `s8`, `s16`, `s32`, `s64`
 - `u8`, `u16`, `u32`, `u64`
+- target-sized integer aliases `isize` and `usize`
 - `f32`, `f64`
 - `void`
 

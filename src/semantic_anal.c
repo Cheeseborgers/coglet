@@ -1883,7 +1883,7 @@ static Symbol *scope_define_builtin(SemanticContext *ctx, const char *name, Buil
         NULL);
 }
 
-static Type *fixed_integer_type_for_c_abi_bits(
+static Type *fixed_integer_type_for_bits(
     SemanticContext *ctx,
     unsigned bit_width,
     int is_signed
@@ -1941,7 +1941,7 @@ static void register_target_c_integer_alias(
     unsigned bit_width,
     int is_signed
 ) {
-    Type *type = fixed_integer_type_for_c_abi_bits(ctx, bit_width, is_signed);
+    Type *type = fixed_integer_type_for_bits(ctx, bit_width, is_signed);
     register_c_abi_type_alias(ctx, name, type, bit_width);
 }
 
@@ -1970,6 +1970,38 @@ static void register_target_c_float_alias(
         string_view_from_cstr(name),
         SYMBOL_TYPE,
         type
+    );
+}
+
+static void register_target_pointer_integer_aliases(SemanticContext *ctx)
+{
+    const unsigned bits = ctx->target.pointer_bits;
+
+    ctx->type_isize = fixed_integer_type_for_bits(ctx, bits, 1);
+    ctx->type_usize = fixed_integer_type_for_bits(ctx, bits, 0);
+
+    if (!ctx->type_isize || !ctx->type_usize) {
+        fprintf(
+            stderr,
+            "semantic error: target pointer width %u bits is unsupported by usize/isize\n",
+            bits
+        );
+        ctx->had_error = 1;
+        ctx->error_count++;
+        return;
+    }
+
+    scope_define(
+        ctx,
+        string_view_from_cstr("isize"),
+        SYMBOL_TYPE,
+        ctx->type_isize
+    );
+    scope_define(
+        ctx,
+        string_view_from_cstr("usize"),
+        SYMBOL_TYPE,
+        ctx->type_usize
     );
 }
 
@@ -2025,6 +2057,7 @@ static void register_target_c_abi_type_aliases(SemanticContext *ctx) {
 
 static void register_builtin_symbols(SemanticContext *ctx) {
 
+    register_target_pointer_integer_aliases(ctx);
     register_target_c_abi_type_aliases(ctx);
 
     scope_define_builtin(ctx, "wrapping_add", BUILTIN_WRAPPING_ADD);
@@ -8908,7 +8941,7 @@ static Type *check_type_layout_builtin_call(
         semantic_error_fmt(
             ctx,
             call,
-            "builtin '%s' requires exactly one explicit type argument",
+            "builtin '%s' requires exactly one type operand",
             builtin_kind_name(builtin->builtin_kind)
         );
         return NULL;
@@ -8933,7 +8966,7 @@ static Type *check_type_layout_builtin_call(
 
     SemExprInfo *info = sem_get_or_create_expr_info(ctx, call);
     info->builtin_type_argument = queried;
-    return ctx->type_u64;
+    return ctx->type_usize;
 }
 
 static Type *check_slice_builtin_call(
@@ -8968,7 +9001,7 @@ static Type *check_slice_builtin_call(
 
     if (!check_argument_against_parameter(
             ctx,
-            ctx->type_u64,
+            ctx->type_usize,
             call->as.call.arguments.items[1])) {
         return NULL;
     }
@@ -10753,7 +10786,7 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                         node->as.field.name.length,
                         "len",
                         sizeof("len") - 1)) {
-                    field_type = ctx->type_u64;
+                    field_type = ctx->type_usize;
                 } else if (names_equal(
                                node->as.field.name.data,
                                node->as.field.name.length,
@@ -12403,7 +12436,7 @@ static int check_c_variadic_argument(SemanticContext *ctx, Node *argument) {
      * performs the ordinary array-to-pointer conversion at the ABI boundary.
      */
     if (argument->type == NODE_STRING) {
-        Type *c_char = fixed_integer_type_for_c_abi_bits(
+        Type *c_char = fixed_integer_type_for_bits(
             ctx,
             ctx->target.c_char_bits,
             ctx->target.c_char_is_signed
@@ -12435,7 +12468,7 @@ static int check_c_variadic_argument(SemanticContext *ctx, Node *argument) {
      * that expression form.
      */
     if (actual->kind == TYPE_UNTYPED_INT) {
-        Type *c_int = fixed_integer_type_for_c_abi_bits(
+        Type *c_int = fixed_integer_type_for_bits(
             ctx,
             ctx->target.c_int_bits,
             1

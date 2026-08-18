@@ -288,7 +288,7 @@ be inferred only from a backend's pointer type representation.
 
 ### Arrays and slices
 
-Only concrete fixed-size arrays reach CogIR as array types. Source-level slices are resolved before backend emission and freeze as compiler-generated ordinary CogIR structs with exactly two fields: a typed data pointer carrying slice readonly access and a `u64` element count. No frontend `TYPE_SLICE`, AST node, or semantic type object is required by a backend.
+Only concrete fixed-size arrays reach CogIR as array types. Source-level slices are resolved before backend emission and freeze as compiler-generated ordinary CogIR structs with exactly two fields: a typed data pointer carrying slice readonly access and a target-width unsigned element count corresponding to source `usize`. No frontend `TYPE_SLICE`, AST node, or semantic type object is required by a backend.
 
 Array values do not implicitly decay to pointers. An explicit semantic array-to-slice conversion lowers to an `array_elem_addr` plus (when needed) monotonic pointer qualification, then `make_struct(data, len)`. Slice indexing extracts the frozen data pointer and uses ordinary `ptr_index_addr`. This keeps slice behavior backend-neutral.
 

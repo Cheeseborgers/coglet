@@ -513,6 +513,11 @@ s8 s16 s32 s64
 u8 u16 u32 u64
 f32 f64
 bool void null
+
+`isize` and `usize` are reserved source aliases resolved to the canonical signed
+or unsigned fixed-width integer whose width matches `TargetInfo.pointer_bits`.
+They therefore reuse the existing integer semantics and specialization identity
+rather than introducing duplicate nominal integer kinds.
 ```
 
 Parsed scalar types are resolved to these shared instances. Typed pointer,
@@ -1240,11 +1245,11 @@ literals and the fixed-array `{0}` initializer receive their expected array type
 in `SemExprInfo`; `{0}` is then lowered directly to CogIR's existing typed
 `zeroinit` constant. It is not modeled as a one-element literal, and backends do
 not interpret the source spelling or reproduce C partial-initializer rules.
-Array-to-slice conversion is likewise explicit semantic metadata: lowering takes the address of element zero from addressable storage (or a null data pointer for a zero-length array), freezes the fixed length as `u64`, and constructs the slice value. Mutable-to-readonly slice adaptation emits only an explicit data-pointer qualification; backends never reconstruct slice mutability from frontend objects.
+Array-to-slice conversion is likewise explicit semantic metadata: lowering takes the address of element zero from addressable storage (or a null data pointer for a zero-length array), freezes the fixed length as target-sized `usize`, and constructs the slice value. Mutable-to-readonly slice adaptation emits only an explicit data-pointer qualification; backends never reconstruct slice mutability from frontend objects.
 
-The explicit `slice(pointer, length)` builtin is resolved in the same semantic layer. Semantic analysis requires a typed non-volatile pointer and a `u64` length, chooses the concrete mutable/readonly slice type, and lowering emits the same ordinary frozen slice aggregate used by array-to-slice conversion. No backend reconstructs a source slice rule.
+The explicit `slice(pointer, length)` builtin is resolved in the same semantic layer. Semantic analysis requires a typed non-volatile pointer and a `usize` length, chooses the concrete mutable/readonly slice type, and lowering emits the same ordinary frozen slice aggregate used by array-to-slice conversion. No backend reconstructs a source slice rule.
 
-`size_of::<T>()` and `align_of::<T>()` deliberately do not compute byte layout in semantic analysis. The semantic table freezes the resolved concrete query type; lowering turns that decision into `size_of` / `align_of` CogIR operations carrying only a CogIR type ID. Native `cfn` callback values participate because their runtime representation is a native callback pointer in host-C and an opaque pointer value in LLVM; ordinary Coglet function types remain excluded from layout queries because host-C does not expose those values as native callback object types. Host-C evaluates the generated target C type (`sizeof` plus a C99-compatible alignment expression), while LLVM queries the configured `LLVMTargetData`. Generic allocation therefore uses the real backend target layout without retaining a frontend `Type *` or baking host padding assumptions into semantic analysis.
+`size_of(T)` and `align_of(T)` deliberately do not compute byte layout in semantic analysis. The semantic table freezes the resolved concrete query type; lowering turns that decision into `size_of` / `align_of` CogIR operations carrying only a CogIR type ID. Native `cfn` callback values participate because their runtime representation is a native callback pointer in host-C and an opaque pointer value in LLVM; ordinary Coglet function types remain excluded from layout queries because host-C does not expose those values as native callback object types. Host-C evaluates the generated target C type (`sizeof` plus a C99-compatible alignment expression), while LLVM queries the configured `LLVMTargetData`. Generic allocation therefore uses the real backend target layout without retaining a frontend `Type *` or baking host padding assumptions into semantic analysis.
 
 Explicit casts are intentionally not represented as contextual conversions:
 their conversion kind and destination already exist explicitly in the

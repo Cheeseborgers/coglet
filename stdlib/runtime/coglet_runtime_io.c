@@ -13,7 +13,7 @@
 
 /* Standard I/O runtime component. */
 
-void coglet_rt_io_write(const uint8_t *data, uint64_t length)
+void coglet_rt_io_write(const uint8_t *data, size_t length)
 {
     if (length == 0)
         return;

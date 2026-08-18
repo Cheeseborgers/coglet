@@ -1,4 +1,4 @@
-tests/test_assets/semantic/invalid/memory/layout_missing_type_argument.cog:2:5: error: builtin 'size_of' requires exactly one explicit type argument
+<source>:2:5: error: builtin 'size_of' requires exactly one type operand
     size_of();
-    ^~~~~~~
+    ^~~~~~~~~
 1 semantic error generated.

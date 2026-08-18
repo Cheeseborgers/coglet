@@ -1,0 +1,28 @@
+identity_usize::(value: usize) -> usize {
+    return value;
+}
+
+identity_isize::(value: isize) -> isize {
+    return value;
+}
+
+main::() -> s32 {
+    if size_of(usize) != size_of(opaque*)
+        return 1;
+    if size_of(isize) != size_of(opaque*)
+        return 2;
+    if align_of(usize) != align_of(isize)
+        return 3;
+
+    count: usize = 2;
+    signed_count: isize = -2;
+    if identity_usize(count) != 2 || identity_isize(signed_count) != -2
+        return 4;
+
+    values: s32[2] = [10, 20];
+    view := slice(&values[0], count);
+    if view.len != count
+        return 5;
+
+    return 0;
+}

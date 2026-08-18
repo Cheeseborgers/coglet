@@ -230,6 +230,8 @@ static const Keyword keywords[] = {
     {"opaque", TOK_OPAQUE},
     {"cfn", TOK_CFN},
     {"null", TOK_NULL},
+    {"size_of", TOK_SIZE_OF},
+    {"align_of", TOK_ALIGN_OF},
 
     {"s8", TOK_S8},
     {"s16", TOK_S16},
@@ -239,6 +241,8 @@ static const Keyword keywords[] = {
     {"u16", TOK_U16},
     {"u32", TOK_U32},
     {"u64", TOK_U64},
+    {"isize", TOK_ISIZE},
+    {"usize", TOK_USIZE},
     {"f32", TOK_F32},
     {"f64", TOK_F64},
     {"bool", TOK_BOOL},
@@ -1351,6 +1355,8 @@ const char *token_type_name(TokenType type) {
         case TOK_VOLATILE: return "VOLATILE";
         case TOK_OPAQUE: return "OPAQUE";
         case TOK_CFN: return "CFN";
+        case TOK_SIZE_OF: return "SIZE_OF";
+        case TOK_ALIGN_OF: return "ALIGN_OF";
         case TOK_S8: return "S8";
 
         case TOK_S16:
@@ -1373,6 +1379,12 @@ const char *token_type_name(TokenType type) {
 
         case TOK_U64:
             return "U64";
+
+        case TOK_ISIZE:
+            return "ISIZE";
+
+        case TOK_USIZE:
+            return "USIZE";
 
         case TOK_F32:
             return "F32";

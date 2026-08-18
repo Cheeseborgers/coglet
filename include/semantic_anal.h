@@ -216,6 +216,10 @@ typedef struct {
     Type *type_u32;
     Type *type_u64;
 
+    /* Target pointer-width integer aliases. */
+    Type *type_isize;
+    Type *type_usize;
+
     Type *type_f32;
     Type *type_f64;
 

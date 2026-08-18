@@ -4,14 +4,14 @@ module std.io;
 // explicit pointer+length view rather than relying on C NUL termination.
 
 #extern(c, name="coglet_rt_io_write")
-write_bytes::(data: readonly u8*, length: u64) -> void;
+write_bytes::(data: readonly u8*, length: c_size) -> void;
 
 export print::(text: readonly u8[]) -> void {
-    write_bytes(text.data, text.len);
+    write_bytes(text.data, cast(c_size, text.len));
 }
 
 export println::(text: readonly u8[]) -> void {
-    write_bytes(text.data, text.len);
+    write_bytes(text.data, cast(c_size, text.len));
     newline();
 }
 

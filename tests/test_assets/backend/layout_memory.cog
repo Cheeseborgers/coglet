@@ -16,18 +16,20 @@ identity::(value: c_int) -> c_int {
 }
 
 main::() -> s32 {
-    callback_size := size_of::<cfn(c_int) -> c_int>();
-    callback_align := align_of::<cfn(c_int) -> c_int>();
-    pointer_size := size_of::<opaque*>();
-    pointer_align := align_of::<opaque*>();
+    callback_size := size_of(cfn(c_int) -> c_int);
+    callback_align := align_of(cfn(c_int) -> c_int);
+    pointer_size := size_of(opaque*);
+    pointer_align := align_of(opaque*);
 
     if callback_size != pointer_size || callback_align != pointer_align
         return 1;
 
-    if size_of::<CallbackTable>() != 4 * pointer_size
+    if size_of(CallbackTable) != 4 * pointer_size
         return 2;
-    if align_of::<CallbackTable>() != pointer_align
+    if align_of(CallbackTable) != pointer_align
         return 3;
+    if size_of(usize) != pointer_size || size_of(isize) != pointer_size
+        return 6;
 
     first: cfn(c_int) -> c_int = identity;
     second: cfn(c_int) -> c_int = identity;

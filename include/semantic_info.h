@@ -333,8 +333,8 @@ typedef struct SemExprInfo {
     SemDeclId resolved_operator_function_id;
 
     /*
-     * Resolved type operand for builtins such as size_of::<T>() and
-     * align_of::<T>(). This freezes the semantic type choice while frontend
+     * Resolved type operand for type queries such as size_of(T) and
+     * align_of(T). This freezes the semantic type choice while frontend
      * generic bindings are still available so CogIR lowering never needs to
      * resolve source type names again.
      */

@@ -462,14 +462,15 @@ CompileOptions compile_options_default(void)
     return options;
 }
 
-CompileStatus compile_parse_and_check(const char *filename, CompileResult *out) {
+CompileStatus compile_parse_and_check(const char *filename, const TargetConfig *target_config, CompileResult *out) {
     const char *filenames[1] = { filename };
-    return compile_parse_and_check_files(filenames, 1, out);
+    return compile_parse_and_check_files(filenames, 1, target_config, out);
 }
 
 CompileStatus compile_parse_and_check_files(
     const char *const *filenames,
     size_t filename_count,
+    const TargetConfig *target_config,
     CompileResult *out
 ) {
     CompileOptions options = compile_options_default();
@@ -477,6 +478,7 @@ CompileStatus compile_parse_and_check_files(
         filenames,
         filename_count,
         &options,
+        target_config,
         out
     );
 }
@@ -485,13 +487,14 @@ CompileStatus compile_parse_and_check_files_with_options(
     const char *const *filenames,
     size_t filename_count,
     const CompileOptions *options,
+    const TargetConfig *target_config,
     CompileResult *out
 ) {
-    TargetInfo target = target_info_host();
+    TargetInfo target_info = target_info_host();
     return compile_parse_and_check_files_for_target_with_options(
         filenames,
         filename_count,
-        &target,
+        &target_info,
         options,
         out
     );

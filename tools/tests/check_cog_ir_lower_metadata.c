@@ -46,8 +46,10 @@ int main(int argc, char **argv)
 {
     if (argc != 2) return fail("expected one Coglet input path");
 
+    TargetConfig target_config = target_config_host();
+
     CompileResult frontend;
-    if (compile_parse_and_check(argv[1], &frontend) != COMPILE_STATUS_OK)
+    if (compile_parse_and_check(argv[1], &target_config, &frontend) != COMPILE_STATUS_OK)
         return fail("frontend rejected metadata fixture");
 
     CogIrModule module;

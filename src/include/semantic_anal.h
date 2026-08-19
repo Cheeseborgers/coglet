@@ -4,7 +4,7 @@
 #include "ast.h"
 #include "diagnostic.h"
 #include "semantic_info.h"
-#include "target_info.h"
+#include "target/target_info.h"
 
 typedef enum BuiltinKind {
     /*

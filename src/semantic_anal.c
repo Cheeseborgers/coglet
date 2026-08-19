@@ -1,6 +1,6 @@
 // src/semantic_anal.c
 #include "semantic_anal.h"
-#include "target_layout.h"
+#include "target/target_layout.h"
 
 #include <assert.h>
 #include <limits.h>

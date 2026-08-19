@@ -2,8 +2,8 @@
 
 #include "compiler_driver.h"
 #include "semantic_info.h"
-#include "target_info.h"
-#include "target_layout.h"
+#include "target/target_info.h"
+#include "target/target_layout.h"
 
 static int expect_param_kind(
     CompileResult *result,

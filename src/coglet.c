@@ -12,6 +12,7 @@
 #include "coglet_paths.h"
 #include "ir/cog_ir_lower.h"
 #include "optimization.h"
+#include "target/target_config.h"
 
 typedef enum ExecutableBackend {
     EXECUTABLE_BACKEND_HOST_C,
@@ -22,7 +23,9 @@ static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [<file> ...] [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] [--emit-llvm <file>] [--emit-asm <file>] [-O0|-O1|-O2|-O3] [-g] [-I <dir>|-I<dir>] [--stdlib-root <dir>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
+        "usage: %s <file> [<file> ...] [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] "
+        "[--emit-llvm <file>] [--emit-asm <file>] [-O0|-O1|-O2|-O3] [-g] [-I <dir>|-I<dir>] "
+        "[--stdlib-root <dir>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
         "       %s --version\n"
         "       %s --print-stdlib-root\n",
         program,
@@ -175,6 +178,8 @@ int main(int argc, char **argv)
     const char *emit_asm_path = NULL;
     ExecutableBackend executable_backend = EXECUTABLE_BACKEND_HOST_C;
     int executable_backend_explicit = 0;
+    int target_explicit = 0;
+    TargetConfig target_config = target_config_host();
     CogOptimizationLevel optimization_level = COG_OPTIMIZATION_LEVEL_0;
     int debug_info = 0;
     const char *stdlib_root = COGLET_CONFIGURED_STDLIB_ROOT;
@@ -246,9 +251,33 @@ int main(int argc, char **argv)
             continue;
         }
 
+        if (strcmp(argv[i], "--target") == 0) {
+            if (i + 1 >= argc || target_explicit ||
+                !target_parse_config(argv[i + 1], &target_config)) {
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+                }
+
+            target_explicit = 1;
+            ++i;
+            continue;
+        }
+
+        if (strncmp(argv[i], "--target=", 9) == 0) {
+            if (target_explicit || argv[i][9] == '\0' ||
+                !target_parse_config(argv[i] + 9, &target_config)) {
+                print_usage(argv[0]);
+                return COMPILE_STATUS_DRIVER_ERROR;
+                }
+
+            target_explicit = 1;
+            continue;
+        }
+
         if (strncmp(argv[i], "-O", 2) == 0) {
             if (!parse_optimization_level(argv[i], &optimization_level)) {
-                fprintf(stderr, "error: unsupported optimization level '%s'; expected -O0, -O1, -O2, or -O3\n", argv[i]);
+                fprintf(stderr, "error: unsupported optimization level '%s'; "
+                                "expected -O0, -O1, -O2, or -O3\n", argv[i]);
                 return COMPILE_STATUS_DRIVER_ERROR;
             }
             continue;
@@ -261,7 +290,8 @@ int main(int argc, char **argv)
 
         if (strcmp(argv[i], "-I") == 0) {
             if (i + 1 >= argc || argv[i + 1][0] == '\0') {
-                fprintf(stderr, "error: -I requires a non-empty module search directory\n");
+                fprintf(stderr, "error: -I requires a non-empty "
+                                "module search directory\n");
                 print_usage(argv[0]);
                 return COMPILE_STATUS_DRIVER_ERROR;
             }
@@ -276,7 +306,8 @@ int main(int argc, char **argv)
 
         if (strcmp(argv[i], "--stdlib-root") == 0) {
             if (i + 1 >= argc || argv[i + 1][0] == '\0' || stdlib_root_explicit) {
-                fprintf(stderr, "error: --stdlib-root requires one non-empty directory\n");
+                fprintf(stderr, "error: --stdlib-root requires "
+                                "one non-empty directory\n");
                 print_usage(argv[0]);
                 return COMPILE_STATUS_DRIVER_ERROR;
             }
@@ -287,7 +318,8 @@ int main(int argc, char **argv)
 
         if (strncmp(argv[i], "--stdlib-root=", 14) == 0) {
             if (argv[i][14] == '\0' || stdlib_root_explicit) {
-                fprintf(stderr, "error: --stdlib-root requires one non-empty directory\n");
+                fprintf(stderr, "error: --stdlib-root requires "
+                                "one non-empty directory\n");
                 print_usage(argv[0]);
                 return COMPILE_STATUS_DRIVER_ERROR;
             }
@@ -298,7 +330,8 @@ int main(int argc, char **argv)
 
         if (strcmp(argv[i], "-L") == 0) {
             if (i + 1 >= argc || argv[i + 1][0] == '\0') {
-                fprintf(stderr, "error: -L requires a non-empty library directory\n");
+                fprintf(stderr, "error: -L requires a non-empty "
+                                "library directory\n");
                 print_usage(argv[0]);
                 return COMPILE_STATUS_DRIVER_ERROR;
             }
@@ -395,6 +428,7 @@ int main(int argc, char **argv)
         input_paths,
         input_path_count,
         &compile_options,
+        &target_config,
         &result
     );
 

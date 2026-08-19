@@ -26,8 +26,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    TargetConfig target_config = target_config_host();
+
     CompileResult result;
-    CompileStatus status = compile_parse_and_check(argv[1], &result);
+    CompileStatus status = compile_parse_and_check(argv[1], &target_config, &result);
 
     if (status != COMPILE_STATUS_OK)
         return fail(&result, "fixture did not pass semantic analysis");

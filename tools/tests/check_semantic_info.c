@@ -31,9 +31,12 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    TargetConfig target_config = target_config_host();
+
     CompileResult result;
     CompileStatus status = compile_parse_and_check(
         input_path,
+        &target_config,
         &result
     );
 

@@ -7,7 +7,7 @@
 
 #include "diagnostic.h"
 #include "source.h"
-#include "target_info.h"
+#include "../target/target_info.h"
 #include "utils/arena.h"
 #include "utils/string_view.h"
 

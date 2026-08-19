@@ -33,12 +33,12 @@ file(MAKE_DIRECTORY "${COGLET_TEST_ARTIFACT_DIR}")
 set(COGLET_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${COGLET_GENERATED_INCLUDE_DIR}")
 configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/coglet_version.h.in"
+        "src/include/coglet_version.h.in"
         "${COGLET_GENERATED_INCLUDE_DIR}/coglet_version.h"
         @ONLY
 )
 configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/coglet_paths.h.in"
+        "src/include/coglet_paths.h.in"
         "${COGLET_GENERATED_INCLUDE_DIR}/coglet_paths.h"
         @ONLY
 )
@@ -69,8 +69,6 @@ add_library(compiler_core STATIC
         src/ast.c
         src/parser_diag.c
         src/semantic_anal.c
-        src/target_info.c
-        src/target_layout.c
         src/string_decode.c
         src/compiler_driver.c
         src/ir/cog_ir.c
@@ -79,9 +77,12 @@ add_library(compiler_core STATIC
         src/ir/cog_ir_lower.c
         src/utils/utils.c
         src/utils/arena.c
+        src/target/target_info.c
+        src/target/target_layout.c
+        src/target/target_config.c
 )
 target_include_directories(compiler_core PUBLIC
-        include
+        src/include
         "${COGLET_GENERATED_INCLUDE_DIR}"
 )
 
@@ -90,7 +91,7 @@ add_library(coglet_native_toolchain STATIC
         src/toolchain/native_toolchain.c
 )
 target_include_directories(coglet_native_toolchain PUBLIC
-        include
+        src/include
         "${COGLET_GENERATED_INCLUDE_DIR}"
 )
 
@@ -98,7 +99,7 @@ target_include_directories(coglet_native_toolchain PUBLIC
 add_library(coglet_backend_c STATIC
         src/backends/backend_c/backend_c.c
 )
-target_include_directories(coglet_backend_c PUBLIC include)
+target_include_directories(coglet_backend_c PUBLIC src/include)
 target_link_libraries(coglet_backend_c PRIVATE compiler_core coglet_native_toolchain)
 
 # --- Optional LLVM backend. ---
@@ -169,7 +170,7 @@ if(NOT COGLET_LLVM_MODE STREQUAL "OFF")
                 src/backends/llvm/target.c
         )
         target_include_directories(coglet_backend_llvm
-                PUBLIC include
+                PUBLIC src/include
                 PRIVATE ${LLVM_INCLUDE_DIRS}
         )
         target_compile_options(coglet_backend_llvm PRIVATE ${COGLET_LLVM_DEFINITIONS})

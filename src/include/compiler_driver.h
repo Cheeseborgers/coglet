@@ -1,10 +1,12 @@
 #ifndef COGLET_COMPILER_DRIVER_H
 #define COGLET_COMPILER_DRIVER_H
 
+#include <target/target_config.h>
+
 #include "ast.h"
 #include "parser.h"
 #include "semantic_anal.h"
-#include "target_info.h"
+#include "target/target_info.h"
 #include "utils/arena.h"
 
 typedef enum CompileStatus {
@@ -93,7 +95,10 @@ typedef struct CompileResult {
  *   - parser and semantic diagnostics are collected with SourceSpan provenance
  *   - this function prints diagnostics followed by the phase error summary
  */
-CompileStatus compile_parse_and_check(const char *filename, CompileResult *out);
+CompileStatus compile_parse_and_check(
+    const char *filename,
+    const TargetConfig *target_config,
+    CompileResult *out);
 
 /*
  * Parses and checks one compilation unit assembled from explicit source files.
@@ -104,6 +109,7 @@ CompileStatus compile_parse_and_check(const char *filename, CompileResult *out);
 CompileStatus compile_parse_and_check_files(
     const char *const *filenames,
     size_t filename_count,
+    const TargetConfig *target_config,
     CompileResult *out
 );
 
@@ -117,6 +123,7 @@ CompileStatus compile_parse_and_check_files_with_options(
     const char *const *filenames,
     size_t filename_count,
     const CompileOptions *options,
+    const TargetConfig *target_config,
     CompileResult *out
 );
 

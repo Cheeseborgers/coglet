@@ -1345,7 +1345,34 @@ CogIrValueId cog_ir_add_block_parameter(
 
 static void copy_instruction_payload(CogIrModule *module, CogIrInstruction *instruction)
 {
-    if (instruction->op == COG_IR_OP_CALL && instruction->as.call.argument_count) {
+    if (instruction->op == COG_IR_OP_ASM) {
+        instruction->as.asm_stmt.template_text = copy_string_view(
+            module,
+            instruction->as.asm_stmt.template_text
+        );
+        instruction->as.asm_stmt.output_constraint = copy_string_view(
+            module,
+            instruction->as.asm_stmt.output_constraint
+        );
+        if (instruction->as.asm_stmt.input_count) {
+            StringView *constraints = arena_alloc(
+                module->arena,
+                instruction->as.asm_stmt.input_count * sizeof(*constraints)
+            );
+            for (size_t i = 0; i < instruction->as.asm_stmt.input_count; ++i) {
+                constraints[i] = copy_string_view(
+                    module,
+                    instruction->as.asm_stmt.input_constraints[i]
+                );
+            }
+            instruction->as.asm_stmt.input_constraints = constraints;
+            instruction->as.asm_stmt.inputs = copy_value_ids(
+                module,
+                instruction->as.asm_stmt.inputs,
+                instruction->as.asm_stmt.input_count
+            );
+        }
+    } else if (instruction->op == COG_IR_OP_CALL && instruction->as.call.argument_count) {
         instruction->as.call.arguments = copy_value_ids(
             module,
             instruction->as.call.arguments,

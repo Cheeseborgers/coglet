@@ -113,6 +113,17 @@ typedef struct {
     int capacity;
 } NodeList;
 
+typedef struct {
+    StringView constraint;
+    Node *expression;
+} AsmOperand;
+
+typedef struct {
+    AsmOperand *items;
+    int count;
+    int capacity;
+} AsmOperandList;
+
 typedef struct GenericTypeParameter {
     StringView name;
     int is_pack; /* Heterogeneous compile-time type pack; must be the final parameter. */
@@ -351,8 +362,7 @@ struct Node {
             StringView template_text;
             StringView output_constraint;
             Node *output;
-            StringView input_constraint;
-            Node *input;
+            AsmOperandList inputs;
             int is_volatile;
         } asm_stmt;
 
@@ -535,8 +545,7 @@ Node *ast_new_asm(
     StringView template_text,
     StringView output_constraint,
     Node *output,
-    StringView input_constraint,
-    Node *input,
+    AsmOperandList inputs,
     int is_volatile,
     SourceSpan span
 );
@@ -576,5 +585,6 @@ Node *ast_new_zero_array_initializer(Arena *arena, SourceSpan span);
 Node *ast_clone(Arena *arena, const Node *node);
 
 void nodelist_push(Arena *arena, NodeList *list, Node *node);
+void asm_operand_push(Arena *arena, AsmOperandList *list, StringView constraint, Node *expression);
 
 #endif

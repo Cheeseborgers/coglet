@@ -2631,18 +2631,13 @@ static int emit_instruction(
 
     switch (instruction->op) {
         case COG_IR_OP_ASM: {
-            const char *input = value_expr(
-                exprs,
-                value_count,
-                instruction->as.asm_stmt.input
-            );
             const char *result_type = value_type_name(
                 backend,
                 function,
                 result,
                 instruction->span
             );
-            if (!input || !result_type)
+            if (!result_type)
                 goto missing_operand;
 
             StringDecodeInfo info = string_analyze(instruction->as.asm_stmt.template_text);
@@ -2663,6 +2658,15 @@ static int emit_instruction(
             if (instruction->as.asm_stmt.output_constraint.length == 2 &&
                 instruction->as.asm_stmt.output_constraint.data[0] == '+' &&
                 instruction->as.asm_stmt.output_constraint.data[1] == 'r') {
+                const char *input = value_expr(
+                    exprs,
+                    value_count,
+                    instruction->as.asm_stmt.inputs[0]
+                );
+                if (!input) {
+                    free(decoded);
+                    goto missing_operand;
+                }
                 fprintf(backend->out, " = %s", input);
             }
             fputs(";\n#if defined(_MSC_VER)\n#error \"inline asm requires a GNU-style host-C compiler\"\n#else\n", backend->out);
@@ -2681,10 +2685,36 @@ static int emit_instruction(
             fputs("\"(cg_v_", backend->out);
             fprintf(backend->out, "%u", result);
             fputs(")", backend->out);
-            if (instruction->as.asm_stmt.input_constraint.length != 0) {
-                fputs("\n        : \"r\"(", backend->out);
-                fputs(input, backend->out);
-                fputs(")", backend->out);
+            size_t first_input =
+                instruction->as.asm_stmt.output_constraint.length == 2 &&
+                instruction->as.asm_stmt.output_constraint.data[0] == '+' &&
+                instruction->as.asm_stmt.output_constraint.data[1] == 'r'
+                    ? 1
+                    : 0;
+            if (instruction->as.asm_stmt.input_count > first_input) {
+                fputs("\n        : ", backend->out);
+                for (size_t i = first_input; i < instruction->as.asm_stmt.input_count; ++i) {
+                    if (i != first_input) fputs(", ", backend->out);
+                    const char *input = value_expr(
+                        exprs,
+                        value_count,
+                        instruction->as.asm_stmt.inputs[i]
+                    );
+                    if (!input) {
+                        free(decoded);
+                        goto missing_operand;
+                    }
+                    fputs("\"", backend->out);
+                    fwrite(
+                        instruction->as.asm_stmt.input_constraints[i].data,
+                        1,
+                        instruction->as.asm_stmt.input_constraints[i].length,
+                        backend->out
+                    );
+                    fputs("\"(", backend->out);
+                    fputs(input, backend->out);
+                    fputs(")", backend->out);
+                }
             }
             fputs("\n    );\n#endif\n", backend->out);
             free(decoded);

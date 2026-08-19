@@ -146,8 +146,7 @@ Node *ast_new_asm(
     StringView template_text,
     StringView output_constraint,
     Node *output,
-    StringView input_constraint,
-    Node *input,
+    AsmOperandList inputs,
     int is_volatile,
     SourceSpan span
 ) {
@@ -155,8 +154,7 @@ Node *ast_new_asm(
     node->as.asm_stmt.template_text = template_text;
     node->as.asm_stmt.output_constraint = output_constraint;
     node->as.asm_stmt.output = output;
-    node->as.asm_stmt.input_constraint = input_constraint;
-    node->as.asm_stmt.input = input;
+    node->as.asm_stmt.inputs = inputs;
     node->as.asm_stmt.is_volatile = is_volatile;
     return node;
 }
@@ -583,8 +581,17 @@ Node *ast_clone(Arena *arena, const Node *node)
         case NODE_ASM:
             clone->as.asm_stmt.output =
                 ast_clone(arena, node->as.asm_stmt.output);
-            clone->as.asm_stmt.input =
-                ast_clone(arena, node->as.asm_stmt.input);
+            clone->as.asm_stmt.inputs.items = NULL;
+            clone->as.asm_stmt.inputs.count = 0;
+            clone->as.asm_stmt.inputs.capacity = 0;
+            for (int i = 0; i < node->as.asm_stmt.inputs.count; ++i) {
+                asm_operand_push(
+                    arena,
+                    &clone->as.asm_stmt.inputs,
+                    node->as.asm_stmt.inputs.items[i].constraint,
+                    ast_clone(arena, node->as.asm_stmt.inputs.items[i].expression)
+                );
+            }
             break;
 
         case NODE_STATIC_ASSERT:
@@ -1025,3 +1032,29 @@ void nodelist_push(Arena *arena, NodeList *list, Node *node) {
     list->items[list->count++] = node;
 }
 
+void asm_operand_push(
+    Arena *arena,
+    AsmOperandList *list,
+    StringView constraint,
+    Node *expression
+) {
+    if (list->count == list->capacity) {
+        int new_capacity = list->capacity == 0 ? 4 : list->capacity * 2;
+        AsmOperand *new_items = arena_alloc(
+            arena,
+            sizeof(AsmOperand) * (size_t)new_capacity
+        );
+        if (list->items) {
+            memcpy(
+                new_items,
+                list->items,
+                sizeof(AsmOperand) * (size_t)list->count
+            );
+        }
+        list->items = new_items;
+        list->capacity = new_capacity;
+    }
+    list->items[list->count].constraint = constraint;
+    list->items[list->count].expression = expression;
+    list->count++;
+}

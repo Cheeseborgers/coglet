@@ -1,0 +1,4 @@
+<source>:5:5: error: inline asm input and output types must match
+    asm volatile ("movq %1, %0" : "=r"(result) : "r"(a), "r"(b));
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1 semantic error generated.

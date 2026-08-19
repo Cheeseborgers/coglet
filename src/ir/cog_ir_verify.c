@@ -757,31 +757,50 @@ static int verify_instruction(
         }
 
         case COG_IR_OP_ASM: {
-            REQUIRE_VALUE(instruction->as.asm_stmt.input, "asm input");
-            const CogIrValue *input = cog_ir_get_value(function, instruction->as.asm_stmt.input);
-            const CogIrType *input_type = input
-                ? cog_ir_get_type(module, input->type)
-                : NULL;
             const CogIrType *result_type = cog_ir_get_type(module, instruction->result_type);
             int is_read_write = string_view_equals(
                 instruction->as.asm_stmt.output_constraint,
                 string_view_from_cstr("+r")
             );
-            int valid_constraints = is_read_write
-                ? instruction->as.asm_stmt.input_constraint.length == 0
-                : string_view_equals(
-                    instruction->as.asm_stmt.output_constraint,
-                    string_view_from_cstr("=r")
-                ) && string_view_equals(
-                    instruction->as.asm_stmt.input_constraint,
+            int valid_constraints = string_view_equals(
+                instruction->as.asm_stmt.output_constraint,
+                is_read_write ? string_view_from_cstr("+r") : string_view_from_cstr("=r")
+            );
+
+            if (!result_type || result_type->kind != COG_IR_TYPE_INTEGER)
+                valid_constraints = 0;
+
+            if (is_read_write && instruction->as.asm_stmt.input_count == 0)
+                valid_constraints = 0;
+            if (!is_read_write && instruction->as.asm_stmt.input_count > 0 &&
+                !instruction->as.asm_stmt.input_constraints)
+                valid_constraints = 0;
+
+            for (size_t i = 0; i < instruction->as.asm_stmt.input_count; ++i) {
+                REQUIRE_VALUE(instruction->as.asm_stmt.inputs[i], "asm input");
+                const CogIrValue *input =
+                    cog_ir_get_value(function, instruction->as.asm_stmt.inputs[i]);
+                const CogIrType *input_type = input
+                    ? cog_ir_get_type(module, input->type)
+                    : NULL;
+                int valid_input_constraint = string_view_equals(
+                    instruction->as.asm_stmt.input_constraints[i],
                     string_view_from_cstr("r")
-                );
-            if (!input_type || !result_type ||
-                input->type != instruction->result_type ||
-                input_type->kind != COG_IR_TYPE_INTEGER ||
-                result_type->kind != COG_IR_TYPE_INTEGER ||
-                !valid_constraints) {
-                ir_error(diagnostics, instruction->span, "invalid inline asm operand types or constraints");
+                ) || (is_read_write && i == 0 &&
+                    string_view_equals(
+                        instruction->as.asm_stmt.input_constraints[i],
+                        string_view_from_cstr("+r")
+                    ));
+                if (!input_type || input_type->kind != COG_IR_TYPE_INTEGER ||
+                    input->type != instruction->result_type ||
+                    !valid_input_constraint) {
+                    valid_constraints = 0;
+                }
+            }
+
+            if (!valid_constraints) {
+                ir_error(diagnostics, instruction->span,
+                    "invalid inline asm operand types or constraints");
                 ok = 0;
             }
             break;

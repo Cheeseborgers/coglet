@@ -332,45 +332,93 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
                 return 0;
             break;
         case COG_IR_OP_ASM: {
-            LLVMValueRef input = state->values[insn->as.asm_stmt.input];
+            size_t input_count = insn->as.asm_stmt.input_count;
+            LLVMValueRef *inputs = input_count
+                ? calloc(input_count, sizeof(*inputs))
+                : NULL;
+            LLVMTypeRef *parameter_types = input_count
+                ? calloc(input_count, sizeof(*parameter_types))
+                : NULL;
+            if (input_count && (!inputs || !parameter_types)) {
+                free(inputs);
+                free(parameter_types);
+                return 0;
+            }
+
+            for (size_t i = 0; i < input_count; ++i) {
+                inputs[i] = state->values[insn->as.asm_stmt.inputs[i]];
+                parameter_types[i] = inputs[i] ? LLVMTypeOf(inputs[i]) : NULL;
+                if (!inputs[i] || !parameter_types[i]) {
+                    free(inputs);
+                    free(parameter_types);
+                    llvm_backend_error(backend, "inline asm operand references unavailable LLVM value");
+                    return 0;
+                }
+            }
+
             LLVMTypeRef result_type = llvm_lower_type(backend, insn->result_type);
-            LLVMTypeRef input_type = input ? LLVMTypeOf(input) : NULL;
-            if (!input || !result_type || !input_type) {
-                llvm_backend_error(backend, "inline asm operand references unavailable LLVM value");
+            if (!result_type) {
+                free(inputs);
+                free(parameter_types);
                 return 0;
             }
 
             StringDecodeInfo info = string_analyze(insn->as.asm_stmt.template_text);
             if (!info.ok) {
+                free(inputs);
+                free(parameter_types);
                 llvm_backend_error(backend, "inline asm template contains an invalid escape sequence");
                 return 0;
             }
             char *asm_text = calloc((size_t)info.decoded_length + 1, 1);
-            if (!asm_text)
+            if (!asm_text) {
+                free(inputs);
+                free(parameter_types);
                 return 0;
+            }
             if (info.decoded_length && !string_decode_into(
                     insn->as.asm_stmt.template_text,
                     asm_text).ok) {
                 free(asm_text);
+                free(inputs);
+                free(parameter_types);
                 llvm_backend_error(backend, "failed to decode inline asm template");
                 return 0;
             }
 
-            LLVMTypeRef parameters[1] = { input_type };
+            size_t constraint_length = insn->as.asm_stmt.output_constraint.length;
+            for (size_t i = 0; i < input_count; ++i)
+                constraint_length += 1 + insn->as.asm_stmt.input_constraints[i].length;
+            char *constraints = calloc(constraint_length + 1, 1);
+            if (!constraints) {
+                free(asm_text);
+                free(inputs);
+                free(parameter_types);
+                return 0;
+            }
+            size_t constraint_offset = 0;
+            memcpy(
+                constraints + constraint_offset,
+                insn->as.asm_stmt.output_constraint.data,
+                insn->as.asm_stmt.output_constraint.length
+            );
+            constraint_offset += insn->as.asm_stmt.output_constraint.length;
+            for (size_t i = 0; i < input_count; ++i) {
+                constraints[constraint_offset++] = ',';
+                memcpy(
+                    constraints + constraint_offset,
+                    insn->as.asm_stmt.input_constraints[i].data,
+                    insn->as.asm_stmt.input_constraints[i].length
+                );
+                constraint_offset += insn->as.asm_stmt.input_constraints[i].length;
+            }
+
             LLVMTypeRef function_type = LLVMFunctionType(
                 result_type,
-                parameters,
-                1,
+                parameter_types,
+                (unsigned)input_count,
                 0
             );
-            const char *constraints =
-                (insn->as.asm_stmt.output_constraint.length == 2 &&
-                 insn->as.asm_stmt.output_constraint.data[0] == '+' &&
-                 insn->as.asm_stmt.output_constraint.data[1] == 'r')
-                    ? "+r"
-                    : "=r,r";
-            size_t constraint_length =
-                constraints[1] == 'r' && constraints[0] == '+' ? 2 : 4;
             LLVMValueRef inline_asm = LLVMGetInlineAsm(
                 function_type,
                 asm_text,
@@ -382,21 +430,26 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
                 LLVMInlineAsmDialectATT,
                 0
             );
+            free(constraints);
             free(asm_text);
+            free(parameter_types);
             if (!inline_asm) {
+                free(inputs);
                 llvm_backend_error(backend, "failed to construct LLVM inline asm");
                 return 0;
             }
 
-            LLVMValueRef args[1] = { input };
             result = LLVMBuildCall2(
                 backend->builder,
                 function_type,
                 inline_asm,
-                args,
-                1,
-                ""
+                inputs,
+                (unsigned)input_count,
+                "asm"
             );
+            free(inputs);
+            if (!result)
+                return 0;
             break;
         }
         case COG_IR_OP_C_VARARG_PROMOTE:

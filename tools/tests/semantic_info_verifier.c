@@ -572,7 +572,11 @@ static void walk_node(ExpressionWalker *walker, Node *node)
 
         case NODE_ASM:
             walk_expression(walker, node->as.asm_stmt.output);
-            walk_expression(walker, node->as.asm_stmt.input);
+            for (int i = 0; i < node->as.asm_stmt.inputs.count; ++i)
+                walk_expression(
+                    walker,
+                    node->as.asm_stmt.inputs.items[i].expression
+                );
             break;
 
         case NODE_PACK_EXPANSION:

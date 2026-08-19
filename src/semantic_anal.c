@@ -16944,48 +16944,64 @@ static void check_asm_statement(SemanticContext *ctx, Node *node)
         return;
     }
 
-    if (is_read_write) {
-        if (node->as.asm_stmt.input || node->as.asm_stmt.input_constraint.length != 0) {
-            semantic_error(ctx, node,
-                "inline asm read-write operands cannot have a separate input operand");
-            return;
-        }
-    } else if (!string_view_equals(
-            node->as.asm_stmt.input_constraint,
-            string_view_from_cstr("r"))) {
+    if (is_read_write && node->as.asm_stmt.inputs.count != 0) {
         semantic_error(ctx, node,
-            "inline asm currently supports only the \"r\" input constraint");
+            "inline asm read-write operands cannot have a separate input operand");
         return;
     }
 
     Type *output_type = check_expression(ctx, node->as.asm_stmt.output);
-    Type *input_type = NULL;
-    if (is_read_write)
-        input_type = check_value_expression(ctx, node->as.asm_stmt.output);
-    else
-        input_type = check_value_expression(ctx, node->as.asm_stmt.input);
-
-    if (!output_type || !input_type)
+    if (!output_type)
         return;
 
     if (!require_writable_lvalue(
-            ctx,
-            node,
-            node->as.asm_stmt.output,
-            "inline asm output must be a writable lvalue")) {
+        ctx,
+        node,
+        node->as.asm_stmt.output,
+        "inline asm output must be a writable lvalue")) {
         return;
     }
 
-    if (!is_integer_type(output_type) || !is_integer_type(input_type)) {
+    if (!is_integer_type(output_type)) {
         semantic_error(ctx, node,
             "inline asm register operands currently require integer types");
         return;
     }
 
-    if (!type_equal(output_type, input_type)) {
-        semantic_error(ctx, node,
-            "inline asm input and output types must match");
-        return;
+    if (is_read_write) {
+        Type *input_type = check_value_expression(ctx, node->as.asm_stmt.output);
+        if (!input_type || !type_equal(output_type, input_type)) {
+            semantic_error(ctx, node,
+                "inline asm read-write operand types must match");
+            return;
+        }
+    }
+
+    for (int i = 0; i < node->as.asm_stmt.inputs.count; ++i) {
+        AsmOperand *operand = &node->as.asm_stmt.inputs.items[i];
+        if (!string_view_equals(
+                operand->constraint,
+                string_view_from_cstr("r"))) {
+            semantic_error(ctx, node,
+                "inline asm currently supports only the \"r\" input constraint");
+            return;
+        }
+
+        Type *input_type = check_value_expression(ctx, operand->expression);
+        if (!input_type)
+            return;
+
+        if (!is_integer_type(input_type)) {
+            semantic_error(ctx, node,
+                "inline asm register operands currently require integer types");
+            return;
+        }
+
+        if (!type_equal(output_type, input_type)) {
+            semantic_error(ctx, node,
+                "inline asm input and output types must match");
+            return;
+        }
     }
 
     StringDecodeInfo info = string_analyze(node->as.asm_stmt.template_text);

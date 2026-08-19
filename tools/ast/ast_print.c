@@ -1311,11 +1311,14 @@ static void print_node_pretty(Node *node, int depth)
                 (int)node->as.asm_stmt.output_constraint.length,
                 node->as.asm_stmt.output_constraint.data);
             print_node_pretty(node->as.asm_stmt.output, depth + 2);
-            if (node->as.asm_stmt.input) {
+            for (int i = 0; i < node->as.asm_stmt.inputs.count; ++i) {
                 indent(depth + 1); printf("input: %.*s\n",
-                    (int)node->as.asm_stmt.input_constraint.length,
-                    node->as.asm_stmt.input_constraint.data);
-                print_node_pretty(node->as.asm_stmt.input, depth + 2);
+                    (int)node->as.asm_stmt.inputs.items[i].constraint.length,
+                    node->as.asm_stmt.inputs.items[i].constraint.data);
+                print_node_pretty(
+                    node->as.asm_stmt.inputs.items[i].expression,
+                    depth + 2
+                );
             }
             break;
 

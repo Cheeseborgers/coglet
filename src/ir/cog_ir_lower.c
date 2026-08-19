@@ -952,6 +952,7 @@ static CogIrValueId emit_constant_value(ExecLowerState *state, CogIrConstId cons
         lower_error(state->lower, span, "invalid CogIR constant during executable lowering");
         return COG_IR_VALUE_INVALID;
     }
+
     CogIrInstruction instruction = {
         .op = COG_IR_OP_CONST,
         .result_type = value->type,
@@ -3549,31 +3550,83 @@ static int lower_asm_statement(ExecLowerState *state, Node *node)
         return 0;
 
     CogIrSlotId address_spill = COG_IR_SLOT_INVALID;
-    CogIrValueId input = COG_IR_VALUE_INVALID;
-    if (node->as.asm_stmt.output_constraint.length == 2 &&
-        node->as.asm_stmt.output_constraint.data[0] == '+' &&
-        node->as.asm_stmt.output_constraint.data[1] == 'r') {
-        input = emit_load(state, place.address, place.type, place.is_volatile, node->span);
-        if (input == COG_IR_VALUE_INVALID)
-            return 0;
-    } else {
-        if (expression_may_create_cfg(state, node->as.asm_stmt.input)) {
-            address_spill = spill_value(state, place.address, node->as.asm_stmt.output->span);
+    for (int i = 0; i < node->as.asm_stmt.inputs.count; ++i) {
+        if (expression_may_create_cfg(
+                state,
+                node->as.asm_stmt.inputs.items[i].expression)) {
+            address_spill = spill_value(
+                state,
+                place.address,
+                node->as.asm_stmt.output->span
+            );
             if (address_spill == COG_IR_SLOT_INVALID)
                 return 0;
+            break;
         }
+    }
 
-        input = lower_expression(state, node->as.asm_stmt.input);
-        if (input == COG_IR_VALUE_INVALID)
+    size_t input_count = (size_t)node->as.asm_stmt.inputs.count;
+    int is_read_write =
+        node->as.asm_stmt.output_constraint.length == 2 &&
+        node->as.asm_stmt.output_constraint.data[0] == '+' &&
+        node->as.asm_stmt.output_constraint.data[1] == 'r';
+    if (is_read_write)
+        input_count++;
+
+    CogIrValueId *inputs = input_count
+        ? arena_alloc(
+            state->lower->module->arena,
+            sizeof(*inputs) * input_count
+        )
+        : NULL;
+    StringView *input_constraints = input_count
+        ? arena_alloc(
+            state->lower->module->arena,
+            sizeof(*input_constraints) * input_count
+        )
+        : NULL;
+    if (input_count && (!inputs || !input_constraints))
+        return 0;
+
+    size_t input_index = 0;
+    if (is_read_write) {
+        inputs[input_index] = emit_load(
+            state,
+            place.address,
+            place.type,
+            place.is_volatile,
+            node->span
+        );
+        if (inputs[input_index] == COG_IR_VALUE_INVALID)
             return 0;
+        input_constraints[input_index] = node->as.asm_stmt.output_constraint;
+        input_index++;
+    }
+
+    for (int i = 0; i < node->as.asm_stmt.inputs.count; ++i) {
+        inputs[input_index] = lower_expression(
+            state,
+            node->as.asm_stmt.inputs.items[i].expression
+        );
+        if (inputs[input_index] == COG_IR_VALUE_INVALID)
+            return 0;
+        input_constraints[input_index] =
+            node->as.asm_stmt.inputs.items[i].constraint;
+        input_index++;
     }
 
     CogIrValueId address = place.address;
     if (address_spill != COG_IR_SLOT_INVALID) {
-        address = reload_spill(state, address_spill, node->as.asm_stmt.output->span);
+        address = reload_spill(
+            state,
+            address_spill,
+            node->as.asm_stmt.output->span
+        );
         if (address == COG_IR_VALUE_INVALID)
             return 0;
     }
+
+
 
     CogIrInstruction instruction = {
         .op = COG_IR_OP_ASM,
@@ -3582,8 +3635,9 @@ static int lower_asm_statement(ExecLowerState *state, Node *node)
         .as.asm_stmt = {
             .template_text = node->as.asm_stmt.template_text,
             .output_constraint = node->as.asm_stmt.output_constraint,
-            .input_constraint = node->as.asm_stmt.input_constraint,
-            .input = input,
+            .input_constraints = input_constraints,
+            .inputs = inputs,
+            .input_count = input_count,
             .is_volatile = node->as.asm_stmt.is_volatile,
         },
     };

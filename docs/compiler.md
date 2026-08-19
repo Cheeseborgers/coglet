@@ -328,16 +328,28 @@ instructions are required:
 asm volatile ("movq %1, %0" : "=r"(result) : "r"(value));
 ```
 
-The initial operand form supports one output and one input. The output must be a
-writable integer lvalue and uses the `"=r"` register constraint. The input must be
-an integer value and uses the `"r"` register constraint. The input and output
-types must match. `volatile` is optional and requests side-effecting assembly in
+The current operand form supports one output and multiple inputs. The output must be a
+writable integer lvalue and uses the `"=r"` register constraint. Inputs must be integer
+values and use the `"r"` register constraint. All operand types must match the output
+type. A read-write output may use `"+r"`; it is passed to the assembly as the first
+input operand and is written back to the output lvalue. A read-write operand cannot
+have separate inputs. `volatile` is optional and requests side-effecting assembly in
 the backend.
+
+For example, a two-input operation can be written as:
+
+```c
+asm volatile (
+    "movq %1, %0\n\taddq %2, %0"
+    : "=r"(result)
+    : "r"(a), "r"(b)
+);
+```
 
 The assembly template is a normal Coglet string literal, so its escapes are decoded
 before reaching the backend. Assembly syntax is target-specific; the compiler does
-not translate an x86-64 template into AArch64 instructions. Additional operands,
-Additional operands, clobbers, and other constraint classes remain deliberately
+not translate an x86-64 template into AArch64 instructions. Clobbers, memory
+constraints, immediate constraints, and other constraint classes remain deliberately
 unsupported until their semantic and backend contracts are defined.
 
 The backend now consumes CogIR only and has explicit emission for every current

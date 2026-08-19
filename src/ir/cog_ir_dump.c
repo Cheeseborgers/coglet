@@ -231,11 +231,14 @@ static void dump_instruction(FILE *stream, const CogIrModule *module, const CogI
                 (int)instruction->as.asm_stmt.output_constraint.length,
                 instruction->as.asm_stmt.output_constraint.data,
                 instruction->result);
-            if (instruction->as.asm_stmt.input_constraint.length != 0) {
-                fprintf(stream, " : \"%.*s\"(%%%u)",
-                    (int)instruction->as.asm_stmt.input_constraint.length,
-                    instruction->as.asm_stmt.input_constraint.data,
-                    instruction->as.asm_stmt.input);
+            if (instruction->as.asm_stmt.input_count != 0)
+                fputs(" : ", stream);
+            for (size_t i = 0; i < instruction->as.asm_stmt.input_count; ++i) {
+                if (i) fputs(", ", stream);
+                fprintf(stream, "\"%.*s\"(%%%u)",
+                    (int)instruction->as.asm_stmt.input_constraints[i].length,
+                    instruction->as.asm_stmt.input_constraints[i].data,
+                    instruction->as.asm_stmt.inputs[i]);
             }
             fputc(')', stream);
             break;

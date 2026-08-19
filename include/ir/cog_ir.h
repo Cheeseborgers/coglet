@@ -371,8 +371,9 @@ typedef struct CogIrInstruction {
         struct {
             StringView template_text;
             StringView output_constraint;
-            StringView input_constraint;
-            CogIrValueId input;
+            StringView *input_constraints;
+            CogIrValueId *inputs;
+            size_t input_count;
             int is_volatile;
         } asm_stmt;
         struct { CogIrValueId callee; CogIrValueId *arguments; size_t argument_count; } call;

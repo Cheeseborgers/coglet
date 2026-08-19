@@ -1,0 +1,28 @@
+import std.io;
+
+main::() -> s32 {
+    std.io.println("=== inline asm smoke test ===");
+
+    value: s64 = 42;
+    result: s64 = 0;
+
+    std.io.print("input: ");
+    std.io.print_s64(value);
+    std.io.newline();
+
+    asm volatile ("movq %1, %0" : "=r"(result) : "r"(value));
+
+    std.io.print("asm output: ");
+    std.io.print_s64(result);
+    std.io.newline();
+
+    if (result != value) {
+        std.io.println("FAIL");
+        return 1;
+    }
+
+    asm volatile ("nop");
+
+    std.io.println("PASS");
+    return 0;
+}

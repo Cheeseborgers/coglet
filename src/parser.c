@@ -3062,22 +3062,74 @@ static Node *parse_return_statement(Parser *p) {
     return ast_new_return(p->arena, value, span);
 }
 
-static Node *parse_asm_statement(Parser *p) {
+static Node *parse_asm_statement(Parser *p)
+{
     SourceSpan span = p->previous.span;
     int is_volatile = match(p, TOK_VOLATILE);
 
-    if (!consume(p, TOK_LPAREN)) {
+    if (!consume(p, TOK_LPAREN))
+        return ast_new_error(p->arena, p->current);
+
+    if (!consume(p, TOK_STRING)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+    Token template_token = p->previous;
+    StringView template_text = string_view(
+        template_token.start + 1,
+        (size_t)template_token.length - 2
+    );
+
+    if (!consume(p, TOK_COLON)) {
         synchronize(p);
         return ast_new_error(p->arena, p->current);
     }
 
     if (!consume(p, TOK_STRING)) {
-        error_at(p, &p->current, "asm requires a string literal template");
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+    Token output_constraint_token = p->previous;
+    StringView output_constraint = string_view(
+        output_constraint_token.start + 1,
+        (size_t)output_constraint_token.length - 2
+    );
+
+    if (!consume(p, TOK_LPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+    Node *output = parse_assignment(p);
+    if (!output || !consume(p, TOK_RPAREN)) {
         synchronize(p);
         return ast_new_error(p->arena, p->current);
     }
 
-    Token text = p->previous;
+    if (!consume(p, TOK_COLON)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    if (!consume(p, TOK_STRING)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+    Token input_constraint_token = p->previous;
+    StringView input_constraint = string_view(
+        input_constraint_token.start + 1,
+        (size_t)input_constraint_token.length - 2
+    );
+
+    if (!consume(p, TOK_LPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+    Node *input = parse_assignment(p);
+    if (!input || !consume(p, TOK_RPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
     if (!consume(p, TOK_RPAREN) || !consume(p, TOK_SEMICOLON)) {
         synchronize(p);
         return ast_new_error(p->arena, p->current);
@@ -3085,7 +3137,11 @@ static Node *parse_asm_statement(Parser *p) {
 
     return ast_new_asm(
         p->arena,
-        (StringView){ .data = text.start + 1, .length = (size_t)(text.length - 2) },
+        template_text,
+        output_constraint,
+        output,
+        input_constraint,
+        input,
         is_volatile,
         source_span_join(span, p->previous.span)
     );

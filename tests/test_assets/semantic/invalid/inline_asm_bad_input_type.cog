@@ -1,0 +1,6 @@
+main::() -> s32 {
+    value: f64 = 42.0;
+    result: s64 = 0;
+    asm ("movq %1, %0" : "=r"(result) : "r"(value));
+    return 0;
+}

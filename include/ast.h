@@ -348,7 +348,11 @@ struct Node {
         } static_assert_stmt;
 
         struct {
-            StringView text;
+            StringView template_text;
+            StringView output_constraint;
+            Node *output;
+            StringView input_constraint;
+            Node *input;
             int is_volatile;
         } asm_stmt;
 
@@ -526,7 +530,16 @@ Node *ast_new_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, SourceSpa
 Node *ast_new_if_expr(Arena *arena, Node *cond, Node *then_value, Node *else_value, SourceSpan span);
 Node *ast_new_expr_stmt(Arena *arena, Node *expr, SourceSpan span);
 Node *ast_new_static_assert(Arena *arena, Node *condition, Node *message, SourceSpan span);
-Node *ast_new_asm(Arena *arena, StringView text, int is_volatile, SourceSpan span);
+Node *ast_new_asm(
+    Arena *arena,
+    StringView template_text,
+    StringView output_constraint,
+    Node *output,
+    StringView input_constraint,
+    Node *input,
+    int is_volatile,
+    SourceSpan span
+);
 Node *ast_new_block(Arena *arena, SourceSpan span);
 Node *ast_new_call(Arena *arena, Node *callee, SourceSpan span);
 Node *ast_new_pack_expansion(Arena *arena, Node *operand, SourceSpan span);

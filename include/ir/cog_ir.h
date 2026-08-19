@@ -368,7 +368,13 @@ typedef struct CogIrInstruction {
         struct { CogIrTypeId queried_type; } type_query;
         struct { CogIrValueId aggregate; uint32_t index; } extract;
         struct { CogIrValueId *values; size_t value_count; } aggregate;
-        struct { StringView text; int is_volatile; } asm_stmt;
+        struct {
+            StringView template_text;
+            StringView output_constraint;
+            StringView input_constraint;
+            CogIrValueId input;
+            int is_volatile;
+        } asm_stmt;
         struct { CogIrValueId callee; CogIrValueId *arguments; size_t argument_count; } call;
     } as;
 } CogIrInstruction;

@@ -570,6 +570,11 @@ static void walk_node(ExpressionWalker *walker, Node *node)
             );
             break;
 
+        case NODE_ASM:
+            walk_expression(walker, node->as.asm_stmt.output);
+            walk_expression(walker, node->as.asm_stmt.input);
+            break;
+
         case NODE_PACK_EXPANSION:
             walk_expression(walker, node->as.pack_expansion.operand);
             break;
@@ -697,7 +702,6 @@ static void walk_node(ExpressionWalker *walker, Node *node)
 
         case NODE_TYPE_REF: /* Compile-time type qualifier used only while resolving a method. */
         case NODE_STRUCT_FIELD_DECL:
-        case NODE_ASM: /* Inline assembly has no semantic expressions to walk. */
         case NODE_BREAK:
         case NODE_CONTINUE:
         case NODE_ERROR:

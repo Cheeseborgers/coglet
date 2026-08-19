@@ -226,8 +226,14 @@ static void dump_instruction(FILE *stream, const CogIrModule *module, const CogI
             break;
         case COG_IR_OP_ASM:
             fprintf(stream, " %s(\"", instruction->as.asm_stmt.is_volatile ? "volatile" : "");
-            dump_sv(stream, instruction->as.asm_stmt.text);
-            fprintf(stream, "\")");
+            dump_sv(stream, instruction->as.asm_stmt.template_text);
+            fprintf(stream, "\" : \"%.*s\"(%%%u) : \"%.*s\"(%%%u))",
+                (int)instruction->as.asm_stmt.output_constraint.length,
+                instruction->as.asm_stmt.output_constraint.data,
+                instruction->result,
+                (int)instruction->as.asm_stmt.input_constraint.length,
+                instruction->as.asm_stmt.input_constraint.data,
+                instruction->as.asm_stmt.input);
             break;
         case COG_IR_OP_CALL:
             fprintf(stream, " %%%u(", instruction->as.call.callee);

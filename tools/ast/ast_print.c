@@ -631,9 +631,10 @@ static void print_node(Node *node)
             break;
 
         case NODE_ASM:
-            printf("(asm%s \"", node->as.asm_stmt.is_volatile ? " volatile" : "");
-            printf("%.*s", (int)node->as.asm_stmt.text.length, node->as.asm_stmt.text.data);
-            printf("\")");
+            printf("(asm%s %.*s)",
+                node->as.asm_stmt.is_volatile ? " volatile" : "",
+                (int)node->as.asm_stmt.template_text.length,
+                node->as.asm_stmt.template_text.data);
             break;
 
         case NODE_STATIC_ASSERT:
@@ -1302,10 +1303,18 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_ASM:
             indent(depth);
-            printf("asm%s: %.*s\n",
-                   node->as.asm_stmt.is_volatile ? " volatile" : "",
-                   (int)node->as.asm_stmt.text.length,
-                   node->as.asm_stmt.text.data);
+            printf("asm%s \"%.*s\"\n",
+                node->as.asm_stmt.is_volatile ? " volatile" : "",
+                (int)node->as.asm_stmt.template_text.length,
+                node->as.asm_stmt.template_text.data);
+            indent(depth + 1); printf("output: %.*s\n",
+                (int)node->as.asm_stmt.output_constraint.length,
+                node->as.asm_stmt.output_constraint.data);
+            print_node_pretty(node->as.asm_stmt.output, depth + 2);
+            indent(depth + 1); printf("input: %.*s\n",
+                (int)node->as.asm_stmt.input_constraint.length,
+                node->as.asm_stmt.input_constraint.data);
+            print_node_pretty(node->as.asm_stmt.input, depth + 2);
             break;
 
         case NODE_STATIC_ASSERT:

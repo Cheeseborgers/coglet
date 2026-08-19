@@ -3542,26 +3542,55 @@ static int lower_variable_declaration(ExecLowerState *state, Node *node)
     return bind_local_declaration(state, node);
 }
 
-static int lower_asm_statement(ExecLowerState *state, Node *node) {
+static int lower_asm_statement(ExecLowerState *state, Node *node)
+{
+    LoweredPlace place;
+    if (!lower_place(state, node->as.asm_stmt.output, &place))
+        return 0;
+
+    CogIrSlotId address_spill = COG_IR_SLOT_INVALID;
+    if (expression_may_create_cfg(state, node->as.asm_stmt.input)) {
+        address_spill = spill_value(state, place.address, node->as.asm_stmt.output->span);
+        if (address_spill == COG_IR_SLOT_INVALID)
+            return 0;
+    }
+
+    CogIrValueId input = lower_expression(state, node->as.asm_stmt.input);
+    if (input == COG_IR_VALUE_INVALID)
+        return 0;
+
+    CogIrValueId address = place.address;
+    if (address_spill != COG_IR_SLOT_INVALID) {
+        address = reload_spill(state, address_spill, node->as.asm_stmt.output->span);
+        if (address == COG_IR_VALUE_INVALID)
+            return 0;
+    }
+
     CogIrInstruction instruction = {
         .op = COG_IR_OP_ASM,
-        .result_type = COG_IR_TYPE_INVALID,
+        .result_type = place.type,
         .span = node->span,
         .as.asm_stmt = {
-            .text = node->as.asm_stmt.text,
+            .template_text = node->as.asm_stmt.template_text,
+            .output_constraint = node->as.asm_stmt.output_constraint,
+            .input_constraint = node->as.asm_stmt.input_constraint,
+            .input = input,
             .is_volatile = node->as.asm_stmt.is_volatile,
         },
     };
+
+    CogIrValueId result = COG_IR_VALUE_INVALID;
     if (!cog_ir_emit(
             state->lower->module,
             state->function,
             state->block,
             &instruction,
-            NULL)) {
-        lower_error(state->lower, node->span, "failed to emit inline assembly");
+            &result)) {
+        lower_error(state->lower, node->span, "failed to emit inline asm");
         return 0;
     }
-    return 1;
+
+    return emit_store(state, address, result, place.is_volatile, node->span);
 }
 
 static int lower_statement(ExecLowerState *state, Node *node);

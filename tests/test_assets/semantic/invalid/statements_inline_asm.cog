@@ -1,1 +1,1 @@
-asm volatile ("nop");
+asm volatile ("nop" : "=r"(value) : "r"(value));

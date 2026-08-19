@@ -2631,19 +2631,50 @@ static int emit_instruction(
 
     switch (instruction->op) {
         case COG_IR_OP_ASM: {
-            StringDecodeInfo info = string_analyze(instruction->as.asm_stmt.text);
-            char *text = malloc((size_t)info.decoded_length + 1);
-            if (!text || !info.ok) {
-                free(text);
-                backend_error(backend, instruction->span, "invalid inline assembly string");
+            const char *input = value_expr(
+                exprs,
+                value_count,
+                instruction->as.asm_stmt.input
+            );
+            const char *result_type = value_type_name(
+                backend,
+                function,
+                result,
+                instruction->span
+            );
+            if (!input || !result_type)
+                goto missing_operand;
+
+            StringDecodeInfo info = string_analyze(instruction->as.asm_stmt.template_text);
+            if (!info.ok)
+                return 0;
+
+            char *decoded = calloc((size_t)info.decoded_length + 1, 1);
+            if (!decoded)
+                return 0;
+            if (info.decoded_length && !string_decode_into(
+                    instruction->as.asm_stmt.template_text,
+                    decoded).ok) {
+                free(decoded);
                 return 0;
             }
-            string_decode_into(instruction->as.asm_stmt.text, text);
-            text[info.decoded_length] = '\0';
-            fprintf(backend->out, "    __asm__ %s(", instruction->as.asm_stmt.is_volatile ? "__volatile__ " : "");
-            emit_c_string_literal(backend->out, (StringView){ .data = text, .length = (size_t)info.decoded_length });
-            fputs(");\n", backend->out);
-            free(text);
+
+            fprintf(backend->out, "    %s cg_v_%u;\n", result_type, result);
+            fputs("#if defined(_MSC_VER)\n#error \"inline asm requires a GNU-style host-C compiler\"\n#else\n", backend->out);
+            fputs("    __asm__ ", backend->out);
+            if (instruction->as.asm_stmt.is_volatile)
+                fputs("volatile ", backend->out);
+            fputs("(\n        ", backend->out);
+            emit_c_string_literal(backend->out, string_view(decoded, (size_t)info.decoded_length));
+            fputs("\n        : \"=r\"(cg_v_", backend->out);
+            fprintf(backend->out, "%u", result);
+            fputs(")\n        : \"r\"(", backend->out);
+            fputs(input, backend->out);
+            fputs(")\n    );\n#endif\n", backend->out);
+            free(decoded);
+
+            if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))
+                goto invalid_result;
             return 1;
         }
         case COG_IR_OP_CONST: {

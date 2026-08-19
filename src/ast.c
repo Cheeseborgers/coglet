@@ -141,9 +141,22 @@ Node *ast_new_static_assert(Arena *arena, Node *condition, Node *message, Source
     return node;
 }
 
-Node *ast_new_asm(Arena *arena, StringView text, int is_volatile, SourceSpan span) {
+Node *ast_new_asm(
+    Arena *arena,
+    StringView template_text,
+    StringView output_constraint,
+    Node *output,
+    StringView input_constraint,
+    Node *input,
+    int is_volatile,
+    SourceSpan span
+) {
     Node *node = new_node(arena, NODE_ASM, span);
-    node->as.asm_stmt.text = text;
+    node->as.asm_stmt.template_text = template_text;
+    node->as.asm_stmt.output_constraint = output_constraint;
+    node->as.asm_stmt.output = output;
+    node->as.asm_stmt.input_constraint = input_constraint;
+    node->as.asm_stmt.input = input;
     node->as.asm_stmt.is_volatile = is_volatile;
     return node;
 }
@@ -568,7 +581,10 @@ Node *ast_clone(Arena *arena, const Node *node)
             break;
 
         case NODE_ASM:
-            clone->as.asm_stmt = node->as.asm_stmt;
+            clone->as.asm_stmt.output =
+                ast_clone(arena, node->as.asm_stmt.output);
+            clone->as.asm_stmt.input =
+                ast_clone(arena, node->as.asm_stmt.input);
             break;
 
         case NODE_STATIC_ASSERT:

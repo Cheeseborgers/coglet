@@ -16924,13 +16924,51 @@ static int switch_case_values_are_exhaustive(
     return 1;
 }
 
-static void check_asm_statement(SemanticContext *ctx, Node *node) {
+static void check_asm_statement(SemanticContext *ctx, Node *node)
+{
     if (ctx->function_depth == 0) {
         semantic_error(ctx, node, "asm is only valid inside a function");
         return;
     }
 
-    StringDecodeInfo info = string_analyze(node->as.asm_stmt.text);
+    if (!string_view_equals(node->as.asm_stmt.output_constraint, string_view_from_cstr("=r"))) {
+        semantic_error(ctx, node,
+            "inline asm currently supports only the \"=r\" output constraint");
+        return;
+    }
+
+    if (!string_view_equals(node->as.asm_stmt.input_constraint, string_view_from_cstr("r"))) {
+        semantic_error(ctx, node,
+            "inline asm currently supports only the \"r\" input constraint");
+        return;
+    }
+
+    Type *output_type = check_expression(ctx, node->as.asm_stmt.output);
+    Type *input_type = check_value_expression(ctx, node->as.asm_stmt.input);
+    if (!output_type || !input_type)
+        return;
+
+    if (!require_writable_lvalue(
+            ctx,
+            node,
+            node->as.asm_stmt.output,
+            "inline asm output must be a writable lvalue")) {
+        return;
+    }
+
+    if (!is_integer_type(output_type) || !is_integer_type(input_type)) {
+        semantic_error(ctx, node,
+            "inline asm register operands currently require integer types");
+        return;
+    }
+
+    if (!type_equal(output_type, input_type)) {
+        semantic_error(ctx, node,
+            "inline asm input and output types must match");
+        return;
+    }
+
+    StringDecodeInfo info = string_analyze(node->as.asm_stmt.template_text);
     if (!info.ok) {
         if (info.invalid_escape >= 0) {
             semantic_error_fmt(
@@ -16942,6 +16980,7 @@ static void check_asm_statement(SemanticContext *ctx, Node *node) {
         } else {
             semantic_error(ctx, node, "unterminated escape sequence in asm template");
         }
+        return;
     }
 }
 

@@ -1,0 +1,4 @@
+<source>:4:5: error: inline asm register operands currently require integer types
+    asm ("movq %1, %0" : "=r"(result) : "r"(value));
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1 semantic error generated.

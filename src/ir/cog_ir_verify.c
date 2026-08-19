@@ -756,13 +756,24 @@ static int verify_instruction(
             break;
         }
 
-        case COG_IR_OP_ASM:
-            if (instruction->result != COG_IR_VALUE_INVALID ||
-                instruction->result_type != COG_IR_TYPE_INVALID) {
-                ir_error(diagnostics, instruction->span, "asm instruction cannot produce a CogIR value");
+        case COG_IR_OP_ASM: {
+            REQUIRE_VALUE(instruction->as.asm_stmt.input, "asm input");
+            const CogIrValue *input = cog_ir_get_value(function, instruction->as.asm_stmt.input);
+            const CogIrType *input_type = input
+                ? cog_ir_get_type(module, input->type)
+                : NULL;
+            const CogIrType *result_type = cog_ir_get_type(module, instruction->result_type);
+            if (!input_type || !result_type ||
+                input->type != instruction->result_type ||
+                input_type->kind != COG_IR_TYPE_INTEGER ||
+                result_type->kind != COG_IR_TYPE_INTEGER ||
+                !string_view_equals(instruction->as.asm_stmt.output_constraint, string_view_from_cstr("=r")) ||
+                !string_view_equals(instruction->as.asm_stmt.input_constraint, string_view_from_cstr("r"))) {
+                ir_error(diagnostics, instruction->span, "invalid inline asm operand types or constraints");
                 ok = 0;
             }
             break;
+        }
 
         case COG_IR_OP_CALL: {
             REQUIRE_VALUE(instruction->as.call.callee, "callee");

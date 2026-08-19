@@ -70,6 +70,11 @@ static int parse_c_calling_convention_token(
 );
 
 typedef struct {
+    StringView text;
+    SourceSpan span;
+} ParsedStringLiteral;
+
+typedef struct {
     StringView full;
     StringView prefix;
     StringView leaf;
@@ -198,6 +203,74 @@ static int match(Parser *p, TokenType type) {
     advance(p);
     return 1;
 }
+
+static ParsedStringLiteral parse_adjacent_string_literals(Parser *p)
+{
+    Token first = p->previous;
+    Token last = first;
+    size_t length = (size_t)(first.length - 2);
+
+    while (check(p, TOK_STRING)) {
+        Token next = p->current;
+        advance(p);
+        last = next;
+        length += (size_t)(next.length - 2);
+    }
+
+    SourceSpan span = source_span_join(first.span, last.span);
+
+    if (last.start == first.start + first.length) {
+        return (ParsedStringLiteral){
+            string_view(first.start + 1, length),
+            span
+        };
+    }
+
+    char *contents = arena_alloc(p->arena, length + 1);
+    size_t offset = 0;
+
+    memcpy(
+        contents + offset,
+        first.start + 1,
+        (size_t)(first.length - 2)
+    );
+    offset += (size_t)(first.length - 2);
+
+    /* Re-read the consumed literal tokens from their source span. */
+    const char *cursor = first.start + first.length;
+    while (cursor < last.start + last.length) {
+        while (*cursor == ' ' || *cursor == '\t' ||
+               *cursor == '\r' || *cursor == '\n') {
+            cursor++;
+        }
+
+        if (*cursor != '"')
+            break;
+
+        cursor++;
+        const char *payload = cursor;
+        while (*cursor && *cursor != '"') {
+            if (*cursor == '\\' && cursor[1])
+                cursor++;
+            cursor++;
+        }
+
+        size_t part_length = (size_t)(cursor - payload);
+        memcpy(contents + offset, payload, part_length);
+        offset += part_length;
+
+        if (*cursor == '"')
+            cursor++;
+    }
+
+    contents[offset] = '\0';
+
+    return (ParsedStringLiteral){
+        string_view(contents, offset),
+        span
+    };
+}
+
 
 static int match_generic_greater(Parser *p) {
     if (match(p, TOK_GREATER))
@@ -843,13 +916,19 @@ static Node *parse_primary(Parser *p)
         );
     }
 
-    /* our token's start/length from the lexer include the quotes
-     * (scan_string/scan_char both capture from the opening quote through the closing one),
-     * so strip one character off each end when building the node:
-     * */
+    /*
+     * C-style adjacent string literals form one logical literal.  Keep the
+     * payload in its original escaped representation: decoding remains the
+     * responsibility of the existing string analysis/lowering code.
+     */
     if (match(p, TOK_STRING)) {
-        Token t = p->previous;
-        return ast_new_string(p->arena, t.start + 1, t.length - 2, t.span);
+        ParsedStringLiteral literal = parse_adjacent_string_literals(p);
+        return ast_new_string(
+            p->arena,
+            literal.text.data,
+            (int)literal.text.length,
+            literal.span
+        );
     }
 
     if (match(p, TOK_CHAR)) {
@@ -3074,11 +3153,9 @@ static Node *parse_asm_statement(Parser *p)
         synchronize(p);
         return ast_new_error(p->arena, p->current);
     }
-    Token template_token = p->previous;
-    StringView template_text = string_view(
-        template_token.start + 1,
-        (size_t)template_token.length - 2
-    );
+    ParsedStringLiteral template_literal =
+        parse_adjacent_string_literals(p);
+    StringView template_text = template_literal.text;
 
     if (!consume(p, TOK_COLON)) {
         synchronize(p);

@@ -4,7 +4,8 @@ main::() -> s32 {
     result: s64 = 0;
 
     asm volatile (
-        "movq %1, %0\n\taddq %2, %0"
+        "movq %1, %0\n\t"
+        "addq %2, %0"
         : "=r"(result)
         : "r"(a), "r"(b)
     );

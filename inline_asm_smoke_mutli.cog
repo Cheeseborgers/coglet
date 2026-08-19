@@ -21,9 +21,9 @@ main::() -> s32 {
      *
      *     RAX = RDI + RSI
      */
-
     asm volatile (
-        "movq %1, %0\n\taddq %2, %0"
+        "movq %1, %0\n\t"
+        "addq %2, %0"
         : "={rax}"(result)
         : "{rdi}"(a), "{rsi}"(b)
     );

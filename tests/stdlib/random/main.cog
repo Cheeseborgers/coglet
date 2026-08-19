@@ -1,0 +1,51 @@
+import std.random as random;
+
+main::() -> s32 {
+    // Canonical PCG reference initialization: initstate=42, initseq=54.
+    rng := random.Pcg32.init(42, 54);
+    if rng.next_u32() != 2707161783 return 1;
+    if rng.next_u32() != 2068313097 return 2;
+    if rng.next_u32() != 3122475824 return 3;
+    if rng.next_u32() != 2211639955 return 4;
+    if rng.next_u32() != 3215226955 return 5;
+    if rng.next_u32() != 3421331566 return 6;
+
+    a := random.Pcg32.init(1234, 99);
+    b := random.Pcg32.init(1234, 99);
+    i: u32 = 0;
+    while i < 32 {
+        if a.next_u32() != b.next_u32() return 10;
+        i += 1;
+    }
+
+    c := random.Pcg32.init(1234, 100);
+    d := random.Pcg32.init(1234, 99);
+    if c.next_u32() == d.next_u32() return 11;
+
+    ranges := random.Pcg32.init(7, 11);
+    i = 0;
+    while i < 1000 {
+        value := ranges.bounded_u32(37);
+        if value >= 37 return 20;
+        value = ranges.range_u32(10, 20);
+        if value < 10 || value >= 20 return 21;
+        i += 1;
+    }
+
+    floats := random.Pcg32.init(5, 6);
+    i = 0;
+    while i < 1000 {
+        x := floats.next_f32();
+        if x < 0.0 || x >= 1.0 return 30;
+        y := floats.next_f64();
+        if y < 0.0 || y >= 1.0 return 31;
+        i += 1;
+    }
+
+    words := random.Pcg32.init(8, 9);
+    first := words.next_u64();
+    words.seed(8, 9);
+    if first != words.next_u64() return 40;
+
+    return 0;
+}

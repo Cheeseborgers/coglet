@@ -1,4 +1,5 @@
-import std.math as math;
+import std.geom as math;
+import std.math as scalar;
 
 approx_f32::(a: f32, b: f32, epsilon: f32) -> bool {
     diff := a - b;
@@ -30,7 +31,7 @@ main::() -> s32 {
     if !vec3_approx_f32(identity_q.rotate_vector(x), x, eps)
         return 1;
 
-    qz := math.Quat::<f32>.from_axis_angle(math.Vec3::<f32>.new(0.0, 0.0, 1.0), math.half_pi);
+    qz := math.Quat::<f32>.from_axis_angle(math.Vec3::<f32>.new(0.0, 0.0, 1.0), scalar.half_pi);
     if !vec3_approx_f32(qz.rotate_vector(x), y, eps)
         return 2;
     if !approx_f32(qz.length(), 1.0, eps)
@@ -46,7 +47,7 @@ main::() -> s32 {
 
     halfway_q := identity_q.slerp(qz, 0.5);
     halfway_v := halfway_q.rotate_vector(x);
-    half_sqrt2: f32 = math.sqrt_2 * 0.5;
+    half_sqrt2: f32 = scalar.sqrt_2 * 0.5;
     if !approx_f32(halfway_v.x, half_sqrt2, eps) ||
        !approx_f32(halfway_v.y, half_sqrt2, eps)
         return 5;
@@ -55,7 +56,7 @@ main::() -> s32 {
     if !vec3_approx_f32(m3_identity.transform_vector(x), x, eps)
         return 6;
 
-    m3_rot := math.Mat3::<f32>.rotation_z(math.half_pi);
+    m3_rot := math.Mat3::<f32>.rotation_z(scalar.half_pi);
     if !vec3_approx_f32(m3_rot.transform_vector(x), y, eps)
         return 7;
     if !approx_f32(m3_rot.determinant(), 1.0, eps)
@@ -80,7 +81,7 @@ main::() -> s32 {
     if !vec3_approx_f32(translation.transform_vector(x), x, eps)
         return 13;
 
-    rotation := math.Mat4::<f32>.rotation_z(math.half_pi);
+    rotation := math.Mat4::<f32>.rotation_z(scalar.half_pi);
     if !vec3_approx_f32(rotation.transform_vector(x), y, eps)
         return 14;
 

@@ -324,7 +324,7 @@ fatal-on-OOM.
 
 ### Arenas
 
-`std.mem.Arena` is a move-only `resource` representing a growable region backed by
+`std.heap.Arena` is a move-only `resource` representing a growable region backed by
 any parent allocator:
 
 ```c
@@ -354,7 +354,7 @@ those copyable handles and does not lifetime-check this relationship.
 
 ### Scratch scopes
 
-`std.mem.Scratch` captures a checkpoint in a growable `Arena` and rewinds to it
+`std.heap.Scratch` captures a checkpoint in a growable `Arena` and rewinds to it
 when the scratch resource is deinitialized:
 
 ```c
@@ -382,7 +382,7 @@ are the same arena no-ops as normal `Arena` allocation.
 
 ### Fixed-buffer arenas
 
-`std.mem.FixedArena` uses a caller-owned mutable byte slice as both bookkeeping and
+`std.heap.FixedArena` uses a caller-owned mutable byte slice as both bookkeeping and
 allocation storage. It performs no heap allocation:
 
 ```c
@@ -410,7 +410,7 @@ heap.
 
 ### Debug allocator
 
-`std.mem.DebugAllocator` is a move-only wrapper over any existing `Allocator`.
+`std.heap.DebugAllocator` is a move-only wrapper over any existing `Allocator`.
 It leaves the public allocator ABI unchanged, so arrays and other allocator-aware
 code can be debugged simply by passing the wrapper's allocator handle:
 
@@ -694,3 +694,39 @@ A new shipped standard module should:
 Runtime implementations live under `stdlib/runtime/` and must preserve the frozen
 CogIR/backend boundary. New runtime families should be added deliberately rather
 than letting standard modules call unrelated host APIs ad hoc.
+
+## `std.random`
+
+`std.random` currently provides a deterministic, non-cryptographic PCG generator:
+`Pcg32`, implementing the PCG-XSH-RR 64/32 variant. A generator is explicitly
+seeded and carries its own state; the module does not maintain hidden global RNG
+state.
+
+```c
+import std.random as random;
+
+rng := random.Pcg32.init(42, 54);
+value := rng.next_u32();
+unit := rng.next_f32();
+dice := rng.range_u32(1, 7);
+```
+
+`init(seed, sequence)` uses `seed` to initialize the generator and `sequence` to
+select a stream. Reusing the same pair reproduces the exact same sequence.
+`seed(seed, sequence)` resets an existing generator to that same initial state.
+
+The core methods are:
+
+```text
+next_u32() -> u32
+next_u64() -> u64
+next_f32() -> f32     // [0, 1)
+next_f64() -> f64     // [0, 1)
+bounded_u32(bound) -> u32  // [0, bound), bound != 0
+range_u32(min, max) -> u32 // [min, max), min < max
+```
+
+`bounded_u32` uses rejection sampling rather than a direct modulo reduction, so
+all values in the requested interval remain equally likely. `std.random` is for
+simulation, procedural generation, games, testing, and other ordinary random
+sampling; it is not a cryptographic random-number API.

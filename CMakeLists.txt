@@ -1749,6 +1749,7 @@ set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/i
 set(COGLET_STDLIB_ARRAY_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/array/main.cog")
 set(COGLET_STDLIB_MEMORY_PATTERNS_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/memory/main.cog")
 set(COGLET_STDLIB_DEBUG_ALLOCATOR_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/debug_allocator/main.cog")
+set(COGLET_STDLIB_RANDOM_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/random/main.cog")
 
 add_test(
         NAME stdlib_math_host_c
@@ -1809,6 +1810,21 @@ add_test(
 )
 set_tests_properties(stdlib_array_host_c
         PROPERTIES LABELS "stdlib;stdlib.source;std.array;std.mem;memory;allocation;array;generic;slice;runtime;backend;backend.c;module;import;discovery;warning-free")
+
+add_test(
+        NAME stdlib_random_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_RANDOM_TEST_MAIN}"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_random_host_c${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -DBACKEND=host-c
+        -DFORBID_COMPILE_WARNINGS=ON
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+)
+set_tests_properties(stdlib_random_host_c
+        PROPERTIES LABELS "stdlib;stdlib.source;std.random;pcg;random;deterministic;backend;backend.c;module;import;discovery;warning-free")
 
 add_test(
         NAME stdlib_memory_patterns_host_c

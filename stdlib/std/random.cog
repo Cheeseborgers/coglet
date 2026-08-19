@@ -1,0 +1,73 @@
+module std.random;
+
+// PCG-XSH-RR 64/32 (pcg32). Deterministic, small-state, non-cryptographic RNG.
+// `sequence` selects an independent stream; the same seed/sequence pair always
+// produces the same output sequence.
+pcg_multiplier: u64 = 6364136223846793005;
+
+export Pcg32::struct {
+    state: u64;
+    increment: u64;
+
+    init::(seed: u64, sequence: u64) -> Self {
+        result := Self { state = 0, increment = (sequence << 1) | 1 };
+        discard result.next_u32();
+        result.state = wrapping_add(result.state, seed);
+        discard result.next_u32();
+        return result;
+    }
+
+    seed::(self: Self*, seed: u64, sequence: u64) -> void {
+        (*self).state = 0;
+        (*self).increment = (sequence << 1) | 1;
+        discard (*self).next_u32();
+        (*self).state = wrapping_add((*self).state, seed);
+        discard (*self).next_u32();
+    }
+
+    next_u32::(self: Self*) -> u32 {
+        old_state := (*self).state;
+        (*self).state = wrapping_add(wrapping_mul(old_state, pcg_multiplier), (*self).increment);
+        xorshifted := truncate(u32, ((old_state >> 18) ^ old_state) >> 27);
+        rotation := truncate(u32, old_state >> 59);
+        zero_rotation: u32 = 0;
+        return (xorshifted >> rotation) | (xorshifted << (wrapping_sub(zero_rotation, rotation) & 31));
+    }
+
+    next_u64::(self: Self*) -> u64 {
+        high := cast(u64, (*self).next_u32());
+        low := cast(u64, (*self).next_u32());
+        return (high << 32) | low;
+    }
+
+    // Uniform integer in [0, bound). bound must be non-zero. Rejection sampling
+    // avoids the modulo bias produced by a direct `next_u32() % bound`.
+    bounded_u32::(self: Self*, bound: u32) -> u32 {
+        zero: u32 = 0;
+        threshold := wrapping_sub(zero, bound) % bound;
+        while true {
+            value := (*self).next_u32();
+            if value >= threshold
+                return value % bound;
+        }
+    }
+
+    // Uniform integer in [min, max). Requires min < max.
+    range_u32::(self: Self*, min: u32, max: u32) -> u32 {
+        return min + (*self).bounded_u32(max - min);
+    }
+
+    // Uniform floating values in [0, 1). These use the high bits of the integer
+    // output, matching the precision of the target floating type.
+    next_f32::(self: Self*) -> f32 {
+        value := (*self).next_u32() >> 8;
+        return cast(f32, value) * (1.0 / 16777216.0);
+    }
+
+    next_f64::(self: Self*) -> f64 {
+        high := cast(u64, (*self).next_u32() >> 5);
+        low := cast(u64, (*self).next_u32() >> 6);
+        value := (high << 26) | low;
+        return cast(f64, value) * (1.0 / 9007199254740992.0);
+    }
+}

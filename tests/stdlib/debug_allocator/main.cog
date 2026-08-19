@@ -1,8 +1,9 @@
 import std.array as array;
 import std.mem as mem;
+import std.heap as heap;
 
 main::() -> s32 {
-    debug := mem.DebugAllocator.new(mem.heap());
+    debug := heap.DebugAllocator.new(heap.heap());
     defer debug.deinit();
     alloc := debug.allocator();
 

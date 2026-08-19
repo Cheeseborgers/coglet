@@ -1,5 +1,6 @@
 import std.array as array;
 import std.mem as mem;
+import std.heap as heap;
 
 #repr(c, align=32)
 Aligned::struct {
@@ -7,20 +8,20 @@ Aligned::struct {
 }
 
 main::() -> s32 {
-    heap := mem.heap();
+    allocator := heap.heap();
 
-    raw := mem.alloc::<s32>(heap, 3);
+    raw := mem.alloc::<s32>(allocator, 3);
     raw[0] = 7;
     raw[1] = 8;
     raw[2] = 9;
     view := slice(raw, 3);
     if view.len != 3 || view[1] != 8 {
-        mem.free(heap, raw, 3);
+        mem.free(allocator, raw, 3);
         return 1;
     }
-    mem.free(heap, raw, 3);
+    mem.free(allocator, raw, 3);
 
-    values := array.Array::<s32>.new(heap);
+    values := array.Array::<s32>.new(allocator);
     defer values.deinit();
     values.push(10);
     values.push(20);
@@ -34,16 +35,16 @@ main::() -> s32 {
     if values.pop() != 30 || values.len != 2
         return 4;
 
-    aligned := mem.alloc::<Aligned>(heap, 2);
+    aligned := mem.alloc::<Aligned>(allocator, 2);
     aligned[0].value = 11;
     aligned[1].value = 22;
     if aligned[1].value != 22 {
-        mem.free(heap, aligned, 2);
+        mem.free(allocator, aligned, 2);
         return 5;
     }
-    mem.free(heap, aligned, 2);
+    mem.free(allocator, aligned, 2);
 
-    arena := mem.Arena.with_block_size(heap, 128);
+    arena := heap.Arena.with_block_size(allocator, 128);
     defer arena.deinit();
     arena_alloc := arena.allocator();
 

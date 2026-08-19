@@ -1,6 +1,6 @@
 import std.array as array;
 import std.mem as mem;
-import std.pool as pool;
+import std.heap as heap;
 
 Point::struct {
     x: s32;
@@ -8,10 +8,10 @@ Point::struct {
 }
 
 main::() -> s32 {
-    heap := mem.heap();
+    allocator := heap.heap();
 
     // Growable arena scratch scopes rewind to the captured checkpoint.
-    arena := mem.Arena.with_block_size(heap, 128);
+    arena := heap.Arena.with_block_size(allocator, 128);
     defer arena.deinit();
     arena_alloc := arena.allocator();
 
@@ -20,7 +20,7 @@ main::() -> s32 {
 
     scratch_ptr: s32* = null;
     {
-        scratch := mem.Scratch.begin(&arena);
+        scratch := heap.Scratch.begin(&arena);
         defer scratch.deinit();
         scratch_alloc := scratch.allocator();
         scratch_ptr = mem.alloc::<s32>(scratch_alloc, 4);
@@ -28,7 +28,7 @@ main::() -> s32 {
 
         nested_ptr: s32* = null;
         {
-            nested := mem.Scratch.begin(&arena);
+            nested := heap.Scratch.begin(&arena);
             defer nested.deinit();
             nested_ptr = mem.alloc::<s32>(nested.allocator(), 2);
             nested_ptr[0] = 7;
@@ -45,7 +45,7 @@ main::() -> s32 {
 
     // FixedArena stores all bookkeeping and allocations inside caller storage.
     storage: u8[512] = {0};
-    fixed := mem.FixedArena.from_buffer(storage);
+    fixed := heap.FixedArena.from_buffer(storage);
     defer fixed.deinit();
     fixed_alloc := fixed.allocator();
     if fixed.used() != 0 || fixed.remaining() == 0
@@ -69,7 +69,7 @@ main::() -> s32 {
         return 6;
 
     // Fixed-capacity pool preserves element addresses and detects stale handles.
-    points := pool.Pool::<Point>.with_capacity(heap, 2);
+    points := heap.Pool::<Point>.with_capacity(allocator, 2);
     defer points.deinit();
 
     a := points.insert(Point { x = 10, y = 20 });

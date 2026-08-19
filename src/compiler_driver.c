@@ -191,6 +191,7 @@ static CompileInputFile *load_and_parse_input(
         &parser,
         &out->sources,
         source_id,
+        &out->target_config,
         out->arena,
         out->scratch
     );
@@ -490,11 +491,23 @@ CompileStatus compile_parse_and_check_files_with_options(
     const TargetConfig *target_config,
     CompileResult *out
 ) {
-    TargetInfo target_info = target_info_host();
+    TargetConfig host_config;
+    if (target_config)
+        host_config = *target_config;
+    else
+        host_config = target_config_native();
+
+    TargetInfo target_info;
+    if (!target_info_from_config(&host_config, &target_info)) {
+        fprintf(stderr, "error: unsupported target configuration\n");
+        return COMPILE_STATUS_DRIVER_ERROR;
+    }
+
     return compile_parse_and_check_files_for_target_with_options(
         filenames,
         filename_count,
         &target_info,
+        &host_config,
         options,
         out
     );
@@ -503,16 +516,20 @@ CompileStatus compile_parse_and_check_files_with_options(
 CompileStatus compile_parse_and_check_for_target(
     const char *filename,
     const TargetInfo *target,
+    const TargetConfig *target_config,
     CompileResult *out
 ) {
     const char *filenames[1] = { filename };
-    return compile_parse_and_check_files_for_target(filenames, 1, target, out);
+    return compile_parse_and_check_files_for_target(
+        filenames, 1, target, target_config, out
+    );
 }
 
 CompileStatus compile_parse_and_check_files_for_target(
     const char *const *filenames,
     size_t filename_count,
     const TargetInfo *target,
+    const TargetConfig *target_config,
     CompileResult *out
 ) {
     CompileOptions options = compile_options_default();
@@ -520,6 +537,7 @@ CompileStatus compile_parse_and_check_files_for_target(
         filenames,
         filename_count,
         target,
+        target_config,
         &options,
         out
     );
@@ -529,6 +547,7 @@ CompileStatus compile_parse_and_check_files_for_target_with_options(
     const char *const *filenames,
     size_t filename_count,
     const TargetInfo *target,
+    const TargetConfig *target_config,
     const CompileOptions *options,
     CompileResult *out
 ) {
@@ -551,12 +570,18 @@ CompileStatus compile_parse_and_check_files_for_target_with_options(
         return out->status;
     }
 
+    if (!target_config) {
+        fprintf(stderr, "error: no target configuration\n");
+        return out->status;
+    }
+
     char target_error[160];
     if (!target_info_validate(target, target_error, sizeof(target_error))) {
         fprintf(stderr, "error: invalid target description: %s\n", target_error);
         return out->status;
     }
     out->target = *target;
+    out->target_config = *target_config;
 
     if (!filenames || filename_count == 0 || !filenames[0]) {
         fprintf(stderr, "error: no input file\n");

@@ -9,6 +9,7 @@
 #include "utils/arena.h"
 #include "ast/ast_print.h"
 #include "utils/utils.h"
+#include "target/target_config.h"
 
 int main(int argc, char **argv) {
 
@@ -25,11 +26,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    TargetConfig target_config = target_config_native();
+
     Arena *arena   = arena_create(1 << 16);
     Arena *scratch = arena_create(1 << 8);
 
     Parser parser;
-    parser_init(&parser, filename, source, arena, scratch);
+    parser_init(&parser, filename, source, &target_config, arena, scratch);
     Node *program = parse_program(&parser);
 
     int exit_code = 0;

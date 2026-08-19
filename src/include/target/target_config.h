@@ -1,5 +1,5 @@
-#ifndef COGLET_TARGET_H
-#define COGLET_TARGET_H
+#ifndef COGLET_TARGET_CONFIG_H
+#define COGLET_TARGET_CONFIG_H
 
 typedef enum {
     TARGET_ARCH_X86_64,
@@ -22,8 +22,10 @@ typedef struct {
     TargetAbi abi;
 } TargetConfig;
 
-int target_parse_config(const char *value, TargetConfig *target);
+/* Parses a target triple-like name such as `x86_64-linux`. */
+int target_parse_config(const char *value, TargetConfig *config);
 
-TargetConfig target_config_host(void);
+/* Returns the target represented by the compiler's native host platform. */
+TargetConfig target_config_native(void);
 
 #endif

@@ -69,9 +69,11 @@ static int run_target_case(
     const char *label
 ) {
     CompileResult result;
+    TargetConfig target_config = target_config_native();
     CompileStatus status = compile_parse_and_check_for_target(
         source_path,
         target,
+        &target_config,
         &result
     );
 
@@ -178,6 +180,47 @@ int main(int argc, char **argv) {
         fprintf(stderr, "invalid target unexpectedly validated\n");
         return 1;
     }
+
+    TargetConfig windows_config = {
+        TARGET_ARCH_X86_64,
+        TARGET_OS_WINDOWS,
+        TARGET_ABI_WINDOWS
+    };
+    TargetInfo windows_target;
+    if (!target_info_from_config(&windows_config, &windows_target) ||
+        windows_target.c_long_bits != 32 ||
+        windows_target.c_size_bits != 64) {
+        fprintf(stderr, "x86_64-windows target description is incorrect\n");
+        return 1;
+    }
+
+    CompileResult windows_result;
+    CompileOptions options = compile_options_default();
+    const char *windows_filename = argv[1];
+    CompileStatus windows_status =
+        compile_parse_and_check_files_for_target_with_options(
+            &windows_filename,
+            1,
+            &windows_target,
+            &windows_config,
+            &options,
+            &windows_result
+        );
+    if (windows_status != COMPILE_STATUS_OK) {
+        fprintf(stderr, "x86_64-windows target compilation failed\n");
+        compile_result_destroy(&windows_result);
+        return 1;
+    }
+
+    if (windows_result.target_config.arch != TARGET_ARCH_X86_64 ||
+        windows_result.target_config.os != TARGET_OS_WINDOWS ||
+        windows_result.target_config.abi != TARGET_ABI_WINDOWS ||
+        windows_result.sem.target.c_long_bits != 32) {
+        fprintf(stderr, "x86_64-windows target configuration was not preserved\n");
+        compile_result_destroy(&windows_result);
+        return 1;
+    }
+    compile_result_destroy(&windows_result);
 
     printf("target-info verification passed\n");
     return 0;

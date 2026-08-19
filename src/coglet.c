@@ -23,7 +23,7 @@ static void print_usage(const char *program)
 {
     fprintf(
         stderr,
-        "usage: %s <file> [<file> ...] [-o <executable>] [--backend <host-c|llvm>] [--emit-c <file>] "
+        "usage: %s <file> [<file> ...] [-o <executable>] [--backend <host-c|llvm>] [--target <x86_64-linux|aarch64-linux|x86_64-windows|aarch64-windows>] [--emit-c <file>] "
         "[--emit-llvm <file>] [--emit-asm <file>] [-O0|-O1|-O2|-O3] [-g] [-I <dir>|-I<dir>] "
         "[--stdlib-root <dir>] [-L <dir>|-L<dir>] [-l <name>|-l<name>]\n"
         "       %s --version\n"
@@ -179,7 +179,7 @@ int main(int argc, char **argv)
     ExecutableBackend executable_backend = EXECUTABLE_BACKEND_HOST_C;
     int executable_backend_explicit = 0;
     int target_explicit = 0;
-    TargetConfig target_config = target_config_host();
+    TargetConfig target_config = target_config_native();
     CogOptimizationLevel optimization_level = COG_OPTIMIZATION_LEVEL_0;
     int debug_info = 0;
     const char *stdlib_root = COGLET_CONFIGURED_STDLIB_ROOT;

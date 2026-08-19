@@ -12,7 +12,7 @@ int main(int argc, char **argv)
 
     CompileResult result;
 
-    TargetConfig target_config = target_config_host();
+    TargetConfig target_config = target_config_native();
 
     CompileStatus status =
         compile_parse_and_check(

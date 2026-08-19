@@ -710,6 +710,7 @@ static void parser_init_common(
     Parser *p,
     SourceManager *sources,
     SourceFileId source_id,
+    const TargetConfig *target_config,
     Arena *arena,
     Arena *scratch
 ) {
@@ -725,6 +726,7 @@ static void parser_init_common(
 
     p->arena = arena;
     p->scratch = scratch;
+    p->target_config = target_config;
     p->sources = sources;
     p->source_id = source_id;
 
@@ -745,19 +747,29 @@ void parser_init_with_source(
     Parser *p,
     SourceManager *sources,
     SourceFileId source_id,
+    const TargetConfig *target_config,
     Arena *arena,
     Arena *scratch
 ) {
     assert(p);
     assert(sources);
-    parser_init_common(p, sources, source_id, arena, scratch);
+    assert(target_config);
+    assert(arena);
+    assert(scratch);
+    parser_init_common(p, sources, source_id, target_config, arena, scratch);
 }
 
-void parser_init(Parser *p, const char *filename, const char *source, Arena *arena, Arena *scratch)
+void parser_init(
+    Parser *p,
+    const char *filename,
+    const char *source,
+    const TargetConfig *target_config,
+    Arena *arena,
+    Arena *scratch)
 {
     source_manager_init(&p->local_sources, arena);
     SourceFileId source_id = source_manager_add(&p->local_sources, filename, source);
-    parser_init_common(p, &p->local_sources, source_id, arena, scratch);
+    parser_init_common(p, &p->local_sources, source_id, target_config, arena, scratch);
 }
 
 static Node *parse_type_layout_query(Parser *p)

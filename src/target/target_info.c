@@ -38,6 +38,68 @@ static TargetFloatFormat host_float_format(
     return TARGET_FLOAT_FORMAT_UNSUPPORTED;
 }
 
+static void target_info_init_common(TargetInfo *target)
+{
+    target->pointer_bits = 64;
+    target->pointer_align_bytes = 8;
+    target->scalar_align_8_bytes = 1;
+    target->scalar_align_16_bytes = 2;
+    target->scalar_align_32_bytes = 4;
+    target->scalar_align_64_bytes = 8;
+
+    target->c_char_bits = 8;
+    target->c_char_is_signed = 1;
+    target->c_bool_bits = 8;
+    target->c_short_bits = 16;
+    target->c_int_bits = 32;
+    target->c_long_long_bits = 64;
+    target->c_size_bits = 64;
+    target->c_float_format = TARGET_FLOAT_FORMAT_IEEE_BINARY32;
+    target->c_double_format = TARGET_FLOAT_FORMAT_IEEE_BINARY64;
+}
+
+int target_info_from_config(
+    const TargetConfig *config,
+    TargetInfo *out
+)
+{
+    if (!config || !out)
+        return 0;
+
+    target_info_init_common(out);
+
+    switch (config->arch) {
+        case TARGET_ARCH_X86_64:
+        case TARGET_ARCH_AARCH64:
+            break;
+        default:
+            return 0;
+    }
+
+    switch (config->os) {
+        case TARGET_OS_LINUX:
+            out->c_long_bits = 64;
+            break;
+
+        case TARGET_OS_WINDOWS:
+            out->c_long_bits = 32;
+            break;
+
+        default:
+            return 0;
+    }
+
+    switch (config->abi) {
+        case TARGET_ABI_SYSV:
+        case TARGET_ABI_WINDOWS:
+            break;
+        default:
+            return 0;
+    }
+
+    return target_info_validate(out, NULL, 0);
+}
+
 TargetInfo target_info_host(void) {
     TargetInfo target;
 

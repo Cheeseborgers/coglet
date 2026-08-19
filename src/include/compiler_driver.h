@@ -1,13 +1,12 @@
 #ifndef COGLET_COMPILER_DRIVER_H
 #define COGLET_COMPILER_DRIVER_H
 
-#include <target/target_config.h>
-
 #include "ast.h"
 #include "parser.h"
 #include "semantic_anal.h"
-#include "target/target_info.h"
 #include "utils/arena.h"
+#include "target/target_info.h"
+#include "target/target_config.h"
 
 typedef enum CompileStatus {
     COMPILE_STATUS_OK = 0,
@@ -61,6 +60,7 @@ typedef struct CompileResult {
     Parser parser;
     Node *program;
 
+    TargetConfig target_config;
     TargetInfo target;
     SemanticContext sem;
 } CompileResult;
@@ -134,6 +134,7 @@ CompileStatus compile_parse_and_check_files_with_options(
 CompileStatus compile_parse_and_check_for_target(
     const char *filename,
     const TargetInfo *target,
+    const TargetConfig *target_config,
     CompileResult *out
 );
 
@@ -141,6 +142,7 @@ CompileStatus compile_parse_and_check_files_for_target(
     const char *const *filenames,
     size_t filename_count,
     const TargetInfo *target,
+    const TargetConfig *target_config,
     CompileResult *out
 );
 
@@ -148,6 +150,7 @@ CompileStatus compile_parse_and_check_files_for_target_with_options(
     const char *const *filenames,
     size_t filename_count,
     const TargetInfo *target,
+    const TargetConfig *target_config,
     const CompileOptions *options,
     CompileResult *out
 );

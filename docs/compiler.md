@@ -429,14 +429,16 @@ call the exact same runtime ABI with no frontend or standard-library object
 retained by CogIR. Runtime requirements are currently declaration-based; a future
 reachability/DCE pass can narrow them to reachable calls.
 
-The frontend now has an explicit target model. `compile_parse_and_check()`
-constructs a host `TargetInfo` for compatibility, while
-`compile_parse_and_check_for_target()` accepts an explicit description and
-copies it into `CompileResult`/`SemanticContext`. Synthetic-target tests compile
-the same source under different C scalar mappings to ensure semantic analysis
-is not consulting the build host. CLI target selection, target triples,
-backend-specific data layout, cross toolchain selection, and actual cross-linking
-remain deferred; the current C backend is still intentionally a host backend and rejects semantic state whose `TargetInfo` does not exactly match the build host.
+The frontend has an explicit target model. `TargetConfig` identifies the selected
+architecture, operating system, and ABI, while `TargetInfo` contains the concrete
+scalar widths and alignment facts consumed by semantic analysis and CogIR. The
+compiler driver resolves `TargetInfo` from `TargetConfig` and preserves both in
+`CompileResult`; the parser receives the same `TargetConfig` so compile-time target
+conditionals can be added without introducing global compiler state. The native
+default is obtained from `target_config_native()`, while CLI selection accepts
+`x86_64-linux`, `aarch64-linux`, `x86_64-windows`, and `aarch64-windows`. The C
+backend remains intentionally host-only and rejects a non-host target at its
+backend boundary; cross-toolchain selection and cross-linking remain deferred.
 Native Coglet variadics, richer callback lifetime/closure machinery, custom
 native compiler selection, raw linker flags, and non-C calling-convention
 details also remain deferred.

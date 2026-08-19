@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 
+#include "target_config.h"
+
 typedef enum TargetFloatFormat {
     TARGET_FLOAT_FORMAT_UNSUPPORTED = 0,
     TARGET_FLOAT_FORMAT_IEEE_BINARY32,
@@ -10,7 +12,12 @@ typedef enum TargetFloatFormat {
 } TargetFloatFormat;
 
 /*
- * Backend-neutral target facts required by semantic analysis.
+ * Backend-neutral ABI and layout facts for the selected compilation target.
+ *
+ * TargetConfig identifies the architecture, operating system, and ABI.
+ * TargetInfo supplies the concrete scalar widths and alignments that those
+ * choices imply. Semantic analysis should consume TargetInfo rather than
+ * inspecting the host C compiler directly.
  *
  * Widths are expressed in bits deliberately: semantic analysis should not
  * depend on the byte size or C implementation used to build the compiler.
@@ -43,6 +50,15 @@ typedef struct TargetInfo {
 
 /* Returns a description of the native C ABI used to build this compiler. */
 TargetInfo target_info_host(void);
+
+/*
+ * Builds the frontend ABI/layout description for a supported compilation
+ * target. Returns non-zero when the target is supported.
+ */
+int target_info_from_config(
+    const TargetConfig *config,
+    TargetInfo *out
+);
 
 /*
  * Performs structural validation independent of Coglet's currently supported

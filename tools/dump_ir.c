@@ -9,7 +9,7 @@ int main(int argc, char **argv)
         return 2;
     }
 
-    TargetConfig target_config = target_config_host();
+    TargetConfig target_config = target_config_native();
 
     CompileResult frontend;
     if (compile_parse_and_check(argv[1], &target_config, &frontend) != COMPILE_STATUS_OK)

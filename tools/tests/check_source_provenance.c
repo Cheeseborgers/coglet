@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "diagnostic.h"
@@ -18,6 +17,8 @@ int main(void)
     Arena *arena = arena_create(4096);
     Arena *scratch = arena_create(2048);
 
+    TargetConfig target_config = target_config_native();
+
     SourceManager sources;
     source_manager_init(&sources, arena);
 
@@ -31,11 +32,11 @@ int main(void)
         return fail("source file IDs are not unique");
 
     Parser first_parser;
-    parser_init_with_source(&first_parser, &sources, first_id, arena, scratch);
+    parser_init_with_source(&first_parser, &sources, first_id, &target_config, arena, scratch);
     Node *first_program = parse_program(&first_parser);
 
     Parser second_parser;
-    parser_init_with_source(&second_parser, &sources, second_id, arena, scratch);
+    parser_init_with_source(&second_parser, &sources, second_id, &target_config, arena, scratch);
     Node *second_program = parse_program(&second_parser);
 
     if (first_parser.had_error || second_parser.had_error)

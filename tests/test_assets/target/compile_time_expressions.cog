@@ -1,0 +1,19 @@
+static_assert(
+    target.arch == arch.x86_64 ||
+    target.arch == arch.aarch64
+);
+
+static_assert(
+    target.os == os.linux ||
+    target.os == os.windows
+);
+
+static_assert(
+    target.abi == abi.sysv ||
+    target.abi == abi.windows
+);
+
+static_assert(
+    target.arch != target.os ||
+    target.arch == target.os
+);

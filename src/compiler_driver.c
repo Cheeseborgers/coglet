@@ -653,7 +653,7 @@ CompileStatus compile_parse_and_check_files_for_target_with_options(
     }
 
     out->sem.arena = out->arena;
-    semantic_check(out->program, &out->sem, &out->target, &out->sources);
+    semantic_check(out->program, &out->sem, &out->target, &out->target_config, &out->sources);
 
     if (out->sem.had_error) {
         report_semantic_error_summary(out);

@@ -2515,6 +2515,7 @@ static int eval_const_checked_cast(SemanticContext *ctx, Node *node, ConstValue 
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
 static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out);
 static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *out);
+static int target_constant_value(SemanticContext *ctx, Node *node, ConstValue *out);
 static int try_coerce_constant_to_type(
     const ConstValue *value,
     Type *target_type,
@@ -5257,6 +5258,9 @@ static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *ou
 
         case NODE_FIELD:
         {
+            if (target_constant_value(ctx, node, out))
+                return 1;
+
             Symbol *qualified_enum = NULL;
             EnumMember *qualified_member = NULL;
             if (semantic_qualified_enum_member_no_diag(
@@ -6651,6 +6655,79 @@ static int check_known_shift_count(SemanticContext *ctx, Node *count_node, Type 
     return 1;
 }
 
+static int target_constant_value(
+    SemanticContext *ctx,
+    Node *node,
+    ConstValue *out
+) {
+    if (!ctx || !node || !out || node->type != NODE_FIELD)
+        return 0;
+
+    Node *object = node->as.field.object;
+    if (!object || object->type != NODE_IDENT)
+        return 0;
+
+    const char *object_name = object->as.ident.data;
+    size_t object_length = object->as.ident.length;
+    const char *field_name = node->as.field.name.data;
+    size_t field_length = node->as.field.name.length;
+
+    uint64_t value;
+
+    if (names_equal(object_name, object_length, "target", 6)) {
+        if (names_equal(field_name, field_length, "arch", 4))
+            value = (uint64_t)ctx->target_config.arch;
+        else if (names_equal(field_name, field_length, "os", 2))
+            value = (uint64_t)ctx->target_config.os;
+        else if (names_equal(field_name, field_length, "abi", 3))
+            value = (uint64_t)ctx->target_config.abi;
+        else
+            return 0;
+    } else if (names_equal(object_name, object_length, "arch", 4)) {
+        if (names_equal(field_name, field_length, "x86_64", 6))
+            value = TARGET_ARCH_X86_64;
+        else if (names_equal(field_name, field_length, "aarch64", 7))
+            value = TARGET_ARCH_AARCH64;
+        else
+            return 0;
+    } else if (names_equal(object_name, object_length, "os", 2)) {
+        if (names_equal(field_name, field_length, "linux", 5))
+            value = TARGET_OS_LINUX;
+        else if (names_equal(field_name, field_length, "windows", 7))
+            value = TARGET_OS_WINDOWS;
+        else
+            return 0;
+    } else if (names_equal(object_name, object_length, "abi", 3)) {
+        if (names_equal(field_name, field_length, "sysv", 4))
+            value = TARGET_ABI_SYSV;
+        else if (names_equal(field_name, field_length, "windows", 7))
+            value = TARGET_ABI_WINDOWS;
+        else
+            return 0;
+    } else {
+        return 0;
+    }
+
+    /*
+     * The namespace root is not a runtime value, but semantic-info verification
+     * still expects every AST expression node to have checked metadata. Give
+     * the root a scalar placeholder type; the field expression itself is the
+     * actual compile-time value.
+     */
+    sem_record_expr_info(
+        ctx,
+        object,
+        ctx->type_u64,
+        NULL,
+        VALUE_CATEGORY_RVALUE
+    );
+
+    out->kind = CONST_VALUE_INT;
+    out->as.integer = integer_value_make((int64_t)value, 0);
+    out->type = ctx->type_u64;
+    return 1;
+}
+
 static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node) {
 
     if (!node) return 0;
@@ -6752,6 +6829,10 @@ static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node)
 
         case NODE_FIELD:
         {
+            ConstValue target_value;
+            if (target_constant_value(ctx, node, &target_value))
+                return 1;
+
             /* Both `SomeEnum.Member` and `module.SomeEnum.Member`. */
             if (semantic_qualified_enum_member_no_diag(
                     ctx, node, NULL, NULL
@@ -10787,6 +10868,18 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
 
         case NODE_FIELD:
         {
+            ConstValue target_value;
+            if (target_constant_value(ctx, node, &target_value)) {
+                sem_record_expr_info(
+                    ctx,
+                    node,
+                    ctx->type_u64,
+                    NULL,
+                    VALUE_CATEGORY_RVALUE
+                );
+                return ctx->type_u64;
+            }
+
             /*
              * Module-qualified enum constant. The module prefix may itself be
              * dotted, for example `std.math.Mode.Red`.
@@ -17333,12 +17426,15 @@ void semantic_check(
     Node *program,
     SemanticContext *ctx,
     const TargetInfo *target,
+    const TargetConfig *target_config,
     SourceManager *sources
 ) {
 
     assert(target);
+    assert(target_config);
     assert(sources);
     ctx->target = *target;
+    ctx->target_config = *target_config;
     ctx->sources = sources;
     diagnostic_list_init(&ctx->diagnostics, ctx->arena);
 

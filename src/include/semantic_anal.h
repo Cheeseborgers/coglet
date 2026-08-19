@@ -5,6 +5,7 @@
 #include "diagnostic.h"
 #include "semantic_info.h"
 #include "target/target_info.h"
+#include "target/target_config.h"
 
 typedef enum BuiltinKind {
     /*
@@ -163,6 +164,7 @@ typedef struct {
     Arena *arena;
 
     TargetInfo target;
+    TargetConfig target_config;
 
     SourceManager *sources;
     DiagnosticList diagnostics;
@@ -252,6 +254,7 @@ void semantic_check(
     Node *program,
     SemanticContext *ctx,
     const TargetInfo *target,
+    const TargetConfig *target_config,
     SourceManager *sources
 );
 SemDeclInfo *semantic_get_decl_info(SemanticContext *ctx, Node *node);

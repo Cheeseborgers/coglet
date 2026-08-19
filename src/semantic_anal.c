@@ -16924,6 +16924,53 @@ static int switch_case_values_are_exhaustive(
     return 1;
 }
 
+static int asm_constraint_is_explicit_register(
+    StringView constraint,
+    int is_output
+) {
+    size_t offset = is_output ? 1 : 0;
+
+    if ((is_output && constraint.length < 4) ||
+        (!is_output && constraint.length < 3))
+        return 0;
+
+    if (is_output && constraint.data[0] != '=')
+        return 0;
+
+    if (constraint.data[offset] != '{' ||
+        constraint.data[constraint.length - 1] != '}')
+        return 0;
+
+    if (constraint.length <= offset + 2)
+        return 0;
+
+    for (size_t i = offset + 1; i + 1 < constraint.length; ++i) {
+        unsigned char ch = (unsigned char)constraint.data[i];
+        if (!((ch >= 'a' && ch <= 'z') ||
+              (ch >= 'A' && ch <= 'Z') ||
+              (ch >= '0' && ch <= '9') ||
+              ch == '_'))
+            return 0;
+    }
+
+    return 1;
+}
+
+static int asm_constraint_is_valid(
+    StringView constraint,
+    int is_output
+) {
+    if (is_output &&
+        string_view_equals(constraint, string_view_from_cstr("=r")))
+        return 1;
+
+    if (!is_output &&
+        string_view_equals(constraint, string_view_from_cstr("r")))
+        return 1;
+
+    return asm_constraint_is_explicit_register(constraint, is_output);
+}
+
 static void check_asm_statement(SemanticContext *ctx, Node *node)
 {
     if (ctx->function_depth == 0) {
@@ -16936,11 +16983,11 @@ static void check_asm_statement(SemanticContext *ctx, Node *node)
         string_view_from_cstr("+r")
     );
 
-    if (!is_read_write && !string_view_equals(
+    if (!is_read_write && !asm_constraint_is_valid(
             node->as.asm_stmt.output_constraint,
-            string_view_from_cstr("=r"))) {
+            1)) {
         semantic_error(ctx, node,
-            "inline asm currently supports only the \"=r\" and \"+r\" output constraints");
+            "invalid inline asm output constraint; use \"=r\", \"+r\", or an explicit register such as \"={rax}\"");
         return;
     }
 
@@ -16979,11 +17026,9 @@ static void check_asm_statement(SemanticContext *ctx, Node *node)
 
     for (int i = 0; i < node->as.asm_stmt.inputs.count; ++i) {
         AsmOperand *operand = &node->as.asm_stmt.inputs.items[i];
-        if (!string_view_equals(
-                operand->constraint,
-                string_view_from_cstr("r"))) {
+        if (!asm_constraint_is_valid(operand->constraint, 0)) {
             semantic_error(ctx, node,
-                "inline asm currently supports only the \"r\" input constraint");
+                "invalid inline asm input constraint; use \"r\" or an explicit register such as \"{rdi}\"");
             return;
         }
 

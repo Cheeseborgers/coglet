@@ -4,6 +4,45 @@
 #include <stdio.h>
 #include <string.h>
 
+static int asm_constraint_is_valid_for_ir(
+    StringView constraint,
+    int is_output
+) {
+    if (is_output &&
+        string_view_equals(constraint, string_view_from_cstr("=r")))
+        return 1;
+
+    if (!is_output &&
+        string_view_equals(constraint, string_view_from_cstr("r")))
+        return 1;
+
+    size_t offset = is_output ? 1 : 0;
+    if ((is_output && constraint.length < 4) ||
+        (!is_output && constraint.length < 3))
+        return 0;
+
+    if (is_output && constraint.data[0] != '=')
+        return 0;
+
+    if (constraint.data[offset] != '{' ||
+        constraint.data[constraint.length - 1] != '}')
+        return 0;
+
+    if (constraint.length <= offset + 2)
+        return 0;
+
+    for (size_t i = offset + 1; i + 1 < constraint.length; ++i) {
+        unsigned char ch = (unsigned char)constraint.data[i];
+        if (!((ch >= 'a' && ch <= 'z') ||
+              (ch >= 'A' && ch <= 'Z') ||
+              (ch >= '0' && ch <= '9') ||
+              ch == '_'))
+            return 0;
+    }
+
+    return 1;
+}
+
 static void ir_error(DiagnosticList *diagnostics, SourceSpan span, const char *fmt, ...)
 {
     if (!diagnostics)
@@ -762,10 +801,16 @@ static int verify_instruction(
                 instruction->as.asm_stmt.output_constraint,
                 string_view_from_cstr("+r")
             );
-            int valid_constraints = string_view_equals(
-                instruction->as.asm_stmt.output_constraint,
-                is_read_write ? string_view_from_cstr("+r") : string_view_from_cstr("=r")
-            );
+            int valid_constraints =
+                is_read_write
+                    ? string_view_equals(
+                        instruction->as.asm_stmt.output_constraint,
+                        string_view_from_cstr("+r")
+                    )
+                    : asm_constraint_is_valid_for_ir(
+                        instruction->as.asm_stmt.output_constraint,
+                        1
+                    );
 
             if (!result_type || result_type->kind != COG_IR_TYPE_INTEGER)
                 valid_constraints = 0;
@@ -783,14 +828,16 @@ static int verify_instruction(
                 const CogIrType *input_type = input
                     ? cog_ir_get_type(module, input->type)
                     : NULL;
-                int valid_input_constraint = string_view_equals(
-                    instruction->as.asm_stmt.input_constraints[i],
-                    string_view_from_cstr("r")
-                ) || (is_read_write && i == 0 &&
-                    string_view_equals(
+                int valid_input_constraint =
+                    (is_read_write && i == 0 &&
+                     string_view_equals(
+                         instruction->as.asm_stmt.input_constraints[i],
+                         string_view_from_cstr("+r")
+                     )) ||
+                    asm_constraint_is_valid_for_ir(
                         instruction->as.asm_stmt.input_constraints[i],
-                        string_view_from_cstr("+r")
-                    ));
+                        0
+                    );
                 if (!input_type || input_type->kind != COG_IR_TYPE_INTEGER ||
                     input->type != instruction->result_type ||
                     !valid_input_constraint) {

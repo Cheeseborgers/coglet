@@ -1,4 +1,4 @@
-<source>:4:5: error: inline asm currently supports only the "=r" and "+r" output constraints
+<source>:4:5: error: invalid inline asm output constraint; use "=r", "+r", or an explicit register such as "={rax}"
     asm ("movq %1, %0" : "r"(result) : "r"(value));
     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 1 semantic error generated.

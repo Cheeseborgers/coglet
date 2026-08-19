@@ -2620,6 +2620,52 @@ static int emit_array_storage_copy(
     return 1;
 }
 
+static int asm_constraint_is_explicit_register(
+    StringView constraint,
+    int is_output
+) {
+    size_t offset = is_output ? 1 : 0;
+
+    if ((is_output && constraint.length < 4) ||
+        (!is_output && constraint.length < 3))
+        return 0;
+
+    if (is_output && constraint.data[0] != '=')
+        return 0;
+
+    if (constraint.data[offset] != '{' ||
+        constraint.data[constraint.length - 1] != '}')
+        return 0;
+
+    return constraint.length > offset + 2;
+}
+
+static StringView asm_constraint_register_name(
+    StringView constraint,
+    int is_output
+) {
+    size_t offset = is_output ? 2 : 1;
+    return string_view(
+        constraint.data + offset,
+        constraint.length - offset - 1
+    );
+}
+
+static void emit_register_variable(
+    FILE *out,
+    const char *type_name,
+    const char *name,
+    StringView register_name,
+    const char *initializer
+) {
+    fprintf(out, "    register %s %s __asm__(", type_name, name);
+    emit_c_string_literal(out, register_name);
+    fputs(")", out);
+    if (initializer)
+        fprintf(out, " = %s", initializer);
+    fputs(";\n", out);
+}
+
 static int emit_instruction(
     CBackend *backend,
     const CogIrFunction *function,
@@ -2654,7 +2700,28 @@ static int emit_instruction(
                 return 0;
             }
 
-            fprintf(backend->out, "    %s cg_v_%u", result_type, result);
+            int output_explicit = asm_constraint_is_explicit_register(
+                instruction->as.asm_stmt.output_constraint,
+                1
+            );
+
+            if (output_explicit) {
+                char output_name[32];
+                snprintf(output_name, sizeof(output_name), "cg_v_%u", result);
+                emit_register_variable(
+                    backend->out,
+                    result_type,
+                    output_name,
+                    asm_constraint_register_name(
+                        instruction->as.asm_stmt.output_constraint,
+                        1
+                    ),
+                    NULL
+                );
+            } else {
+                fprintf(backend->out, "    %s cg_v_%u", result_type, result);
+            }
+
             if (instruction->as.asm_stmt.output_constraint.length == 2 &&
                 instruction->as.asm_stmt.output_constraint.data[0] == '+' &&
                 instruction->as.asm_stmt.output_constraint.data[1] == 'r') {
@@ -2670,27 +2737,66 @@ static int emit_instruction(
                 fprintf(backend->out, " = %s", input);
             }
             fputs(";\n#if defined(_MSC_VER)\n#error \"inline asm requires a GNU-style host-C compiler\"\n#else\n", backend->out);
-            fputs("    __asm__ ", backend->out);
-            if (instruction->as.asm_stmt.is_volatile)
-                fputs("volatile ", backend->out);
-            fputs("(\n        ", backend->out);
-            emit_c_string_literal(backend->out, string_view(decoded, (size_t)info.decoded_length));
-            fputs("\n        : \"", backend->out);
-            fwrite(
-                instruction->as.asm_stmt.output_constraint.data,
-                1,
-                instruction->as.asm_stmt.output_constraint.length,
-                backend->out
-            );
-            fputs("\"(cg_v_", backend->out);
-            fprintf(backend->out, "%u", result);
-            fputs(")", backend->out);
             size_t first_input =
                 instruction->as.asm_stmt.output_constraint.length == 2 &&
                 instruction->as.asm_stmt.output_constraint.data[0] == '+' &&
                 instruction->as.asm_stmt.output_constraint.data[1] == 'r'
                     ? 1
                     : 0;
+            for (size_t i = first_input;
+                 i < instruction->as.asm_stmt.input_count;
+                 ++i) {
+                StringView input_constraint =
+                    instruction->as.asm_stmt.input_constraints[i];
+                if (!asm_constraint_is_explicit_register(input_constraint, 0))
+                    continue;
+
+                const char *input = value_expr(
+                    exprs,
+                    value_count,
+                    instruction->as.asm_stmt.inputs[i]
+                );
+                if (!input) {
+                    free(decoded);
+                    goto missing_operand;
+                }
+
+                char input_name[48];
+                snprintf(
+                    input_name,
+                    sizeof(input_name),
+                    "cg_asm_in_%u_%zu",
+                    result,
+                    i
+                );
+                emit_register_variable(
+                    backend->out,
+                    result_type,
+                    input_name,
+                    asm_constraint_register_name(input_constraint, 0),
+                    input
+                );
+            }
+
+            fputs("    __asm__ ", backend->out);
+            if (instruction->as.asm_stmt.is_volatile)
+                fputs("volatile ", backend->out);
+            fputs("(\n        ", backend->out);
+            emit_c_string_literal(backend->out, string_view(decoded, (size_t)info.decoded_length));
+            fputs("\n        : \"", backend->out);
+            if (output_explicit) {
+                fputs("=r", backend->out);
+            } else {
+                fwrite(
+                    instruction->as.asm_stmt.output_constraint.data,
+                    1,
+                    instruction->as.asm_stmt.output_constraint.length,
+                    backend->out
+                );
+            }
+            fputs("\"(cg_v_", backend->out);
+            fprintf(backend->out, "%u", result);
+            fputs(")", backend->out);
             if (instruction->as.asm_stmt.input_count > first_input) {
                 fputs("\n        : ", backend->out);
                 for (size_t i = first_input; i < instruction->as.asm_stmt.input_count; ++i) {
@@ -2704,15 +2810,34 @@ static int emit_instruction(
                         free(decoded);
                         goto missing_operand;
                     }
+                    StringView input_constraint =
+                        instruction->as.asm_stmt.input_constraints[i];
+                    int input_explicit =
+                        asm_constraint_is_explicit_register(input_constraint, 0);
+                    char input_name[48];
+                    if (input_explicit) {
+                        snprintf(
+                            input_name,
+                            sizeof(input_name),
+                            "cg_asm_in_%u_%zu",
+                            result,
+                            i
+                        );
+                    }
+
                     fputs("\"", backend->out);
-                    fwrite(
-                        instruction->as.asm_stmt.input_constraints[i].data,
-                        1,
-                        instruction->as.asm_stmt.input_constraints[i].length,
-                        backend->out
-                    );
+                    if (input_explicit) {
+                        fputs("r", backend->out);
+                    } else {
+                        fwrite(
+                            input_constraint.data,
+                            1,
+                            input_constraint.length,
+                            backend->out
+                        );
+                    }
                     fputs("\"(", backend->out);
-                    fputs(input, backend->out);
+                    fputs(input_explicit ? input_name : input, backend->out);
                     fputs(")", backend->out);
                 }
             }

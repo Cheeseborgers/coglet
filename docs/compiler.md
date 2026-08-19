@@ -329,12 +329,14 @@ asm volatile ("movq %1, %0" : "=r"(result) : "r"(value));
 ```
 
 The current operand form supports one output and multiple inputs. The output must be a
-writable integer lvalue and uses the `"=r"` register constraint. Inputs must be integer
-values and use the `"r"` register constraint. All operand types must match the output
-type. A read-write output may use `"+r"`; it is passed to the assembly as the first
-input operand and is written back to the output lvalue. A read-write operand cannot
-have separate inputs. `volatile` is optional and requests side-effecting assembly in
-the backend.
+writable integer lvalue and uses the `"=r"` register constraint or an explicit register
+such as `"={rax}"`. Inputs must be integer values and use the `"r"` register constraint
+or an explicit register such as `"{rdi}"`. All operand types must match the output type.
+A read-write output may use `"+r"`; it is passed to the assembly as the first input
+operand and is written back to the output lvalue. A read-write operand cannot have
+separate inputs. Explicit register constraints are target-specific; the compiler
+validates their syntax and the selected backend validates the register for the active
+target. `volatile` is optional and requests side-effecting assembly in the backend.
 
 For example, a two-input operation can be written as:
 

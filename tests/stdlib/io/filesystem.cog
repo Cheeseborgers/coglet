@@ -1,0 +1,11 @@
+import std.io;
+main::() -> s32 {
+    source := "stdlib_io_fs_source.tmp"; copy := "stdlib_io_fs_copy.tmp"; renamed := "stdlib_io_fs_renamed.tmp";
+    writer := std.io.File.open_write(source);
+    if (!writer.is_open() || writer.write("filesystem") != 10) { writer.close(); discard std.io.remove_file(source); return 1; }
+    writer.close();
+    if (!std.io.file_exists(source) || !std.io.copy_file(source, copy) || !std.io.file_exists(copy)) { discard std.io.remove_file(source); discard std.io.remove_file(copy); return 2; }
+    if (!std.io.rename_file(copy, renamed) || !std.io.file_exists(renamed) || std.io.file_exists(copy)) { discard std.io.remove_file(source); discard std.io.remove_file(copy); discard std.io.remove_file(renamed); return 3; }
+    if (!std.io.remove_file(source) || !std.io.remove_file(renamed)) { return 4; }
+    std.io.println("filesystem: ok"); return 0;
+}

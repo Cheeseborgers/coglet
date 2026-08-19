@@ -1,0 +1,13 @@
+import std.io;
+main::() -> s32 {
+    path := "stdlib_io_seek.tmp";
+    file := std.io.File.open_write(path);
+    if (!file.is_open() || !file.set_buffered(true)) { file.close(); discard std.io.remove_file(path); return 1; }
+    if (file.write("abcdef") != 6 || file.tell() != 6) { file.close(); discard std.io.remove_file(path); return 2; }
+    if (!file.seek(2, std.io.seek_begin) || file.tell() != 2) { file.close(); discard std.io.remove_file(path); return 3; }
+    if (!file.seek(2, std.io.seek_current) || file.tell() != 4) { file.close(); discard std.io.remove_file(path); return 4; }
+    if (!file.seek(-1, std.io.seek_end) || file.tell() != 5) { file.close(); discard std.io.remove_file(path); return 5; }
+    if (!file.rewind() || file.tell() != 0) { file.close(); discard std.io.remove_file(path); return 6; }
+    file.close(); discard std.io.remove_file(path);
+    std.io.println("seek: ok"); return 0;
+}

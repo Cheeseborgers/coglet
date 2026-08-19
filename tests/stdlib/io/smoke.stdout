@@ -1,0 +1,5 @@
+=== std.io smoke ===
+write/seek/read: abXYef
+copy/rename: ok
+directory: ok
+=== smoke passed ===

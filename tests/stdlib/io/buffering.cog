@@ -1,0 +1,15 @@
+import std.io;
+main::() -> s32 {
+    path := "stdlib_io_buffering.tmp";
+    file := std.io.File.open_write(path);
+    if (!file.is_open() || !file.set_buffered(true)) { file.close(); discard std.io.remove_file(path); return 1; }
+    if (file.write("buffered") != 8 || !file.flush()) { file.close(); discard std.io.remove_file(path); return 2; }
+    if (!file.set_buffered(false)) { file.close(); discard std.io.remove_file(path); return 3; }
+    file.close();
+    reader := std.io.File.open_read(path);
+    if (!reader.is_open()) { discard std.io.remove_file(path); return 4; }
+    data: u8[8] = [0, 0, 0, 0, 0, 0, 0, 0];
+    if (reader.read(data) != 8) { reader.close(); discard std.io.remove_file(path); return 5; }
+    reader.close(); discard std.io.remove_file(path);
+    std.io.println("buffering: ok"); return 0;
+}

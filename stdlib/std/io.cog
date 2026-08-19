@@ -2,6 +2,9 @@ module std.io;
 
 // Minimal bootstrap I/O. Text is a readonly byte slice so callers pass an
 // explicit pointer+length view rather than relying on C NUL termination.
+//
+// c_* types are intentionally kept inside this module. They are ABI types
+// used only when crossing the C runtime boundary.
 
 #extern(c, name="coglet_rt_io_write")
 write_bytes::(data: readonly u8*, length: c_size) -> void;
@@ -54,6 +57,11 @@ print_f32::(value: f32) -> void;
 export #extern(c, name="coglet_rt_io_print_f64")
 print_f64::(value: f64) -> void;
 
+
+// -----------------------------------------------------------------------------
+// File runtime ABI
+// -----------------------------------------------------------------------------
+
 #extern(c, name="coglet_rt_io_file_open_read")
 file_open_read::(path: readonly u8*, length: c_size) -> opaque*;
 
@@ -85,6 +93,9 @@ file_error::(handle: opaque*) -> bool;
 file_remove::(path: readonly u8*, length: c_size) -> bool;
 
 
+// -----------------------------------------------------------------------------
+// File positioning
+// -----------------------------------------------------------------------------
 
 export seek_begin: s32 = 0;
 export seek_current: s32 = 1;
@@ -103,10 +114,25 @@ rt_file_set_buffered::(handle: opaque*, buffered: bool) -> bool;
 rt_file_exists::(path: readonly u8*, length: c_size) -> bool;
 
 #extern(c, name="coglet_rt_io_file_copy")
-rt_file_copy::(source: readonly u8*, source_length: c_size, destination: readonly u8*, destination_length: c_size) -> bool;
+rt_file_copy::(
+    source: readonly u8*,
+    source_length: c_size,
+    destination: readonly u8*,
+    destination_length: c_size
+) -> bool;
 
 #extern(c, name="coglet_rt_io_file_rename")
-rt_file_rename::(source: readonly u8*, source_length: c_size, destination: readonly u8*, destination_length: c_size) -> bool;
+rt_file_rename::(
+    source: readonly u8*,
+    source_length: c_size,
+    destination: readonly u8*,
+    destination_length: c_size
+) -> bool;
+
+
+// -----------------------------------------------------------------------------
+// Directory runtime ABI
+// -----------------------------------------------------------------------------
 
 #extern(c, name="coglet_rt_io_directory_create")
 rt_directory_create::(path: readonly u8*, length: c_size) -> bool;
@@ -118,29 +144,48 @@ rt_directory_remove::(path: readonly u8*, length: c_size) -> bool;
 rt_directory_open::(path: readonly u8*, length: c_size) -> opaque*;
 
 #extern(c, name="coglet_rt_io_directory_next")
-rt_directory_next::(handle: opaque*, name: u8*, capacity: c_size, out_length: c_size*) -> bool;
+rt_directory_next::(
+    handle: opaque*,
+    name: u8*,
+    capacity: c_size,
+    out_length: c_size*
+) -> bool;
 
 #extern(c, name="coglet_rt_io_directory_close")
 rt_directory_close::(handle: opaque*) -> void;
+
+
+// -----------------------------------------------------------------------------
+// File
+// -----------------------------------------------------------------------------
 
 export File::resource {
     handle: opaque*;
 
     open_read::(path: readonly u8[]) -> Self {
         return Self {
-            handle = file_open_read(path.data, cast(c_size, path.len))
+            handle = file_open_read(
+                path.data,
+                cast(c_size, path.len)
+            )
         };
     }
 
     open_write::(path: readonly u8[]) -> Self {
         return Self {
-            handle = file_open_write(path.data, cast(c_size, path.len))
+            handle = file_open_write(
+                path.data,
+                cast(c_size, path.len)
+            )
         };
     }
 
     open_append::(path: readonly u8[]) -> Self {
         return Self {
-            handle = file_open_append(path.data, cast(c_size, path.len))
+            handle = file_open_append(
+                path.data,
+                cast(c_size, path.len)
+            )
         };
     }
 
@@ -148,12 +193,24 @@ export File::resource {
         return (*self).handle != null;
     }
 
-    read::(self: Self*, data: u8[]) -> c_size {
-        return file_read((*self).handle, data.data, cast(c_size, data.len));
+    read::(self: Self*, data: u8[]) -> usize {
+        result := file_read(
+            (*self).handle,
+            data.data,
+            cast(c_size, data.len)
+        );
+
+        return cast(usize, result);
     }
 
-    write::(self: Self*, data: readonly u8[]) -> c_size {
-        return file_write((*self).handle, data.data, cast(c_size, data.len));
+    write::(self: Self*, data: readonly u8[]) -> usize {
+        result := file_write(
+            (*self).handle,
+            data.data,
+            cast(c_size, data.len)
+        );
+
+        return cast(usize, result);
     }
 
     seek::(self: Self*, offset: s64, origin: s32) -> bool {
@@ -196,16 +253,29 @@ export File::resource {
     }
 }
 
-export remove_file::(path: readonly u8[]) -> bool {
-    return file_remove(path.data, cast(c_size, path.len));
-}
 
+// -----------------------------------------------------------------------------
+// File operations
+// -----------------------------------------------------------------------------
+
+export remove_file::(path: readonly u8[]) -> bool {
+    return file_remove(
+        path.data,
+        cast(c_size, path.len)
+    );
+}
 
 export file_exists::(path: readonly u8[]) -> bool {
-    return rt_file_exists(path.data, cast(c_size, path.len));
+    return rt_file_exists(
+        path.data,
+        cast(c_size, path.len)
+    );
 }
 
-export copy_file::(source: readonly u8[], destination: readonly u8[]) -> bool {
+export copy_file::(
+    source: readonly u8[],
+    destination: readonly u8[]
+) -> bool {
     return rt_file_copy(
         source.data,
         cast(c_size, source.len),
@@ -214,7 +284,10 @@ export copy_file::(source: readonly u8[], destination: readonly u8[]) -> bool {
     );
 }
 
-export rename_file::(source: readonly u8[], destination: readonly u8[]) -> bool {
+export rename_file::(
+    source: readonly u8[],
+    destination: readonly u8[]
+) -> bool {
     return rt_file_rename(
         source.data,
         cast(c_size, source.len),
@@ -223,12 +296,23 @@ export rename_file::(source: readonly u8[], destination: readonly u8[]) -> bool 
     );
 }
 
+
+// -----------------------------------------------------------------------------
+// Directory
+// -----------------------------------------------------------------------------
+
 export create_directory::(path: readonly u8[]) -> bool {
-    return rt_directory_create(path.data, cast(c_size, path.len));
+    return rt_directory_create(
+        path.data,
+        cast(c_size, path.len)
+    );
 }
 
 export remove_directory::(path: readonly u8[]) -> bool {
-    return rt_directory_remove(path.data, cast(c_size, path.len));
+    return rt_directory_remove(
+        path.data,
+        cast(c_size, path.len)
+    );
 }
 
 export Directory::resource {
@@ -236,7 +320,10 @@ export Directory::resource {
 
     open::(path: readonly u8[]) -> Self {
         return Self {
-            handle = rt_directory_open(path.data, cast(c_size, path.len))
+            handle = rt_directory_open(
+                path.data,
+                cast(c_size, path.len)
+            )
         };
     }
 
@@ -244,13 +331,24 @@ export Directory::resource {
         return (*self).handle != null;
     }
 
-    next::(self: Self*, name: u8[], out_length: c_size*) -> bool {
-        return rt_directory_next(
+    next::(
+        self: Self*,
+        name: u8[],
+        out_length: usize*
+    ) -> bool {
+        length: c_size = 0;
+
+        if (!rt_directory_next(
             (*self).handle,
             name.data,
             cast(c_size, name.len),
-            out_length
-        );
+            &length
+        )) {
+            return false;
+        }
+
+        *out_length = cast(usize, length);
+        return true;
     }
 
     close::(self: Self*) -> void {

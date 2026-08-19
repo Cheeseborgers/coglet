@@ -1,0 +1,24 @@
+import std.io;
+main::() -> s32 {
+    path := "stdlib_io_file_basic.tmp";
+    writer := std.io.File.open_write(path);
+    if (!writer.is_open()) { return 1; }
+    if (writer.write("hello") != 5 || !writer.flush()) { writer.close(); discard std.io.remove_file(path); return 2; }
+    writer.close();
+    reader := std.io.File.open_read(path);
+    if (!reader.is_open()) { discard std.io.remove_file(path); return 3; }
+    buffer: u8[5] = [0, 0, 0, 0, 0];
+    if (reader.read(buffer) != 5 || reader.eof() || reader.error()) { reader.close(); discard std.io.remove_file(path); return 4; }
+    reader.close();
+    if (!std.io.file_exists(path) || !std.io.remove_file(path) || std.io.file_exists(path)) { return 5; }
+    append_path := "stdlib_io_file_append.tmp";
+    first := std.io.File.open_write(append_path);
+    if (!first.is_open() || first.write("ab") != 2) { first.close(); discard std.io.remove_file(append_path); return 6; }
+    first.close();
+    second := std.io.File.open_append(append_path);
+    if (!second.is_open() || second.write("cd") != 2) { second.close(); discard std.io.remove_file(append_path); return 7; }
+    second.close();
+    if (!std.io.remove_file(append_path)) { return 8; }
+    std.io.println("file_basic: ok");
+    return 0;
+}

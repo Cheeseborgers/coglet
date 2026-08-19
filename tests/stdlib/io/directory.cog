@@ -1,0 +1,13 @@
+import std.io;
+main::() -> s32 {
+    path := "stdlib_io_directory_test";
+    if (!std.io.create_directory(path)) { return 1; }
+    directory := std.io.Directory.open(".");
+    if (!directory.is_open()) { discard std.io.remove_directory(path); return 2; }
+    entry: u8[64] = {0};
+    entry_length: c_size = 0; found := false;
+    while directory.next(entry, &entry_length) { if (entry_length == path.len) { found = true; break; } }
+    directory.close();
+    if (!found || !std.io.remove_directory(path)) { discard std.io.remove_directory(path); return 3; }
+    std.io.println("directory: ok"); return 0;
+}

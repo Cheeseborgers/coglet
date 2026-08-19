@@ -1750,6 +1750,18 @@ set(COGLET_STDLIB_MATH_VECTORS_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/math/
 set(COGLET_STDLIB_MATH_TRANSFORMS_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/math/transforms/main.cog")
 set(COGLET_STDLIB_IO_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.cog")
 set(COGLET_STDLIB_IO_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/main.stdout")
+set(COGLET_STDLIB_IO_FILE_BASIC_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/file_basic.cog")
+set(COGLET_STDLIB_IO_FILE_BASIC_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/file_basic.stdout")
+set(COGLET_STDLIB_IO_SEEK_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/seek.cog")
+set(COGLET_STDLIB_IO_SEEK_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/seek.stdout")
+set(COGLET_STDLIB_IO_FILESYSTEM_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/filesystem.cog")
+set(COGLET_STDLIB_IO_FILESYSTEM_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/filesystem.stdout")
+set(COGLET_STDLIB_IO_DIRECTORY_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/directory.cog")
+set(COGLET_STDLIB_IO_DIRECTORY_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/directory.stdout")
+set(COGLET_STDLIB_IO_BUFFERING_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/buffering.cog")
+set(COGLET_STDLIB_IO_BUFFERING_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/buffering.stdout")
+set(COGLET_STDLIB_IO_SMOKE_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/smoke.cog")
+set(COGLET_STDLIB_IO_SMOKE_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/smoke.stdout")
 set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/io/math_import/main.cog")
 set(COGLET_STDLIB_IO_MATH_IMPORT_TEST_STDOUT "${CMAKE_SOURCE_DIR}/tests/stdlib/io/math_import/main.stdout")
 set(COGLET_STDLIB_ARRAY_TEST_MAIN "${CMAKE_SOURCE_DIR}/tests/stdlib/array/main.cog")
@@ -1876,6 +1888,26 @@ add_test(
 )
 set_tests_properties(stdlib_io_host_c
         PROPERTIES LABELS "stdlib;stdlib.source;std.io;runtime;backend;backend.c;module;import;discovery")
+
+set(COGLET_STDLIB_IO_REGRESSION_TESTS
+        file_basic;seek;filesystem;directory;buffering;smoke)
+foreach(io_test IN LISTS COGLET_STDLIB_IO_REGRESSION_TESTS)
+    string(TOUPPER "${io_test}" IO_TEST_UPPER)
+    add_test(
+        NAME stdlib_io_${io_test}_host_c
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        "-DINPUTS=${COGLET_STDLIB_IO_${IO_TEST_UPPER}_TEST_MAIN}"
+        "-DSTDLIB_ROOT=${COGLET_STDLIB_SOURCE_ROOT}"
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/stdlib_io_${io_test}_host_c${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -DBACKEND=host-c
+        "-DEXPECT_STDOUT_FILE=${COGLET_STDLIB_IO_${IO_TEST_UPPER}_TEST_STDOUT}"
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_module_discovery_executable_test.cmake"
+    )
+    set_tests_properties(stdlib_io_${io_test}_host_c
+        PROPERTIES LABELS "stdlib;stdlib.source;std.io;runtime;backend;backend.c;module;import;discovery")
+endforeach()
 
 add_test(
         NAME stdlib_io_math_import_host_c_warning_free

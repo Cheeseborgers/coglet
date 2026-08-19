@@ -1,0 +1,24 @@
+import std.io;
+main::() -> s32 {
+    std.io.println("=== std.io smoke ===");
+    path := "stdlib_io_smoke.tmp"; copy := "stdlib_io_smoke_copy.tmp"; renamed := "stdlib_io_smoke_renamed.tmp"; dir := "stdlib_io_smoke_dir";
+    std.io.print("write/seek/read: ");
+    file := std.io.File.open_write(path);
+    if (!file.is_open() || file.write("abcdef") != 6 || !file.seek(2, std.io.seek_begin) || file.tell() != 2 || file.write("XY") != 2 || !file.flush()) { file.close(); discard std.io.remove_file(path); std.io.println("FAIL"); return 1; }
+    file.close();
+    reader := std.io.File.open_read(path);
+    if (!reader.is_open()) { discard std.io.remove_file(path); std.io.println("FAIL"); return 2; }
+    data: u8[6] = [0, 0, 0, 0, 0, 0];
+    if (reader.read(data) != 6) { reader.close(); discard std.io.remove_file(path); std.io.println("FAIL"); return 3; }
+    reader.close(); std.io.println(data);
+    std.io.print("copy/rename: ");
+    if (!std.io.copy_file(path, copy) || !std.io.rename_file(copy, renamed)) { discard std.io.remove_file(path); discard std.io.remove_file(copy); discard std.io.remove_file(renamed); std.io.println("FAIL"); return 4; }
+    std.io.println("ok");
+    std.io.print("directory: ");
+    if (!std.io.create_directory(dir)) { discard std.io.remove_file(path); discard std.io.remove_file(renamed); std.io.println("FAIL"); return 5; }
+    d := std.io.Directory.open("."); if (!d.is_open()) { discard std.io.remove_directory(dir); discard std.io.remove_file(path); discard std.io.remove_file(renamed); std.io.println("FAIL"); return 6; }
+    entry: u8[64] = {0}; len: usize = 0; found := false; while d.next(entry, &len) { if (len == dir.len) { found = true; break; } } d.close();
+    if (!found || !std.io.remove_directory(dir)) { discard std.io.remove_directory(dir); discard std.io.remove_file(path); discard std.io.remove_file(renamed); std.io.println("FAIL"); return 7; }
+    if (!std.io.remove_file(path) || !std.io.remove_file(renamed)) { std.io.println("FAIL"); return 8; }
+    std.io.println("ok"); std.io.println("=== smoke passed ==="); return 0;
+}

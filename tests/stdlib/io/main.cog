@@ -78,6 +78,94 @@ main::() -> s32 {
     if (!std.io.remove_file(path)) {
         return 7;
     }
+    if (std.io.file_exists(path)) {
+        return 8;
+    }
+
+    seek_path := "stdlib_io_seek_test.tmp";
+    seeker := std.io.File.open_write(seek_path);
+    if (!seeker.is_open()) {
+        return 9;
+    }
+    if (!seeker.set_buffered(true)) {
+        seeker.close();
+        discard std.io.remove_file(seek_path);
+        return 10;
+    }
+    if (seeker.write("abcdef") != 6 || seeker.tell() != 6) {
+        seeker.close();
+        discard std.io.remove_file(seek_path);
+        return 11;
+    }
+    if (!seeker.seek(2, std.io.seek_begin) || seeker.tell() != 2) {
+        seeker.close();
+        discard std.io.remove_file(seek_path);
+        return 12;
+    }
+    if (seeker.write("XY") != 2 || seeker.tell() != 4) {
+        seeker.close();
+        discard std.io.remove_file(seek_path);
+        return 13;
+    }
+    if (!seeker.rewind() || seeker.tell() != 0) {
+        seeker.close();
+        discard std.io.remove_file(seek_path);
+        return 14;
+    }
+    seeker.close();
+
+    copied_path := "stdlib_io_copy_test.tmp";
+    renamed_path := "stdlib_io_renamed_test.tmp";
+    if (!std.io.copy_file(seek_path, copied_path) || !std.io.file_exists(copied_path)) {
+        discard std.io.remove_file(seek_path);
+        return 15;
+    }
+    if (!std.io.rename_file(copied_path, renamed_path) || !std.io.file_exists(renamed_path)) {
+        discard std.io.remove_file(seek_path);
+        discard std.io.remove_file(copied_path);
+        return 16;
+    }
+
+    directory_path := "stdlib_io_directory_test";
+    if (!std.io.create_directory(directory_path)) {
+        discard std.io.remove_file(seek_path);
+        discard std.io.remove_file(renamed_path);
+        return 17;
+    }
+
+    directory := std.io.Directory.open(".");
+    if (!directory.is_open()) {
+        discard std.io.remove_directory(directory_path);
+        discard std.io.remove_file(seek_path);
+        discard std.io.remove_file(renamed_path);
+        return 18;
+    }
+
+    entry: u8[256] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    entry_length: c_size = 0;
+    found_directory := false;
+    while directory.next(entry, &entry_length) {
+        if (entry_length == directory_path.len) {
+            found_directory = true;
+            break;
+        }
+    }
+    directory.close();
+
+    if (!found_directory) {
+        discard std.io.remove_directory(directory_path);
+        discard std.io.remove_file(seek_path);
+        discard std.io.remove_file(renamed_path);
+        return 19;
+    }
+    if (!std.io.remove_directory(directory_path)) {
+        discard std.io.remove_file(seek_path);
+        discard std.io.remove_file(renamed_path);
+        return 20;
+    }
+    if (!std.io.remove_file(seek_path) || !std.io.remove_file(renamed_path)) {
+        return 21;
+    }
 
     std.io.flush();
     return 0;

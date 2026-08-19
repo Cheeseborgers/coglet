@@ -84,6 +84,45 @@ file_error::(handle: opaque*) -> bool;
 #extern(c, name="coglet_rt_io_file_remove")
 file_remove::(path: readonly u8*, length: c_size) -> bool;
 
+
+
+export seek_begin: s32 = 0;
+export seek_current: s32 = 1;
+export seek_end: s32 = 2;
+
+#extern(c, name="coglet_rt_io_file_seek")
+rt_file_seek::(handle: opaque*, offset: s64, origin: s32) -> bool;
+
+#extern(c, name="coglet_rt_io_file_tell")
+rt_file_tell::(handle: opaque*) -> s64;
+
+#extern(c, name="coglet_rt_io_file_set_buffered")
+rt_file_set_buffered::(handle: opaque*, buffered: bool) -> bool;
+
+#extern(c, name="coglet_rt_io_file_exists")
+rt_file_exists::(path: readonly u8*, length: c_size) -> bool;
+
+#extern(c, name="coglet_rt_io_file_copy")
+rt_file_copy::(source: readonly u8*, source_length: c_size, destination: readonly u8*, destination_length: c_size) -> bool;
+
+#extern(c, name="coglet_rt_io_file_rename")
+rt_file_rename::(source: readonly u8*, source_length: c_size, destination: readonly u8*, destination_length: c_size) -> bool;
+
+#extern(c, name="coglet_rt_io_directory_create")
+rt_directory_create::(path: readonly u8*, length: c_size) -> bool;
+
+#extern(c, name="coglet_rt_io_directory_remove")
+rt_directory_remove::(path: readonly u8*, length: c_size) -> bool;
+
+#extern(c, name="coglet_rt_io_directory_open")
+rt_directory_open::(path: readonly u8*, length: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_io_directory_next")
+rt_directory_next::(handle: opaque*, name: u8*, capacity: c_size, out_length: c_size*) -> bool;
+
+#extern(c, name="coglet_rt_io_directory_close")
+rt_directory_close::(handle: opaque*) -> void;
+
 export File::resource {
     handle: opaque*;
 
@@ -117,6 +156,22 @@ export File::resource {
         return file_write((*self).handle, data.data, cast(c_size, data.len));
     }
 
+    seek::(self: Self*, offset: s64, origin: s32) -> bool {
+        return rt_file_seek((*self).handle, offset, origin);
+    }
+
+    tell::(self: readonly Self*) -> s64 {
+        return rt_file_tell((*self).handle);
+    }
+
+    rewind::(self: Self*) -> bool {
+        return self.seek(0, seek_begin);
+    }
+
+    set_buffered::(self: Self*, buffered: bool) -> bool {
+        return rt_file_set_buffered((*self).handle, buffered);
+    }
+
     flush::(self: Self*) -> bool {
         return file_flush((*self).handle);
     }
@@ -143,4 +198,69 @@ export File::resource {
 
 export remove_file::(path: readonly u8[]) -> bool {
     return file_remove(path.data, cast(c_size, path.len));
+}
+
+
+export file_exists::(path: readonly u8[]) -> bool {
+    return rt_file_exists(path.data, cast(c_size, path.len));
+}
+
+export copy_file::(source: readonly u8[], destination: readonly u8[]) -> bool {
+    return rt_file_copy(
+        source.data,
+        cast(c_size, source.len),
+        destination.data,
+        cast(c_size, destination.len)
+    );
+}
+
+export rename_file::(source: readonly u8[], destination: readonly u8[]) -> bool {
+    return rt_file_rename(
+        source.data,
+        cast(c_size, source.len),
+        destination.data,
+        cast(c_size, destination.len)
+    );
+}
+
+export create_directory::(path: readonly u8[]) -> bool {
+    return rt_directory_create(path.data, cast(c_size, path.len));
+}
+
+export remove_directory::(path: readonly u8[]) -> bool {
+    return rt_directory_remove(path.data, cast(c_size, path.len));
+}
+
+export Directory::resource {
+    handle: opaque*;
+
+    open::(path: readonly u8[]) -> Self {
+        return Self {
+            handle = rt_directory_open(path.data, cast(c_size, path.len))
+        };
+    }
+
+    is_open::(self: readonly Self*) -> bool {
+        return (*self).handle != null;
+    }
+
+    next::(self: Self*, name: u8[], out_length: c_size*) -> bool {
+        return rt_directory_next(
+            (*self).handle,
+            name.data,
+            cast(c_size, name.len),
+            out_length
+        );
+    }
+
+    close::(self: Self*) -> void {
+        if ((*self).handle != null) {
+            rt_directory_close((*self).handle);
+            (*self).handle = null;
+        }
+    }
+
+    deinit::(self: Self*) -> void {
+        self.close();
+    }
 }

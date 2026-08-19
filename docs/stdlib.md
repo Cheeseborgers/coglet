@@ -613,10 +613,25 @@ The file API provides `open_read`, `open_write`, and `open_append`, plus
 represented by a closed resource; I/O failure can then be inspected with
 `error()`. `close()` is idempotent and clears the resource handle.
 
-`remove_file(path)` removes a filesystem entry and returns whether the operation
-succeeded. File paths and file contents deliberately stay as byte slices at the
-Coglet boundary. Seeking, metadata/stat calls, directory enumeration, and
-buffered streams are not part of this first file-I/O slice.
+`seek(offset, origin)`, `tell()`, and `rewind()` provide basic random access.
+`SeekOrigin.begin`, `SeekOrigin.current`, and `SeekOrigin.end` select the
+reference position. `set_buffered(true)` enables stdio buffering and
+`set_buffered(false)` requests unbuffered operation; buffering is deliberately
+an explicit file policy rather than an implicit wrapper layer.
+
+The filesystem helpers are `file_exists`, `copy_file`, `rename_file`,
+`remove_file`, `create_directory`, and `remove_directory`. Directory handles
+are move-only `std.io.Directory` resources. `Directory.open(path)` opens a
+directory, and `next(name, out_length)` copies the next entry name into a
+caller-provided byte buffer; `.` and `..` are skipped. Directory iteration does
+not allocate per entry.
+
+File paths and file contents deliberately stay as byte slices at the Coglet
+boundary. File seeking, basic filesystem operations, directory enumeration,
+and explicit stdio buffering are backed by the same small runtime ABI rather
+than separate platform-specific modules. Metadata/stat APIs, recursive
+directory helpers, and higher-level buffered readers/writers remain future
+layers.
 
 Runtime implementation symbols use the reserved `coglet_rt_` prefix. During
 CogIR freeze, external C declarations in the `coglet_rt_io_`, `coglet_rt_math_`,

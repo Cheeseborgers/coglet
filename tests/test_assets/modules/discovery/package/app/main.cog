@@ -1,0 +1,2 @@
+import pkg;
+main::() -> s32 { return pkg.left() * 10 + pkg.right(); }

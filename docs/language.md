@@ -55,9 +55,7 @@ does not make it visible in another file automatically, and it does not
 implicitly import the parent module `std`.
 
 The command-line compiler automatically discovers a missing imported module using
-one canonical source path. Dots map to path separators, so `import std.math;`
-searches for `std/math.cog` first beside the importing file and then under
-repeated `-I` roots in command-line order:
+either a single source file or a package directory. Dots map to path separators, so `import std.math;` first searches for `std/math.cog`. If no such file is found at a search root, it may resolve `std/math/` as a package: every immediate `.cog` file in that directory is loaded, sorted lexically, and each file must declare the same module name. This lets a package expose one namespace while being implemented across multiple files. The normal precedence is importer directory, then repeated `-I` roots in command-line order, then the standard-library fallback:
 
 ```sh
 coglet app/main.cog -I lib -I vendor -o app

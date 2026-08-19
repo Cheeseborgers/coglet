@@ -1,0 +1,2 @@
+module pkg;
+export right::() -> s32 { return 5; }

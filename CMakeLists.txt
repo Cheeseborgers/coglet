@@ -418,6 +418,12 @@ add_module_discovery_host_test(
     "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/transitive/lib"
 )
 add_module_discovery_host_test(
+    driver_modules_discovery_package
+    "${COGLET_DISCOVERY_DIR}/package/app/main.cog"
+    45
+    "-DSEARCH_DIRS=${COGLET_DISCOVERY_DIR}/package/lib"
+)
+add_module_discovery_host_test(
     driver_modules_discovery_importer_precedence
     "${COGLET_DISCOVERY_DIR}/precedence/app/main.cog"
     43

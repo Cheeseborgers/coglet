@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <dirent.h>
 
 #include "parser_diag.h"
 #include "utils/utils.h"
@@ -275,71 +276,115 @@ static int module_name_is_std_namespace(StringView module_name)
     return module_name.length == 3 || module_name.data[3] == '.';
 }
 
-static const char *find_module_source(
+typedef struct ModuleSourceSet {
+    const char **items;
+    size_t count;
+} ModuleSourceSet;
+
+static int compare_c_strings(const void *a, const void *b)
+{
+    const char *const *left = a;
+    const char *const *right = b;
+    return strcmp(*left, *right);
+}
+
+/* Discover either a traditional single-file module (foo.cog) or a package
+ * directory (foo files ending in .cog). Package members are loaded in lexical order so the
+ * compiler's behaviour and diagnostics are deterministic. */
+static ModuleSourceSet find_module_sources(
     CompileResult *out,
     const CompileOptions *options,
     const CompileInputFile *importer,
     StringView module_name
 ) {
     ArenaMarker marker = arena_mark(out->scratch);
+    const char *roots[2];
+    size_t root_count = 0;
+    roots[root_count++] = source_directory(out->scratch, importer->filename);
 
-    char *directory = source_directory(out->scratch, importer->filename);
-    char *candidate = module_candidate_path(
-        out->scratch,
-        directory,
-        module_name
-    );
+    if (options->stdlib_root && module_name_is_std_namespace(module_name))
+        roots[root_count++] = options->stdlib_root;
 
-    struct stat info;
-    if (stat(candidate, &info) == 0) {
-        const char *result = arena_strdup_len(
-            out->arena,
-            candidate,
-            strlen(candidate)
-        );
-        arena_reset_to(out->scratch, marker);
-        return result;
-    }
-
-    for (size_t i = 0; i < options->module_search_dir_count; ++i) {
-        const char *search_dir = options->module_search_dirs[i];
-        candidate = module_candidate_path(
-            out->scratch,
-            search_dir,
-            module_name
-        );
-        if (stat(candidate, &info) == 0) {
-            const char *result = arena_strdup_len(
-                out->arena,
-                candidate,
-                strlen(candidate)
-            );
+    /* Preserve the existing precedence: importer directory, -I roots, stdlib. */
+    for (size_t r = 0; r < 1; ++r) {
+        char *single = module_candidate_path(out->scratch, roots[r], module_name);
+        struct stat info;
+        if (stat(single, &info) == 0 && S_ISREG(info.st_mode)) {
+            const char **items = arena_alloc(out->arena, sizeof(*items));
+            items[0] = arena_strdup_len(out->arena, single, strlen(single));
             arena_reset_to(out->scratch, marker);
-            return result;
+            return (ModuleSourceSet){ items, 1 };
         }
-        arena_reset_to(out->scratch, marker);
-        marker = arena_mark(out->scratch);
     }
-
-    if (options->stdlib_root && module_name_is_std_namespace(module_name)) {
-        candidate = module_candidate_path(
-            out->scratch,
-            options->stdlib_root,
-            module_name
-        );
-        if (stat(candidate, &info) == 0) {
-            const char *result = arena_strdup_len(
-                out->arena,
-                candidate,
-                strlen(candidate)
-            );
+    for (size_t search = 0; search < options->module_search_dir_count; ++search) {
+        char *single = module_candidate_path(out->scratch, options->module_search_dirs[search], module_name);
+        struct stat info;
+        if (stat(single, &info) == 0 && S_ISREG(info.st_mode)) {
+            const char **items = arena_alloc(out->arena, sizeof(*items));
+            items[0] = arena_strdup_len(out->arena, single, strlen(single));
             arena_reset_to(out->scratch, marker);
-            return result;
+            return (ModuleSourceSet){ items, 1 };
+        }
+    }
+    for (size_t r = 1; r < root_count; ++r) {
+        char *single = module_candidate_path(out->scratch, roots[r], module_name);
+        struct stat info;
+        if (stat(single, &info) == 0 && S_ISREG(info.st_mode)) {
+            const char **items = arena_alloc(out->arena, sizeof(*items));
+            items[0] = arena_strdup_len(out->arena, single, strlen(single));
+            arena_reset_to(out->scratch, marker);
+            return (ModuleSourceSet){ items, 1 };
         }
     }
 
+    /* Search package directories only when there is no single-file module. */
+    for (size_t root_index = 0; root_index < root_count + options->module_search_dir_count; ++root_index) {
+        const char *root = root_index < root_count ? roots[root_index]
+            : options->module_search_dirs[root_index - root_count];
+        size_t root_len = strlen(root);
+        size_t path_len = root_len + 1 + module_name.length + 1;
+        char *dir_path = arena_alloc(out->scratch, path_len);
+        size_t at = 0;
+        memcpy(dir_path + at, root, root_len); at += root_len;
+        if (at && dir_path[at - 1] != '/' && dir_path[at - 1] != '\\') dir_path[at++] = '/';
+        for (size_t i = 0; i < module_name.length; ++i) dir_path[at++] = module_name.data[i] == '.' ? '/' : module_name.data[i];
+        dir_path[at] = '\0';
+
+        DIR *dir = opendir(dir_path);
+        if (!dir) continue;
+
+        size_t capacity = 8, count = 0;
+        const char **items = arena_alloc(out->scratch, capacity * sizeof(*items));
+        struct dirent *entry;
+        while ((entry = readdir(dir))) {
+            size_t name_len = strlen(entry->d_name);
+            if (name_len < 5 || strcmp(entry->d_name + name_len - 4, ".cog") != 0)
+                continue;
+            size_t full_len = strlen(dir_path) + 1 + name_len + 1;
+            char *full = arena_alloc(out->scratch, full_len);
+            snprintf(full, full_len, "%s/%s", dir_path, entry->d_name);
+            struct stat file_info;
+            if (stat(full, &file_info) != 0 || !S_ISREG(file_info.st_mode)) continue;
+            if (count == capacity) {
+                capacity *= 2;
+                const char **grown = arena_alloc(out->scratch, capacity * sizeof(*grown));
+                memcpy(grown, items, count * sizeof(*grown));
+                items = grown;
+            }
+            items[count++] = full;
+        }
+        closedir(dir);
+        if (count) {
+            qsort(items, count, sizeof(*items), compare_c_strings);
+            const char **owned = arena_alloc(out->arena, count * sizeof(*owned));
+            for (size_t i = 0; i < count; ++i)
+                owned[i] = arena_strdup_len(out->arena, items[i], strlen(items[i]));
+            arena_reset_to(out->scratch, marker);
+            return (ModuleSourceSet){ owned, count };
+        }
+    }
     arena_reset_to(out->scratch, marker);
-    return NULL;
+    return (ModuleSourceSet){ NULL, 0 };
 }
 
 static int discover_import_sources(
@@ -364,23 +409,21 @@ static int discover_import_sources(
             if (input_list_declares_module(inputs, module_name))
                 continue;
 
-            const char *candidate = find_module_source(
-                out,
-                options,
-                file,
-                module_name
+            ModuleSourceSet candidates = find_module_sources(
+                out, options, file, module_name
             );
-            if (!candidate)
+            if (candidates.count == 0)
                 continue;
 
-            if (input_list_contains_file(inputs, candidate))
-                continue;
-
-            if (!load_and_parse_input(out, inputs, candidate))
-                return 0;
-
-            if (out->parser.had_error)
-                return 1;
+            for (size_t source_index = 0; source_index < candidates.count; ++source_index) {
+                const char *candidate = candidates.items[source_index];
+                if (input_list_contains_file(inputs, candidate))
+                    continue;
+                if (!load_and_parse_input(out, inputs, candidate))
+                    return 0;
+                if (out->parser.had_error)
+                    return 1;
+            }
         }
     }
 

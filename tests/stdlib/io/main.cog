@@ -37,7 +37,48 @@ main::() -> s32 {
     std.io.print(" ");
     std.io.print_f64(value64);
     std.io.newline();
-    std.io.flush();
 
+    path := "stdlib_io_file_test.tmp";
+    writer := std.io.File.open_write(path);
+    if (!writer.is_open()) {
+        return 1;
+    }
+    if (writer.write("hello") != 5) {
+        writer.close();
+        return 2;
+    }
+    if (!writer.flush()) {
+        writer.close();
+        return 3;
+    }
+    writer.close();
+
+    reader := std.io.File.open_read(path);
+    if (!reader.is_open()) {
+        discard std.io.remove_file(path);
+        return 4;
+    }
+
+    buffer: u8[5] = [0, 0, 0, 0, 0];
+    if (reader.read(buffer) != 5) {
+        reader.close();
+        discard std.io.remove_file(path);
+        return 5;
+    }
+    if (reader.eof() || reader.error()) {
+        reader.close();
+        discard std.io.remove_file(path);
+        return 6;
+    }
+    reader.close();
+
+    std.io.print("file = ");
+    std.io.println(buffer);
+
+    if (!std.io.remove_file(path)) {
+        return 7;
+    }
+
+    std.io.flush();
     return 0;
 }

@@ -595,6 +595,29 @@ print_f32/f64
 `print_f32` uses enough significant decimal digits to round-trip a binary32 value;
 `print_f64` does the corresponding binary64 formatting.
 
+File handles are exposed as move-only `std.io.File` resources. Opening takes a
+readonly byte slice path, so paths are length-delimited rather than requiring C
+NUL termination:
+
+```c
+file := std.io.File.open_write("save.dat");
+defer file.deinit();
+
+file.write("hello");
+file.flush();
+```
+
+The file API provides `open_read`, `open_write`, and `open_append`, plus
+`is_open`, `read`, `write`, `flush`, `eof`, `error`, `close`, and `deinit`.
+`read` and `write` return the number of bytes transferred. Opening failure is
+represented by a closed resource; I/O failure can then be inspected with
+`error()`. `close()` is idempotent and clears the resource handle.
+
+`remove_file(path)` removes a filesystem entry and returns whether the operation
+succeeded. File paths and file contents deliberately stay as byte slices at the
+Coglet boundary. Seeking, metadata/stat calls, directory enumeration, and
+buffered streams are not part of this first file-I/O slice.
+
 Runtime implementation symbols use the reserved `coglet_rt_` prefix. During
 CogIR freeze, external C declarations in the `coglet_rt_io_`, `coglet_rt_math_`,
 and `coglet_rt_mem_` namespaces are summarized into an immutable runtime

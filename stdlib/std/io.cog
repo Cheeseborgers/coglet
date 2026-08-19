@@ -53,3 +53,94 @@ print_f32::(value: f32) -> void;
 
 export #extern(c, name="coglet_rt_io_print_f64")
 print_f64::(value: f64) -> void;
+
+#extern(c, name="coglet_rt_io_file_open_read")
+file_open_read::(path: readonly u8*, length: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_io_file_open_write")
+file_open_write::(path: readonly u8*, length: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_io_file_open_append")
+file_open_append::(path: readonly u8*, length: c_size) -> opaque*;
+
+#extern(c, name="coglet_rt_io_file_close")
+file_close::(handle: opaque*) -> void;
+
+#extern(c, name="coglet_rt_io_file_read")
+file_read::(handle: opaque*, data: u8*, length: c_size) -> c_size;
+
+#extern(c, name="coglet_rt_io_file_write")
+file_write::(handle: opaque*, data: readonly u8*, length: c_size) -> c_size;
+
+#extern(c, name="coglet_rt_io_file_flush")
+file_flush::(handle: opaque*) -> bool;
+
+#extern(c, name="coglet_rt_io_file_eof")
+file_eof::(handle: opaque*) -> bool;
+
+#extern(c, name="coglet_rt_io_file_error")
+file_error::(handle: opaque*) -> bool;
+
+#extern(c, name="coglet_rt_io_file_remove")
+file_remove::(path: readonly u8*, length: c_size) -> bool;
+
+export File::resource {
+    handle: opaque*;
+
+    open_read::(path: readonly u8[]) -> Self {
+        return Self {
+            handle = file_open_read(path.data, cast(c_size, path.len))
+        };
+    }
+
+    open_write::(path: readonly u8[]) -> Self {
+        return Self {
+            handle = file_open_write(path.data, cast(c_size, path.len))
+        };
+    }
+
+    open_append::(path: readonly u8[]) -> Self {
+        return Self {
+            handle = file_open_append(path.data, cast(c_size, path.len))
+        };
+    }
+
+    is_open::(self: readonly Self*) -> bool {
+        return (*self).handle != null;
+    }
+
+    read::(self: Self*, data: u8[]) -> c_size {
+        return file_read((*self).handle, data.data, cast(c_size, data.len));
+    }
+
+    write::(self: Self*, data: readonly u8[]) -> c_size {
+        return file_write((*self).handle, data.data, cast(c_size, data.len));
+    }
+
+    flush::(self: Self*) -> bool {
+        return file_flush((*self).handle);
+    }
+
+    eof::(self: readonly Self*) -> bool {
+        return file_eof((*self).handle);
+    }
+
+    error::(self: readonly Self*) -> bool {
+        return file_error((*self).handle);
+    }
+
+    close::(self: Self*) -> void {
+        if ((*self).handle != null) {
+            file_close((*self).handle);
+            (*self).handle = null;
+        }
+    }
+
+    deinit::(self: Self*) -> void {
+        self.close();
+    }
+}
+
+export remove_file::(path: readonly u8[]) -> bool {
+    return file_remove(path.data, cast(c_size, path.len));
+}

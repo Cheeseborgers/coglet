@@ -2659,18 +2659,34 @@ static int emit_instruction(
                 return 0;
             }
 
-            fprintf(backend->out, "    %s cg_v_%u;\n", result_type, result);
-            fputs("#if defined(_MSC_VER)\n#error \"inline asm requires a GNU-style host-C compiler\"\n#else\n", backend->out);
+            fprintf(backend->out, "    %s cg_v_%u", result_type, result);
+            if (instruction->as.asm_stmt.output_constraint.length == 2 &&
+                instruction->as.asm_stmt.output_constraint.data[0] == '+' &&
+                instruction->as.asm_stmt.output_constraint.data[1] == 'r') {
+                fprintf(backend->out, " = %s", input);
+            }
+            fputs(";\n#if defined(_MSC_VER)\n#error \"inline asm requires a GNU-style host-C compiler\"\n#else\n", backend->out);
             fputs("    __asm__ ", backend->out);
             if (instruction->as.asm_stmt.is_volatile)
                 fputs("volatile ", backend->out);
             fputs("(\n        ", backend->out);
             emit_c_string_literal(backend->out, string_view(decoded, (size_t)info.decoded_length));
-            fputs("\n        : \"=r\"(cg_v_", backend->out);
+            fputs("\n        : \"", backend->out);
+            fwrite(
+                instruction->as.asm_stmt.output_constraint.data,
+                1,
+                instruction->as.asm_stmt.output_constraint.length,
+                backend->out
+            );
+            fputs("\"(cg_v_", backend->out);
             fprintf(backend->out, "%u", result);
-            fputs(")\n        : \"r\"(", backend->out);
-            fputs(input, backend->out);
-            fputs(")\n    );\n#endif\n", backend->out);
+            fputs(")", backend->out);
+            if (instruction->as.asm_stmt.input_constraint.length != 0) {
+                fputs("\n        : \"r\"(", backend->out);
+                fputs(input, backend->out);
+                fputs(")", backend->out);
+            }
+            fputs("\n    );\n#endif\n", backend->out);
             free(decoded);
 
             if (!set_value_expr(exprs, value_count, result, copy_printf("cg_v_%u", result)))

@@ -3549,15 +3549,24 @@ static int lower_asm_statement(ExecLowerState *state, Node *node)
         return 0;
 
     CogIrSlotId address_spill = COG_IR_SLOT_INVALID;
-    if (expression_may_create_cfg(state, node->as.asm_stmt.input)) {
-        address_spill = spill_value(state, place.address, node->as.asm_stmt.output->span);
-        if (address_spill == COG_IR_SLOT_INVALID)
+    CogIrValueId input = COG_IR_VALUE_INVALID;
+    if (node->as.asm_stmt.output_constraint.length == 2 &&
+        node->as.asm_stmt.output_constraint.data[0] == '+' &&
+        node->as.asm_stmt.output_constraint.data[1] == 'r') {
+        input = emit_load(state, place.address, place.type, place.is_volatile, node->span);
+        if (input == COG_IR_VALUE_INVALID)
+            return 0;
+    } else {
+        if (expression_may_create_cfg(state, node->as.asm_stmt.input)) {
+            address_spill = spill_value(state, place.address, node->as.asm_stmt.output->span);
+            if (address_spill == COG_IR_SLOT_INVALID)
+                return 0;
+        }
+
+        input = lower_expression(state, node->as.asm_stmt.input);
+        if (input == COG_IR_VALUE_INVALID)
             return 0;
     }
-
-    CogIrValueId input = lower_expression(state, node->as.asm_stmt.input);
-    if (input == COG_IR_VALUE_INVALID)
-        return 0;
 
     CogIrValueId address = place.address;
     if (address_spill != COG_IR_SLOT_INVALID) {

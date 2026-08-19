@@ -363,12 +363,20 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
                 1,
                 0
             );
+            const char *constraints =
+                (insn->as.asm_stmt.output_constraint.length == 2 &&
+                 insn->as.asm_stmt.output_constraint.data[0] == '+' &&
+                 insn->as.asm_stmt.output_constraint.data[1] == 'r')
+                    ? "+r"
+                    : "=r,r";
+            size_t constraint_length =
+                constraints[1] == 'r' && constraints[0] == '+' ? 2 : 4;
             LLVMValueRef inline_asm = LLVMGetInlineAsm(
                 function_type,
                 asm_text,
                 (size_t)info.decoded_length,
-                "=r,r",
-                4,
+                constraints,
+                constraint_length,
                 insn->as.asm_stmt.is_volatile,
                 0,
                 LLVMInlineAsmDialectATT,

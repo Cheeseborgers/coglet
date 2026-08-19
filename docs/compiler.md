@@ -337,7 +337,7 @@ the backend.
 The assembly template is a normal Coglet string literal, so its escapes are decoded
 before reaching the backend. Assembly syntax is target-specific; the compiler does
 not translate an x86-64 template into AArch64 instructions. Additional operands,
-read-write constraints, clobbers, and other constraint classes remain deliberately
+Additional operands, clobbers, and other constraint classes remain deliberately
 unsupported until their semantic and backend contracts are defined.
 
 The backend now consumes CogIR only and has explicit emission for every current

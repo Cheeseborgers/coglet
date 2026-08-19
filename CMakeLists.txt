@@ -1288,6 +1288,18 @@ set_tests_properties(backend_inline_asm
         PROPERTIES LABELS "backend;backend.c;ir;asm")
 
 add_test(
+        NAME backend_inline_asm_read_write
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/inline_asm_read_write.cog
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_inline_asm_read_write${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(backend_inline_asm_read_write
+        PROPERTIES LABELS "backend;backend.c;ir;asm")
+
+add_test(
         NAME backend_discarded_expression_warning_free
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>

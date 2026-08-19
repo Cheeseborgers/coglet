@@ -1,0 +1,4 @@
+<source>:4:5: error: inline asm read-write operands cannot have a separate input operand
+    asm volatile ("incq %0" : "+r"(value) : "r"(other));
+    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1 semantic error generated.

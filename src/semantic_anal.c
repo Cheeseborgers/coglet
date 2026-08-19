@@ -16931,20 +16931,40 @@ static void check_asm_statement(SemanticContext *ctx, Node *node)
         return;
     }
 
-    if (!string_view_equals(node->as.asm_stmt.output_constraint, string_view_from_cstr("=r"))) {
+    int is_read_write = string_view_equals(
+        node->as.asm_stmt.output_constraint,
+        string_view_from_cstr("+r")
+    );
+
+    if (!is_read_write && !string_view_equals(
+            node->as.asm_stmt.output_constraint,
+            string_view_from_cstr("=r"))) {
         semantic_error(ctx, node,
-            "inline asm currently supports only the \"=r\" output constraint");
+            "inline asm currently supports only the \"=r\" and \"+r\" output constraints");
         return;
     }
 
-    if (!string_view_equals(node->as.asm_stmt.input_constraint, string_view_from_cstr("r"))) {
+    if (is_read_write) {
+        if (node->as.asm_stmt.input || node->as.asm_stmt.input_constraint.length != 0) {
+            semantic_error(ctx, node,
+                "inline asm read-write operands cannot have a separate input operand");
+            return;
+        }
+    } else if (!string_view_equals(
+            node->as.asm_stmt.input_constraint,
+            string_view_from_cstr("r"))) {
         semantic_error(ctx, node,
             "inline asm currently supports only the \"r\" input constraint");
         return;
     }
 
     Type *output_type = check_expression(ctx, node->as.asm_stmt.output);
-    Type *input_type = check_value_expression(ctx, node->as.asm_stmt.input);
+    Type *input_type = NULL;
+    if (is_read_write)
+        input_type = check_value_expression(ctx, node->as.asm_stmt.output);
+    else
+        input_type = check_value_expression(ctx, node->as.asm_stmt.input);
+
     if (!output_type || !input_type)
         return;
 

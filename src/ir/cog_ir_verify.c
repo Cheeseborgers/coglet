@@ -763,12 +763,24 @@ static int verify_instruction(
                 ? cog_ir_get_type(module, input->type)
                 : NULL;
             const CogIrType *result_type = cog_ir_get_type(module, instruction->result_type);
+            int is_read_write = string_view_equals(
+                instruction->as.asm_stmt.output_constraint,
+                string_view_from_cstr("+r")
+            );
+            int valid_constraints = is_read_write
+                ? instruction->as.asm_stmt.input_constraint.length == 0
+                : string_view_equals(
+                    instruction->as.asm_stmt.output_constraint,
+                    string_view_from_cstr("=r")
+                ) && string_view_equals(
+                    instruction->as.asm_stmt.input_constraint,
+                    string_view_from_cstr("r")
+                );
             if (!input_type || !result_type ||
                 input->type != instruction->result_type ||
                 input_type->kind != COG_IR_TYPE_INTEGER ||
                 result_type->kind != COG_IR_TYPE_INTEGER ||
-                !string_view_equals(instruction->as.asm_stmt.output_constraint, string_view_from_cstr("=r")) ||
-                !string_view_equals(instruction->as.asm_stmt.input_constraint, string_view_from_cstr("r"))) {
+                !valid_constraints) {
                 ir_error(diagnostics, instruction->span, "invalid inline asm operand types or constraints");
                 ok = 0;
             }

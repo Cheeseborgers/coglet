@@ -1311,10 +1311,12 @@ static void print_node_pretty(Node *node, int depth)
                 (int)node->as.asm_stmt.output_constraint.length,
                 node->as.asm_stmt.output_constraint.data);
             print_node_pretty(node->as.asm_stmt.output, depth + 2);
-            indent(depth + 1); printf("input: %.*s\n",
-                (int)node->as.asm_stmt.input_constraint.length,
-                node->as.asm_stmt.input_constraint.data);
-            print_node_pretty(node->as.asm_stmt.input, depth + 2);
+            if (node->as.asm_stmt.input) {
+                indent(depth + 1); printf("input: %.*s\n",
+                    (int)node->as.asm_stmt.input_constraint.length,
+                    node->as.asm_stmt.input_constraint.data);
+                print_node_pretty(node->as.asm_stmt.input, depth + 2);
+            }
             break;
 
         case NODE_STATIC_ASSERT:

@@ -3105,29 +3105,29 @@ static Node *parse_asm_statement(Parser *p)
         return ast_new_error(p->arena, p->current);
     }
 
-    if (!consume(p, TOK_COLON)) {
-        synchronize(p);
-        return ast_new_error(p->arena, p->current);
-    }
+    StringView input_constraint = {0};
+    Node *input = NULL;
 
-    if (!consume(p, TOK_STRING)) {
-        synchronize(p);
-        return ast_new_error(p->arena, p->current);
-    }
-    Token input_constraint_token = p->previous;
-    StringView input_constraint = string_view(
-        input_constraint_token.start + 1,
-        (size_t)input_constraint_token.length - 2
-    );
+    if (match(p, TOK_COLON)) {
+        if (!consume(p, TOK_STRING)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+        Token input_constraint_token = p->previous;
+        input_constraint = string_view(
+            input_constraint_token.start + 1,
+            (size_t)input_constraint_token.length - 2
+        );
 
-    if (!consume(p, TOK_LPAREN)) {
-        synchronize(p);
-        return ast_new_error(p->arena, p->current);
-    }
-    Node *input = parse_assignment(p);
-    if (!input || !consume(p, TOK_RPAREN)) {
-        synchronize(p);
-        return ast_new_error(p->arena, p->current);
+        if (!consume(p, TOK_LPAREN)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
+        input = parse_assignment(p);
+        if (!input || !consume(p, TOK_RPAREN)) {
+            synchronize(p);
+            return ast_new_error(p->arena, p->current);
+        }
     }
 
     if (!consume(p, TOK_RPAREN) || !consume(p, TOK_SEMICOLON)) {

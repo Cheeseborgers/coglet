@@ -3,7 +3,7 @@ import std.io;
 main::() -> s32 {
     std.io.println("=== inline asm smoke test ===");
 
-    value: s64 = 42;
+    value: s64 = 41;
     result: s64 = 0;
 
     std.io.print("input: ");
@@ -21,7 +21,16 @@ main::() -> s32 {
         return 1;
     }
 
-    asm volatile ("nop");
+    asm volatile ("incq %0" : "+r"(value));
+
+    std.io.print("asm output: ");
+        std.io.print_s64(value);
+        std.io.newline();
+
+    if (result != 42) {
+        std.io.println("FAIL");
+        return 1;
+    }
 
     std.io.println("PASS");
     return 0;

@@ -1,0 +1,4 @@
+<source>:1:1: error: asm is only valid inside a function
+asm volatile ("nop");
+^~~~~~~~~~~~~~~~~~~~~
+1 semantic error generated.

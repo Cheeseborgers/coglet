@@ -325,6 +325,9 @@ static const char *token_type_str(TokenType type)
         case TOK_ALIGN_OF:
             return "ALIGN_OF";
 
+        case TOK_ASM:
+            return "ASM";
+
         // Types
         case TOK_BOOL:
             return "BOOL";
@@ -625,6 +628,12 @@ static void print_node(Node *node)
 
         case NODE_EXPR_STMT:
             print_node(node->as.expr_stmt.expr);
+            break;
+
+        case NODE_ASM:
+            printf("(asm%s \"", node->as.asm_stmt.is_volatile ? " volatile" : "");
+            printf("%.*s", (int)node->as.asm_stmt.text.length, node->as.asm_stmt.text.data);
+            printf("\")");
             break;
 
         case NODE_STATIC_ASSERT:
@@ -1289,6 +1298,14 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_EXPR_STMT:
             print_node_pretty(node->as.expr_stmt.expr, depth);
+            break;
+
+        case NODE_ASM:
+            indent(depth);
+            printf("asm%s: %.*s\n",
+                   node->as.asm_stmt.is_volatile ? " volatile" : "",
+                   (int)node->as.asm_stmt.text.length,
+                   node->as.asm_stmt.text.data);
             break;
 
         case NODE_STATIC_ASSERT:

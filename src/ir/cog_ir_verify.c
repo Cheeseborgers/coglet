@@ -756,6 +756,14 @@ static int verify_instruction(
             break;
         }
 
+        case COG_IR_OP_ASM:
+            if (instruction->result != COG_IR_VALUE_INVALID ||
+                instruction->result_type != COG_IR_TYPE_INVALID) {
+                ir_error(diagnostics, instruction->span, "asm instruction cannot produce a CogIR value");
+                ok = 0;
+            }
+            break;
+
         case COG_IR_OP_CALL: {
             REQUIRE_VALUE(instruction->as.call.callee, "callee");
             const CogIrValue *callee = cog_ir_get_value(function, instruction->as.call.callee);

@@ -321,6 +321,14 @@ covers the reserved runtime ABI. Non-identifier external linker names retain the
 GNU/Clang `__asm__("symbol")` extension; MSVC diagnoses that narrower extension
 in generated C because it has no equivalent source spelling.
 
+Inline assembly is available as a low-level statement: `asm("...");` or
+`asm volatile ("...");`. The template is a normal Coglet string literal, so its
+escapes are decoded before reaching the backend. The initial form intentionally
+has no operands, outputs, constraints, clobbers, or result value; it exists as a
+small target-assembly escape hatch while those ABI-sensitive pieces are designed
+separately. The LLVM backend emits LLVM inline assembly, and the host-C backend
+emits GNU-style `__asm__` syntax. `asm` is currently valid only inside functions.
+
 The backend now consumes CogIR only and has explicit emission for every current
 `CogIrOp`. The build mirrors that dependency direction: `compiler_core` contains
 the frontend, semantic analysis, target description, and CogIR implementation,

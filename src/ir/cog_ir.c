@@ -1508,7 +1508,7 @@ const char *cog_ir_op_name(CogIrOp op)
         "fcmp.eq", "fcmp.ne", "fcmp.lt", "fcmp.le", "fcmp.gt", "fcmp.ge",
         "ptr.eq", "ptr.ne", "bool.not", "cast.checked", "int.truncate",
         "ptr.reinterpret", "ptr.qualify", "size_of", "align_of",
-        "c.vararg.promote", "call"
+        "c.vararg.promote", "asm", "call"
     };
     size_t count = sizeof(names) / sizeof(names[0]);
     if ((size_t)op >= count)

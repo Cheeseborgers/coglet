@@ -1276,6 +1276,18 @@ add_host_c_executable_test(
         "backend;backend.c;ir;scalar;bitwise;float;pointer"
 )
 add_test(
+        NAME backend_inline_asm
+        COMMAND "${CMAKE_COMMAND}"
+        -DCOMPILER=$<TARGET_FILE:coglet>
+        -DINPUT=${CMAKE_SOURCE_DIR}/tests/test_assets/backend/inline_asm.cog
+        -DOUTPUT=${COGLET_TEST_ARTIFACT_DIR}/backend_inline_asm${CMAKE_EXECUTABLE_SUFFIX}
+        -DEXPECT_EXIT=0
+        -P "${CMAKE_SOURCE_DIR}/cmake/run_backend_executable_test.cmake"
+)
+set_tests_properties(backend_inline_asm
+        PROPERTIES LABELS "backend;backend.c;ir;asm")
+
+add_test(
         NAME backend_discarded_expression_warning_free
         COMMAND "${CMAKE_COMMAND}"
         -DCOMPILER=$<TARGET_FILE:coglet>

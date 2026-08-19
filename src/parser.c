@@ -53,6 +53,7 @@ static Node *parse_switch_case(Parser *p);
 static Node *parse_return_statement(Parser *p);
 static Node *parse_defer_statement(Parser *p);
 static Node *parse_static_assert_statement(Parser *p);
+static Node *parse_asm_statement(Parser *p);
 static Node *parse_while_statement(Parser *p);
 static Node *parse_for_statement(Parser *p);
 static Node *parse_scoped_control_body(Parser *p);
@@ -389,6 +390,9 @@ const char *token_debug_display_name(TokenType type)
 
         case TOK_ALIGN_OF:
             return "'align_of'";
+
+        case TOK_ASM:
+            return "'asm'";
 
         // Types
         case TOK_BOOL:
@@ -3058,6 +3062,35 @@ static Node *parse_return_statement(Parser *p) {
     return ast_new_return(p->arena, value, span);
 }
 
+static Node *parse_asm_statement(Parser *p) {
+    SourceSpan span = p->previous.span;
+    int is_volatile = match(p, TOK_VOLATILE);
+
+    if (!consume(p, TOK_LPAREN)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    if (!consume(p, TOK_STRING)) {
+        error_at(p, &p->current, "asm requires a string literal template");
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    Token text = p->previous;
+    if (!consume(p, TOK_RPAREN) || !consume(p, TOK_SEMICOLON)) {
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    return ast_new_asm(
+        p->arena,
+        (StringView){ .data = text.start + 1, .length = (size_t)(text.length - 2) },
+        is_volatile,
+        source_span_join(span, p->previous.span)
+    );
+}
+
 static Node *parse_static_assert_statement(Parser *p) {
     SourceSpan span = p->previous.span; /* TOK_STATIC_ASSERT already consumed */
 
@@ -3329,6 +3362,7 @@ static Node *parse_statement(Parser *p) {
     if (match(p, TOK_RETURN)) return parse_return_statement(p);
     if (match(p, TOK_DEFER))  return parse_defer_statement(p);
     if (match(p, TOK_STATIC_ASSERT)) return parse_static_assert_statement(p);
+    if (match(p, TOK_ASM)) return parse_asm_statement(p);
     if (check(p, TOK_SWITCH)) return parse_switch_statement(p);
 
     if (match(p, TOK_BREAK)) {

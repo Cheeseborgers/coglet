@@ -1,0 +1,4 @@
+main::() -> s32 {
+    asm volatile ("nop");
+    return 0;
+}

@@ -1,5 +1,6 @@
 #include "backends/llvm/backend_llvm.h"
 #include "backend_llvm_internal.h"
+#include "string_decode.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -330,6 +331,46 @@ static int lower_instruction(LlvmBackend *backend, const CogIrFunction *function
             if (!llvm_lower_float_instruction(backend, function, state, insn, &result))
                 return 0;
             break;
+        case COG_IR_OP_ASM: {
+            StringDecodeInfo info = string_analyze(insn->as.asm_stmt.text);
+            char *text = malloc((size_t)info.decoded_length + 1);
+            if (!text || !info.ok) {
+                free(text);
+                llvm_backend_error(backend, "invalid inline assembly string");
+                return 0;
+            }
+            string_decode_into(insn->as.asm_stmt.text, text);
+            text[info.decoded_length] = '\0';
+
+            LLVMTypeRef asm_type = LLVMFunctionType(
+                LLVMVoidTypeInContext(backend->context),
+                NULL,
+                0,
+                0
+            );
+            LLVMValueRef inline_asm = LLVMGetInlineAsm(
+                asm_type,
+                text,
+                (size_t)info.decoded_length,
+                "",
+                0,
+                insn->as.asm_stmt.is_volatile,
+                0,
+                LLVMInlineAsmDialectATT,
+                0
+            );
+            free(text);
+            if (!inline_asm) {
+                llvm_backend_error(backend, "failed to create inline assembly value");
+                return 0;
+            }
+            result = LLVMBuildCall2(backend->builder, asm_type, inline_asm, NULL, 0, "");
+            if (!result) {
+                llvm_backend_error(backend, "failed to emit inline assembly call");
+                return 0;
+            }
+            break;
+        }
         case COG_IR_OP_C_VARARG_PROMOTE:
             if (!llvm_lower_c_vararg_promotion(backend, function, state, insn, &result))
                 return 0;

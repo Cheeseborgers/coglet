@@ -224,6 +224,11 @@ static void dump_instruction(FILE *stream, const CogIrModule *module, const CogI
             fprintf(stream, " %%%u to ", instruction->as.conversion.operand);
             dump_type_ref(stream, module, instruction->as.conversion.target_type);
             break;
+        case COG_IR_OP_ASM:
+            fprintf(stream, " %s(\"", instruction->as.asm_stmt.is_volatile ? "volatile" : "");
+            dump_sv(stream, instruction->as.asm_stmt.text);
+            fprintf(stream, "\")");
+            break;
         case COG_IR_OP_CALL:
             fprintf(stream, " %%%u(", instruction->as.call.callee);
             for (size_t i = 0; i < instruction->as.call.argument_count; ++i) {

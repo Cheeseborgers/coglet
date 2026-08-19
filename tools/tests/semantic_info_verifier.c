@@ -105,6 +105,7 @@ static const char *node_type_name(NodeType type)
         case NODE_BREAK:             return "break";
         case NODE_CONTINUE:          return "continue";
         case NODE_ERROR:             return "error";
+        case NODE_ASM:               return "asm";
     }
 
     return "<unknown-node>";
@@ -541,13 +542,6 @@ static void walk_node(ExpressionWalker *walker, Node *node)
             );
             break;
 
-        case NODE_TYPE_REF:
-            /* Compile-time type qualifier used only while resolving a method. */
-            break;
-
-        case NODE_STRUCT_FIELD_DECL:
-            break;
-
         case NODE_ENUM_DECL:
             walk_node_list(
                 walker,
@@ -701,6 +695,9 @@ static void walk_node(ExpressionWalker *walker, Node *node)
             );
             break;
 
+        case NODE_TYPE_REF: /* Compile-time type qualifier used only while resolving a method. */
+        case NODE_STRUCT_FIELD_DECL:
+        case NODE_ASM: /* Inline assembly has no semantic expressions to walk. */
         case NODE_BREAK:
         case NODE_CONTINUE:
         case NODE_ERROR:

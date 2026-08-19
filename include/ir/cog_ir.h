@@ -342,6 +342,7 @@ typedef enum CogIrOp {
     /* Target-C default argument promotion at a variadic call boundary. */
     COG_IR_OP_C_VARARG_PROMOTE,
 
+    COG_IR_OP_ASM,
     COG_IR_OP_CALL,
 } CogIrOp;
 
@@ -367,6 +368,7 @@ typedef struct CogIrInstruction {
         struct { CogIrTypeId queried_type; } type_query;
         struct { CogIrValueId aggregate; uint32_t index; } extract;
         struct { CogIrValueId *values; size_t value_count; } aggregate;
+        struct { StringView text; int is_volatile; } asm_stmt;
         struct { CogIrValueId callee; CogIrValueId *arguments; size_t argument_count; } call;
     } as;
 } CogIrInstruction;

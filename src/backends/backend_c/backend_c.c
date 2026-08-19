@@ -1,6 +1,7 @@
 //#define _POSIX_C_SOURCE 200809L
 
 #include "backends/backend_c/backend_c.h"
+#include "string_decode.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -2629,6 +2630,22 @@ static int emit_instruction(
     CogIrValueId result = instruction->result;
 
     switch (instruction->op) {
+        case COG_IR_OP_ASM: {
+            StringDecodeInfo info = string_analyze(instruction->as.asm_stmt.text);
+            char *text = malloc((size_t)info.decoded_length + 1);
+            if (!text || !info.ok) {
+                free(text);
+                backend_error(backend, instruction->span, "invalid inline assembly string");
+                return 0;
+            }
+            string_decode_into(instruction->as.asm_stmt.text, text);
+            text[info.decoded_length] = '\0';
+            fprintf(backend->out, "    __asm__ %s(", instruction->as.asm_stmt.is_volatile ? "__volatile__ " : "");
+            emit_c_string_literal(backend->out, (StringView){ .data = text, .length = (size_t)info.decoded_length });
+            fputs(");\n", backend->out);
+            free(text);
+            return 1;
+        }
         case COG_IR_OP_CONST: {
             char *expr = constant_expr(backend, instruction->as.constant.constant);
             if (!set_value_expr(exprs, value_count, result, expr))

@@ -59,6 +59,7 @@ typedef enum {
 
     NODE_EXPR_STMT,    // an expression used as a statement: `1 + 2;`
     NODE_STATIC_ASSERT, // compile-time assertion: static_assert(condition[, "message"]);
+    NODE_ASM,           // target inline assembly statement: asm [volatile] ("...");
     NODE_PACK_FOR,      // compile-time unrolled iteration over a specialized generic pack
 
     NODE_CALL,         // function calls
@@ -347,6 +348,11 @@ struct Node {
         } static_assert_stmt;
 
         struct {
+            StringView text;
+            int is_volatile;
+        } asm_stmt;
+
+        struct {
             Node *value;         // NULL for bare `return;`
         } return_stmt;
 
@@ -520,6 +526,7 @@ Node *ast_new_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, SourceSpa
 Node *ast_new_if_expr(Arena *arena, Node *cond, Node *then_value, Node *else_value, SourceSpan span);
 Node *ast_new_expr_stmt(Arena *arena, Node *expr, SourceSpan span);
 Node *ast_new_static_assert(Arena *arena, Node *condition, Node *message, SourceSpan span);
+Node *ast_new_asm(Arena *arena, StringView text, int is_volatile, SourceSpan span);
 Node *ast_new_block(Arena *arena, SourceSpan span);
 Node *ast_new_call(Arena *arena, Node *callee, SourceSpan span);
 Node *ast_new_pack_expansion(Arena *arena, Node *operand, SourceSpan span);

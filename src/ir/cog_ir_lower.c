@@ -3542,6 +3542,28 @@ static int lower_variable_declaration(ExecLowerState *state, Node *node)
     return bind_local_declaration(state, node);
 }
 
+static int lower_asm_statement(ExecLowerState *state, Node *node) {
+    CogIrInstruction instruction = {
+        .op = COG_IR_OP_ASM,
+        .result_type = COG_IR_TYPE_INVALID,
+        .span = node->span,
+        .as.asm_stmt = {
+            .text = node->as.asm_stmt.text,
+            .is_volatile = node->as.asm_stmt.is_volatile,
+        },
+    };
+    if (!cog_ir_emit(
+            state->lower->module,
+            state->function,
+            state->block,
+            &instruction,
+            NULL)) {
+        lower_error(state->lower, node->span, "failed to emit inline assembly");
+        return 0;
+    }
+    return 1;
+}
+
 static int lower_statement(ExecLowerState *state, Node *node);
 
 static int remember_defer(ExecLowerState *state, Node *node)
@@ -4012,6 +4034,8 @@ static int lower_statement(ExecLowerState *state, Node *node)
             return lower_inc_dec_statement(state, node);
         case NODE_EXPR_STMT:
             return lower_statement_expression(state, node->as.expr_stmt.expr);
+        case NODE_ASM:
+            return lower_asm_statement(state, node);
         case NODE_RETURN:
             return lower_return_statement(state, node);
         case NODE_DEFER:

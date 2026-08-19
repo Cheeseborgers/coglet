@@ -235,6 +235,7 @@ static const Keyword keywords[] = {
     {"null", TOK_NULL},
     {"size_of", TOK_SIZE_OF},
     {"align_of", TOK_ALIGN_OF},
+    {"asm", TOK_ASM},
 
     {"s8", TOK_S8},
     {"s16", TOK_S16},
@@ -1363,6 +1364,7 @@ const char *token_type_name(TokenType type) {
         case TOK_CFN: return "CFN";
         case TOK_SIZE_OF: return "SIZE_OF";
         case TOK_ALIGN_OF: return "ALIGN_OF";
+        case TOK_ASM: return "ASM";
         case TOK_S8: return "S8";
 
         case TOK_S16:

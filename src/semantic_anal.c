@@ -16924,6 +16924,27 @@ static int switch_case_values_are_exhaustive(
     return 1;
 }
 
+static void check_asm_statement(SemanticContext *ctx, Node *node) {
+    if (ctx->function_depth == 0) {
+        semantic_error(ctx, node, "asm is only valid inside a function");
+        return;
+    }
+
+    StringDecodeInfo info = string_analyze(node->as.asm_stmt.text);
+    if (!info.ok) {
+        if (info.invalid_escape >= 0) {
+            semantic_error_fmt(
+                ctx,
+                node,
+                "invalid escape sequence '\\%c' in asm template",
+                info.invalid_escape
+            );
+        } else {
+            semantic_error(ctx, node, "unterminated escape sequence in asm template");
+        }
+    }
+}
+
 static void check_static_assert_statement(SemanticContext *ctx, Node *node) {
     assert(node);
     assert(node->type == NODE_STATIC_ASSERT);
@@ -17015,6 +17036,7 @@ static void check_node(SemanticContext *ctx,Node *node) {
         case NODE_CONST_DECL:      check_const_decl(ctx,node);       break;
         case NODE_EXPR_STMT:       check_statement_expression(ctx, node->as.expr_stmt.expr); break;
         case NODE_STATIC_ASSERT:   check_static_assert_statement(ctx, node); break;
+        case NODE_ASM:             check_asm_statement(ctx, node); break;
         case NODE_PACK_FOR:        check_pack_for(ctx, node); break;
 
         case NODE_STRUCT_DECL: {

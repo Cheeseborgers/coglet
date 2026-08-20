@@ -1143,11 +1143,16 @@ compile_if_statement =
     "#endif";
 ```
 
-Compile-time conditionals reuse the normal constant-expression evaluator. The
-condition must be a compile-time constant and must evaluate to `bool`; runtime
-values are rejected with a semantic diagnostic. Only the selected branch is
-semantically checked and lowered. This means target-specific source can safely
-contain expressions or inline assembly that are invalid for another target.
+Compile-time conditionals reuse the frontend constant-expression evaluator. The
+condition must have type `bool` and must be evaluable without executing runtime
+code. Literals, compile-time constants, enum values, target values, supported
+constant operators and casts, and the compile-time layout builtins `size_of` and
+`align_of` may participate when their operands are themselves compile-time
+evaluable. Ordinary variables, runtime function calls, memory-dependent
+expressions, inline assembly, and other runtime operations are rejected with a
+semantic diagnostic. Only the selected branch is semantically checked and
+lowered. This means target-specific source can safely contain expressions or
+inline assembly that are invalid for another target.
 
 The compiler exposes the selected target as compile-time constants through
 `target.arch`, `target.os`, and `target.abi`, with matching enumerations under

@@ -16,3 +16,17 @@ main::() -> s32 {
     return 99;
 #endif
 }
+
+compile_time_return::() -> s32 {
+#if target.arch == target.arch
+    return 61;
+#endif
+}
+
+compile_time_layout::() -> s32 {
+#if size_of(usize) == size_of(opaque*)
+    return 62;
+#else
+    return 63;
+#endif
+}

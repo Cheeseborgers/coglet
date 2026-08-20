@@ -157,7 +157,7 @@ int main(int argc, char **argv)
     if (!check_valid_fixture(argv[1])) { fprintf(stderr, "valid fixture failed\n"); return 1; }
     if (!check_inactive_branch(argv[2])) { fprintf(stderr, "inactive fixture failed\n"); return 1; }
     if (!check_condition_diagnostic(argv[3], &native,
-            "compile-time #if condition must be a constant expression")) { fprintf(stderr, "nonconstant diagnostic failed\n"); return 1; }
+            "expression is not a compile-time constant")) { fprintf(stderr, "nonconstant diagnostic failed\n"); return 1; }
     if (!check_condition_diagnostic(argv[4], &native,
             "compile-time #if condition must evaluate to a boolean")) { fprintf(stderr, "nonbool diagnostic failed\n"); return 1; }
 

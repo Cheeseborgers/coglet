@@ -14578,15 +14578,24 @@ static void check_compile_if_statement(SemanticContext *ctx, Node *node)
     if (!condition_type)
         return;
 
-    if (!expression_is_compile_time_constant(ctx, node->as.if_stmt.condition)) {
+    if (!is_bool_type(condition_type)) {
         semantic_error(
             ctx,
             node->as.if_stmt.condition,
-            "compile-time #if condition must be a constant expression"
+            "compile-time #if condition must evaluate to a boolean"
         );
         return;
     }
 
+    /*
+     * The frontend constant evaluator is the single authority for what is
+     * actually evaluable at compile time. Do not maintain a second whitelist
+     * here: that would let #if drift away from constant declarations,
+     * static_assert, and other compile-time contexts.
+     *
+     * eval_const_expr() also provides the most specific diagnostic available
+     * when an operand requires runtime evaluation.
+     */
     ConstValue condition;
     if (!eval_const_expr(ctx, node->as.if_stmt.condition, &condition))
         return;
@@ -14600,6 +14609,13 @@ static void check_compile_if_statement(SemanticContext *ctx, Node *node)
         return;
     }
 
+    /*
+     * A compile-time conditional has no runtime merge point. Exactly one
+     * source branch exists in the generated program, so its flow state is
+     * also the flow state after the conditional. In particular, a selected
+     * branch that definitely initializes a variable must not be merged with
+     * a discarded path, and a selected return must remain unreachable.
+     */
     if (condition.as.boolean) {
         node->as.if_stmt.compile_time_selection = 1;
         check_node(ctx, node->as.if_stmt.then_branch);

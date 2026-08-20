@@ -1,0 +1,38 @@
+TYPED_U64: u64 : 42;
+TYPED_S32: s32 : 42;
+
+Color :: enum(u16) {
+    Red,
+}
+
+OtherColor :: enum(u16) {
+    Red,
+}
+
+check_integer_width::(value: u8) -> void {
+    switch value {
+        case TYPED_U64: {}
+        default: {}
+    }
+}
+
+check_enum_type::(value: Color) -> void {
+    switch value {
+        case OtherColor.Red: {}
+        default: {}
+    }
+}
+
+check_bool_type::(value: bool) -> void {
+    switch value {
+        case TYPED_S32: {}
+        default: {}
+    }
+}
+
+check_enum_integer::(value: Color) -> void {
+    switch value {
+        case TYPED_S32: {}
+        default: {}
+    }
+}

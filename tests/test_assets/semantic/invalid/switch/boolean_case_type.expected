@@ -1,4 +1,4 @@
-tests/test_assets/semantic/invalid/switch/boolean_case_type.cog:3:9: error: switch case type does not match switch expression type
+tests/test_assets/semantic/invalid/switch/boolean_case_type.cog:3:9: error: switch case type is incompatible with switch expression type
         case 1: {}
         ^~~~
 1 semantic error generated.

@@ -1,0 +1,13 @@
+tests/test_assets/semantic/invalid/switch/case_type_contract.cog:14:9: error: switch case type is incompatible with switch expression type
+        case TYPED_U64: {}
+        ^~~~
+tests/test_assets/semantic/invalid/switch/case_type_contract.cog:21:9: error: switch case type is incompatible with switch expression type
+        case OtherColor.Red: {}
+        ^~~~
+tests/test_assets/semantic/invalid/switch/case_type_contract.cog:28:9: error: switch case type is incompatible with switch expression type
+        case TYPED_S32: {}
+        ^~~~
+tests/test_assets/semantic/invalid/switch/case_type_contract.cog:35:9: error: switch case type is incompatible with switch expression type
+        case TYPED_S32: {}
+        ^~~~
+4 semantic errors generated.

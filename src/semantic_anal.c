@@ -4074,6 +4074,25 @@ static int is_equality_comparable_type(const Type *type) {
            is_c_function_pointer_type(type);
 }
 
+static int switch_case_type_compatible(
+    Type *switch_type,
+    Type *case_type
+) {
+    if (!switch_type || !case_type)
+        return 0;
+
+    if (type_equal(switch_type, case_type))
+        return 1;
+
+    /*
+     * An untyped integer literal may take the type of an integer switch
+     * expression. Concrete numeric types do not implicitly widen or narrow
+     * for switch case labels.
+     */
+    return case_type->kind == TYPE_UNTYPED_INT &&
+           is_concrete_integer_kind(switch_type->kind);
+}
+
 static int is_switchable_type(Type *type) {
 
     if (!type) return 0;
@@ -11904,9 +11923,9 @@ static void check_switch_case_label(
     if (!switch_type_is_valid || !case_type)
         return;
 
-    if (!initializer_compatible(comparison_type, case_type)) {
+    if (!switch_case_type_compatible(comparison_type, case_type)) {
         semantic_error(ctx, case_node,
-            "switch case type does not match switch expression type");
+            "switch case type is incompatible with switch expression type");
         return;
     }
 

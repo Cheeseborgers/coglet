@@ -2473,6 +2473,15 @@ static int ensure_global_variable_symbol_checked(SemanticContext *ctx, Symbol *s
 static void check_if_statement(SemanticContext *ctx, Node *node);
 static void check_compile_if_statement(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
+static void check_switch_case_label(
+    SemanticContext *ctx,
+    Node *case_node,
+    Type *comparison_type,
+    int switch_type_is_valid,
+    ConstValue *checked_case_values,
+    int *checked_case_value_count,
+    int *seen_default
+);
 static void check_while_statement(SemanticContext *ctx, Node *node);
 static void check_for_statement(SemanticContext *ctx, Node *node);
 static void check_static_assert_statement(SemanticContext *ctx, Node *node);
@@ -11860,6 +11869,89 @@ static int ensure_constant_symbol_checked(
     return info && info->semantic_check_complete && info->has_constant_value;
 }
 
+static void check_switch_case_label(
+    SemanticContext *ctx,
+    Node *case_node,
+    Type *comparison_type,
+    int switch_type_is_valid,
+    ConstValue *checked_case_values,
+    int *checked_case_value_count,
+    int *seen_default
+) {
+
+    assert(ctx);
+    assert(case_node);
+    assert(case_node->type == NODE_SWITCH_CASE);
+    assert(checked_case_value_count);
+    assert(seen_default);
+
+    if (case_node->as.switch_case.is_default) {
+        if (*seen_default) {
+            semantic_error(ctx, case_node,
+                "duplicate default case");
+        }
+
+        *seen_default = 1;
+        return;
+    }
+
+    Node *case_value_node =
+        case_node->as.switch_case.value;
+
+    Type *case_type =
+        check_value_expression(ctx, case_value_node);
+
+    if (!switch_type_is_valid || !case_type)
+        return;
+
+    if (!initializer_compatible(comparison_type, case_type)) {
+        semantic_error(ctx, case_node,
+            "switch case type does not match switch expression type");
+        return;
+    }
+
+    ConstValue case_value;
+
+    if (!eval_const_expr(ctx, case_value_node, &case_value))
+        return;
+
+    ConstValue converted_case;
+
+    if (!coerce_constant_to_type(
+            ctx,
+            case_value_node,
+            &case_value,
+            comparison_type,
+            "switch case value does not fit switch expression type",
+            "switch case value does not fit switch expression type",
+            &converted_case
+        )) {
+        return;
+    }
+
+    sem_record_context_conversion_if_needed(
+        ctx,
+        case_value_node,
+        comparison_type,
+        case_type
+    );
+
+    for (int i = 0; i < *checked_case_value_count; i++) {
+        if (const_values_equal(
+                &checked_case_values[i],
+                &converted_case
+            )) {
+            semantic_error(ctx, case_node,
+                "duplicate switch case");
+            return;
+        }
+    }
+
+    checked_case_values[*checked_case_value_count] =
+        converted_case;
+    (*checked_case_value_count)++;
+}
+
 static void check_switch_statement(SemanticContext *ctx, Node *node) {
 
     Type *switch_type =
@@ -11883,6 +11975,7 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
 
     node->as.switch_stmt.resolved_type =
         comparison_type;
+    node->as.switch_stmt.is_exhaustive = 0;
 
     int switch_type_is_valid =
         is_switchable_type(comparison_type);
@@ -11893,7 +11986,7 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
     }
 
     int case_count =
-    node->as.switch_stmt.cases.count;
+        node->as.switch_stmt.cases.count;
 
     /*
      * Only successfully checked and converted case values enter this
@@ -11909,7 +12002,7 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
             : NULL;
 
     int checked_case_value_count = 0;
-    int seen_default             = 0;
+    int seen_default = 0;
 
     /*
      * Every case begins from the state that exists after evaluating
@@ -11943,76 +12036,15 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
         ctx->flow =
             flow_clone(ctx, &incoming);
 
-        if (case_node->as.switch_case.is_default) {
-            if (seen_default) {
-                semantic_error(ctx, case_node,
-                    "duplicate default case");
-            }
-
-            seen_default = 1;
-        } else {
-            Node *case_value_node =
-                case_node->as.switch_case.value;
-
-            Type *case_type =
-                check_value_expression(ctx, case_value_node);
-
-            if (switch_type_is_valid &&
-                case_type) {
-                if (!initializer_compatible(comparison_type, case_type)) {
-                    semantic_error(ctx, case_node,
-                        "switch case type does not match switch expression type");
-                } else {
-                    ConstValue case_value;
-
-                    if (eval_const_expr(ctx, case_value_node, &case_value)) {
-
-                        ConstValue converted_case;
-
-                        if (coerce_constant_to_type(
-                                ctx,
-                                case_value_node,
-                                &case_value,
-                                comparison_type,
-                                "switch case value does not fit switch expression type",
-                                "switch case value does not fit switch expression type",
-                                &converted_case
-                            )) {
-
-                            sem_record_context_conversion_if_needed(
-                                ctx,
-                                case_value_node,
-                                comparison_type,
-                                case_type
-                            );
-
-                            int duplicate_case = 0;
-
-                            for (int j = 0;
-                                 j < checked_case_value_count;
-                                 j++) {
-                                if (const_values_equal(
-                                        &checked_case_values[j],
-                                        &converted_case
-                                    )) {
-                                    semantic_error(ctx, case_node,
-                                        "duplicate switch case");
-
-                                    duplicate_case = 1;
-                                    break;
-                                    }
-                                 }
-
-                            if (!duplicate_case) {
-                                checked_case_values[
-                                    checked_case_value_count++
-                                ] = converted_case;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        check_switch_case_label(
+            ctx,
+            case_node,
+            comparison_type,
+            switch_type_is_valid,
+            checked_case_values,
+            &checked_case_value_count,
+            &seen_default
+        );
 
         check_node(ctx, case_node->as.switch_case.body);
 

@@ -225,6 +225,9 @@ target_link_libraries(check_target_info PRIVATE compiler_core)
 add_executable(check_target_expressions tools/tests/check_target_expressions.c)
 target_link_libraries(check_target_expressions PRIVATE compiler_core)
 
+add_executable(check_compile_time_if tools/tests/check_compile_time_if.c)
+target_link_libraries(check_compile_time_if PRIVATE compiler_core)
+
 # --- Contextual-conversion semantic metadata checker. ---
 add_executable(check_contextual_conversions tools/tests/check_contextual_conversions.c)
 target_link_libraries(check_contextual_conversions PRIVATE compiler_core)
@@ -899,6 +902,19 @@ add_test(
         COMMAND "$<TARGET_FILE:check_target_expressions>"
                 "${CMAKE_SOURCE_DIR}/tests/test_assets/target/compile_time_expressions.cog"
 )
+
+add_test(
+        NAME compile_time_if_semantics
+        COMMAND "$<TARGET_FILE:check_compile_time_if>"
+                "${CMAKE_SOURCE_DIR}/tests/test_assets/target/compile_time_if.cog"
+                "${CMAKE_SOURCE_DIR}/tests/test_assets/target/compile_time_if_inactive.cog"
+                "${CMAKE_SOURCE_DIR}/tests/test_assets/target/compile_time_if_nonconstant.cog"
+                "${CMAKE_SOURCE_DIR}/tests/test_assets/target/compile_time_if_nonbool.cog"
+)
+set_tests_properties(
+        compile_time_if_semantics
+        PROPERTIES LABELS "target;semantic;compile-time;conditional"
+)
 set_tests_properties(
         target_compile_time_expressions_cross_target
         PROPERTIES LABELS "target;semantic;constant;compile-time"
@@ -1247,6 +1263,7 @@ set(COGLET_TEST_TOOL_TARGETS
         check_semantics
         check_target_info
         check_target_expressions
+        check_compile_time_if
         check_contextual_conversions
         check_constant_values
         check_source_provenance

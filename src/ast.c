@@ -117,6 +117,15 @@ Node *ast_new_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, SourceSpa
     node->as.if_stmt.condition   = cond;
     node->as.if_stmt.then_branch = then_b;
     node->as.if_stmt.else_branch = else_b;
+    node->as.if_stmt.is_compile_time = 0;
+    node->as.if_stmt.compile_time_selection = 0;
+    return node;
+}
+
+Node *ast_new_compile_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, SourceSpan span) {
+    Node *node = ast_new_if(arena, cond, then_b, else_b, span);
+    node->as.if_stmt.is_compile_time = 1;
+    node->as.if_stmt.compile_time_selection = 0;
     return node;
 }
 

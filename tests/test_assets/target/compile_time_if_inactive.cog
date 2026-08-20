@@ -1,0 +1,8 @@
+main::() -> s32 {
+#if target.arch == arch.x86_64
+    return 42;
+#elif target.arch == arch.aarch64
+    missing_function();
+    return 43;
+#endif
+}

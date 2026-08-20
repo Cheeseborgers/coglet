@@ -1,0 +1,7 @@
+main::() -> s32 {
+    value: s32 = 1;
+#if value == 1
+    return 42;
+#endif
+    return 0;
+}

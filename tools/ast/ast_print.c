@@ -612,7 +612,7 @@ static void print_node(Node *node)
             break;
 
         case NODE_IF:
-            printf("(if ");
+            printf("(%s ", node->as.if_stmt.is_compile_time ? "compile_if" : "if");
             print_node(node->as.if_stmt.condition);
             printf(" ");
             print_node(node->as.if_stmt.then_branch);
@@ -1236,7 +1236,7 @@ static void print_node_pretty(Node *node, int depth)
 
         case NODE_IF:
             indent(depth);
-            printf("if\n");
+            printf("%s\n", node->as.if_stmt.is_compile_time ? "compile_if" : "if");
 
             indent(depth + 1);
             printf("condition:\n");

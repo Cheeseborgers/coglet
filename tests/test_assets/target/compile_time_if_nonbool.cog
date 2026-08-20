@@ -1,0 +1,7 @@
+helper::() {
+#if 1
+    value: s32 = 42;
+#else
+    value: s32 = 0;
+#endif
+}

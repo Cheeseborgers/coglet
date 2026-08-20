@@ -241,6 +241,9 @@ struct Node {
             Node *condition;
             Node *then_branch;
             Node *else_branch; // NULL if no else
+            int is_compile_time;
+            /* 0 = not selected yet, 1 = then, 2 = else, -1 = no branch. */
+            int compile_time_selection;
         } if_stmt;
 
         struct {
@@ -537,6 +540,7 @@ Node *ast_new_inc_dec(Arena *arena, TokenType op, Node *target, int is_prefix, S
 Node *ast_new_binary(Arena *arena, TokenType op, Node *left, Node *right, SourceSpan span);
 Node *ast_new_assign(Arena *arena,Node *target,Node *value,SourceSpan span);
 Node *ast_new_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, SourceSpan span);
+Node *ast_new_compile_if(Arena *arena, Node *cond, Node *then_b, Node *else_b, SourceSpan span);
 Node *ast_new_if_expr(Arena *arena, Node *cond, Node *then_value, Node *else_value, SourceSpan span);
 Node *ast_new_expr_stmt(Arena *arena, Node *expr, SourceSpan span);
 Node *ast_new_static_assert(Arena *arena, Node *condition, Node *message, SourceSpan span);

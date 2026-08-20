@@ -2462,6 +2462,7 @@ static void check_const_decl(SemanticContext *ctx, Node *node);
 static int ensure_constant_symbol_checked(SemanticContext *ctx, Symbol *symbol);
 static int ensure_global_variable_symbol_checked(SemanticContext *ctx, Symbol *symbol);
 static void check_if_statement(SemanticContext *ctx, Node *node);
+static void check_compile_if_statement(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
 static void check_while_statement(SemanticContext *ctx, Node *node);
 static void check_for_statement(SemanticContext *ctx, Node *node);
@@ -14569,6 +14570,51 @@ static void check_program(SemanticContext *ctx, Node *node)
     ctx->current_scope = ctx->root_module->scope;
 }
 
+static void check_compile_if_statement(SemanticContext *ctx, Node *node)
+{
+    Type *condition_type =
+        check_value_expression(ctx, node->as.if_stmt.condition);
+
+    if (!condition_type)
+        return;
+
+    if (!expression_is_compile_time_constant(ctx, node->as.if_stmt.condition)) {
+        semantic_error(
+            ctx,
+            node->as.if_stmt.condition,
+            "compile-time #if condition must be a constant expression"
+        );
+        return;
+    }
+
+    ConstValue condition;
+    if (!eval_const_expr(ctx, node->as.if_stmt.condition, &condition))
+        return;
+
+    if (condition.kind != CONST_VALUE_BOOL) {
+        semantic_error(
+            ctx,
+            node->as.if_stmt.condition,
+            "compile-time #if condition must evaluate to a boolean"
+        );
+        return;
+    }
+
+    if (condition.as.boolean) {
+        node->as.if_stmt.compile_time_selection = 1;
+        check_node(ctx, node->as.if_stmt.then_branch);
+        return;
+    }
+
+    if (!node->as.if_stmt.else_branch) {
+        node->as.if_stmt.compile_time_selection = -1;
+        return;
+    }
+
+    node->as.if_stmt.compile_time_selection = 2;
+    check_node(ctx, node->as.if_stmt.else_branch);
+}
+
 static void check_if_statement(SemanticContext *ctx, Node *node) {
 
     Type *cond =
@@ -17243,7 +17289,12 @@ static void check_node(SemanticContext *ctx,Node *node) {
             break;
         case NODE_FUNC_PARAM_DECL: check_param_decl(ctx,node);       break;
         case NODE_FUNC_DECL:       check_function(ctx,node);         break;
-        case NODE_IF:              check_if_statement(ctx,node);     break;
+        case NODE_IF:
+            if (node->as.if_stmt.is_compile_time)
+                check_compile_if_statement(ctx, node);
+            else
+                check_if_statement(ctx, node);
+            break;
         case NODE_FOR:             check_for_statement(ctx, node);   break;
         case NODE_WHILE:           check_while_statement(ctx, node); break;
         case NODE_CONST_DECL:      check_const_decl(ctx,node);       break;

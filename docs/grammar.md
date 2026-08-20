@@ -1133,6 +1133,41 @@ three-clause initializer as a surrounding lexical block followed by the existing
 `for` node. These surface variants therefore do not add backend-specific loop
 semantics.
 
+## Compile-time Conditionals
+
+```ebnf
+compile_if_statement =
+    "#if" constant_boolean_expression statement*
+    { "#elif" constant_boolean_expression statement* }
+    [ "#else" statement* ]
+    "#endif";
+```
+
+Compile-time conditionals reuse the normal constant-expression evaluator. The
+condition must be a compile-time constant and must evaluate to `bool`; runtime
+values are rejected with a semantic diagnostic. Only the selected branch is
+semantically checked and lowered. This means target-specific source can safely
+contain expressions or inline assembly that are invalid for another target.
+
+The compiler exposes the selected target as compile-time constants through
+`target.arch`, `target.os`, and `target.abi`, with matching enumerations under
+`arch`, `os`, and `abi`. For example:
+
+```cog
+#if target.arch == arch.x86_64
+    ...
+#elif target.arch == arch.aarch64
+    ...
+#else
+    ...
+#endif
+```
+
+`#elif` is represented as a nested compile-time conditional internally, so
+nested `#if` and arbitrarily long `#elif` chains use the same semantic and
+lowering path. `#else` is optional. The directive is a statement-level language
+construct; it is not a textual macro preprocessor.
+
 ## Static Assertions
 
 ```ebnf

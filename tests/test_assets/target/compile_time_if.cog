@@ -1,0 +1,18 @@
+main::() -> s32 {
+#if target.arch == arch.x86_64
+    #if target.os == os.linux
+        return 42;
+    #else
+        return 43;
+    #endif
+#elif target.arch == arch.aarch64
+    #if target.os == os.linux
+        return 52;
+    #else
+        return 53;
+    #endif
+#else
+    missing_function();
+    return 99;
+#endif
+}

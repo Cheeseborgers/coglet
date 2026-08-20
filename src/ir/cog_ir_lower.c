@@ -3754,6 +3754,24 @@ static int lower_return_statement(ExecLowerState *state, Node *node)
 
 static int lower_if_statement(ExecLowerState *state, Node *node)
 {
+    if (node->as.if_stmt.is_compile_time) {
+        switch (node->as.if_stmt.compile_time_selection) {
+            case 1:
+                return lower_statement(state, node->as.if_stmt.then_branch);
+            case 2:
+                return lower_statement(state, node->as.if_stmt.else_branch);
+            case -1:
+                return 1;
+            default:
+                lower_error(
+                    state->lower,
+                    node->span,
+                    "compile-time #if was not resolved before CogIR lowering"
+                );
+                return 0;
+        }
+    }
+
     CogIrValueId condition = lower_expression(state, node->as.if_stmt.condition);
     if (condition == COG_IR_VALUE_INVALID || !block_is_open(state))
         return 0;

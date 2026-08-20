@@ -14,6 +14,9 @@
 static Node *parse_expression(Parser *p);
 static Node *parse_expr_statement(Parser *p);
 static Node *parse_if_statement(Parser *p);
+static Node *parse_compile_if_statement(Parser *p);
+static Node *parse_compile_if_after_keyword(Parser *p, Token keyword);
+static Node *parse_compile_if_body(Parser *p);
 static Node *parse_if_expression(Parser *p);
 static Node *parse_statement(Parser *p);
 static Node *parse_block(Parser *p);
@@ -3499,7 +3502,140 @@ static Node *parse_for_statement(Parser *p) {
     return ast_new_for(p->arena, cond, post, body, source_span_join(span, body->span));
 }
 
+static int is_compile_if_keyword(Parser *p, TokenType keyword)
+{
+    return check(p, TOK_HASH) && peek_next_token_type(p) == keyword;
+}
+
+static int is_compile_if_named_directive(Parser *p, const char *name, size_t length)
+{
+    if (!check(p, TOK_HASH))
+        return 0;
+
+    Lexer lookahead = p->lexer;
+    Token token = lexer_next(&lookahead);
+    return token.type == TOK_IDENT && token.length == (int)length &&
+           memcmp(token.start, name, length) == 0;
+}
+
+static int is_compile_if_end(Parser *p)
+{
+    if (!check(p, TOK_HASH))
+        return 0;
+
+    Lexer lookahead = p->lexer;
+    Token token = lexer_next(&lookahead);
+    return token.type == TOK_IDENT && token.length == 5 &&
+           memcmp(token.start, "endif", 5) == 0;
+}
+
+static Node *parse_compile_if_body(Parser *p)
+{
+    Node *block = ast_new_block(p->arena, p->current.span);
+
+    while (!check(p, TOK_EOF) &&
+           !check(p, TOK_RBRACE) &&
+           !is_compile_if_named_directive(p, "elif", 4) &&
+           !is_compile_if_keyword(p, TOK_ELSE) &&
+           !is_compile_if_end(p)) {
+        Node *statement = parse_statement(p);
+        nodelist_push(p->arena, &block->as.block.statements, statement);
+    }
+
+    return block;
+}
+
+static int consume_compile_if_end(Parser *p)
+{
+    if (!is_compile_if_end(p))
+        return 0;
+
+    advance(p);
+    return consume(p, TOK_IDENT);
+}
+
+static Node *parse_compile_if_after_keyword(Parser *p, Token keyword)
+{
+    int saved = p->suppress_struct_init;
+    p->suppress_struct_init = 1;
+    Node *condition = parse_expression(p);
+    p->suppress_struct_init = saved;
+
+    Node *then_branch = parse_compile_if_body(p);
+    Node *else_branch = NULL;
+
+    if (is_compile_if_named_directive(p, "elif", 4)) {
+        advance(p);
+        Token elif = p->current;
+        advance(p);
+        else_branch = parse_compile_if_after_keyword(p, elif);
+    } else if (is_compile_if_keyword(p, TOK_ELSE)) {
+        advance(p);
+        advance(p);
+        else_branch = parse_compile_if_body(p);
+
+        if (!consume_compile_if_end(p)) {
+            error_at(
+                p,
+                &p->current,
+                "expected '#endif' after compile-time #else block"
+            );
+            return ast_new_error(p->arena, p->current);
+        }
+    } else if (!consume_compile_if_end(p)) {
+        error_at(
+            p,
+            &p->current,
+            "expected '#elif', '#else', or '#endif' after compile-time #if block"
+        );
+        return ast_new_error(p->arena, p->current);
+    }
+
+    return ast_new_compile_if(
+        p->arena,
+        condition,
+        then_branch,
+        else_branch,
+        source_span_join(
+            keyword.span,
+            else_branch ? else_branch->span : then_branch->span
+        )
+    );
+}
+
+static Node *parse_compile_if_statement(Parser *p)
+{
+    advance(p);
+
+    if (!consume(p, TOK_IF)) {
+        error_at(
+            p,
+            &p->current,
+            "expected 'if' after '#' in compile-time conditional"
+        );
+        synchronize(p);
+        return ast_new_error(p->arena, p->current);
+    }
+
+    return parse_compile_if_after_keyword(p, p->previous);
+}
+
 static Node *parse_statement(Parser *p) {
+
+    if (is_compile_if_keyword(p, TOK_IF))
+        return parse_compile_if_statement(p);
+
+    if (is_compile_if_named_directive(p, "elif", 4) ||
+        is_compile_if_keyword(p, TOK_ELSE) ||
+        is_compile_if_end(p)) {
+        error_at(
+            p,
+            &p->current,
+            "unexpected compile-time conditional directive"
+        );
+        advance(p);
+        return ast_new_error(p->arena, p->previous);
+    }
 
     if (check(p, TOK_HASH))   return parse_attribute_decl(p);
     if (match(p, TOK_IF))     return parse_if_statement(p);

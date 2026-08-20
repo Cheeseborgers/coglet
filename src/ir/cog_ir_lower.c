@@ -3989,44 +3989,6 @@ static int lower_for_statement(ExecLowerState *state, Node *node)
     return 1;
 }
 
-static int switch_is_exhaustive(CogIrLowerContext *ctx, Node *node, const CogIrConstId *keys, size_t key_count, int has_default)
-{
-    if (has_default)
-        return 1;
-    Type *type = node->as.switch_stmt.resolved_type;
-    if (!type || key_count == 0)
-        return 0;
-    if (type->kind == TYPE_BOOL) {
-        int has_false = 0, has_true = 0;
-        for (size_t i = 0; i < key_count; ++i) {
-            const CogIrConstant *key = cog_ir_get_constant(ctx->module, keys[i]);
-            if (key && key->kind == COG_IR_CONST_BOOL) {
-                if (key->as.boolean) has_true = 1; else has_false = 1;
-            }
-        }
-        return has_true && has_false;
-    }
-    if (type->kind != TYPE_ENUM || type->enum_member_count <= 0)
-        return 0;
-    unsigned width = integer_type_width(type);
-    if (!width)
-        return 0;
-    for (int member = 0; member < type->enum_member_count; ++member) {
-        uint64_t bits = integer_value_bits(type->enum_members[member].value, width);
-        int found = 0;
-        for (size_t i = 0; i < key_count; ++i) {
-            const CogIrConstant *key = cog_ir_get_constant(ctx->module, keys[i]);
-            if (key && key->kind == COG_IR_CONST_INTEGER && key->as.integer_bits == bits) {
-                found = 1;
-                break;
-            }
-        }
-        if (!found)
-            return 0;
-    }
-    return 1;
-}
-
 static int lower_switch_statement(ExecLowerState *state, Node *node)
 {
     CogIrValueId selector = lower_expression(state, node->as.switch_stmt.expression);
@@ -4074,7 +4036,7 @@ static int lower_switch_statement(ExecLowerState *state, Node *node)
         }
     }
 
-    int exhaustive = switch_is_exhaustive(state->lower, node, keys, value_case_count, has_default);
+    int exhaustive = node->as.switch_stmt.is_exhaustive;
     CogIrBlockId unmatched_block = COG_IR_BLOCK_INVALID;
     if (!has_default && exhaustive) {
         unmatched_block = add_block(state, "switch.unmatched", node->span);

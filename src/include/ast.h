@@ -390,6 +390,7 @@ struct Node {
             Node *expression;
             NodeList cases;
             Type *resolved_type;
+            int is_exhaustive;
         } switch_stmt;
 
         struct {

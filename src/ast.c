@@ -358,6 +358,7 @@ Node *ast_new_switch(Arena *arena,Node *expression,SourceSpan span) {
 
     node->as.switch_stmt.expression    = expression;
     node->as.switch_stmt.resolved_type = NULL;
+    node->as.switch_stmt.is_exhaustive = 0;
 
     node->as.switch_stmt.cases.items    = NULL;
     node->as.switch_stmt.cases.count    = 0;
@@ -962,6 +963,7 @@ Node *ast_clone(Arena *arena, const Node *node)
                 ast_clone(arena, node->as.switch_stmt.expression);
 
             clone->as.switch_stmt.resolved_type = NULL;
+            clone->as.switch_stmt.is_exhaustive = 0;
 
             clone->as.switch_stmt.cases.items = NULL;
             clone->as.switch_stmt.cases.count = 0;

@@ -12048,15 +12048,15 @@ static void check_switch_statement(SemanticContext *ctx, Node *node) {
         return;
     }
 
-    int is_exhaustive =
-    switch_case_values_are_exhaustive(
-        comparison_type,
-        checked_case_values,
-        checked_case_value_count,
-        seen_default
-    );
+    node->as.switch_stmt.is_exhaustive =
+        switch_case_values_are_exhaustive(
+            comparison_type,
+            checked_case_values,
+            checked_case_value_count,
+            seen_default
+        );
 
-    if (is_exhaustive) {
+    if (node->as.switch_stmt.is_exhaustive) {
         ctx->flow = merged_case_flow;
         return;
     }

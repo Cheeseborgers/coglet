@@ -1,0 +1,4 @@
+tests/test_assets/semantic/invalid/switch/canonical_duplicate_case.cog:6:9: error: duplicate switch case
+        case ONE_U8: {}
+        ^~~~
+1 semantic error generated.

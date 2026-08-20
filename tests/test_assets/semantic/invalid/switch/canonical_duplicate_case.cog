@@ -1,0 +1,9 @@
+ONE_U8: u8 : 1;
+
+test::(value: u8) -> void {
+    switch value {
+        case 1: {}
+        case ONE_U8: {}
+        default: {}
+    }
+}

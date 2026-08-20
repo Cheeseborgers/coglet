@@ -2473,6 +2473,13 @@ static int ensure_global_variable_symbol_checked(SemanticContext *ctx, Symbol *s
 static void check_if_statement(SemanticContext *ctx, Node *node);
 static void check_compile_if_statement(SemanticContext *ctx, Node *node);
 static void check_switch_statement(SemanticContext *ctx, Node *node);
+static int record_switch_case_value(
+    SemanticContext *ctx,
+    Node *case_node,
+    const ConstValue *case_value,
+    ConstValue *checked_case_values,
+    int *checked_case_value_count
+);
 static void check_switch_case_label(
     SemanticContext *ctx,
     Node *case_node,
@@ -4348,7 +4355,7 @@ static int is_pointer_null_pair(const Type *left, const Type *right) {
          is_nullable_pointer_type(right));
 }
 
-static int const_values_equal(ConstValue *a, ConstValue *b)
+static int const_values_equal(const ConstValue *a, const ConstValue *b)
 {
     if (!a || !b) return 0;
 
@@ -4373,6 +4380,36 @@ static int const_values_equal(ConstValue *a, ConstValue *b)
 
     return 0;
 }
+
+static int record_switch_case_value(
+    SemanticContext *ctx,
+    Node *case_node,
+    const ConstValue *case_value,
+    ConstValue *checked_case_values,
+    int *checked_case_value_count
+) {
+    assert(ctx);
+    assert(case_node);
+    assert(case_value);
+    assert(checked_case_value_count);
+
+    for (int i = 0; i < *checked_case_value_count; i++) {
+        if (const_values_equal(
+                &checked_case_values[i],
+                case_value
+            )) {
+            semantic_error(ctx, case_node,
+                "duplicate switch case");
+            return 0;
+        }
+    }
+
+    checked_case_values[*checked_case_value_count] =
+        *case_value;
+    (*checked_case_value_count)++;
+    return 1;
+}
+
 
 static int default_numeric_operation_rank(TypeKind kind) {
 
@@ -11955,20 +11992,13 @@ static void check_switch_case_label(
         case_type
     );
 
-    for (int i = 0; i < *checked_case_value_count; i++) {
-        if (const_values_equal(
-                &checked_case_values[i],
-                &converted_case
-            )) {
-            semantic_error(ctx, case_node,
-                "duplicate switch case");
-            return;
-        }
-    }
-
-    checked_case_values[*checked_case_value_count] =
-        converted_case;
-    (*checked_case_value_count)++;
+    record_switch_case_value(
+        ctx,
+        case_node,
+        &converted_case,
+        checked_case_values,
+        checked_case_value_count
+    );
 }
 
 static void check_switch_statement(SemanticContext *ctx, Node *node) {

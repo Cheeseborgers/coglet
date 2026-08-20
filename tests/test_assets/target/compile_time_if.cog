@@ -30,3 +30,14 @@ compile_time_layout::() -> s32 {
     return 63;
 #endif
 }
+
+compile_time_constants::() -> s32 {
+    base :: 3;
+    limit :: base * 2;
+
+#if limit == 6 && align_of(u64) == 8
+    return 64;
+#else
+    return 65;
+#endif
+}

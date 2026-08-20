@@ -230,6 +230,9 @@ static void semantic_error_fmt(SemanticContext *ctx, const Node *node, const cha
     assert(ctx);
     assert(node);
 
+    if (ctx->const_eval_silent)
+        return;
+
     va_list args;
     va_start(args, fmt);
     va_list copy;
@@ -269,6 +272,9 @@ static void semantic_error(SemanticContext *ctx, const Node *node, const char *m
     assert(ctx);
     assert(node);
 
+    if (ctx->const_eval_silent)
+        return;
+
     diagnostic_add(
         &ctx->diagnostics,
         DIAGNOSTIC_ERROR,
@@ -285,6 +291,9 @@ static void semantic_error_name(
     SemanticContext *ctx, const Node *node, const char *prefix, const char *name, size_t length) {
     assert(ctx);
     assert(node);
+
+    if (ctx->const_eval_silent)
+        return;
 
     diagnostic_add_fmt(
         &ctx->diagnostics,
@@ -2513,8 +2522,8 @@ static int switch_case_values_are_exhaustive(
     Type *switch_type, const ConstValue *case_values, int case_value_count, int has_default);
 
 static int eval_const_checked_cast(SemanticContext *ctx, Node *node, ConstValue *out);
-static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node);
 static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out);
+static int try_eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out);
 static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *out);
 static int target_constant_value(SemanticContext *ctx, Node *node, ConstValue *out);
 static int try_coerce_constant_to_type(
@@ -4023,14 +4032,13 @@ static int is_integer_to_enum_cast(Type *to, Type *from) { return is_enum_type(t
 static int expression_compile_time_bool_value(
     SemanticContext *ctx, Node *node, int *out_value) {
 
-    if (!ctx || !node || !out_value ||
-        !expression_is_compile_time_constant(ctx, node)) {
+    if (!ctx || !node || !out_value) {
         return 0;
     }
 
     ConstValue value;
 
-    if (!eval_const_expr(ctx, node, &value) ||
+    if (!try_eval_const_expr(ctx, node, &value) ||
         value.kind != CONST_VALUE_BOOL) {
         return 0;
     }
@@ -5187,6 +5195,36 @@ static int eval_const_expr(SemanticContext *ctx, Node *node, ConstValue *out) {
     return 1;
 }
 
+/*
+ * Probe the same evaluator without producing a diagnostic when the expression
+ * turns out to require runtime evaluation. Optional constant folding and flow
+ * analysis use this form; compile-time-required constructs use eval_const_expr()
+ * so the user receives the evaluator's specific diagnostic.
+ */
+static int try_eval_const_expr(
+    SemanticContext *ctx,
+    Node *node,
+    ConstValue *out
+) {
+    if (!ctx || !node || !out)
+        return 0;
+
+    int saved_silent = ctx->const_eval_silent;
+    ctx->const_eval_silent = 1;
+
+    int result = eval_const_expr_impl(ctx, node, out);
+
+    ctx->const_eval_silent = saved_silent;
+
+    if (result) {
+        SemExprInfo *info = sem_get_or_create_expr_info(ctx, node);
+        info->has_constant_value = 1;
+        info->constant_value = *out;
+    }
+
+    return result;
+}
+
 static int eval_const_expr_impl(SemanticContext *ctx, Node *node, ConstValue *out) {
 
     if (!node) return 0;
@@ -6067,17 +6105,13 @@ static Type *concretize_inferred_type(SemanticContext *ctx, Node *expression, Ty
     if (!is_untyped_numeric_type(type))
         return type;
 
-    if (!expression_is_compile_time_constant(ctx, expression)) {
-        semantic_error(ctx, expression,
-            "cannot infer a concrete type from a non-constant untyped expression");
-
-        return NULL;
-    }
-
     ConstValue value;
 
-    if (!eval_const_expr(ctx, expression, &value))
+    if (!eval_const_expr(ctx, expression, &value)) {
+        semantic_error(ctx, expression,
+            "cannot infer a concrete type from a non-constant untyped expression");
         return NULL;
+    }
 
     Type *concrete = default_concrete_type_for_constant(
         ctx,
@@ -6479,14 +6513,11 @@ static int check_constant_value_against_type(
     const char *integer_range_message,
     const char *float_range_message
 ) {
-    if (!expression_is_compile_time_constant(ctx, node))
-        return 1;
-
     ConstValue value;
     ConstValue converted;
 
-    if (!eval_const_expr(ctx, node, &value))
-        return 0;
+    if (!try_eval_const_expr(ctx, node, &value))
+        return 1;
 
     return coerce_constant_to_type(
         ctx,
@@ -6509,16 +6540,28 @@ static int check_binary_constant_operands(
     const char *float_range_message,
     Type **evaluated_type
 ) {
-    if (expression_is_compile_time_constant(ctx, node)) {
+    {
         ConstValue value;
 
-        if (!eval_const_expr(ctx, node, &value))
-            return 0;
+        if (try_eval_const_expr(ctx, node, &value)) {
+            if (evaluated_type && value.type)
+                *evaluated_type = value.type;
+            return 1;
+        }
 
-        if (evaluated_type && value.type)
-            *evaluated_type = value.type;
-
-        return 1;
+        /*
+         * A failed whole-expression probe can mean either that the expression
+         * is runtime-dependent or that a genuinely constant operation is
+         * invalid (overflow, bad shift, etc.). If both operands are constant,
+         * rerun the authoritative evaluator so the user gets its diagnostic.
+         */
+        ConstValue left_value;
+        ConstValue right_value;
+        if (try_eval_const_expr(ctx, node->as.binary.left, &left_value) &&
+            try_eval_const_expr(ctx, node->as.binary.right, &right_value)) {
+            if (!eval_const_expr(ctx, node, &value))
+                return 0;
+        }
     }
 
     Node *operands[2] = {
@@ -6583,10 +6626,10 @@ static int check_known_integer_divisor(
     if (!is_integer_kind(operation_type->kind))
         return 1;
 
-    if (!expression_is_compile_time_constant(ctx, divisor))
-        return 1;
-
     ConstValue value;
+
+    if (!try_eval_const_expr(ctx, divisor, &value))
+        return 1;
 
     if (!eval_const_expr(ctx, divisor, &value)) {
         return 0;
@@ -6617,15 +6660,10 @@ static int check_known_shift_count(SemanticContext *ctx, Node *count_node, Type 
      * Unknown runtime counts are accepted by the frontend. A future
      * execution layer must enforce the same range rule dynamically.
      */
-    if (!expression_is_compile_time_constant(ctx, count_node)) {
-        return 1;
-    }
-
     ConstValue count;
 
-    if (!eval_const_expr(ctx, count_node, &count)) {
-        return 0;
-    }
+    if (!try_eval_const_expr(ctx, count_node, &count))
+        return 1;
 
     if (count.kind != CONST_VALUE_INT) {
         semantic_error(ctx, count_node,
@@ -6727,149 +6765,6 @@ static int target_constant_value(
     out->as.integer = integer_value_make((int64_t)value, 0);
     out->type = ctx->type_u64;
     return 1;
-}
-
-static int expression_is_compile_time_constant(SemanticContext *ctx, Node *node) {
-
-    if (!node) return 0;
-
-    switch (node->type) {
-        case NODE_NUMBER:
-        case NODE_BOOL:
-        case NODE_NULL:
-            return 1;
-
-        case NODE_CAST:
-            if (node->as.cast_expr.kind == CAST_REINTERPRET)
-                return 0;
-
-            return expression_is_compile_time_constant(
-                ctx,
-                node->as.cast_expr.expression
-            );
-
-        case NODE_UNARY:
-            if (node->as.unary.op != TOK_MINUS &&
-                node->as.unary.op != TOK_BANG &&
-                node->as.unary.op != TOK_TILDE) {
-                return 0;
-            }
-
-            return expression_is_compile_time_constant(
-                ctx,
-                node->as.unary.operand
-            );
-
-        case NODE_BINARY:
-            return expression_is_compile_time_constant(
-                       ctx,
-                       node->as.binary.left
-                   ) &&
-                   expression_is_compile_time_constant(
-                       ctx,
-                       node->as.binary.right
-                   );
-
-        case NODE_CALL:
-        {
-            Node *callee =
-                node->as.call.callee;
-
-            if (!callee ||
-                callee->type != NODE_IDENT) {
-                return 0;
-                }
-
-            Symbol *symbol =
-                scope_lookup(
-                    ctx->current_scope,
-                    callee->as.ident.data,
-                    callee->as.ident.length
-                );
-
-            if (!symbol || symbol->kind != SYMBOL_BUILTIN)
-                return 0;
-
-            switch (symbol->builtin_kind) {
-                case BUILTIN_WRAPPING_ADD:
-                case BUILTIN_WRAPPING_SUB:
-                case BUILTIN_WRAPPING_MUL:
-                case BUILTIN_WRAPPING_NEG:
-                    break;
-
-                case BUILTIN_SIZE_OF:
-                case BUILTIN_ALIGN_OF:
-                case BUILTIN_SLICE:
-                case BUILTIN_NONE:
-                    return 0;
-            }
-
-            for (int i = 0; i < node->as.call.arguments.count; i++) {
-                if (!expression_is_compile_time_constant(
-                        ctx,
-                        node->as.call.arguments.items[i]
-                    )) {
-                    return 0;
-                }
-            }
-
-            return 1;
-        }
-
-        case NODE_IDENT:
-        {
-            Symbol *sym =
-                scope_lookup(
-                    ctx->current_scope,
-                    node->as.ident.data,
-                    node->as.ident.length
-                );
-
-            return sym && sym->kind == SYMBOL_CONSTANT;
-        }
-
-        case NODE_FIELD:
-        {
-            ConstValue target_value;
-            if (target_constant_value(ctx, node, &target_value))
-                return 1;
-
-            /* Both `SomeEnum.Member` and `module.SomeEnum.Member`. */
-            if (semantic_qualified_enum_member_no_diag(
-                    ctx, node, NULL, NULL
-                )) {
-                return 1;
-            }
-
-            if (node->as.field.object &&
-                node->as.field.object->type == NODE_IDENT) {
-                Node *object_node = node->as.field.object;
-                Symbol *sym = scope_lookup(
-                    ctx->current_scope,
-                    object_node->as.ident.data,
-                    object_node->as.ident.length
-                );
-
-                if (sym) {
-                    return sym->kind == SYMBOL_TYPE &&
-                           sym->type &&
-                           sym->type->kind == TYPE_ENUM &&
-                           find_enum_member(
-                               sym->type,
-                               node->as.field.name.data,
-                               node->as.field.name.length
-                           );
-                }
-            }
-
-            Symbol *member = semantic_lookup_qualified_field_symbol(
-                ctx, node, 0, NULL, NULL, NULL);
-            return member && member->kind == SYMBOL_CONSTANT;
-        }
-
-        default:
-            return 0;
-    }
 }
 
 static int check_string_initializer(SemanticContext *ctx, Type *expected, Node *initializer) {
@@ -9710,12 +9605,10 @@ static Type *check_truncating_cast_expression(SemanticContext *ctx, Node *node) 
      *
      * Truncation itself cannot fail because of range.
      */
-    if (expression_is_compile_time_constant(ctx, source_expression)) {
-        ConstValue ignored;
-
+    ConstValue ignored;
+    if (try_eval_const_expr(ctx, source_expression, &ignored)) {
         if (!eval_const_cast(ctx, node, &ignored))
             return NULL;
-
     }
 
     return target_type;
@@ -10114,18 +10007,12 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     }
 
                     Type *result = operand;
+                    ConstValue constant;
 
-                    if (expression_is_compile_time_constant(ctx, node)) {
-                        ConstValue constant;
-
-                        if (!eval_const_expr(ctx, node, &constant))
-                            return NULL;
-
+                    if (try_eval_const_expr(ctx, node, &constant)) {
                         result = constant.type
                             ? constant.type
-                            : const_value_default_type(
-                                ctx,
-                                &constant);
+                            : const_value_default_type(ctx, &constant);
                     }
 
                     sem_record_expr_info(
@@ -10149,15 +10036,9 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                     }
 
                     Type *result = operand;
+                    ConstValue constant;
 
-                    if (expression_is_compile_time_constant(ctx, node)) {
-
-                        ConstValue constant;
-
-                        if (!eval_const_expr(ctx, node, &constant)) {
-                            return NULL;
-                        }
-
+                    if (try_eval_const_expr(ctx, node, &constant)) {
                         result = constant.type
                             ? constant.type
                             : const_value_default_type(ctx, &constant);
@@ -10455,29 +10336,27 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
                      * Fully constant shifts are evaluated here. The evaluator selects
                      * the left operand's operation width and validates the count.
                      */
-                    if (expression_is_compile_time_constant(ctx, node)) {
+                    {
                         ConstValue constant;
 
-                        if (!eval_const_expr(ctx, node, &constant)) {
-                            return NULL;
-                        }
+                        if (try_eval_const_expr(ctx, node, &constant)) {
+                            Type *result = constant.type
+                                ? constant.type
+                                : const_value_default_type(
+                                    ctx,
+                                    &constant
+                                );
 
-                        Type *result = constant.type
-                            ? constant.type
-                            : const_value_default_type(
+                            sem_record_expr_info(
                                 ctx,
-                                &constant
+                                node,
+                                result,
+                                NULL,
+                                VALUE_CATEGORY_RVALUE
                             );
 
-                        sem_record_expr_info(
-                            ctx,
-                            node,
-                            result,
-                            NULL,
-                            VALUE_CATEGORY_RVALUE
-                        );
-
-                        return result;
+                            return result;
+                        }
                     }
 
                     /*
@@ -11272,16 +11151,11 @@ static Type *check_expression(SemanticContext *ctx, Node *node) {
              * Raw pointers carry no length information.
              */
             if (object_type->kind == TYPE_ARRAY &&
-                object_type->array_size >= 0 &&
-                expression_is_compile_time_constant(ctx, index_node)) {
+                object_type->array_size >= 0) {
 
                 ConstValue index_value;
 
-                if (eval_const_expr(
-                        ctx,
-                        index_node,
-                        &index_value
-                    ) &&
+                if (try_eval_const_expr(ctx, index_node, &index_value) &&
                     index_value.kind ==
                         CONST_VALUE_INT) {
                     if (index_value.as.integer.is_negative ||
@@ -16931,8 +16805,9 @@ static Type *check_checked_cast_expression(SemanticContext *ctx, Node *node) {
         return NULL;
     }
 
+    ConstValue source_constant;
     int source_is_constant =
-        expression_is_compile_time_constant(ctx, source_expression);
+        try_eval_const_expr(ctx, source_expression, &source_constant);
 
     /*
      * Closed enums may only be constructed from declared member values.

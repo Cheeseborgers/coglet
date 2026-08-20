@@ -172,6 +172,9 @@ typedef struct {
     int had_error;
     int error_count;
 
+    /* Suppresses diagnostics while probing an expression for constant evaluation. */
+    int const_eval_silent;
+
     Scope *current_scope;
 
     /* Frontend-only module/import state. Modules are erased before CogIR. */

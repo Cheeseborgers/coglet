@@ -3,10 +3,8 @@ type %t0 "Pair" = struct {tag: u8, value: u64}
 type %t8 "s32[]" = struct {data: ptr<s32>, len: u64}
 func @f0 "callback_layout"() -> u64 [abi=coglet, linkage=internal] {
   bb0 "entry"():
-    %0 = const u64 @c0(0x8)
-    %1 = const u64 @c0(0x8)
-    %2 = iadd.checked %0, %1
-    ret %2
+    %0 = const u64 @c0(0x10)
+    ret %0
 }
 entry @f1 "main"() -> s32 [abi=coglet, linkage=internal] {
   slots:
@@ -56,31 +54,27 @@ entry @f1 "main"() -> s32 [abi=coglet, linkage=internal] {
   bb4 "if.end"():
     %30 = function_ref @f2
     %31 = call %30()
-    %32 = const u64 @c0(0x8)
+    %32 = const u64 @c8(0x8)
     %33 = icmp.ult %31, %32
     cond_br %33, bb5(), bb6()
   bb5 "if.then"():
-    %34 = const s32 @c8(0x2)
+    %34 = const s32 @c9(0x2)
     ret %34
   bb6 "if.end"():
     %35 = function_ref @f0
     %36 = call %35()
-    %37 = const u64 @c0(0x8)
-    %38 = const u64 @c0(0x8)
-    %39 = iadd.checked %37, %38
-    %40 = icmp.ne %36, %39
-    cond_br %40, bb7(), bb8()
+    %37 = const u64 @c0(0x10)
+    %38 = icmp.ne %36, %37
+    cond_br %38, bb7(), bb8()
   bb7 "if.then"():
-    %41 = const s32 @c9(0x3)
-    ret %41
+    %39 = const s32 @c10(0x3)
+    ret %39
   bb8 "if.end"():
-    %42 = const s32 @c4(0x0)
-    ret %42
+    %40 = const s32 @c4(0x0)
+    ret %40
 }
 func @f2 "measure<Pair>"() -> u64 [abi=coglet, linkage=internal] {
   bb0 "entry"():
-    %0 = const u64 @c10(0x10)
-    %1 = const u64 @c0(0x8)
-    %2 = iadd.checked %0, %1
-    ret %2
+    %0 = const u64 @c11(0x18)
+    ret %0
 }
